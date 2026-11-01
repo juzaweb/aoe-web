@@ -3,8 +3,8 @@ import type { WorldScene } from '../scenes/WorldScene.js';
 import { MiddleDragPan } from './cameraInput.js';
 
 /** Zoom range, shared by the wheel and the `+`/`-` hotkeys. */
-const ZOOM_MIN = 0.4;
-const ZOOM_MAX = 2.2;
+export const ZOOM_MIN = 0.4;
+export const ZOOM_MAX = 2.2;
 /** Wheel pixels to zoom units. */
 const WHEEL_ZOOM_SENSITIVITY = 0.001;
 /** Multiplier applied per `+`/`-` press: one press reads as a deliberate step. */

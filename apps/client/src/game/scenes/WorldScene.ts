@@ -17,7 +17,7 @@ import { PlacementController } from '../input/PlacementController.js';
 import { SelectionController } from '../input/SelectionController.js';
 import type { BoxSelectFilter } from '../input/SelectionController.js';
 import { applyEdgeScroll } from '../input/cameraInput.js';
-import { CameraController } from '../input/CameraController.js';
+import { CameraController, ZOOM_MIN } from '../input/CameraController.js';
 import { installHudPointerGuard } from '../input/hudPointerGuard.js';
 import { EntityRenderer } from '../render/EntityRenderer.js';
 import { FocusIndicator } from '../render/FocusIndicator.js';
@@ -374,10 +374,10 @@ export class WorldScene extends Phaser.Scene {
     // OS turns that gesture into a context menu unless we suppress it here.
     this.input.mouse?.disableContextMenu();
 
-    // Initial camera position centered on map - normal 1.0 zoom
+    // Initial camera position centered on map - default to max visible area (ZOOM_MIN)
     const center = gridToScreen(MAP_GRID_WIDTH / 2, MAP_GRID_HEIGHT / 2);
     this.cameras.main.centerOn(center.x, center.y);
-    this.cameras.main.setZoom(1.0);
+    this.cameras.main.setZoom(ZOOM_MIN);
 
     // Mouse wheel zoom
     this.input.on('wheel', (pointer: Phaser.Input.Pointer, gameObjects: any, deltaX: number, deltaY: number) => {
