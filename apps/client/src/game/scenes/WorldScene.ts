@@ -22,7 +22,13 @@ import { installHudPointerGuard } from '../input/hudPointerGuard.js';
 import { EntityRenderer } from '../render/EntityRenderer.js';
 import { FocusIndicator } from '../render/FocusIndicator.js';
 import { TerrainLayer } from '../render/TerrainLayer.js';
-import { DEFAULT_DIRECTION_INDEX, DIRECTIONAL_WALK_UNITS, directionIndex } from '../render/unitDirections.js';
+import {
+  DEFAULT_DIRECTION_INDEX,
+  UNIT_ACTION_SETS,
+  UNIT_FRAME_SIZE,
+  directionIndex,
+  unitActionTexture
+} from '../render/unitDirections.js';
 
 /**
  * How far the pointer may travel (in world pixels) before a left-button press
@@ -237,7 +243,7 @@ export class WorldScene extends Phaser.Scene {
     generateProceduralTextures(this);
 
     // Preload generated unit assets with spritesheet & idle frame support (2x resolution)
-    const uv = 'v=3';
+    const uv = 'v=4';
     this.load.spritesheet('unit_VILLAGER_sheet', `/assets/units/villager_sheet.png?${uv}`, {
       frameWidth: 128,
       frameHeight: 128
@@ -262,20 +268,18 @@ export class WorldScene extends Phaser.Scene {
     });
     this.load.image('unit_CAVALRY_idle', `/assets/units/cavalry_idle.png?${uv}`);
 
-    // Directional walk sheets (8 rows x 4 frames). Units without one keep the
-    // single-facing sheet above and are mirrored instead of rotated.
-    const walkFrameSize: Record<string, number> = {
-      VILLAGER: 128,
-      SPEARMAN: 128,
-      ARCHER: 128,
-      CAVALRY: 160
-    };
-    for (const unitType of DIRECTIONAL_WALK_UNITS) {
-      const frame = walkFrameSize[unitType] ?? 128;
-      this.load.spritesheet(`unit_${unitType}_walk`, `/assets/units/${unitType.toLowerCase()}_walk.png?${uv}`, {
-        frameWidth: frame,
-        frameHeight: frame
-      });
+    // Directional action sheets, one file per (unit, action): 8 rows x 4 frames
+    // in assets/units/actions. Units without one keep the single-facing sheet
+    // above and are mirrored instead of rotated.
+    for (const [unitType, actions] of Object.entries(UNIT_ACTION_SETS)) {
+      const frame = UNIT_FRAME_SIZE[unitType] ?? 128;
+      for (const action of actions) {
+        this.load.spritesheet(
+          unitActionTexture(unitType, action),
+          `/assets/units/actions/${unitType.toLowerCase()}_${action}.png?${uv}`,
+          { frameWidth: frame, frameHeight: frame }
+        );
+      }
     }
 
     // Preload generated building assets with cache-busting version (2x resolution)

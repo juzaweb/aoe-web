@@ -32,6 +32,10 @@ Thumbs.db
 
 
 
+# Python bytecode from the asset scripts
+__pycache__/
+*.pyc
+
 # Scratch artifacts from the asset pipelines (previews, probes, debug dumps)
 scripts/raw_downloads/**/preview_*
 scripts/raw_downloads/**/check_*
@@ -39,3 +43,14 @@ scripts/raw_downloads/**/zoom_*
 scripts/raw_downloads/**/_*
 scripts/raw_downloads/**/*_contact.png
 scripts/raw_downloads/**/jobs_*.json
+
+# Unit-sheet pipeline state: regenerable and not source art
+scripts/raw_downloads/**/*_raw_backup.png
+scripts/raw_downloads/**/*_ai_backup.png
+scripts/raw_downloads/**/*_procedural*.png
+scripts/raw_downloads/**/walk_amp_*.png
+scripts/raw_downloads/**/walk_anim_*.gif
+scripts/raw_downloads/**/walk_anim_*.png
+scripts/raw_downloads/**/manifest.json
+scripts/raw_downloads/**/audit_report.json
+scripts/raw_downloads/**/generation.log

@@ -4,13 +4,16 @@ import type { BuildingType } from '@chien-quoc/shared';
 import type { WorldScene } from '../scenes/WorldScene.js';
 import { buildingArt, buildingHpBarY } from './buildingArt.js';
 import {
+  ACTION_FRAME_RATE,
+  ACTION_REPEAT,
   DEFAULT_DIRECTION_INDEX,
   DIRECTION_NAMES,
-  DIRECTIONAL_WALK_UNITS,
-  FRAMES_PER_DIRECTION,
-  directionalIdleKey,
-  directionalWalkKey
+  UNIT_ACTION_SETS,
+  actionRowFrames,
+  unitActionKey,
+  unitActionTexture
 } from './unitDirections.js';
+import type { UnitAction } from './unitDirections.js';
 
 /**
  * Builds and maintains the visual object for every server entity: the container,
@@ -62,17 +65,23 @@ export class EntityRenderer {
     registerAnim('cavalry_walk', 'unit_CAVALRY_sheet', [0, 1, 2, 1], 8);
     registerAnim('cavalry_attack', 'unit_CAVALRY_sheet', [0, 3, 0], 6);
 
-    // Directional walk sheets: one row per compass direction, four frames per row.
-    // Units without the sheet keep the clips above, so the two systems coexist
-    // while the remaining units are redrawn.
-    for (const unitType of DIRECTIONAL_WALK_UNITS) {
-      const texture = `unit_${unitType}_walk`;
-      if (!scene.textures.exists(texture)) continue;
-      DIRECTION_NAMES.forEach((_, direction) => {
-        const first = direction * FRAMES_PER_DIRECTION;
-        registerAnim(directionalWalkKey(unitType, direction), texture, [first, first + 1, first + 2, first + 3], 8);
-        registerAnim(directionalIdleKey(unitType, direction), texture, [first], 1);
-      });
+    // Directional action sheets: one row per compass direction, four frames per
+    // row, one clip per (unit, action, facing). Units without a sheet keep the
+    // clips above, so both systems coexist.
+    for (const [unitType, actions] of Object.entries(UNIT_ACTION_SETS)) {
+      for (const action of actions) {
+        const texture = unitActionTexture(unitType, action);
+        if (!scene.textures.exists(texture)) continue;
+        DIRECTION_NAMES.forEach((_, direction) => {
+          registerAnim(
+            unitActionKey(unitType, action, direction),
+            texture,
+            actionRowFrames(direction),
+            ACTION_FRAME_RATE[action],
+            ACTION_REPEAT[action]
+          );
+        });
+      }
     }
   }
 
@@ -234,7 +243,7 @@ export class EntityRenderer {
     const lowerType = unitType.toLowerCase();
     const sheetKey = `unit_${unitType}_sheet`;
     const idleKey = `unit_${unitType}_idle`;
-    const walkSheetKey = `unit_${unitType}_walk`;
+    const walkSheetKey = unitActionTexture(unitType, 'walk');
     const hasDirectionalSheet = scene.textures.exists(walkSheetKey);
     const hasSheet = hasDirectionalSheet || scene.textures.exists(sheetKey);
     const blueprint = UNIT_BLUEPRINTS[unitType as keyof typeof UNIT_BLUEPRINTS];
@@ -248,10 +257,13 @@ export class EntityRenderer {
       const sprite = scene.add.sprite(0, visualOffsetY, hasDirectionalSheet ? walkSheetKey : sheetKey, 0);
       sprite.setScale(visualScale);
       const idleAnim = hasDirectionalSheet
-        ? directionalIdleKey(unitType, DEFAULT_DIRECTION_INDEX)
+        ? unitActionKey(unitType, 'idle', DEFAULT_DIRECTION_INDEX)
         : `${lowerType}_idle`;
-      if (scene.anims.exists(idleAnim)) {
-        sprite.play(idleAnim);
+      const startAnim = scene.anims.exists(idleAnim)
+        ? idleAnim
+        : unitActionKey(unitType, 'walk', DEFAULT_DIRECTION_INDEX);
+      if (scene.anims.exists(startAnim)) {
+        sprite.play(startAnim);
       }
       unitDisplay = sprite;
     } else if (scene.textures.exists(idleKey)) {
@@ -299,15 +311,22 @@ export class EntityRenderer {
     const updateVisualState = (actionState: string, direction: number = DEFAULT_DIRECTION_INDEX) => {
       if (!hasSheet || !(unitDisplay instanceof Phaser.GameObjects.Sprite)) return;
 
-      const idleAnim = hasDirectionalSheet
-        ? directionalIdleKey(unitType, direction)
-        : `${lowerType}_idle`;
-      const walkAnim = hasDirectionalSheet
-        ? directionalWalkKey(unitType, direction)
-        : `${lowerType}_walk`;
-      // Only villagers have a harvest animation; only combat units have an attack one.
-      const harvestAnim = blueprint?.canHarvest ? 'villager_harvest' : null;
-      const attackAnim = `${lowerType}_attack`;
+      // A directional clip wins when it exists; otherwise the legacy clip for that
+      // state does, so a partially redrawn unit still animates instead of freezing.
+      const pickAnim = (action: UnitAction, legacyKey?: string): string | null => {
+        if (hasDirectionalSheet) {
+          const directional = unitActionKey(unitType, action, direction);
+          if (scene.anims.exists(directional)) return directional;
+        }
+        if (legacyKey && scene.anims.exists(legacyKey)) return legacyKey;
+        return null;
+      };
+
+      const idleAnim = pickAnim('idle', `${lowerType}_idle`) ?? `${lowerType}_idle`;
+      const walkAnim = pickAnim('walk', `${lowerType}_walk`) ?? idleAnim;
+      const attackAnim = pickAnim('attack', `${lowerType}_attack`) ?? idleAnim;
+      // Only villagers ship the legacy harvest clip; for them BUILDING reuses it.
+      const harvestLegacy = blueprint?.canHarvest ? 'villager_harvest' : undefined;
 
       let desired: string | null;
       switch (actionState) {
@@ -320,10 +339,10 @@ export class EntityRenderer {
           desired = walkAnim;
           break;
         case 'HARVESTING':
-        // CMD-05: a builder reuses the harvest loop; there is no separate
-        // villager_build sheet.
+          desired = pickAnim('gather', harvestLegacy) ?? idleAnim;
+          break;
         case 'BUILDING':
-          desired = harvestAnim ?? idleAnim;
+          desired = pickAnim('build', harvestLegacy) ?? pickAnim('gather', harvestLegacy) ?? idleAnim;
           break;
         case 'ATTACKING':
           // Villagers have no attack animation — fall back to idle instead of
