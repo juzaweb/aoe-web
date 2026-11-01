@@ -7,6 +7,7 @@ import {
   UNIT_BLUEPRINTS
 } from '@chien-quoc/shared';
 import { WorldRoom } from './WorldRoom.js';
+import { isWithinBuildRange } from './construction.js';
 import { DatabaseService } from '../services/DatabaseService.js';
 import { WorldState } from '../schema/WorldState.js';
 import { PlayerState } from '../schema/PlayerState.js';
@@ -269,6 +270,23 @@ describe('handleTrainUnit', () => {
 });
 
 describe('handlePlaceBuilding', () => {
+  /**
+   * Whether a point sits on a footprint, as opposed to beside it.
+   *
+   * The crew test asserts the *contract* — "stand outside the footprint, close
+   * enough to work" — rather than the exact ring coordinate, so changing a
+   * building size or the approach distance does not fail a test whose behaviour
+   * did not change.
+   */
+  function isInsideFootprint(x: number, y: number, building: BuildingState) {
+    return (
+      x >= building.gridX &&
+      x < building.gridX + building.sizeX &&
+      y >= building.gridY &&
+      y < building.gridY + building.sizeY
+    );
+  }
+
   it('refuses to build on top of an existing building and charges nothing', () => {
     const room = createRoom();
     const player = addPlayer(room, 'player-a', { wood: 500 });
@@ -300,6 +318,105 @@ describe('handlePlaceBuilding', () => {
       message: 'Cannot build outside map bounds'
     });
     expect(player.wood).toBe(500);
+  });
+
+  it('signs the villagers that were selected up to the new foundation (CMD-07)', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 500 });
+    const villagerA = addUnit(room, { id: 'u_1', ownerId: 'player-a', x: 33, y: 33, actionState: 'HARVESTING' });
+    const villagerB = addUnit(room, { id: 'u_2', ownerId: 'player-a', x: 34, y: 34 });
+    // A queued waypoint from the old order must not survive the build order.
+    villagerA.queueTargetX.push(60);
+    villagerA.queueTargetY.push(60);
+    const clientA = createClient('player-a');
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE',
+      gridX: 40,
+      gridY: 40,
+      unitIds: ['u_1', 'u_2']
+    });
+
+    const buildings: BuildingState[] = [];
+    room.state.buildings.forEach((b: BuildingState) => buildings.push(b));
+    expect(buildings.length).toBe(1);
+    const foundation = buildings[0];
+    expect(foundation.isConstructed).toBe(false);
+
+    for (const villager of [villagerA, villagerB]) {
+      expect(villager.actionState).toBe('BUILDING');
+      expect(villager.targetEntityId).toBe(foundation.id);
+      expect(villager.targetEntityType).toBe('building');
+
+      // Walk target must be a spot they can actually work from: beside the
+      // footprint, not on it (the building would displace them), and within the
+      // build range the construction pass uses to count them as crew.
+      expect(isInsideFootprint(villager.targetX, villager.targetY, foundation)).toBe(false);
+      expect(
+        isWithinBuildRange(
+          { x: villager.targetX, y: villager.targetY } as unknown as UnitState,
+          foundation
+        )
+      ).toBe(true);
+    }
+
+    expect(villagerA.queueTargetX.length).toBe(0);
+    expect(villagerA.queueTargetY.length).toBe(0);
+    // No error toast: the placement and its crew are one accepted command.
+    expect(clientA.send).not.toHaveBeenCalled();
+  });
+
+  it('drops military, foreign and unknown units from the placement crew (CMD-07)', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 500 });
+    addPlayer(room, 'player-b', { wood: 500 });
+    const villager = addUnit(room, { id: 'u_1', ownerId: 'player-a', x: 30, y: 30 });
+    const spearman = addUnit(room, { id: 'u_2', ownerId: 'player-a', type: 'SPEARMAN', x: 30, y: 31 });
+    const foreignVillager = addUnit(room, { id: 'u_3', ownerId: 'player-b', x: 30, y: 32 });
+    const clientA = createClient('player-a');
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE',
+      gridX: 40,
+      gridY: 40,
+      unitIds: ['u_1', 'u_2', 'u_3', 'u_missing']
+    });
+
+    expect(villager.actionState).toBe('BUILDING');
+    expect(spearman.actionState).toBe('IDLE');
+    expect(spearman.targetEntityId).toBe('');
+    expect(foreignVillager.actionState).toBe('IDLE');
+    expect(foreignVillager.targetEntityId).toBe('');
+  });
+
+  it('places the building with no crew when the payload carries no unit ids', () => {
+    const room = createRoom();
+    const player = addPlayer(room, 'player-a', { wood: 500 });
+    const clientA = createClient('player-a');
+
+    internals(room).commands.handlePlaceBuilding(clientA, { type: 'HOUSE', gridX: 40, gridY: 40 });
+
+    expect(room.state.buildings.size).toBe(1);
+    expect(player.wood).toBe(500 - BUILDING_BLUEPRINTS.HOUSE.cost.wood);
+  });
+
+  it('ignores a malformed crew list instead of failing the placement (CMD-07)', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 500 });
+    const villager = addUnit(room, { id: 'u_1', ownerId: 'player-a', x: 30, y: 30 });
+    const clientA = createClient('player-a');
+
+    // `unitIds` comes from the client, so its shape is not a promise. A string
+    // where an array is expected must cost the crew, never the placement.
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE',
+      gridX: 40,
+      gridY: 40,
+      unitIds: 'u_1'
+    });
+
+    expect(room.state.buildings.size).toBe(1);
+    expect(villager.actionState).toBe('IDLE');
   });
 });
 

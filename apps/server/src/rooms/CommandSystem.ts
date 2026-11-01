@@ -189,6 +189,12 @@ export class CommandSystem {
 
     this.state.buildings.set(buildingId, building);
     this.ports.updatePlayerPopulation(ownerId);
+
+    // CMD-07: the villagers that were selected when the building was picked go
+    // straight to work. It has to happen in this handler: the client never
+    // learns the foundation's id, so a follow-up BUILD_TARGET would need a
+    // second click on a site it cannot address yet.
+    this.assignBuildersToSite(this.collectBuilders(client, payload.unitIds), building);
   }
 
   handleMoveUnits(client: Client, payload: MoveUnitsPayload) {
@@ -458,6 +464,10 @@ export class CommandSystem {
    * Each builder is sent to its own point on the ring just outside the footprint
    * (see `getBuildApproachPoint`), which is what stops a three-villager crew from
    * stacking on one tile.
+   *
+   * CMD-07 drives the same two helpers as placement-with-crew, so a foundation
+   * dropped with villagers selected and a right-click on an existing one can
+   * never disagree about who builds or where they stand.
    */
   handleBuildTarget(client: Client, payload: BuildTargetPayload) {
     if (!payload?.unitIds || payload.unitIds.length === 0) return;
@@ -477,28 +487,13 @@ export class CommandSystem {
       return;
     }
 
-    const builders = this.collectOwnedUnits(client, payload.unitIds).filter(
-      (unit) => (UNIT_BLUEPRINTS[unit.type as UnitType]?.buildPower ?? 0) > 0
-    );
+    const builders = this.collectBuilders(client, payload.unitIds);
     if (builders.length === 0) {
       this.ports.rejectCommand(client, 'Only villagers can build');
       return;
     }
 
-    builders.forEach((unit, idx) => {
-      const approach = getBuildApproachPoint(unit, building, idx, builders.length);
-
-      unit.queueTargetX.clear();
-      unit.queueTargetY.clear();
-      unit.targetEntityId = building.id;
-      unit.targetEntityType = 'building';
-      unit.previousActionState = '';
-      this.ports.setWalkTarget(unit, approach.x, approach.y);
-      unit.actionState = 'BUILDING';
-      // Leaving a woodline for a build site must not leave a stale retarget type
-      // behind, or a later depleted node would pull the villager back to it.
-      this.ports.clearHarvestOrder(unit.id);
-    });
+    this.assignBuildersToSite(builders, building);
   }
 
   handleHarvestResource(client: Client, payload: HarvestResourcePayload) {
@@ -632,6 +627,51 @@ export class CommandSystem {
     });
 
     return owned;
+  }
+
+  /**
+   * Resolves the units in `unitIds` this client may put to work on a foundation.
+   *
+   * Both crew orders share the rule: only the player's own units, at most one
+   * entry per id, and only units with build power. Foreign ids and military
+   * units are dropped instead of failing the order, the same way every other
+   * group order here treats a stale id.
+   *
+   * The list is capped here rather than rejected (the callers that reject do it
+   * themselves) because `unitIds` is optional in the placement payload: refusing
+   * a whole placement because the selection that sent it was oversized would be
+   * worse than building with the first MAX_SELECTION of it.
+   */
+  private collectBuilders(client: Client, unitIds: string[] | undefined): UnitState[] {
+    if (!Array.isArray(unitIds) || unitIds.length === 0) return [];
+
+    return this.collectOwnedUnits(client, unitIds.slice(0, MAX_SELECTION)).filter(
+      (unit) => (UNIT_BLUEPRINTS[unit.type as UnitType]?.buildPower ?? 0) > 0
+    );
+  }
+
+  /**
+   * Walks a resolved crew to a foundation, one stand point per builder.
+   *
+   * The unit fields are the whole order — the tick reads them — so this is where
+   * the previous order (a move route, a harvest queue) is cancelled. Nothing is
+   * checked here: both callers resolve the crew and the foundation first.
+   */
+  private assignBuildersToSite(builders: UnitState[], building: BuildingState) {
+    builders.forEach((unit, idx) => {
+      const approach = getBuildApproachPoint(unit, building, idx, builders.length);
+
+      unit.queueTargetX.clear();
+      unit.queueTargetY.clear();
+      unit.targetEntityId = building.id;
+      unit.targetEntityType = 'building';
+      unit.previousActionState = '';
+      this.ports.setWalkTarget(unit, approach.x, approach.y);
+      unit.actionState = 'BUILDING';
+      // Leaving a woodline for a build site must not leave a stale retarget type
+      // behind, or a later depleted node would pull the villager back to it.
+      this.ports.clearHarvestOrder(unit.id);
+    });
   }
 
   /**

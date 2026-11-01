@@ -125,7 +125,17 @@ export class PlacementController {
     const { gridX, gridY } = pointerWorldGrid(scene.cameras.main, pointer);
 
     if (this.isValid(gridX, gridY, blueprint)) {
-      scene.room.send(NetworkMessage.PLACE_BUILDING, { type, gridX, gridY });
+      const unitIds = Array.from(scene.selectedUnitIds);
+      // CMD-07: the crew travels with the placement. The foundation's id is
+      // minted by the server, so a client-side follow-up BUILD_TARGET would have
+      // to wait for the new building to appear in the snapshot and guess which
+      // entry it just placed — that race is exactly the second click this removes.
+      scene.room.send(NetworkMessage.PLACE_BUILDING, {
+        type,
+        gridX,
+        gridY,
+        ...(unitIds.length > 0 ? { unitIds } : {})
+      });
       this.cancel();
       return;
     }

@@ -122,6 +122,17 @@ export interface PlaceBuildingPayload {
   type: BuildingType;
   gridX: number;
   gridY: number;
+  /**
+   * CMD-07: units that should start working on the new foundation right away.
+   *
+   * The whole point of sending them with the placement is that the client never
+   * learns the new foundation's id: the server creates it and signs the crew up
+   * in the same handler, so dropping a building is one click instead of a
+   * placement followed by a right-click on the fresh site. Optional and
+   * untrusted — the server resolves these ids against authoritative state,
+   * drops everything that is not the player's own builder and caps the list.
+   */
+  unitIds?: string[];
 }
 
 export interface MoveUnitsPayload {
