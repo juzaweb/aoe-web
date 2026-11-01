@@ -1,0 +1,44 @@
+{
+  "attack": {
+    "anchor": "center",
+    "hotspot": [
+      16,
+      15
+    ]
+  },
+  "build": {
+    "anchor": "center",
+    "hotspot": [
+      15,
+      15
+    ]
+  },
+  "build-blocked": {
+    "anchor": "center",
+    "hotspot": [
+      15,
+      15
+    ]
+  },
+  "default": {
+    "anchor": "topleft",
+    "hotspot": [
+      1,
+      1
+    ]
+  },
+  "harvest": {
+    "anchor": "center",
+    "hotspot": [
+      15,
+      15
+    ]
+  },
+  "order": {
+    "anchor": "bottom",
+    "hotspot": [
+      16,
+      30
+    ]
+  }
+}
