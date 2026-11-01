@@ -16,7 +16,7 @@ import { CursorController } from '../input/CursorController.js';
 import { PlacementController } from '../input/PlacementController.js';
 import { SelectionController } from '../input/SelectionController.js';
 import type { BoxSelectFilter } from '../input/SelectionController.js';
-import { applyEdgeScroll } from '../input/cameraInput.js';
+import { applyEdgeScroll, installCanvasPresence } from '../input/cameraInput.js';
 import { CameraController, ZOOM_MIN } from '../input/CameraController.js';
 import { installHudPointerGuard } from '../input/hudPointerGuard.js';
 import { EntityRenderer } from '../render/EntityRenderer.js';
@@ -167,12 +167,11 @@ export class WorldScene extends Phaser.Scene {
   public lastPointerWorld: { x: number; y: number } | null = null;
 
   /**
-   * Whether a pointermove has ever reached the canvas. Phaser reports the pointer
-   * at (0,0) until then, which sits inside the top-left edge-scroll band - the
-   * camera would otherwise pan up-left on its own from the moment the scene
-   * starts, even with the mouse parked outside the game.
+   * Whether the pointer is really over the game canvas (see
+   * `installCanvasPresence` for why edge scrolling must not trust Phaser's
+   * stale pointer coordinates).
    */
-  public hasPointerMoved = false;
+  public pointerInsideCanvas = false;
 
   // Building placement preview
   public buildingToPlace: BuildingType | null = null;
@@ -436,6 +435,13 @@ export class WorldScene extends Phaser.Scene {
       }
     });
 
+    // Edge scrolling must stop the moment the pointer leaves the canvas; see
+    // `installCanvasPresence` for why Phaser's pointer state cannot tell that
+    // apart from "parked on the edge".
+    installCanvasPresence(this.game, this.events, (inside) => {
+      this.pointerInsideCanvas = inside;
+    });
+
     // Bind room events if room already passed
     if (this.room) {
       this.bindRoomEvents(this.room);
@@ -599,6 +605,10 @@ export class WorldScene extends Phaser.Scene {
   // ---------------------------------------------------------------------------
 
   private handlePointerMove(pointer: Phaser.Input.Pointer) {
+    // Any move that reaches the scene came from the canvas, so it settles the
+    // edge-scroll presence flag too (`pointerenter` normally sets it first).
+    this.pointerInsideCanvas = true;
+
     // Middle-drag pan moves the camera under a still pointer, so the world point
     // below the cursor is recomputed first: the cursor and the waypoint preview
     // both read it, and a stale one would pin them to the tile left behind.
@@ -615,8 +625,6 @@ export class WorldScene extends Phaser.Scene {
       this.cursor.refresh();
       return;
     }
-
-    this.hasPointerMoved = true;
 
     // Snap highlight to grid tile
     const snappedScreen = gridToScreen(hoverGridCoord.gridX, hoverGridCoord.gridY);
@@ -913,14 +921,14 @@ export class WorldScene extends Phaser.Scene {
     if (this.cursors.up.isDown) this.cameras.main.scrollY -= cameraSpeed;
     if (this.cursors.down.isDown) this.cameras.main.scrollY += cameraSpeed;
 
-    applyEdgeScroll(
-      this.cameras.main,
-      this.input.activePointer,
-      this.scale.width,
-      this.scale.height,
-      this.hasPointerMoved,
+    applyEdgeScroll({
+      camera: this.cameras.main,
+      pointer: this.input.activePointer,
+      viewWidth: this.scale.width,
+      viewHeight: this.scale.height,
+      pointerInsideCanvas: this.pointerInsideCanvas,
       cameraSpeed
-    );
+    });
 
     this.commands.updateWaypointPreview();
     this.commands.updateRallyMarkers();
