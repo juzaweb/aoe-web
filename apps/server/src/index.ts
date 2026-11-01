@@ -16,7 +16,18 @@ import { createRateLimit } from './services/RateLimiter.js';
 Encoder.BUFFER_SIZE = 256 * 1024;
 
 const port = Number(process.env.PORT || 2567);
-const app = express();
+export const app: express.Express = express();
+
+// Disable Express fingerprinting header to reduce attack surface info leakage
+app.disable('x-powered-by');
+
+// Add standard defense-in-depth security headers without external dependencies
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
 
 // Auth is a bearer token in a header, never a cookie, so credentialed CORS is
 // unnecessary; enabling it would only widen what a hostile origin can read.
@@ -77,7 +88,7 @@ app.get('/auth/me', async (req, res) => {
   res.json({ user });
 });
 
-async function start() {
+export async function start() {
   // Ensure the SQLite file, folder and tables exist before accepting traffic.
   // initialize() throws on failure, so the server never starts on a broken DB.
   await DatabaseService.initialize();
@@ -100,9 +111,11 @@ async function start() {
   console.log(`⚔️  Chien Quoc Game Server is running on http://localhost:${port} and ws://localhost:${port}`);
 }
 
-start().catch(async (err) => {
-  console.error('❌ [Server] Failed to start:', err);
-  // Close the SQLite connection so the process can exit without hanging handles.
-  await DatabaseService.disconnect().catch(() => undefined);
-  process.exit(1);
-});
+if (process.env.NODE_ENV !== 'test') {
+  start().catch(async (err) => {
+    console.error('❌ [Server] Failed to start:', err);
+    // Close the SQLite connection so the process can exit without hanging handles.
+    await DatabaseService.disconnect().catch(() => undefined);
+    process.exit(1);
+  });
+}
