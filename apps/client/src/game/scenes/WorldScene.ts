@@ -6,8 +6,10 @@ import {
   BuildingType,
   MAP_GRID_HEIGHT,
   MAP_GRID_WIDTH,
-  gridToScreen,
+  TILE_HEIGHT,
+  TILE_WIDTH,
   getIsoDepth,
+  gridToScreen,
   screenToGrid
 } from '@chien-quoc/shared';
 import { generateProceduralTextures } from '../renderers/ProceduralSprites.js';
@@ -23,12 +25,12 @@ import { EntityRenderer } from '../render/EntityRenderer.js';
 import { FocusIndicator } from '../render/FocusIndicator.js';
 import { TerrainLayer } from '../render/TerrainLayer.js';
 import {
-  DEFAULT_DIRECTION_INDEX,
   UNIT_ACTION_SETS,
   UNIT_FRAME_SIZE,
-  directionIndex,
   unitActionTexture
 } from '../render/unitDirections.js';
+import { RENDER_DELAY_MS } from '../render/unitMotion.js';
+import type { UnitMotion } from '../render/unitMotion.js';
 
 /**
  * How far the pointer may travel (in world pixels) before a left-button press
@@ -42,6 +44,14 @@ import {
  */
 const CLICK_DRAG_THRESHOLD_WORLD_PX = 8;
 const CLICK_DRAG_MIN_SCREEN_PX = 6;
+
+/**
+ * Half a tile in screen pixels, precomputed because the frame loop projects
+ * every unit's grid position inline (see MOV-01) instead of calling
+ * `gridToScreen`, which allocates a point per unit per frame.
+ */
+const HALF_TILE_WIDTH = TILE_WIDTH / 2;
+const HALF_TILE_HEIGHT = TILE_HEIGHT / 2;
 
 /**
  * ECO-02: how often the idle-villager count is recomputed, in milliseconds.
@@ -171,9 +181,10 @@ export class WorldScene extends Phaser.Scene {
   public unitSprites: Map<string, Phaser.GameObjects.Container> = new Map();
   public resourceSprites: Map<string, Phaser.GameObjects.Container> = new Map();
 
-  // Unit target lerping
-  public unitTargetPositions: Map<string, { x: number; y: number; hp: number; maxHp: number }> =
-    new Map();
+  // MOV-01: per-unit smoothing state — the last two authoritative positions, the
+  // smoothed heading and the committed compass row. The scene samples the room
+  // state once per frame into these, and the frame loop draws from them.
+  public unitMotion: Map<string, UnitMotion> = new Map();
 
   // CMD-03: last pointer position in world space, kept so the cursor can be
   // recomputed when the selection or the input mode changes without the pointer
@@ -598,7 +609,7 @@ export class WorldScene extends Phaser.Scene {
         sprite.destroy();
         this.unitSprites.delete(key);
       }
-      this.unitTargetPositions.delete(key);
+      this.unitMotion.delete(key);
       this.commands.forgetUnit(key);
       if (this.selectedUnitIds.has(key)) {
         this.selectedUnitIds.delete(key);
@@ -959,58 +970,7 @@ export class WorldScene extends Phaser.Scene {
     this.commands.updateWaypointPreview();
     this.commands.updateRallyMarkers();
 
-    // Smooth unit position interpolation (Lerp)
-    this.unitTargetPositions.forEach((target, unitId) => {
-      const container = this.unitSprites.get(unitId);
-      if (container) {
-        const targetScreen = gridToScreen(target.x, target.y);
-        const prevX = container.x;
-        const prevY = container.y;
-        container.x = Phaser.Math.Linear(container.x, targetScreen.x, 0.25);
-        container.y = Phaser.Math.Linear(container.y, targetScreen.y, 0.25);
-        container.setDepth(getIsoDepth(target.x, target.y, 25));
-
-        // Face the direction of travel. Units with a directional sheet pick the
-        // matching row; the rest are mirrored from their single-facing art.
-        const dx = targetScreen.x - prevX;
-        const dy = targetScreen.y - prevY;
-        const moveDist = Math.hypot(container.x - prevX, container.y - prevY);
-        const unitDisplay = container.getData('unitDisplay') as Phaser.GameObjects.Sprite | Phaser.GameObjects.Image;
-        if (unitDisplay) {
-          const hasDirectionalSheet = container.getData('hasDirectionalSheet') === true;
-          if (hasDirectionalSheet) {
-            // Only re-face once the sprite actually travelled a pixel; below that
-            // the delta is lerp jitter and would flip the row every frame.
-            if (Math.hypot(dx, dy) > 0.3) {
-              container.setData('facingDirection', directionIndex(dx, dy));
-            }
-            unitDisplay.setFlipX(false);
-          } else if (Math.abs(dx) > 0.05) {
-            unitDisplay.setFlipX(dx < 0);
-          }
-
-          // Drive animation from the unit's own type/action state. Never hardcode
-          // a key here: `updateVisualState` knows `${type}_walk|idle|attack|harvest`.
-          const updateVisualState = container.getData('updateVisualState') as
-            | ((actionState: string, direction?: number) => void)
-            | undefined;
-          if (updateVisualState) {
-            const serverState = this.room?.state.units.get(unitId)?.actionState ?? 'IDLE';
-            // Position lerp is authoritative for "is it actually walking right now".
-            let effectiveState = serverState;
-            if (moveDist > 0.15) {
-              effectiveState = 'MOVING';
-            } else if (serverState === 'MOVING') {
-              // Server still reports MOVING but the sprite has settled (arrived).
-              effectiveState = 'IDLE';
-            }
-            const facing =
-              (container.getData('facingDirection') as number | undefined) ?? DEFAULT_DIRECTION_INDEX;
-            updateVisualState(effectiveState, facing);
-          }
-        }
-      }
-    });
+    this.updateUnitSprites(time, dtSeconds);
 
     // CMB-03 after the lerp: the marker is drawn on the sprite's current screen
     // position, so reading it before interpolation would leave the ring one
@@ -1019,6 +979,68 @@ export class WorldScene extends Phaser.Scene {
 
     this.syncSelectedUnitDetails();
     this.publishIdleVillagerCount(time);
+  }
+
+  /**
+   * MOV-01: draw every unit at the authoritative position interpolated one
+   * snapshot behind wall-clock time.
+   *
+   * The server steps 20 times a second, so a replicated position jumps by ~0.11
+   * tiles every 50 ms; drawing that directly stutters, and chasing the newest
+   * sample with a per-frame lerp made the smoothness depend on the machine's frame
+   * rate. The rule itself lives in `UnitMotion`; this loop only projects and
+   * paints it.
+   */
+  private updateUnitSprites(time: number, dtSeconds: number) {
+    const renderTime = time - RENDER_DELAY_MS;
+    this.unitMotion.forEach((motion, unitId) => {
+      const container = this.unitSprites.get(unitId);
+      const unit = this.room?.state.units.get(unitId);
+      if (!container || !unit) return;
+
+      // Sampled once per frame from the snapshot rather than from per-property
+      // change callbacks: a patch that touches x and y fires those separately, so
+      // a callback can observe a half-updated position.
+      const step = motion.update(unit.x, unit.y, time, renderTime, dtSeconds);
+
+      // Inline isometric projection: `gridToScreen` allocates an object, and this
+      // runs for every unit on every frame.
+      container.x = (step.x - step.y) * HALF_TILE_WIDTH;
+      container.y = (step.x + step.y) * HALF_TILE_HEIGHT;
+
+      // Assigning `depth` queues a display-list sort in Phaser even when the value
+      // is unchanged, and parked units keep the same depth frame after frame, so
+      // only touch it when it actually moves.
+      const depth = getIsoDepth(step.x, step.y, 25);
+      if (container.depth !== depth) container.setDepth(depth);
+
+      const unitDisplay = container.getData('unitDisplay') as
+        | Phaser.GameObjects.Sprite
+        | Phaser.GameObjects.Image;
+      if (!unitDisplay) return;
+
+      if (container.getData('hasDirectionalSheet') === true) {
+        unitDisplay.setFlipX(false);
+      } else {
+        // Single-facing art has no rows to pick from, so it is mirrored instead.
+        unitDisplay.setFlipX(Math.cos(step.heading) < 0);
+      }
+      if (container.getData('facingDirection') !== step.facing) {
+        container.setData('facingDirection', step.facing);
+      }
+
+      // Drive animation from the unit's own type/action state. Never hardcode a
+      // key here: `updateVisualState` knows `${type}_walk|idle|attack|harvest`.
+      const updateVisualState = container.getData('updateVisualState') as
+        | ((actionState: string, direction?: number, speed?: number) => void)
+        | undefined;
+      if (updateVisualState) {
+        // While the sprite is gliding it is walking, whatever the server has
+        // already moved on to (arrival, harvest, build).
+        const effectiveState = step.gliding ? 'MOVING' : unit.actionState;
+        updateVisualState(effectiveState, step.facing, unit.speed);
+      }
+    });
   }
 
   /**

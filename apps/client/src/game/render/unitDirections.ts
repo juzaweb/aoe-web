@@ -69,6 +69,39 @@ export const UNIT_ACTION_SETS: Record<string, readonly UnitAction[]> = {
  */
 export const DIRECTIONAL_UNITS = Object.keys(UNIT_ACTION_SETS);
 
+/** Angular width of one compass row, in radians (360° / 8). */
+export const DIRECTION_STEP_RAD = Math.PI / 4;
+
+/**
+ * How far past the boundary between two rows a heading has to be before the
+ * sprite switches row, in radians.
+ *
+ * Without it, a unit walking close to a 22.5° boundary re-quantizes between the
+ * two neighbouring rows whenever the measured heading jitters by a fraction of a
+ * degree, which reads as a shivering sprite. 7.5° absorbs that jitter and is
+ * still narrow enough that a deliberate turn switches row immediately.
+ */
+export const DIRECTION_HYSTERESIS_RAD = Math.PI / 24;
+
+/** Signed shortest rotation from `from` to `to`, in (-π, π]. */
+export function shortestAngleDelta(from: number, to: number): number {
+  let delta = (to - from) % (Math.PI * 2);
+  if (delta > Math.PI) delta -= Math.PI * 2;
+  if (delta <= -Math.PI) delta += Math.PI * 2;
+  return delta;
+}
+
+/** Centre angle of one compass row, in the sheet's screen-space convention. */
+export function directionAngle(direction: number): number {
+  return direction * DIRECTION_STEP_RAD;
+}
+
+/** Compass index of a screen-space heading, with no hysteresis. */
+export function directionIndexFromAngle(angleRad: number): number {
+  const index = Math.round(angleRad / DIRECTION_STEP_RAD);
+  return ((index % 8) + 8) % 8;
+}
+
 /**
  * Screen-space heading as a compass index. Phaser's y axis points down, so
  * positive dy is "south", which is why the sheet's row order starts at east and
@@ -76,9 +109,25 @@ export const DIRECTIONAL_UNITS = Object.keys(UNIT_ACTION_SETS);
  */
 export function directionIndex(dx: number, dy: number): number {
   if (dx === 0 && dy === 0) return DEFAULT_DIRECTION_INDEX;
-  const step = Math.PI / 4;
-  const index = Math.round(Math.atan2(dy, dx) / step);
-  return ((index % 8) + 8) % 8;
+  return directionIndexFromAngle(Math.atan2(dy, dx));
+}
+
+/**
+ * Compass index of a heading, holding `current` until the heading is clear of it.
+ *
+ * The hold band is the half-width of a row (`DIRECTION_STEP_RAD / 2`) plus
+ * `hysteresisRad`, so the row only changes once the heading is decisively in the
+ * next 45° sector.
+ */
+export function quantizeDirection(
+  angleRad: number,
+  current: number,
+  hysteresisRad: number = DIRECTION_HYSTERESIS_RAD
+): number {
+  const candidate = directionIndexFromAngle(angleRad);
+  if (candidate === current) return current;
+  const offsetFromCurrent = Math.abs(shortestAngleDelta(directionAngle(current), angleRad));
+  return offsetFromCurrent >= DIRECTION_STEP_RAD / 2 + hysteresisRad ? candidate : current;
 }
 
 /**

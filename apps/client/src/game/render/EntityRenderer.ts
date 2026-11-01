@@ -14,6 +14,7 @@ import {
   unitActionTexture
 } from './unitDirections.js';
 import type { UnitAction } from './unitDirections.js';
+import { UnitMotion, walkTimeScale } from './unitMotion.js';
 
 /**
  * Builds and maintains the visual object for every server entity: the container,
@@ -306,10 +307,35 @@ export class EntityRenderer {
     container.setData('entityType', 'unit');
 
     scene.unitSprites.set(id, container);
-    scene.unitTargetPositions.set(id, { x: unit.x, y: unit.y, hp: unit.hp, maxHp: unit.maxHp });
+    // MOV-01: the scene owns the per-frame sampling from here on. It starts
+    // parked on the spawn tile, facing the viewer.
+    scene.unitMotion.set(id, new UnitMotion(unit.x, unit.y, scene.time.now));
 
-    const updateVisualState = (actionState: string, direction: number = DEFAULT_DIRECTION_INDEX) => {
+    // The scene calls this once per frame now, so it is worth remembering what was
+    // last applied: resolving a clip costs several key builds and `anims.exists`
+    // lookups, and most frames ask for exactly the same clip again. The guard runs
+    // before any of that, and `speed` is part of it because it drives the playback
+    // rate.
+    let appliedActionState: string | null = null;
+    let appliedDirection = Number.NaN;
+    let appliedSpeed = Number.NaN;
+
+    const updateVisualState = (
+      actionState: string,
+      direction: number = DEFAULT_DIRECTION_INDEX,
+      speed: number = 0
+    ) => {
       if (!hasSheet || !(unitDisplay instanceof Phaser.GameObjects.Sprite)) return;
+      if (
+        actionState === appliedActionState &&
+        direction === appliedDirection &&
+        speed === appliedSpeed
+      ) {
+        return;
+      }
+      appliedActionState = actionState;
+      appliedDirection = direction;
+      appliedSpeed = speed;
 
       // A directional clip wins when it exists; otherwise the legacy clip for that
       // state does, so a partially redrawn unit still animates instead of freezing.
@@ -329,6 +355,9 @@ export class EntityRenderer {
       const harvestLegacy = blueprint?.canHarvest ? 'villager_harvest' : undefined;
 
       let desired: string | null;
+      // MOV-02: only the walk cycle is speed-locked; every other clip plays at
+      // its authored rate.
+      let walking = false;
       switch (actionState) {
         case 'MOVING':
         // CMD-01: an attack-moving or patrolling unit is walking, fight or not.
@@ -337,6 +366,7 @@ export class EntityRenderer {
         // SIM-02: carrying a load back to a drop-off is a walk, not a gather.
         case 'RETURNING':
           desired = walkAnim;
+          walking = true;
           break;
         case 'HARVESTING':
           desired = pickAnim('gather', harvestLegacy) ?? idleAnim;
@@ -355,9 +385,21 @@ export class EntityRenderer {
 
       if (!desired || !scene.anims.exists(desired)) {
         desired = idleAnim;
+        walking = false;
       }
       if (scene.anims.exists(desired) && unitDisplay.anims.currentAnim?.key !== desired) {
         unitDisplay.play(desired);
+      }
+
+      // MOV-02: every walk sheet was drawn for one speed, but units travel
+      // between 2.2 and 4.0 tiles/second, so a fixed frame rate makes the fast
+      // ones skate. Scaling playback by `speed / reference` keeps the stride
+      // matched to the ground. Applied after `play` because that is when the
+      // clip exists; Phaser keeps the current frame, so the phase survives a
+      // change of rate.
+      const timeScale = walking ? walkTimeScale(speed) : 1;
+      if (unitDisplay.anims.timeScale !== timeScale) {
+        unitDisplay.anims.timeScale = timeScale;
       }
     };
 
@@ -367,14 +409,16 @@ export class EntityRenderer {
     container.setData('hasDirectionalSheet', hasDirectionalSheet);
     container.setData('facingDirection', DEFAULT_DIRECTION_INDEX);
 
-    updateVisualState(unit.actionState, DEFAULT_DIRECTION_INDEX);
+    updateVisualState(unit.actionState, DEFAULT_DIRECTION_INDEX, unit.speed);
 
     if (cb) {
       cb.onChange(unit, () => {
-        scene.unitTargetPositions.set(id, { x: unit.x, y: unit.y, hp: unit.hp, maxHp: unit.maxHp });
+        // Position is deliberately not copied here: the scene samples the
+        // authoritative position once per frame instead, so a multi-property
+        // patch cannot produce a sample that pairs a new x with a stale y.
         this.updateUnitBar(container, unit.hp, unit.maxHp, isCavalry);
         const facing = (container.getData('facingDirection') as number | undefined) ?? DEFAULT_DIRECTION_INDEX;
-        updateVisualState(unit.actionState, facing);
+        updateVisualState(unit.actionState, facing, unit.speed);
       });
     }
   }
