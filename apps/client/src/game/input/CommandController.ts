@@ -245,6 +245,11 @@ export class CommandController {
         // Already placing this one: Phaser re-emits while the key is held, and
         // re-entering the same mode would only reset the ghost.
         if (this.scene.buildingToPlace === type) return;
+        // UIX-06: build hotkeys belong to the villager command card. With a
+        // building or an army selected the letter must do nothing, exactly like
+        // AoE where the card is not there to press. Placement mode keeps the
+        // keys live so a villager can switch to another building mid-place.
+        if (!this.scene.buildingToPlace && !this.scene.hasVillagerSelected()) return;
 
         event.preventDefault();
         this.scene.onBuildingHotkey?.(type);

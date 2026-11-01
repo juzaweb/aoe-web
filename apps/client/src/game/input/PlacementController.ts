@@ -88,7 +88,10 @@ export class PlacementController {
   /** Enters placement mode for `type` and dresses the ghost in its artwork. */
   enter(type: BuildingType) {
     const scene = this.scene;
-    scene.selection.clear();
+    // UIX-06: the selection stays put. AoE keeps the villagers (and their build
+    // card) on screen while placing, and clearing them here would blank the card
+    // the moment a building is picked, then leave nothing selected once the
+    // building is dropped.
     scene.buildingToPlace = type;
     scene.notifySelectionChange();
 

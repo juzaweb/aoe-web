@@ -116,6 +116,12 @@ export interface SelectedEntityData {
    * in the panel so the stance cycle is observable without opening a menu.
    */
   stance?: string;
+  /**
+   * UIX-06: whether the current unit selection includes one of this player's
+   * villagers. The build command card belongs to villagers only, the same way
+   * AoE hides it when a military unit or a building is selected.
+   */
+  villagerSelected?: boolean;
 }
 
 /**
@@ -136,12 +142,17 @@ export class WorldScene extends Phaser.Scene {
    */
   public get myOwnerId(): string {
     if (this.cachedOwnerId) return this.cachedOwnerId;
-    if (!this.room || !this.myPlayerName) return '';
+    // The minimap polls this on every animation frame, and the socket can be
+    // joined a frame or two before the first state patch lands. Reading through
+    // an unsynced state would throw inside the render loop and kill it for good,
+    // which is why the guard is here and not at the call sites.
+    const players = this.room?.state?.players;
+    if (!players || !this.myPlayerName) return '';
 
     // Resolved from the snapshot rather than `room.sessionId`; the SDK does not
     // expose the auth payload the server keyed the entities with.
     let found = '';
-    this.room.state.players.forEach((p: any) => {
+    players.forEach((p: any) => {
       if (!found && p.name === this.myPlayerName) found = p.id;
     });
     this.cachedOwnerId = found;
@@ -772,6 +783,25 @@ export class WorldScene extends Phaser.Scene {
     return this.commands.cancelSelectedFoundation();
   }
 
+  /**
+   * UIX-06: does the current unit selection include one of this player's
+   * villagers? Scans the whole selection rather than the panel's first unit, so
+   * a mixed stack (villagers + spearmen) still exposes the build card.
+   */
+  public hasVillagerSelected(): boolean {
+    // Hotkeys and pointer events can fire a frame before the first state patch,
+    // so `units` is read defensively: a throw here would abort the caller.
+    const units = this.room?.state?.units;
+    if (!units) return false;
+
+    for (const unitId of this.selectedUnitIds) {
+      const unit = units.get(unitId);
+      if (!unit) continue;
+      if (unit.type === 'VILLAGER' && unit.ownerId === this.myOwnerId) return true;
+    }
+    return false;
+  }
+
   public setBuildingMode(type: BuildingType) {
     this.placement.enter(type);
   }
@@ -815,6 +845,16 @@ export class WorldScene extends Phaser.Scene {
   public notifySelectionChange() {
     if (this.selectedUnitIds.size === 0) this.commands.cancelPendingOrder();
 
+    // UIX-06: one scan answers both the placement guard below and the payload
+    // React receives, so the two can never disagree.
+    const villagerSelected = this.hasVillagerSelected();
+
+    // UIX-06: a placement belongs to the villager that started it. The card
+    // survives the selection being kept, so the only way to reach this state is
+    // that villager dying (or being dropped from the selection) while the ghost
+    // is out. Left alone the ghost follows the cursor with nothing able to build.
+    if (this.buildingToPlace && !villagerSelected) this.placement.cancel();
+
     // Selection fingerprints the cursor (harvest needs an all-villager selection,
     // attack needs units), so recompute even when no React callback is wired.
     this.cursor.refresh();
@@ -835,7 +875,8 @@ export class WorldScene extends Phaser.Scene {
           isOwner: unit.ownerId === this.myOwnerId,
           carryingAmount: unit.carryingAmount,
           carryingResourceType: unit.carryingResourceType,
-          stance: unit.stance
+          stance: unit.stance,
+          villagerSelected
         });
         return;
       }

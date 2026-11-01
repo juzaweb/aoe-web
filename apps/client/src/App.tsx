@@ -281,22 +281,30 @@ export const App: React.FC = () => {
           {/* Left: Minimap */}
           <Minimap room={room} sceneRef={sceneRef} onPanToGrid={handlePanToGrid} onCommandAtGrid={handleCommandAtGrid} />
 
-          {/* Center: Selected Entity Info & Unit Training */}
-          <EntityDetails
-            entity={selectedEntity}
-            playerResources={resources}
-            onTrainUnit={handleTrainUnit}
-            onCancelTrain={handleCancelTrain}
-            onCancelBuilding={handleCancelFoundation}
-          />
+          {/* Center: Selected Entity Info & Unit Training. Nothing selected
+              means no card at all (UIX-07), matching the build dock. */}
+          {selectedEntity && (
+            <EntityDetails
+              entity={selectedEntity}
+              playerResources={resources}
+              onTrainUnit={handleTrainUnit}
+              onCancelTrain={handleCancelTrain}
+              onCancelBuilding={handleCancelFoundation}
+            />
+          )}
 
-          {/* Right: Building Construction Dock */}
-          <BuildMenu
-            playerResources={resources}
-            activeBuildingType={activeBuildingType}
-            onSelectBuilding={handleSelectBuilding}
-            onCancelBuilding={handleCancelBuilding}
-          />
+          {/* Right: Building Construction Dock — villagers only (UIX-06). Nothing
+              selected means no card at all, exactly like AoE, so the empty-state
+              placeholder is gone rather than being drawn as blank slots. */}
+          {(activeBuildingType !== null ||
+            selectedEntity?.villagerSelected === true) && (
+            <BuildMenu
+              playerResources={resources}
+              activeBuildingType={activeBuildingType}
+              onSelectBuilding={handleSelectBuilding}
+              onCancelBuilding={handleCancelBuilding}
+            />
+          )}
         </div>
       )}
 

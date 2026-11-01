@@ -7,7 +7,7 @@ import {
   UNIT_BLUEPRINTS,
   UnitType
 } from '@chien-quoc/shared';
-import { Shield, Swords, UserPlus, Heart, Hammer, X, Boxes } from 'lucide-react';
+import { Shield, UserPlus, Heart, Hammer, X, Boxes } from 'lucide-react';
 
 /** Vietnamese labels for the resource types a villager can haul. */
 const RESOURCE_LABELS: Record<string, string> = {
@@ -30,7 +30,11 @@ const STANCE_LABELS: Record<string, { label: string; className: string }> = {
 };
 
 interface EntityDetailsProps {
-  entity: SelectedEntityData | null;
+  /**
+   * UIX-07: callers mount this panel only while something is selected, so the
+   * empty-state placeholder no longer exists even as a branch.
+   */
+  entity: SelectedEntityData;
   playerResources: Resources;
   onTrainUnit: (buildingId: string, unitType: UnitType) => void;
   /** CMD-04a: drops the first unit in the training queue and refunds it. */
@@ -46,15 +50,6 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
   onCancelTrain,
   onCancelBuilding
 }) => {
-  if (!entity) {
-    return (
-      <div className="aoe-panel w-72 h-36 p-3 rounded-lg flex flex-col items-center justify-center text-slate-500 text-xs italic pointer-events-auto">
-        <Swords size={28} className="mb-2 text-slate-600 opacity-60" />
-        Chọn lính, công trình hoặc tài nguyên để xem chi tiết
-      </div>
-    );
-  }
-
   const buildingBp = entity.type === 'building' ? BUILDING_BLUEPRINTS[entity.subType as BuildingType] : null;
   const trainableUnits = buildingBp ? buildingBp.trainableUnits : [];
 

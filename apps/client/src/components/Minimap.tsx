@@ -23,6 +23,11 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
     let animId: number;
 
     const render = () => {
+      // Scheduled before anything can throw: a single bad frame used to end the
+      // loop for the rest of the session, which is how the units, buildings and
+      // camera box all disappeared from the minimap while the roads stayed.
+      animId = requestAnimationFrame(render);
+
       // AoE Terrain Grass Background (never pitch black)
       ctx.fillStyle = '#1e3f16';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -143,8 +148,6 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
           );
         }
       }
-
-      animId = requestAnimationFrame(render);
     };
 
     render();
