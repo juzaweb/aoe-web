@@ -21,23 +21,7 @@ export function generateProceduralTextures(scene: Phaser.Scene) {
     });
   }
 
-  // 2. Isometric Grid Highlight Tile (128x64)
-  createCanvasTexture(scene, 'tile_highlight', 128, 64, (ctx) => {
-    ctx.beginPath();
-    ctx.moveTo(64, 2);
-    ctx.lineTo(126, 32);
-    ctx.lineTo(64, 62);
-    ctx.lineTo(2, 32);
-    ctx.closePath();
-
-    ctx.fillStyle = 'rgba(250, 204, 21, 0.2)';
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#facc15';
-    ctx.stroke();
-  });
-
-  // 3. Tree Resource (64x72)
+  // 2. Tree Resource (64x72)
   createCanvasTexture(scene, 'res_tree', 64, 72, (ctx) => {
     // Trunk
     ctx.fillStyle = '#5c2d11';
@@ -64,7 +48,7 @@ export function generateProceduralTextures(scene: Phaser.Scene) {
     drawLeafLayer(32, 18, 12, '#22c55e');
   });
 
-  // 4. Gold Mine (48x40)
+  // 3. Gold Mine (48x40)
   createCanvasTexture(scene, 'res_gold', 48, 40, (ctx) => {
     ctx.beginPath();
     ctx.ellipse(24, 32, 20, 8, 0, 0, Math.PI * 2);
@@ -91,7 +75,7 @@ export function generateProceduralTextures(scene: Phaser.Scene) {
     ctx.fillRect(24, 25, 3, 3);
   });
 
-  // 5. Stone Mine (48x40)
+  // 4. Stone Mine (48x40)
   createCanvasTexture(scene, 'res_stone', 48, 40, (ctx) => {
     ctx.beginPath();
     ctx.ellipse(24, 32, 20, 8, 0, 0, Math.PI * 2);
@@ -116,7 +100,7 @@ export function generateProceduralTextures(scene: Phaser.Scene) {
     ctx.fillRect(28, 16, 4, 4);
   });
 
-  // 6. Berry Bush (40x36)
+  // 5. Berry Bush (40x36)
   createCanvasTexture(scene, 'res_berry', 40, 36, (ctx) => {
     ctx.beginPath();
     ctx.ellipse(20, 28, 16, 6, 0, 0, Math.PI * 2);
@@ -140,7 +124,7 @@ export function generateProceduralTextures(scene: Phaser.Scene) {
     });
   });
 
-  // 7. Town Center (192x130)
+  // 6. Town Center (192x130)
   createCanvasTexture(scene, 'b_town_center', 192, 130, (ctx) => {
     // Castle base shadow
     ctx.beginPath();
@@ -219,7 +203,7 @@ export function generateProceduralTextures(scene: Phaser.Scene) {
     ctx.stroke();
   });
 
-  // 8. Barracks (128x96)
+  // 7. Barracks (128x96)
   createCanvasTexture(scene, 'b_barracks', 128, 96, (ctx) => {
     ctx.beginPath();
     ctx.ellipse(64, 82, 54, 12, 0, 0, Math.PI * 2);
@@ -256,7 +240,7 @@ export function generateProceduralTextures(scene: Phaser.Scene) {
     ctx.stroke();
   });
 
-  // 9. House (64x64)
+  // 8. House (64x64)
   createCanvasTexture(scene, 'b_house', 64, 64, (ctx) => {
     ctx.beginPath();
     ctx.ellipse(32, 56, 24, 6, 0, 0, Math.PI * 2);
@@ -283,7 +267,7 @@ export function generateProceduralTextures(scene: Phaser.Scene) {
     ctx.fillRect(18, 36, 6, 6);
   });
 
-  // 10. Farm (128x64)
+  // 9. Farm (128x64)
   createCanvasTexture(scene, 'b_farm', 128, 64, (ctx) => {
     ctx.beginPath();
     ctx.moveTo(64, 2);
@@ -310,7 +294,7 @@ export function generateProceduralTextures(scene: Phaser.Scene) {
     ctx.stroke();
   });
 
-  // 11. Watch Tower (64x100)
+  // 10. Watch Tower (64x100)
   createCanvasTexture(scene, 'b_tower', 64, 100, (ctx) => {
     ctx.beginPath();
     ctx.ellipse(32, 92, 18, 6, 0, 0, Math.PI * 2);
@@ -339,7 +323,7 @@ export function generateProceduralTextures(scene: Phaser.Scene) {
     ctx.fill();
   });
 
-  // 12. Villager Unit (24x32)
+  // 11. Villager Unit (24x32)
   createCanvasTexture(scene, 'unit_VILLAGER', 24, 32, (ctx) => {
     // Shadow
     ctx.beginPath();
@@ -367,7 +351,7 @@ export function generateProceduralTextures(scene: Phaser.Scene) {
     ctx.fillRect(16, 9, 6, 3);
   });
 
-  // 13. Spearman Unit (26x36)
+  // 12. Spearman Unit (26x36)
   createCanvasTexture(scene, 'unit_SPEARMAN', 26, 36, (ctx) => {
     ctx.beginPath();
     ctx.ellipse(13, 32, 8, 3, 0, 0, Math.PI * 2);
@@ -408,7 +392,7 @@ export function generateProceduralTextures(scene: Phaser.Scene) {
     ctx.fill();
   });
 
-  // 14. Archer Unit (24x34)
+  // 13. Archer Unit (24x34)
   createCanvasTexture(scene, 'unit_ARCHER', 24, 34, (ctx) => {
     ctx.beginPath();
     ctx.ellipse(12, 30, 8, 3, 0, 0, Math.PI * 2);
@@ -433,7 +417,7 @@ export function generateProceduralTextures(scene: Phaser.Scene) {
     ctx.stroke();
   });
 
-  // 15. Cavalry Unit (40x40)
+  // 14. Cavalry Unit (40x40)
   createCanvasTexture(scene, 'unit_CAVALRY', 40, 40, (ctx) => {
     ctx.beginPath();
     ctx.ellipse(20, 36, 16, 4, 0, 0, Math.PI * 2);

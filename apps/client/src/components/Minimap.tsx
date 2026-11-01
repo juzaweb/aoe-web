@@ -193,7 +193,7 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
   return (
     <div className="aoe-panel p-2 rounded-lg pointer-events-auto flex flex-col items-center">
       <div className="font-medieval text-[10px] font-bold text-amber-400 mb-1 tracking-wider">
-        BẢN ĐỒ THẾ GIỚI (220×220)
+        BẢN ĐỒ THẾ GIỚI
       </div>
       <canvas
         ref={canvasRef}

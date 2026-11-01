@@ -158,9 +158,6 @@ export class WorldScene extends Phaser.Scene {
   public unitTargetPositions: Map<string, { x: number; y: number; hp: number; maxHp: number }> =
     new Map();
 
-  // Cursor indicator
-  private hoverTileHighlight!: Phaser.GameObjects.Image;
-
   // CMD-03: last pointer position in world space, kept so the cursor can be
   // recomputed when the selection or the input mode changes without the pointer
   // moving (box-select under the cursor, hotkey-entered placement mode).
@@ -332,16 +329,11 @@ export class WorldScene extends Phaser.Scene {
     this.terrain = new TerrainLayer(this);
     this.terrain.create();
 
-    // 2. Cursor hover indicator
-    this.hoverTileHighlight = this.add.image(0, 0, 'tile_highlight');
-    this.hoverTileHighlight.setDepth(999998);
-    this.hoverTileHighlight.setVisible(false);
-
-    // 3. Building placement ghost
+    // 2. Building placement ghost
     this.placement = new PlacementController(this);
     this.placement.create();
 
-    // 4. Drag selection box graphics
+    // 3. Drag selection box graphics
     this.dragSelectionGraphics = this.add.graphics();
     this.dragSelectionGraphics.setDepth(1000000);
 
@@ -618,23 +610,12 @@ export class WorldScene extends Phaser.Scene {
     const hoverGridCoord = screenToGrid(worldPoint.x, worldPoint.y);
     this.lastPointerWorld = { x: worldPoint.x, y: worldPoint.y };
 
-    // A pan owns the pointer: no hover highlight, no placement ghost and no box
-    // selection while the map is being dragged.
+    // A pan owns the pointer: no placement ghost and no box selection while the
+    // map is being dragged.
     if (panning) {
-      this.hoverTileHighlight.setVisible(false);
       this.cursor.refresh();
       return;
     }
-
-    // Snap highlight to grid tile
-    const snappedScreen = gridToScreen(hoverGridCoord.gridX, hoverGridCoord.gridY);
-    this.hoverTileHighlight.setPosition(snappedScreen.x, snappedScreen.y);
-    this.hoverTileHighlight.setVisible(
-      hoverGridCoord.gridX >= 0 &&
-      hoverGridCoord.gridX < MAP_GRID_WIDTH &&
-      hoverGridCoord.gridY >= 0 &&
-      hoverGridCoord.gridY < MAP_GRID_HEIGHT
-    );
 
     // Placement ghost follows the pointer while the mode is active
     this.placement.updateGhost(hoverGridCoord.gridX, hoverGridCoord.gridY);
