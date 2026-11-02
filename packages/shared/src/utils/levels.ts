@@ -9,9 +9,40 @@ import type { BuildingType, Resources, UnitType } from '../types/index.js';
 export const BUILDING_STAT_GROWTH_PER_LEVEL = 0.02;
 export const UNIT_STAT_GROWTH_PER_LEVEL = 0.05;
 
+/** Non-core buildings still stop at ten levels. */
 export const MAX_BUILDING_LEVEL = 10;
 export const MAX_TOWN_CENTER_LEVEL = 100;
+/** Core buildings climb alongside the Town Center, so they share its cap. */
+export const MAX_CORE_BUILDING_LEVEL = 100;
 export const MAX_UNIT_LEVEL = 10;
+
+/**
+ * The four buildings that gate the Town Center (LVL-08).
+ *
+ * A Town Center may not pull ahead of them: every {@link CORE_LEVEL_STEP}
+ * levels it demands the same level from all four, which turns "wait for the
+ * timer" into "build the base that supports the Town Center". `LUMBER_CAMP`,
+ * `MILL` and `MINING_CAMP` are drop-offs and stay capped at
+ * {@link MAX_BUILDING_LEVEL}; they are deliberately not part of the gate.
+ */
+export const CORE_BUILDING_TYPES: readonly BuildingType[] = [
+  'HOUSE',
+  'BARRACKS',
+  'FARM',
+  'TOWER'
+];
+
+/** How many Town Center levels one core-level step covers. */
+export const CORE_LEVEL_STEP = 5;
+
+/**
+ * How many of a player's buildings may upgrade at the same time (LVL-09).
+ *
+ * Without a cap the four core ladders run in parallel and the Town Center gate
+ * costs nothing but attention; two slots keep a real queue in front of the
+ * player without turning every upgrade into a global lock.
+ */
+export const MAX_CONCURRENT_BUILDING_UPGRADES = 2;
 
 /** Gold added on top of the unit's own cost for each research level. */
 export const UNIT_RESEARCH_GOLD_PER_LEVEL = 25;

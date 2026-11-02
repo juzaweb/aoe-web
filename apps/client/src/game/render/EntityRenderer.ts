@@ -489,9 +489,9 @@ export class EntityRenderer {
 
     container.add(unitDisplay);
     container.setData('unitDisplay', unitDisplay);
-    // Body ellipse measured from the sprite sheet content box (villager/spearman
-    // content spans y 13..123 at scale 0.72, cavalry y 29..155 at 0.75), expressed
-    // relative to the container origin which sits at the unit's feet.
+    // Body ellipse from the unit's art config, relative to the container origin
+    // which sits at the unit's feet (the pack figures span y 10..112 of a 130 px
+    // cell at scale 0.92, cavalry y 29..155 of 160 at 0.75).
     container.setData('bodyOffsetY', art.bodyOffsetY);
     container.setData('bodyRadiusX', art.bodyRadiusX);
     container.setData('bodyRadiusY', art.bodyRadiusY);

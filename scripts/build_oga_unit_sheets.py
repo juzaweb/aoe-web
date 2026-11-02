@@ -51,6 +51,7 @@ import argparse
 import json
 import shutil
 import sys
+from html import escape as html_escape
 from pathlib import Path
 
 import numpy as np
@@ -195,7 +196,7 @@ PREVIEW_HTML = """<!doctype html>
 <html lang="vi">
 <head>
 <meta charset="utf-8" />
-<title>Dân làng - kiểm tra animation</title>
+<title>{title} - kiểm tra animation</title>
 <style>
   :root {{ color-scheme: dark; }}
   body {{ background: #0f1419; color: #e2e8f0; font: 13px/1.5 ui-sans-serif, system-ui, sans-serif; padding: 24px 28px 64px; }}
@@ -217,7 +218,7 @@ PREVIEW_HTML = """<!doctype html>
 </style>
 </head>
 <body>
-<h1>Dân làng — kiểm tra animation 8 hướng</h1>
+<h1>{title} — kiểm tra animation 8 hướng</h1>
 <p class="note">
   Art: OpenGameArt <b>400+ Items</b> của <b>SKYZ0R</b>, license <b>CC-BY 4.0</b>.
   Phát ở đúng scale <code>{scale}</code> và đúng frame rate khai báo trong
@@ -326,6 +327,17 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument("--skip-preview", action="store_true", help="only write the sheets and the report")
     parser.add_argument("--scale", type=float, default=0.92, help="client draw scale, for the preview")
+    parser.add_argument(
+        "--title",
+        default=None,
+        help="preview page heading; defaults to the unit name",
+    )
+    parser.add_argument(
+        "--fps",
+        default="",
+        help="override playback rates for this run, e.g. attack=10,walk=14; "
+        "defaults come from ACTION_FPS",
+    )
     args = parser.parse_args(argv)
 
     layers = [name.strip() for name in args.layers.split(",") if name.strip()]
@@ -335,6 +347,16 @@ def main(argv: list[str]) -> int:
         if not anim:
             raise SystemExit(f"--actions entry '{chunk}' must look like walk=5_Walk")
         actions[action.strip()] = anim.strip()
+
+    fps_overrides = {}
+    for chunk in (args.fps or "").split(","):
+        if not chunk.strip():
+            continue
+        action, _, rate = chunk.partition("=")
+        if not rate:
+            raise SystemExit(f"--fps entry '{chunk}' must look like attack=10")
+        fps_overrides[action.strip()] = float(rate)
+    fps_by_action = {**ACTION_FPS, **fps_overrides}
 
     args.out.mkdir(parents=True, exist_ok=True)
     args.preview_dir.mkdir(parents=True, exist_ok=True)
@@ -361,7 +383,7 @@ def main(argv: list[str]) -> int:
         report["actions"][action] = {
             "anim": anim,
             "frames": frames_per_direction,
-            "fps": ACTION_FPS.get(action, 8),
+            "fps": fps_by_action.get(action, 8),
             "file": path.name,
         }
         print(f"{path.name}: {sheet.size[0]}x{sheet.size[1]}, {frames_per_direction} frames x 8 directions")
@@ -394,7 +416,7 @@ def main(argv: list[str]) -> int:
     if legacy.exists():
         actions_for_preview.append(
             {
-                "label": "walk — dân cũ (procedural), 4 frame/hướng, 128px",
+                "label": f"walk — {args.unit} cũ (procedural), 4 frame/hướng, 128px",
                 "url": f"./{legacy.name}",
                 "fw": 128,
                 "fh": 128,
@@ -404,6 +426,7 @@ def main(argv: list[str]) -> int:
             }
         )
     html = PREVIEW_HTML.format(
+        title=html_escape(args.title or args.unit.capitalize()),
         scale=args.scale,
         actions=json.dumps(actions_for_preview),
     )

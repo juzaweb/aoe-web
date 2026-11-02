@@ -10,6 +10,9 @@ judge a layer in motion at the client's draw scale.
         --unit villager --skip-preview --actions walk=5_Walk
     ... one run per variant ...
     python scripts/preview_oga_variants.py scripts/out/oga_villager/hair
+
+`--unit` names the sheet prefix the build script wrote (`villager_walk.png`,
+`spearman_walk.png`), so the same viewer compares soldiers too.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from html import escape as html_escape
 from pathlib import Path
 
 from PIL import Image
@@ -29,7 +33,7 @@ PAGE = """<!doctype html>
 <html lang="vi">
 <head>
 <meta charset="utf-8" />
-<title>So sánh biến thể dân làng</title>
+<title>{title}</title>
 <style>
   :root {{ color-scheme: dark; }}
   body {{ background: #0f1419; color: #e2e8f0; font: 13px/1.5 ui-sans-serif, system-ui, sans-serif; padding: 24px 28px 64px; }}
@@ -50,7 +54,7 @@ PAGE = """<!doctype html>
 </style>
 </head>
 <body>
-<h1>So sánh biến thể dân làng</h1>
+<h1>{title}</h1>
 <p class="note">Cùng một bộ xương/khung hình; chỉ khác lớp phủ. Hàng hình vẽ ở scale in-game <code>{scale}</code> — mức 1x của thanh zoom chính là cỡ thật trong game.</p>
 <p>
   <button id="toggle">Tạm dừng</button>
@@ -155,39 +159,48 @@ def main(argv: list[str]) -> int:
     parser.add_argument("root", type=Path, help="folder holding one sub-folder per variant")
     parser.add_argument("--action", default="walk")
     parser.add_argument("--scale", type=float, default=0.92, help="draw scale the rows are laid out at, matching the client")
+    parser.add_argument("--unit", default="villager", help="sheet prefix the build script wrote, e.g. spearman")
+    parser.add_argument("--title", default=None, help="page heading; defaults to the unit name")
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
 
     variants = []
     for folder in sorted(p for p in args.root.iterdir() if p.is_dir()):
-        report_path = folder / "villager_report.json"
-        sheet = folder / f"villager_{args.action}.png"
+        report_path = folder / f"{args.unit}_report.json"
+        sheet = folder / f"{args.unit}_{args.action}.png"
         if not report_path.exists() or not sheet.exists():
             continue
         report = json.loads(report_path.read_text())
+        frame_width, frame_height = report.get("frame", FRAME_SIZE)
         with Image.open(sheet) as image:
-            width, height = image.size
+            width, _ = image.size
         variants.append(
             {
                 "name": folder.name,
                 "layers": ", ".join(report["layers"]),
                 "url": f"./{folder.name}/{sheet.name}",
-                "fw": FRAME_SIZE[0],
-                "fh": FRAME_SIZE[1],
-                "frames": width // FRAME_SIZE[0],
+                "fw": frame_width,
+                "fh": frame_height,
+                "frames": width // frame_width,
                 "scale": args.scale,
                 "fps": ACTION_FPS.get(args.action, 8),
             }
         )
 
     if not variants:
-        raise SystemExit(f"no variant folders with villager_report.json + villager_{args.action}.png under {args.root}")
+        raise SystemExit(
+            f"no variant folders with {args.unit}_report.json + {args.unit}_{args.action}.png under {args.root}"
+        )
     if len({v["frames"] for v in variants}) > 1:
         print("warning: variants have different frame counts; each plays at its own length")
 
     out = args.out or (args.root / "compare.html")
     out.write_text(
-        PAGE.format(scale=args.scale, variants=json.dumps(variants)),
+        PAGE.format(
+            title=html_escape(args.title or f"So sánh biến thể {args.unit}"),
+            scale=args.scale,
+            variants=json.dumps(variants),
+        ),
         encoding="utf-8",
     )
     print(f"wrote {out} with {len(variants)} variants: {', '.join(v['name'] for v in variants)}")

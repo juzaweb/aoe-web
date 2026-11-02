@@ -314,7 +314,13 @@ export class WorldScene extends Phaser.Scene {
     generateProceduralTextures(this);
 
     // Preload generated unit assets with spritesheet & idle frame support (2x resolution)
-    const uv = 'v=5';
+    // Bumped whenever a sheet on disk changes: the URL is the cache key.
+    const uv = 'v=6';
+    // The legacy single-facing sheets stay loaded even for units that have been
+    // redrawn: `EntityRenderer` falls back to them when a directional sheet is
+    // missing, so an art regression still renders a unit instead of a green box.
+    // Their cell size is the old 128 px grid, not the pack's 148x130, which is why
+    // it is written out here instead of read from `unitArt.ts`.
     this.load.spritesheet('unit_VILLAGER_sheet', `/assets/units/villager_sheet.png?${uv}`, {
       frameWidth: 128,
       frameHeight: 128

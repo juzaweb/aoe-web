@@ -68,22 +68,28 @@ export const DEFAULT_UNIT_ART: UnitArt = {
   actions: {}
 };
 
+/**
+ * Geometry of the pack's 148x130 cell, shared by every unit drawn on it: feet on
+ * row ~106, figure ~86 px tall, so 0.92 draws it at the same height as the 110 px
+ * procedural art it replaced. Soldiers use the same numbers as the villager so
+ * their feet land on the same ground line on the same tile.
+ */
+const PACK_FIGURE: Omit<UnitArt, 'actions'> = {
+  frameWidth: 148,
+  frameHeight: 130,
+  scale: 0.92,
+  offsetY: -38,
+  bodyOffsetY: -37,
+  bodyRadiusX: 36,
+  bodyRadiusY: 40,
+  ringRadiusX: 26,
+  ringRadiusY: 13
+};
+
 export const UNIT_ART: Record<string, UnitArt> = {
-  /**
-   * Villager sheets are the OpenGameArt "400+ Items" pack (SKYZ0R, CC-BY 4.0):
-   * 148x130 cells, feet on row 106, figure ~86 px tall, so 0.92 draws it at the
-   * same height as the 110 px procedural art it replaced.
-   */
+  /** Sheets are the OpenGameArt "400+ Items" pack (SKYZ0R, CC-BY 4.0). */
   VILLAGER: {
-    frameWidth: 148,
-    frameHeight: 130,
-    scale: 0.92,
-    offsetY: -38,
-    bodyOffsetY: -37,
-    bodyRadiusX: 36,
-    bodyRadiusY: 40,
-    ringRadiusX: 26,
-    ringRadiusY: 13,
+    ...PACK_FIGURE,
     actions: {
       idle: { frames: 4 },
       // 11 frames at 16 fps keeps the walk cycle around 0.7 s; the legacy sheet
@@ -95,26 +101,38 @@ export const UNIT_ART: Record<string, UnitArt> = {
       build: { alias: 'attack', fps: 9 }
     }
   },
+  /**
+   * The same paperdoll base as the villager with armour and a spear layered on,
+   * so it reuses the shared cell geometry rather than restating it.
+   */
   SPEARMAN: {
-    frameWidth: 128,
-    frameHeight: 128,
-    scale: 0.72,
-    offsetY: -40,
-    bodyOffsetY: -37,
-    bodyRadiusX: 36,
-    bodyRadiusY: 40,
-    ringRadiusX: 26,
-    ringRadiusY: 13,
+    ...PACK_FIGURE,
     actions: {
       idle: { frames: 4 },
-      walk: { frames: 4 },
-      attack: { frames: 4 }
+      walk: { frames: 11, fps: 16 },
+      attack: { frames: 10, fps: 12 },
+      death: { frames: 8, fps: 9 }
     }
   },
-  // Archer still only has the legacy single-facing sheet, so it takes the
-  // default above and needs no entry here.
+  /**
+   * The archer's attack sheet is built from the pack's `3_Bow` draw-and-loose,
+   * not its melee `2_Attack` swing: only the client's action name is fixed, so
+   * the animation behind it is a build-time choice.
+   */
+  ARCHER: {
+    ...PACK_FIGURE,
+    actions: {
+      idle: { frames: 4 },
+      walk: { frames: 11, fps: 16 },
+      // Nine frames at 10 fps is 0.9 s, inside the archer's 1400 ms attack
+      // cooldown, so the next order never cuts the draw short.
+      attack: { frames: 9, fps: 10 },
+      death: { frames: 8, fps: 9 }
+    }
+  },
+  // Cavalry has no directional art: the pack is humanoid only and ships no
+  // mounted base, so it keeps the procedurally drawn legacy sheet.
   CAVALRY: {
-    ...DEFAULT_UNIT_ART,
     frameWidth: 160,
     frameHeight: 160,
     scale: 0.75,

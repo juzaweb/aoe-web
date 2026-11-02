@@ -49,7 +49,18 @@ describe('unitSheets', () => {
   });
 
   it('asks for nothing when a unit ships no directional art', () => {
-    expect(unitSheets('ARCHER')).toEqual([]);
+    expect(unitSheets('CAVALRY')).toEqual([]);
+  });
+
+  it('asks for one file per action on a soldier, none of them aliased', () => {
+    for (const type of ['SPEARMAN', 'ARCHER']) {
+      expect(unitSheets(type).map((sheet) => sheet.sheetAction), type).toEqual([
+        'idle',
+        'walk',
+        'attack',
+        'death'
+      ]);
+    }
   });
 });
 
@@ -104,7 +115,7 @@ describe('actionFrameCount', () => {
 
   it('throws when the unit ships no such action', () => {
     expect(() => actionFrameCount('VILLAGER', 'idle')).not.toThrow();
-    expect(() => actionFrameCount('ARCHER', 'walk')).toThrow(/no art for action/);
+    expect(() => actionFrameCount('CAVALRY', 'walk')).toThrow(/no art for action/);
   });
 
   it('throws instead of looping on an alias cycle', () => {
@@ -115,10 +126,10 @@ describe('actionFrameCount', () => {
 });
 
 describe('hasDirectionalArt', () => {
-  it('is true for the villager and the spearman, false for the legacy units', () => {
+  it('is true for every unit drawn from the pack, false for the legacy sheet', () => {
     expect(hasDirectionalArt('VILLAGER')).toBe(true);
     expect(hasDirectionalArt('SPEARMAN')).toBe(true);
-    expect(hasDirectionalArt('ARCHER')).toBe(false);
+    expect(hasDirectionalArt('ARCHER')).toBe(true);
     expect(hasDirectionalArt('CAVALRY')).toBe(false);
   });
 });
