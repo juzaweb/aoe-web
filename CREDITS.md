@@ -27,7 +27,14 @@ chosen one into the client assets.
 Current layers, bottom to top:
 
 - villager: `BaseHumanMale` (body), `BrownPants`, `TunicBlue` (muted indigo,
-  #464a6c), `ShortHairLight` (blond hair), `BeardLight`
+  #464a6c), `ShortHairLight` (blond hair), `BeardLight`. The carry sheet adds
+  `Satchel` to that stack and reuses the walk cycle, because the pack ships no
+  carrying animation:
+
+      python scripts/build_oga_unit_sheets.py --unit villager \
+          --layers BaseHumanMale,BrownPants,TunicBlue,ShortHairLight,BeardLight,Satchel \
+          --actions idle=1_Idle,carry=5_Walk --title "villager carry" \
+          --out scripts/out/oga_villager/carry --preview-dir scripts/out/oga_villager/carry
 - spearman: `BaseHumanMale`, `BrownPants`, `BreastPlate1`, `ShortHairDark`,
   `GuardHelmet1`, `Spear`
 - archer: `BaseHumanMale`, `BrownPants`, `ScaleShirt`, `LeatherBoots`,

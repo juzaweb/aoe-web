@@ -95,6 +95,10 @@ export const UNIT_ART: Record<string, UnitArt> = {
       // 11 frames at 16 fps keeps the walk cycle around 0.7 s; the legacy sheet
       // had 4 frames at 8 fps (0.5 s) and read as a scurry.
       walk: { frames: 11, fps: 16 },
+      // The pack has no "carry" animation, so the load is a worn layer: the same
+      // walk cycle with `Satchel` composited on top. Same frame count and rate as
+      // `walk` on purpose, so picking up a load does not change the stride.
+      carry: { frames: 11, fps: 16 },
       attack: { frames: 10, fps: 12 },
       death: { frames: 8, fps: 9 },
       gather: { alias: 'attack', fps: 9 },

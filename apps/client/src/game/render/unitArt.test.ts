@@ -34,12 +34,12 @@ describe('unitArt', () => {
 
 describe('unitSheets', () => {
   it('lists one file per distinct sheet, not one per action', () => {
-    // The villager aliases gather and build onto the attack sheet, so its six
-    // actions must ask the client for four files.
+    // The villager aliases gather and build onto the attack sheet, so its seven
+    // actions must ask the client for five files.
     const sheets = unitSheets('VILLAGER');
     const actions = sheets.map((sheet) => sheet.sheetAction);
     expect(new Set(actions).size).toBe(actions.length);
-    expect(actions).toEqual(['idle', 'walk', 'attack', 'death']);
+    expect(actions).toEqual(['idle', 'walk', 'carry', 'attack', 'death']);
   });
 
   it('reports the frame count of the sheet a file holds', () => {
@@ -67,7 +67,7 @@ describe('unitSheets', () => {
 describe('unitClips', () => {
   it('registers a clip per action, including aliased ones', () => {
     const actions = unitClips('VILLAGER').map((clip) => clip.action);
-    expect(actions).toEqual(['idle', 'walk', 'attack', 'death', 'gather', 'build']);
+    expect(actions).toEqual(['idle', 'walk', 'carry', 'attack', 'death', 'gather', 'build']);
   });
 
   it('points an aliased action at the sheet it borrows', () => {
@@ -83,10 +83,18 @@ describe('unitClips', () => {
     expect(clips.get('idle')?.frameRate).toBe(4);
   });
 
+  it('walks the carry cycle at the walk rate and length', () => {
+    // The load is a layer over the same cycle, so a mismatch here would make the
+    // villager change pace the moment it picks something up.
+    const clips = new Map(unitClips('VILLAGER').map((clip) => [clip.action, clip]));
+    expect(clips.get('carry')?.frames).toBe(clips.get('walk')?.frames);
+    expect(clips.get('carry')?.frameRate).toBe(clips.get('walk')?.frameRate);
+  });
+
   it('plays death once and loops the rest', () => {
     const clips = new Map(unitClips('VILLAGER').map((clip) => [clip.action, clip]));
     expect(clips.get('death')?.repeat).toBe(0);
-    for (const action of ['idle', 'walk', 'attack', 'gather', 'build'] as const) {
+    for (const action of ['idle', 'walk', 'carry', 'attack', 'gather', 'build'] as const) {
       expect(clips.get(action)?.repeat, action).toBe(-1);
     }
   });

@@ -400,7 +400,11 @@ def main(argv: list[str]) -> int:
     actions_for_preview = []
     for action, info in report["actions"].items():
         source = args.out / info["file"]
-        shutil.copy2(source, args.preview_dir / info["file"])
+        destination = args.preview_dir / info["file"]
+        # `--out` and `--preview-dir` may be the same folder; copying a file onto
+        # itself raises SameFileError.
+        if source.resolve() != destination.resolve():
+            shutil.copy2(source, destination)
         actions_for_preview.append(
             {
                 "label": f"{action} — {info['frames']} frame/hướng",

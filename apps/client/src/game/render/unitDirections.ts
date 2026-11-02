@@ -22,13 +22,22 @@ export type DirectionName = (typeof DIRECTION_NAMES)[number];
 /** Facing used before a unit has moved: toward the viewer. */
 export const DEFAULT_DIRECTION_INDEX = 2;
 
-export type UnitAction = 'idle' | 'walk' | 'attack' | 'death' | 'build' | 'gather';
+export type UnitAction = 'idle' | 'walk' | 'carry' | 'attack' | 'death' | 'build' | 'gather';
 
-export const UNIT_ACTIONS: readonly UnitAction[] = ['idle', 'walk', 'attack', 'death', 'build', 'gather'];
+export const UNIT_ACTIONS: readonly UnitAction[] = [
+  'idle',
+  'walk',
+  'carry',
+  'attack',
+  'death',
+  'build',
+  'gather'
+];
 
 export const ACTION_FRAME_RATE: Record<UnitAction, number> = {
   idle: 4,
   walk: 8,
+  carry: 8,
   attack: 10,
   death: 7,
   build: 7,
@@ -39,6 +48,7 @@ export const ACTION_FRAME_RATE: Record<UnitAction, number> = {
 export const ACTION_REPEAT: Record<UnitAction, number> = {
   idle: -1,
   walk: -1,
+  carry: -1,
   attack: -1,
   death: 0,
   build: -1,

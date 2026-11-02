@@ -574,9 +574,12 @@ export class EntityRenderer {
         // CMD-01: an attack-moving or patrolling unit is walking, fight or not.
         case 'ATTACK_MOVE':
         case 'PATROL':
-        // SIM-02: carrying a load back to a drop-off is a walk, not a gather.
+        // SIM-02: carrying a load back to a drop-off is a walk, not a gather. The
+        // villager's carry sheet is the same cycle with the load layered on, so
+        // only the sprite changes - stride and speed stay identical. Units that
+        // cannot carry (soldiers) have no carry clip and keep walking.
         case 'RETURNING':
-          desired = walkAnim;
+          desired = pickAnim('carry', walkAnim) ?? walkAnim;
           walking = true;
           break;
         case 'HARVESTING':
