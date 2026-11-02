@@ -94,6 +94,45 @@ export class EntityRenderer {
     }
   }
 
+  /**
+   * Plays a dead unit's fall where it died, then leaves it on its last frame.
+   *
+   * A corpse is not an entity: no container, no selection ring, no health bar,
+   * no per-frame motion tracking. The scene owns the lifetime and destroys the
+   * sprite when the server drops the corpse, so nothing here needs a timer.
+   *
+   * The facing is the default one (toward the viewer): the server never
+   * replicates a unit's heading, and falling sideways reads better than a
+   * guessed direction.
+   */
+  createCorpseSprite(id: string, corpse: any) {
+    const scene = this.scene;
+    const unitType = (corpse.unitType || 'VILLAGER') as string;
+    const texture = unitActionTexture(unitType, 'death');
+    // Units still drawn from the legacy single-facing sheet have no directional
+    // death art, so there is nothing to play and no sprite to keep.
+    if (!scene.textures.exists(texture)) return;
+
+    const art = unitArt(unitType);
+    const screenPos = gridToScreen(corpse.x, corpse.y);
+    const sprite = scene.add.sprite(
+      screenPos.x,
+      screenPos.y + art.offsetY,
+      texture,
+      0
+    );
+    sprite.setScale(art.scale);
+    // Same depth rule as a living unit, one step lower so a body lying under a
+    // unit that survived the fight is drawn beneath it.
+    sprite.setDepth(getIsoDepth(corpse.x, corpse.y, 24));
+
+    const clip = unitActionKey(unitType, 'death', DEFAULT_DIRECTION_INDEX);
+    if (scene.anims.exists(clip)) {
+      sprite.play(clip);
+    }
+    scene.corpseSprites.set(id, sprite);
+  }
+
   createResourceNodeSprite(id: string, node: any, cb?: any) {
     const screenPos = gridToScreen(node.gridX, node.gridY);
     let textureKey = 'res_tree';

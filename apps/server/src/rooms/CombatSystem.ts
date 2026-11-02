@@ -10,6 +10,7 @@ import {
 import { BuildingState } from '../schema/BuildingState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
+import { CorpseState } from '../schema/CorpseState.js';
 import { distanceToFootprint } from './geometry.js';
 
 /**
@@ -26,6 +27,8 @@ export interface CombatPorts {
   forgetMovementState(unitId: string): void;
   /** Recomputed when a unit is removed from the world. */
   updatePlayerPopulation(ownerId: string): void;
+  /** Drops a corpse once the client has had time to play its death clip. */
+  scheduleCorpseRemoval(corpseId: string): void;
 }
 
 /**
@@ -352,6 +355,24 @@ export class CombatSystem {
     this.ports.forgetEconomyState(victim.id);
     this.ports.forgetMovementState(victim.id);
     this.ports.updatePlayerPopulation(ownerId);
+    this.publishCorpse(victim);
+  }
+
+  /**
+   * Leaves a corpse where the unit fell, so the client can play one death clip.
+   *
+   * The simulation is already done with the unit at this point; this only feeds
+   * the renderer. The linger is the room's business because the room owns the
+   * clock.
+   */
+  private publishCorpse(victim: UnitState) {
+    const corpse = new CorpseState();
+    corpse.id = victim.id;
+    corpse.unitType = victim.type;
+    corpse.x = victim.x;
+    corpse.y = victim.y;
+    this.state.corpses.set(corpse.id, corpse);
+    this.ports.scheduleCorpseRemoval(corpse.id);
   }
 
   private destroyBuilding(building: BuildingState) {

@@ -15,7 +15,7 @@ import {
   getUnitUpgradeCost,
   getUnitUpgradeTimeMs
 } from '@chien-quoc/shared';
-import { WorldRoom } from './WorldRoom.js';
+import { CORPSE_LINGER_MS, WorldRoom } from './WorldRoom.js';
 import { isWithinBuildRange } from './construction.js';
 import { DatabaseService } from '../services/DatabaseService.js';
 import { WorldState } from '../schema/WorldState.js';
@@ -2036,5 +2036,53 @@ describe('level-aware combat (LVL)', () => {
     expect(enemy.hp).toBe(
       UNIT_BLUEPRINTS.VILLAGER.maxHp - getBuildingLevelStats('TOWER', 5).attackPower
     );
+  });
+});
+
+describe('death corpses', () => {
+  it('leaves a corpse where the unit fell and clears it after the linger', () => {
+    vi.useFakeTimers();
+    try {
+      const room = createRoom();
+      addPlayer(room, 'player-a');
+      addPlayer(room, 'player-b');
+      const attacker = addUnit(room, {
+        id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN', x: 10, y: 10, actionState: 'ATTACKING'
+      });
+      const victim = addUnit(room, { id: 'u_2', ownerId: 'player-b', type: 'VILLAGER', x: 11, y: 10 });
+      victim.hp = 1;
+      attacker.targetEntityId = victim.id;
+      attacker.targetEntityType = 'unit';
+
+      internals(room).update(100);
+
+      // The unit is gone from the simulation immediately, as before.
+      expect(room.state.units.has(victim.id)).toBe(false);
+      const corpse = room.state.corpses.get(victim.id);
+      expect(corpse).toBeDefined();
+      expect(corpse!.unitType).toBe('VILLAGER');
+      expect(corpse!.x).toBe(11);
+      expect(corpse!.y).toBe(10);
+
+      // The client plays the death clip off this entry, so it has to outlive the
+      // clip and then go away on its own.
+      room.clock.tick();
+      expect(room.state.corpses.has(victim.id)).toBe(true);
+      vi.setSystemTime(Date.now() + CORPSE_LINGER_MS + 100);
+      room.clock.tick();
+      expect(room.state.corpses.has(victim.id)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not leave a corpse for a unit that merely leaves the map', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    const unit = addUnit(room, { id: 'u_1', ownerId: 'player-a', x: 10, y: 10 });
+
+    room.state.units.delete(unit.id);
+
+    expect(room.state.corpses.size).toBe(0);
   });
 });

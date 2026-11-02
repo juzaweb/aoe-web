@@ -202,6 +202,12 @@ export class WorldScene extends Phaser.Scene {
   // Entity visual objects, keyed by server entity id.
   public buildingSprites: Map<string, Phaser.GameObjects.Container> = new Map();
   public unitSprites: Map<string, Phaser.GameObjects.Container> = new Map();
+  /**
+   * Death clips in flight, keyed by corpse id. Kept apart from `unitSprites`
+   * because a corpse is not a unit: it must not enter selection, drag-box,
+   * minimap or command targeting, and the server deletes it on its own timer.
+   */
+  public corpseSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   public resourceSprites: Map<string, Phaser.GameObjects.Container> = new Map();
 
   /**
@@ -599,6 +605,8 @@ export class WorldScene extends Phaser.Scene {
     this.buildingSprites.clear();
     this.unitSprites.forEach((container) => container.destroy());
     this.unitSprites.clear();
+    this.corpseSprites.forEach((sprite) => sprite.destroy());
+    this.corpseSprites.clear();
     this.resourceSprites.forEach((container) => container.destroy());
     this.resourceSprites.clear();
     this.pendingResources = [];
@@ -779,6 +787,21 @@ export class WorldScene extends Phaser.Scene {
       if (this.selectedUnitIds.has(key)) {
         this.selectedUnitIds.delete(key);
         this.notifySelectionChange();
+      }
+    });
+
+    // 3b. Corpses: a dying unit leaves one behind for the length of its death
+    // clip. The server owns the lifetime, so removal is the only cleanup needed.
+    cb.onAdd('corpses', (corpse: any, key: any) => {
+      if (this.corpseSprites.has(key)) return;
+      this.entityRenderer.createCorpseSprite(key, corpse);
+    });
+
+    cb.onRemove('corpses', (_corpse: any, key: any) => {
+      const sprite = this.corpseSprites.get(key);
+      if (sprite) {
+        sprite.destroy();
+        this.corpseSprites.delete(key);
       }
     });
 

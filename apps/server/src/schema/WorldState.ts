@@ -2,6 +2,7 @@ import { Schema, type, MapSchema } from '@colyseus/schema';
 import { PlayerState } from './PlayerState.js';
 import { BuildingState } from './BuildingState.js';
 import { UnitState } from './UnitState.js';
+import { CorpseState } from './CorpseState.js';
 import { ResourceNodeState } from './ResourceNodeState.js';
 import { MAP_GRID_HEIGHT, MAP_GRID_WIDTH } from '@chien-quoc/shared';
 
@@ -17,6 +18,11 @@ export class WorldState extends Schema {
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type({ map: BuildingState }) buildings = new MapSchema<BuildingState>();
   @type({ map: UnitState }) units = new MapSchema<UnitState>();
+  /**
+   * Units that just died, held briefly so the client can play the death
+   * clip. Never part of the simulation: see {@link CorpseState}.
+   */
+  @type({ map: CorpseState }) corpses = new MapSchema<CorpseState>();
   @type({ map: ResourceNodeState }) resourceNodes = new MapSchema<ResourceNodeState>();
 }
 

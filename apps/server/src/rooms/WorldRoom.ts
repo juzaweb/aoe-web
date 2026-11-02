@@ -68,6 +68,15 @@ import {
 import { otherZone, roomNameForZone, zoneKindOf } from '@chien-quoc/shared';
 import { randomUUID } from 'crypto';
 
+/**
+ * How long a corpse stays in the state, in milliseconds.
+ *
+ * Must outlast the client's death clip - 8 frames at 9 fps for the villager,
+ * about 890 ms (see `unitArt.ts`) - or the renderer is cut off mid-fall. The
+ * extra margin also reads as a beat of stillness before the body disappears.
+ */
+export const CORPSE_LINGER_MS = 1200;
+
 const PLAYER_COLORS = [
   '#3b82f6', // Blue
   '#ef4444', // Red
@@ -118,7 +127,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       resumeQueuedWaypoint: (unit) => this.movement.resumeQueuedWaypoint(unit),
       forgetEconomyState: (unitId) => this.economy.forgetUnit(unitId),
       forgetMovementState: (unitId) => this.movement.forgetUnit(unitId),
-      updatePlayerPopulation: (ownerId) => this.updatePlayerPopulation(ownerId)
+      updatePlayerPopulation: (ownerId) => this.updatePlayerPopulation(ownerId),
+      scheduleCorpseRemoval: (corpseId) => this.scheduleCorpseRemoval(corpseId)
     });
     return this.combatSystem;
   }
@@ -141,6 +151,13 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     });
     return this.commandSystem;
   }
+  /** Removes a corpse once every client has had time to play its death clip. */
+  private scheduleCorpseRemoval(corpseId: string) {
+    this.clock.setTimeout(() => {
+      this.state.corpses.delete(corpseId);
+    }, CORPSE_LINGER_MS);
+  }
+
   /**
    * Routing, waypoint queues and the blocked-tile cache (SIM-01, CTL-05). Needs
    * no ports: it only mutates the units it is handed. Built on first use for the
