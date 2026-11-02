@@ -7,6 +7,7 @@
  */
 
 import { ErrorCode } from '@colyseus/sdk';
+import { SESSION_ALREADY_ACTIVE, SESSION_BUSY } from '@chien-quoc/shared';
 
 export interface AuthUser {
   id: string;
@@ -108,6 +109,25 @@ export function isAuthRejection(err: unknown): boolean {
     err !== null &&
     (err as { code?: unknown }).code === ErrorCode.AUTH_FAILED
   );
+}
+
+export type SessionJoinError = 'taken' | 'busy';
+
+/**
+ * Why a failed room join was refused by the session gate, if it was.
+ *
+ * Keyed on the matchmaking code, never the message text: `'taken'` means another
+ * tab/device owns the account (show the blocked screen), `'busy'` means a join
+ * for the same account is still in flight (retry quietly), `null` means this was
+ * a different failure and the caller should keep its existing handling.
+ */
+export function classifySessionJoinError(err: unknown): SessionJoinError | null {
+  if (typeof err !== 'object' || err === null) return null;
+
+  const code = (err as { code?: unknown }).code;
+  if (code === SESSION_ALREADY_ACTIVE) return 'taken';
+  if (code === SESSION_BUSY) return 'busy';
+  return null;
 }
 
 /**

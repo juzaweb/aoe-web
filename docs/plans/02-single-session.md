@@ -13,9 +13,8 @@ entry đang sống, và `onLeave` chỉ dựa vào một map bookkeeping để �
 **join options** (`force`) và **error/close code**; không thêm `NetworkMessage` mới, nên
 `WorldScene.ts` không phải sửa (khác quy ước §2 của README vì đây không phải message).
 
-> **Status: `APPROVED`** (chốt 2026-11-01 qua 2 vòng hỏi đáp). Năm quyết định D1–D5 đã được duyệt,
-> heartbeat để backlog. **Chưa có dòng code nào được viết** — tài liệu này là toàn bộ nội dung của
-> bước plan.
+> **Status: `DONE`** (chốt 2026-11-01 qua 2 vòng hỏi đáp, code xong 2026-11-02). Năm quyết định
+> D1–D5 đã được duyệt, heartbeat để backlog.
 
 ---
 
@@ -571,3 +570,4 @@ Ngưỡng: thời gian `onJoin` không tăng quá 5 ms so với hiện tại (đ
 | Ngày | Thay đổi |
 | --- | --- |
 | 2026-11-01 | Tạo plan từ phân tích "mở tab/thiết bị thứ hai"; chốt D1–D5 (6 quyết định nghiệp vụ ở §11) qua 2 vòng hỏi đáp; status `DRAFT` → `APPROVED`. Chưa viết code |
+| 2026-11-02 | Code xong SESS-01..SESS-06: shared codes, `SessionRegistry`, join gate + takeover, reuse live state, leave guard, client blocked screen. `tsc --noEmit` + vitest hai app xanh; verify tay 2 phiên cùng account (4009 / 4004 / F5). Status `APPROVED` → `DONE` |

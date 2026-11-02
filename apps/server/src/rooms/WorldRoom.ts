@@ -1,4 +1,4 @@
-import { Room, Client, ServerError, ErrorCode } from '@colyseus/core';
+import { Room, Client, ServerError, ErrorCode, CloseCode } from '@colyseus/core';
 import { DatabaseService } from '../services/DatabaseService.js';
 import { AuthService } from '../services/AuthService.js';
 import {
@@ -24,6 +24,9 @@ import {
   SERVER_TICK_RATE,
   UNIT_BLUEPRINTS,
   UnitType,
+  SESSION_ALREADY_ACTIVE,
+  SESSION_BUSY,
+  SESSION_REPLACED_CLOSE,
   isDirtRoadTile
 } from '@chien-quoc/shared';
 import { WorldState } from '../schema/WorldState.js';
@@ -38,6 +41,7 @@ import { CombatSystem } from './CombatSystem.js';
 import { CommandSystem } from './CommandSystem.js';
 import { MovementSystem } from './MovementSystem.js';
 import { ownerIdOf, RoomAuth } from './identity.js';
+import { SessionRegistry } from './Sessions.js';
 
 const PLAYER_COLORS = [
   '#3b82f6', // Blue
@@ -119,13 +123,17 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   private worldRestoreError: Error | null = null;
 
   /**
-   * The session currently driving each account.
-   *
-   * One account owns one empire, so one entry per account is enough: a join
-   * replaces the entry, and a socket that has been superseded can no longer
-   * remove the player or persist a stale snapshot when it finally closes.
+   * SESS-03: which session drives each account, plus the join currently
+   * reserving it. One account owns one empire, so a second session is refused
+   * instead of silently sharing it.
    */
-  private readonly activeSessionByUser = new Map<string, string>();
+  private readonly sessions = new SessionRegistry();
+  /**
+   * SESS-05: the in-flight leave of each account. A join waits for it before
+   * reading state, so a refresh never claims while the old leave is saving and
+   * a half-written empire cannot be observed.
+   */
+  private readonly leaveByUser = new Map<string, Promise<void>>();
 
   onCreate(options: any) {
     this.setState(new WorldState());
@@ -541,6 +549,33 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     const ownerId = authUser.userId;
     const playerName = authUser.displayName;
 
+    // SESS-05: a refresh closes the old socket before the new page joins, and
+    // the in-flight leave is what saves the empire. Wait for it so this join
+    // never reads a half-written account.
+    await this.leaveByUser.get(ownerId)?.catch(() => undefined);
+
+    const takeover = (options as { force?: unknown } | undefined)?.force === true;
+
+    // SESS-03/D1: the account keeps its first live session; a second tab is told
+    // so instead of silently sharing the empire.
+    const claim = this.sessions.claim(ownerId, client.sessionId, {
+      takeover,
+      isAlive: (sessionId) => this.clients.get(sessionId) !== undefined
+    });
+    if (claim === 'occupied') {
+      const live = this.sessions.activeSession(ownerId);
+      console.warn(
+        `[WorldRoom] Rejected session ${client.sessionId} for ${playerName}: account is held by session ${live}.`
+      );
+      throw new ServerError(SESSION_ALREADY_ACTIVE, 'Tài khoản đang được đăng nhập ở nơi khác.');
+    }
+    if (claim === 'busy') {
+      console.warn(
+        `[WorldRoom] Rejected session ${client.sessionId} for ${playerName}: another join is in flight.`
+      );
+      throw new ServerError(SESSION_BUSY, 'Phiên đăng nhập khác đang được xử lý, vui lòng thử lại.');
+    }
+
     try {
       // Wait for the world snapshot to be fully restored before touching state.
       // Otherwise state.buildings is empty and we would spawn a duplicate base.
@@ -550,58 +585,88 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       if (this.worldRestoreError) {
         // Abort instead of falling through to "no empire found" and spawning a
         // duplicate starter base on top of the (still persisted) saved empire.
-        throw new Error(`World restore failed: ${this.worldRestoreError.message}`);
+        throw new ServerError(
+          ErrorCode.APPLICATION_ERROR,
+          `World restore failed: ${this.worldRestoreError.message}`
+        );
       }
 
-      // Check if this account already has a saved profile in the database
-      const savedProfile = await DatabaseService.loadPlayerProfile(ownerId);
-      // Entities restored on boot are already owned by `ownerId`, so a rejoin
-      // finds its empire in memory and must not spawn a second base next to it.
-      const owned = this.ownedBy(ownerId);
-
-      const player = new PlayerState();
-      player.id = ownerId;
-      player.name = playerName;
-
-      if (savedProfile) {
-        player.color = savedProfile.color;
-        player.wood = savedProfile.wood;
-        player.food = savedProfile.food;
-        player.gold = savedProfile.gold;
-        player.stone = savedProfile.stone;
-        player.population = savedProfile.population;
-        player.populationCap = savedProfile.populationCap;
+      const live = this.state.players.get(ownerId);
+      if (live) {
+        // D3: a session already owns this account (takeover or a refresh that
+        // beat the old socket's close event). In-memory state is newer than the
+        // last autosave, so it is the authority; re-reading the DB here rolled
+        // resources back.
+        live.isOnline = true;
+        live.name = playerName;
+        this.updatePlayerPopulation(ownerId);
+        console.log(`🏰 [WorldRoom] Session ${client.sessionId} resumed the live empire of ${playerName}.`);
       } else {
-        const playerIndex = this.state.players.size % PLAYER_COLORS.length;
-        player.color = PLAYER_COLORS[playerIndex];
-      }
-      player.isOnline = true;
+        // Check if this account already has a saved profile in the database
+        const savedProfile = await DatabaseService.loadPlayerProfile(ownerId);
+        // Entities restored on boot are already owned by `ownerId`, so a rejoin
+        // finds its empire in memory and must not spawn a second base next to it.
+        const owned = this.ownedBy(ownerId);
 
-      // One entry per account: a refresh or second tab replaces the session that
-      // drives it, it never adds a second player.
-      this.state.players.set(ownerId, player);
-      this.activeSessionByUser.set(ownerId, client.sessionId);
+        const player = new PlayerState();
+        player.id = ownerId;
+        player.name = playerName;
 
-      if (owned.buildings.length === 0 && owned.units.length === 0) {
         if (savedProfile) {
-          console.log(`[WorldRoom] Player ${playerName} has no remaining units/buildings. Spawning starter base.`);
+          player.color = savedProfile.color;
+          player.wood = savedProfile.wood;
+          player.food = savedProfile.food;
+          player.gold = savedProfile.gold;
+          player.stone = savedProfile.stone;
+          player.population = savedProfile.population;
+          player.populationCap = savedProfile.populationCap;
+        } else {
+          const playerIndex = this.state.players.size % PLAYER_COLORS.length;
+          player.color = PLAYER_COLORS[playerIndex];
         }
-        // Spawn initial base: Town Center + 3 starting Villagers
-        this.spawnInitialBase(ownerId);
+        player.isOnline = true;
+
+        // One entry per account: this branch only runs when the previous
+        // session's leave already dropped the old entry, never for a second tab.
+        this.state.players.set(ownerId, player);
+
+        if (owned.buildings.length === 0 && owned.units.length === 0) {
+          if (savedProfile) {
+            console.log(`[WorldRoom] Player ${playerName} has no remaining units/buildings. Spawning starter base.`);
+          }
+          // Spawn initial base: Town Center + 3 starting Villagers
+          this.spawnInitialBase(ownerId);
+        }
+
+        this.updatePlayerPopulation(ownerId);
+
+        if (!savedProfile) {
+          console.log(`⚔️ [WorldRoom] New Emperor ${playerName} (${ownerId}) joined.`);
+          // Persist new empire immediately to DB
+          const newEmpire = this.ownedBy(ownerId);
+          await DatabaseService.savePlayerEmpire(player, newEmpire.buildings, newEmpire.units);
+        } else {
+          console.log(`🏰 [WorldRoom] Welcome back Emperor ${playerName}! Empire restored from SQLite.`);
+        }
       }
 
-      this.updatePlayerPopulation(ownerId);
-
-      if (!savedProfile) {
-        console.log(`⚔️ [WorldRoom] New Emperor ${playerName} (${ownerId}) joined.`);
-        // Persist new empire immediately to DB
-        const newEmpire = this.ownedBy(ownerId);
-        await DatabaseService.savePlayerEmpire(player, newEmpire.buildings, newEmpire.units);
-      } else {
-        console.log(`🏰 [WorldRoom] Welcome back Emperor ${playerName}! Empire restored from SQLite.`);
+      // SESS-03/D2: hand the account to this session first, then close the
+      // superseded socket. The old onLeave therefore sees `isActive === false`
+      // and never saves its stale snapshot over the live empire.
+      const superseded = this.sessions.activeSession(ownerId);
+      this.sessions.activate(ownerId, client.sessionId);
+      if (superseded && superseded !== client.sessionId) {
+        console.log(
+          `[WorldRoom] Session ${superseded} superseded by ${client.sessionId} for ${playerName}.`
+        );
+        this.clients.get(superseded)?.leave(SESSION_REPLACED_CLOSE, 'Session replaced by a newer login');
       }
     } catch (err) {
+      // A half-joined client must not hold a reservation, and must not stay in
+      // the room as a player-less ghost: release, then let Colyseus tear it down.
+      this.sessions.release(ownerId, client.sessionId);
       console.error(`❌ [WorldRoom] Error joining player ${playerName}:`, err);
+      throw err;
     }
   }
 
@@ -1021,21 +1086,44 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
   async onLeave(client: Client, code?: number) {
     const ownerId = ownerIdOf(client);
-    const player = this.state.players.get(ownerId);
-    if (!player) return;
 
-    // A refresh opens the new session before this socket is cleaned up, and that
-    // new session already drives the account. Dropping the player entry here
-    // would remove the live session's empire from the snapshot, so a superseded
-    // socket only closes itself.
-    if (this.activeSessionByUser.get(ownerId) !== client.sessionId) {
+    // SESS-05/D1: a rejected join and a superseded socket both leave without
+    // owning the account, so neither may delete the player or save the empire.
+    if (!this.sessions.isActive(ownerId, client.sessionId)) {
       console.log(
-        `[WorldRoom] Player ${player.name} still has a live session; keeping the empire in place.`
+        `[WorldRoom] Session ${client.sessionId} is not the live session; keeping the empire.`
       );
       return;
     }
 
-    this.activeSessionByUser.delete(ownerId);
+    const reason =
+      code === SESSION_REPLACED_CLOSE
+        ? 'session replaced'
+        : code === CloseCode.CONSENTED
+          ? 'player signed out'
+          : 'connection lost';
+    console.log(`[WorldRoom] Session ${client.sessionId} left (${reason}).`);
+
+    const leaving = this.saveAndRelease(ownerId, client);
+    this.leaveByUser.set(ownerId, leaving);
+    try {
+      await leaving;
+    } finally {
+      if (this.leaveByUser.get(ownerId) === leaving) this.leaveByUser.delete(ownerId);
+    }
+  }
+
+  /**
+   * SESS-05: drops the player entry and persists the empire. Only called for the
+   * session that currently owns the account; a superseded or rejected session
+   * must never reach this method.
+   */
+  private async saveAndRelease(ownerId: string, client: Client): Promise<void> {
+    this.sessions.release(ownerId, client.sessionId);
+
+    const player = this.state.players.get(ownerId);
+    if (!player) return;
+
     this.state.players.delete(ownerId);
     player.isOnline = false;
     console.log(`[WorldRoom] Player ${player.name} left. Saving empire to SQLite...`);

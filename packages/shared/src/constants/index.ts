@@ -30,6 +30,28 @@ export const MAX_SELECTION = 120;
 export const MAX_QUEUED_WAYPOINTS = 12;
 
 /**
+ * Join rejected: the account already has a live session (SESS-01/D1).
+ *
+ * Lives in the private-use 4000-4999 range and does not collide with
+ * Colyseus's own close codes (4000-4003 and 4010).
+ */
+export const SESSION_ALREADY_ACTIVE = 4009;
+
+/**
+ * Join rejected: another join for the same account is still being processed.
+ * Kept distinct from {@link SESSION_ALREADY_ACTIVE} so the client can retry
+ * quietly instead of showing the "account in use" screen.
+ */
+export const SESSION_BUSY = 4011;
+
+/**
+ * Server closed this socket because another session took the account over
+ * (SESS-01/D2). The client shows the "session replaced" screen instead of the
+ * generic connection-lost banner.
+ */
+export const SESSION_REPLACED_CLOSE = 4004;
+
+/**
  * True when the building type produces units, i.e. when a rally point has any
  * meaning. Shared so the client (skip the order) and the authoritative room
  * (reject it) agree on which buildings accept `SET_RALLY_POINT` instead of each

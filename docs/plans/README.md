@@ -8,7 +8,7 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | Phase | Chủ đề | Status |
 | --- | --- | --- |
 | [`01-owner-visibility.md`](./01-owner-visibility.md) | Nhìn ra quân / nhà nào của ai trên chiến trường (`OWN-01..OWN-05`; `OWN-06` DEFERRED) | APPROVED — chờ code |
-| [`02-single-session.md`](./02-single-session.md) | Một tài khoản một phiên: chặn tab/thiết bị thứ hai, cưỡng chiếm phiên có xác nhận (`SESS-01..SESS-07`) | APPROVED — chờ code |
+| [`02-single-session.md`](./02-single-session.md) | Một tài khoản một phiên: chặn tab/thiết bị thứ hai, cưỡng chiếm phiên có xác nhận (`SESS-01..SESS-07`) | DONE — code + test |
 
 Status: `DRAFT` (chưa chốt quyết định) → `APPROVED` (bắt đầu code) → `DONE`.
 
@@ -16,8 +16,10 @@ Phase 01 đã chốt 4 quyết định D1–D4 ngày 2026-11-01 (xem §11 của 
 được viết.
 
 Phase 02 đã chốt 6 quyết định (policy "phiên cũ thắng", force takeover thủ công, dùng state RAM thay
-vì DB khi takeover, heartbeat/`allowReconnection` để backlog) ngày 2026-11-01; chưa có dòng code nào
-được viết.
+vì DB khi takeover, heartbeat/`allowReconnection` để backlog) ngày 2026-11-01 và đã code xong ngày
+2026-11-02: `SessionRegistry` ở server, join gate + close code 4004/4009/4011 trong
+`@chien-quoc/shared`, màn chặn + nút cưỡng chiếm ở client. Verify tay 2 phiên cùng account đã chạy
+(join thứ hai bị 4009, force takeover đá tab cũ bằng 4004, F5 không bị chặn).
 
 ## Quy ước
 

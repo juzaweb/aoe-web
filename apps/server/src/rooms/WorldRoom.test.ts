@@ -4,6 +4,8 @@ import {
   MAP_GRID_WIDTH,
   MAX_SELECTION,
   NetworkMessage,
+  SESSION_ALREADY_ACTIVE,
+  SESSION_REPLACED_CLOSE,
   UNIT_BLUEPRINTS
 } from '@chien-quoc/shared';
 import { WorldRoom } from './WorldRoom.js';
@@ -37,6 +39,7 @@ type TestClient = {
   sessionId: string;
   auth: { userId: string; displayName: string };
   send: ReturnType<typeof vi.fn>;
+  leave: ReturnType<typeof vi.fn>;
 };
 
 function createRoom() {
@@ -67,7 +70,8 @@ function createClient(
       userId: account.userId ?? sessionId,
       displayName: account.displayName ?? sessionId
     },
-    send: vi.fn()
+    send: vi.fn(),
+    leave: vi.fn()
   };
 }
 
@@ -1489,6 +1493,129 @@ describe('empire ownership by account (ACCT)', () => {
     expect(buildings.map((b: BuildingState) => b.id)).toContain('b_1');
     expect(units.map((u: UnitState) => u.id)).toContain('u_1');
     expect(room.state.players.get('user-1')).toBeUndefined();
+  });
+
+  it('rejects a second session while the first one is connected', async () => {
+    const room = createRoom();
+    const first = account('session-old');
+    room.clients.push(first as never);
+    vi.mocked(DatabaseService.loadPlayerProfile).mockResolvedValue(null);
+    await internals(room).onJoin(first, {});
+    vi.mocked(DatabaseService.savePlayerEmpire).mockClear();
+
+    await expect(internals(room).onJoin(account('session-new'), {})).rejects.toMatchObject({
+      code: SESSION_ALREADY_ACTIVE
+    });
+
+    expect(room.state.players.size).toBe(1);
+    expect(room.state.players.get('user-1')?.name).toBe('Emperor');
+    expect(internals(room).sessions.activeSession('user-1')).toBe('session-old');
+    expect(DatabaseService.savePlayerEmpire).not.toHaveBeenCalled();
+  });
+
+  it('reuses the live player entry instead of reloading the database on takeover', async () => {
+    const room = createRoom();
+    const first = account('session-old');
+    room.clients.push(first as never);
+    vi.mocked(DatabaseService.loadPlayerProfile).mockResolvedValue(null);
+    await internals(room).onJoin(first, {});
+
+    const live = room.state.players.get('user-1');
+    expect(live).toBeDefined();
+    live!.wood = 999;
+
+    vi.mocked(DatabaseService.loadPlayerProfile).mockResolvedValue({
+      id: 'user-1',
+      name: 'Emperor',
+      color: '#3b82f6',
+      wood: 10,
+      food: 20,
+      gold: 30,
+      stone: 40,
+      population: 1,
+      populationCap: 10,
+      isOnline: true
+    } as never);
+    vi.mocked(DatabaseService.loadPlayerProfile).mockClear();
+    vi.mocked(DatabaseService.savePlayerEmpire).mockClear();
+
+    await internals(room).onJoin(account('session-new'), { force: true });
+
+    // D3: the in-memory entry is the authority, and it is not replaced.
+    expect(room.state.players.get('user-1')).toBe(live);
+    expect(room.state.players.get('user-1')?.wood).toBe(999);
+    expect(DatabaseService.loadPlayerProfile).not.toHaveBeenCalled();
+    expect(DatabaseService.savePlayerEmpire).not.toHaveBeenCalled();
+    expect(first.leave).toHaveBeenCalledWith(SESSION_REPLACED_CLOSE, expect.any(String));
+    expect(internals(room).sessions.activeSession('user-1')).toBe('session-new');
+  });
+
+  it('does not reload the database when a live player entry already exists', async () => {
+    const room = createRoom();
+    addEmpire(room, 'user-1');
+    const live = addPlayer(room, 'user-1', { name: 'Emperor', wood: 999 });
+    vi.mocked(DatabaseService.loadPlayerProfile).mockResolvedValue({
+      id: 'user-1',
+      name: 'Emperor',
+      color: '#3b82f6',
+      wood: 10,
+      food: 20,
+      gold: 30,
+      stone: 40,
+      population: 1,
+      populationCap: 10,
+      isOnline: true
+    } as never);
+    vi.mocked(DatabaseService.savePlayerEmpire).mockClear();
+
+    await internals(room).onJoin(account('session-2'), {});
+
+    expect(room.state.players.get('user-1')).toBe(live);
+    expect(live.wood).toBe(999);
+    expect(DatabaseService.loadPlayerProfile).not.toHaveBeenCalled();
+    expect(DatabaseService.savePlayerEmpire).not.toHaveBeenCalled();
+  });
+
+  it('a rejected session leaving does not touch the live empire', async () => {
+    const room = createRoom();
+    const first = account('session-old');
+    room.clients.push(first as never);
+    vi.mocked(DatabaseService.loadPlayerProfile).mockResolvedValue(null);
+    await internals(room).onJoin(first, {});
+
+    const rejected = account('session-new');
+    await expect(internals(room).onJoin(rejected, {})).rejects.toMatchObject({
+      code: SESSION_ALREADY_ACTIVE
+    });
+    vi.mocked(DatabaseService.savePlayerEmpire).mockClear();
+
+    await internals(room).onLeave(rejected);
+
+    expect(DatabaseService.savePlayerEmpire).not.toHaveBeenCalled();
+    expect(room.state.players.get('user-1')).toBeDefined();
+  });
+
+  it('waits for an in-flight leave before claiming the account', async () => {
+    const room = createRoom();
+    vi.mocked(DatabaseService.loadPlayerProfile).mockResolvedValue(null);
+
+    let finishLeave!: () => void;
+    const pendingLeave = new Promise<void>((resolve) => {
+      finishLeave = resolve;
+    });
+    internals(room).leaveByUser.set('user-1', pendingLeave);
+
+    const joining = internals(room).onJoin(account('session-2'), {});
+    await Promise.resolve();
+
+    expect(internals(room).sessions.activeSession('user-1')).toBeUndefined();
+    expect(room.state.players.size).toBe(0);
+
+    finishLeave();
+    await joining;
+
+    expect(internals(room).sessions.activeSession('user-1')).toBe('session-2');
+    expect(room.state.players.size).toBe(1);
   });
 
   it('stamps new buildings and units with the account id', () => {

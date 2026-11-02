@@ -8,6 +8,7 @@ import {
   INITIAL_POPULATION_CAP,
   NetworkMessage,
   Resources,
+  SESSION_REPLACED_CLOSE,
   UnitType
 } from '@chien-quoc/shared';
 import { WorldScene, SelectedEntityData, ControlGroupSummary } from './game/scenes/WorldScene.js';
@@ -18,8 +19,10 @@ import { EntityDetails } from './components/EntityDetails.js';
 import { Minimap } from './components/Minimap.js';
 import { ControlGroups } from './components/ControlGroups.js';
 import { AuthScreen } from './components/AuthScreen.js';
+import { SessionBlocked } from './components/SessionBlocked.js';
 import {
   AuthUser,
+  classifySessionJoinError,
   clearStoredToken,
   fetchCurrentUser,
   getServerUrl,
@@ -35,6 +38,8 @@ export const App: React.FC = () => {
   const [isRestoringSession, setIsRestoringSession] = useState<boolean>(true);
   const [isJoining, setIsJoining] = useState<boolean>(false);
   const [isJoined, setIsJoined] = useState<boolean>(false);
+  /** SESS-06: the account is in use elsewhere, or another device took it over. */
+  const [sessionTaken, setSessionTaken] = useState<boolean>(false);
   const playerName = authUser?.displayName ?? '';
 
   // Player state
@@ -95,7 +100,10 @@ export const App: React.FC = () => {
    * The room keys players and entity ownership by account id, which the client
    * does not receive, so the name (unique per account) is the lookup key here.
    */
-  const connectToWorld = async (displayName: string) => {
+  const connectToWorld = async (
+    displayName: string,
+    opts: { force?: boolean; attempt?: number } = {}
+  ) => {
     const token = getStoredToken();
     if (!token) {
       setAuthUser(null);
@@ -109,11 +117,14 @@ export const App: React.FC = () => {
       // Sent as `_authToken` on the room socket; `WorldRoom.onAuth` verifies it.
       client.auth.token = token;
 
-      const joinedRoom = await client.joinOrCreate('world_room', {});
+      // SESS-06/D2: `force` is only ever true after the player pressed the
+      // takeover button, never as an automatic retry.
+      const joinedRoom = await client.joinOrCreate('world_room', { force: opts.force === true });
 
       setRoom(joinedRoom);
       setIsConnected(true);
       setIsJoined(true);
+      setSessionTaken(false);
 
       // Listen to room error messages
       joinedRoom.onMessage(NetworkMessage.ERROR_NOTIFICATION, (data: { message: string }) => {
@@ -138,10 +149,15 @@ export const App: React.FC = () => {
         }
       });
 
-      joinedRoom.onLeave(() => {
+      joinedRoom.onLeave((code) => {
         setIsConnected(false);
         setRoom(null);
         setIsJoined(false);
+        if (code === SESSION_REPLACED_CLOSE) {
+          setSessionTaken(true);
+          showNotification('Phiên đã được đăng nhập ở thiết bị khác.');
+          return;
+        }
         if (isLeavingRef.current) {
           isLeavingRef.current = false;
           return;
@@ -150,6 +166,23 @@ export const App: React.FC = () => {
       });
     } catch (err: any) {
       console.error('Failed to connect to game server:', err);
+
+      const retry = opts.attempt ?? 0;
+
+      // SESS-06: a refused join is a session conflict, not an auth or network
+      // failure, so it must not clear the token or show the generic banner.
+      const sessionError = classifySessionJoinError(err);
+      if (sessionError === 'taken') {
+        setSessionTaken(true);
+        return;
+      }
+      if (sessionError === 'busy' && retry < 3) {
+        // Another join for this account is still in flight; retry quietly
+        // instead of showing the blocked screen for a millisecond conflict.
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        return connectToWorld(displayName, { ...opts, attempt: retry + 1 });
+      }
+
       if (isAuthRejection(err)) {
         clearStoredToken();
         setAuthUser(null);
@@ -167,6 +200,19 @@ export const App: React.FC = () => {
   const handleAuthenticated = (user: AuthUser) => {
     setAuthUser(user);
     void connectToWorld(user.displayName);
+  };
+
+  /** SESS-06/D2: the player explicitly chose to take the account over. */
+  const handleTakeoverSession = () => {
+    setSessionTaken(false);
+    void connectToWorld(playerName, { force: true });
+  };
+
+  /** SESS-06: drop the stored token and fall back to the auth screen. */
+  const handleUseAnotherAccount = () => {
+    clearStoredToken();
+    setAuthUser(null);
+    setSessionTaken(false);
   };
 
   const handleLeaveGame = () => {
@@ -316,8 +362,16 @@ export const App: React.FC = () => {
         </div>
       )}
 
+      {/* SESS-06: the account is in use elsewhere (or was taken over) */}
+      {sessionTaken && !isJoined && (
+        <SessionBlocked
+          onTakeover={handleTakeoverSession}
+          onUseAnotherAccount={handleUseAnotherAccount}
+        />
+      )}
+
       {/* Auth Gate: register / login before entering the world */}
-      {!isJoined && !isRestoringSession && !isJoining && (
+      {!isJoined && !sessionTaken && !isRestoringSession && !isJoining && (
         <AuthScreen onAuthenticated={handleAuthenticated} />
       )}
 
