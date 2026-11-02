@@ -1785,6 +1785,20 @@ describe('building upgrades (LVL)', () => {
     expect(townCenter.upgradeTimeMs).toBe(0);
     expect(cost.wood).toBeGreaterThan(0);
   });
+
+  it('ignores upgrade messages that arrive without a payload', () => {
+    const room = createRoom();
+    const player = addPlayer(room, 'player-a');
+    const client = createClient('player-a');
+
+    expect(() => internals(room).commands.handleUpgradeBuilding(client, undefined)).not.toThrow();
+    expect(() =>
+      internals(room).commands.handleCancelBuildingUpgrade(client, undefined)
+    ).not.toThrow();
+    expect(() => internals(room).commands.handleUpgradeUnitType(client, undefined)).not.toThrow();
+    expect(() => internals(room).commands.handleCancelUnitUpgrade(client, undefined)).not.toThrow();
+    expect(player.researchUnitType).toBe('');
+  });
 });
 
 describe('unit research (LVL)', () => {
@@ -1879,6 +1893,35 @@ describe('unit research (LVL)', () => {
     );
     expect(spawned?.level).toBe(2);
     expect(spawned?.maxHp).toBe(getUnitLevelStats('SPEARMAN', 2).maxHp);
+  });
+
+  it('pauses an offline owner training queue instead of spawning level-1 units', () => {
+    const room = createRoom();
+    const player = addPlayer(room, 'player-a');
+    player.unitLevels[1] = 3;
+    const barracks = addBuilding(room, {
+      id: 'b_barracks',
+      ownerId: 'player-a',
+      type: 'BARRACKS'
+    });
+    barracks.trainingQueue.push('SPEARMAN');
+    barracks.trainingProgressMs = UNIT_BLUEPRINTS.SPEARMAN.trainTimeMs;
+
+    room.state.players.delete('player-a');
+    internals(room).update(1);
+
+    expect(room.state.units.size).toBe(0);
+    expect(barracks.trainingQueue.length).toBe(1);
+
+    const returning = addPlayer(room, 'player-a');
+    returning.unitLevels[1] = 3;
+    internals(room).update(1);
+
+    const spawned = Array.from(room.state.units.values()).find(
+      (unit: UnitState) => unit.type === 'SPEARMAN'
+    );
+    expect(spawned?.level).toBe(3);
+    expect(spawned?.maxHp).toBe(getUnitLevelStats('SPEARMAN', 3).maxHp);
   });
 
   it('rejects max level, a second research, and an unknown type', () => {

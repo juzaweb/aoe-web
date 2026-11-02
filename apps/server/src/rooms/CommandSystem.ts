@@ -383,7 +383,7 @@ export class CommandSystem {
     const player = this.state.players.get(ownerIdOf(client));
     if (!player) return;
 
-    const building = this.requireOwnedBuilding(client, payload.buildingId);
+    const building = this.requireOwnedBuilding(client, payload?.buildingId);
     if (!building) return;
 
     if (!building.isConstructed) {
@@ -396,6 +396,10 @@ export class CommandSystem {
     }
 
     const type = building.type as BuildingType;
+    if (!BUILDING_BLUEPRINTS[type]) {
+      this.ports.rejectCommand(client, 'Unknown building type');
+      return;
+    }
     if (building.level >= getBuildingMaxLevel(type)) {
       this.ports.rejectCommand(client, 'Building is already at max level');
       return;
@@ -417,7 +421,7 @@ export class CommandSystem {
     const player = this.state.players.get(ownerIdOf(client));
     if (!player) return;
 
-    const building = this.requireOwnedBuilding(client, payload.buildingId);
+    const building = this.requireOwnedBuilding(client, payload?.buildingId);
     if (!building) return;
 
     if (building.upgradeTimeMs <= 0) {
@@ -441,12 +445,13 @@ export class CommandSystem {
     const player = this.state.players.get(ownerId);
     if (!player) return;
 
-    if (!isUpgradableUnitType(payload.unitType)) {
+    const requestedType = payload?.unitType;
+    if (!requestedType || !isUpgradableUnitType(requestedType)) {
       this.ports.rejectCommand(client, 'Invalid unit type');
       return;
     }
 
-    const currentLevel = getPlayerUnitLevel(player.unitLevels, payload.unitType);
+    const currentLevel = getPlayerUnitLevel(player.unitLevels, requestedType);
     if (currentLevel >= getUnitMaxLevel()) {
       this.ports.rejectCommand(client, 'Unit type is already at max level');
       return;
@@ -460,16 +465,16 @@ export class CommandSystem {
       return;
     }
 
-    const cost = getUnitUpgradeCost(payload.unitType, currentLevel);
+    const cost = getUnitUpgradeCost(requestedType, currentLevel);
     if (!this.canAfford(player, cost)) {
       this.ports.rejectCommand(client, 'Insufficient resources to research unit upgrade');
       return;
     }
 
     this.spendResources(player, cost);
-    player.researchUnitType = payload.unitType;
+    player.researchUnitType = requestedType;
     player.researchProgressMs = 0;
-    player.researchTimeMs = getUnitUpgradeTimeMs(payload.unitType, currentLevel);
+    player.researchTimeMs = getUnitUpgradeTimeMs(requestedType, currentLevel);
   }
 
   /** Cancels the single in-flight unit research and returns its full price. */
@@ -477,7 +482,8 @@ export class CommandSystem {
     const player = this.state.players.get(ownerIdOf(client));
     if (!player) return;
 
-    if (!player.researchUnitType || player.researchUnitType !== payload.unitType) {
+    const requestedType = payload?.unitType;
+    if (!player.researchUnitType || player.researchUnitType !== requestedType) {
       this.ports.rejectCommand(client, 'No matching unit research is in progress');
       return;
     }

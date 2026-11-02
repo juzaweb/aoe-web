@@ -1152,7 +1152,12 @@ export class WorldScene extends Phaser.Scene {
     const building = this.room?.state?.buildings?.get(this.selectedBuildingId);
     if (!building) return;
 
-    const research = this.playerResearchDetails(building.ownerId);
+    // Only the owner's research drives the panel; reading a foreign player's
+    // timer would republish the panel on every tick for no visible change.
+    const player =
+      building.ownerId === this.myOwnerId
+        ? this.room?.state?.players?.get(building.ownerId)
+        : undefined;
     const signature = [
       building.hp,
       building.maxHp,
@@ -1161,9 +1166,9 @@ export class WorldScene extends Phaser.Scene {
       building.upgradeTimeMs,
       building.constructionProgress,
       building.trainingQueue.length,
-      research.researchUnitType,
-      research.researchProgressMs,
-      research.researchTimeMs
+      player?.researchUnitType ?? '',
+      player?.researchProgressMs ?? 0,
+      player?.researchTimeMs ?? 0
     ].join('|');
 
     if (signature === this.lastBuildingDetailSignature) return;
@@ -1203,7 +1208,7 @@ export class WorldScene extends Phaser.Scene {
     const unit = this.room?.state.units.get(unitId);
     if (!unit) return;
 
-    const signature = `${unit.hp}|${unit.carryingAmount}|${unit.carryingResourceType}|${unit.actionState}|${unit.stance}`;
+    const signature = `${unit.hp}|${unit.maxHp}|${unit.level}|${unit.carryingAmount}|${unit.carryingResourceType}|${unit.actionState}|${unit.stance}`;
     if (signature === this.lastUnitDetailSignature) return;
 
     this.lastUnitDetailSignature = signature;

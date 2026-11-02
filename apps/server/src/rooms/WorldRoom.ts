@@ -6,6 +6,7 @@ import {
   BuildingType,
   INITIAL_POPULATION_CAP,
   MAX_POPULATION_LIMIT,
+  MAX_UNIT_LEVEL,
   MAP_GRID_HEIGHT,
   MAP_GRID_WIDTH,
   NetworkMessage,
@@ -32,6 +33,7 @@ import {
   SESSION_BUSY,
   SESSION_REPLACED_CLOSE,
   getBuildingLevelStats,
+  getBuildingMaxLevel,
   getUnitLevelStats,
   getPlayerUnitLevel,
   isDirtRoadTile
@@ -61,6 +63,13 @@ const PLAYER_COLORS = [
   '#06b6d4', // Cyan
   '#84cc16'  // Lime
 ];
+
+/** Clamps a level read from SQLite; persisted rows may predate a cap change. */
+function clampStoredLevel(raw: number | null | undefined, maxLevel: number): number {
+  const value = raw ?? 1;
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(maxLevel, Math.max(1, Math.floor(value)));
+}
 
 export class WorldRoom extends Room<{ state: WorldState }> {
   private nextEntityId: number = 1000;
@@ -282,7 +291,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           building.gridY = b.gridY;
           building.sizeX = b.sizeX;
           building.sizeY = b.sizeY;
-          building.level = b.level ?? 1;
+          building.level = clampStoredLevel(b.level, getBuildingMaxLevel(b.type as BuildingType));
           building.upgradeProgressMs = b.upgradeProgressMs ?? 0;
           building.upgradeTimeMs = b.upgradeTimeMs ?? 0;
           const levelStats = getBuildingLevelStats(b.type as BuildingType, building.level);
@@ -308,7 +317,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           unit.targetX = u.x;
           unit.targetY = u.y;
           unit.speed = u.speed;
-          unit.level = u.level ?? 1;
+          unit.level = clampStoredLevel(u.level, MAX_UNIT_LEVEL);
           const levelStats = getUnitLevelStats(u.type as UnitType, unit.level);
           unit.maxHp = levelStats.maxHp;
           unit.hp = Math.min(u.hp, levelStats.maxHp);
@@ -927,8 +936,14 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         }
       }
 
-      // Process training queue
-      if (building.isConstructed && building.trainingQueue.length > 0) {
+      // Process training queue. Like research, the timer belongs to an online
+      // player: offlining removes the PlayerState, and continuing here would
+      // spawn units at the level-1 fallback after the player had researched.
+      if (
+        building.isConstructed &&
+        building.trainingQueue.length > 0 &&
+        this.state.players.has(building.ownerId)
+      ) {
         building.trainingProgressMs += deltaTime;
         const currentUnitType = building.trainingQueue[0] as UnitType;
         const blueprint = UNIT_BLUEPRINTS[currentUnitType];
