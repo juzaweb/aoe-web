@@ -4,15 +4,13 @@ import type { BuildingType } from '@chien-quoc/shared';
 import type { WorldScene } from '../scenes/WorldScene.js';
 import { buildingArt, buildingHpBarY } from './buildingArt.js';
 import {
-  ACTION_FRAME_RATE,
-  ACTION_REPEAT,
   DEFAULT_DIRECTION_INDEX,
   DIRECTION_NAMES,
-  UNIT_ACTION_SETS,
   actionRowFrames,
   unitActionKey,
   unitActionTexture
 } from './unitDirections.js';
+import { UNIT_ART, hasDirectionalArt, unitArt, unitClips } from './unitArt.js';
 import type { UnitAction } from './unitDirections.js';
 import { UnitMotion, walkTimeScale } from './unitMotion.js';
 
@@ -77,17 +75,19 @@ export class EntityRenderer {
     // Directional action sheets: one row per compass direction, four frames per
     // row, one clip per (unit, action, facing). Units without a sheet keep the
     // clips above, so both systems coexist.
-    for (const [unitType, actions] of Object.entries(UNIT_ACTION_SETS)) {
-      for (const action of actions) {
-        const texture = unitActionTexture(unitType, action);
+    for (const unitType of Object.keys(UNIT_ART)) {
+      for (const clip of unitClips(unitType)) {
+        // An aliased action (a villager's gather/build) registers its own clip
+        // names but reads the sheet of the action it borrows.
+        const texture = unitActionTexture(unitType, clip.sheetAction);
         if (!scene.textures.exists(texture)) continue;
         DIRECTION_NAMES.forEach((_, direction) => {
           registerAnim(
-            unitActionKey(unitType, action, direction),
+            unitActionKey(unitType, clip.action, direction),
             texture,
-            actionRowFrames(direction),
-            ACTION_FRAME_RATE[action],
-            ACTION_REPEAT[action]
+            actionRowFrames(direction, clip.frames),
+            clip.frameRate,
+            clip.repeat
           );
         });
       }
@@ -400,18 +400,21 @@ export class EntityRenderer {
     const lowerType = unitType.toLowerCase();
     const sheetKey = `unit_${unitType}_sheet`;
     const idleKey = `unit_${unitType}_idle`;
+    const art = unitArt(unitType);
     const walkSheetKey = unitActionTexture(unitType, 'walk');
-    const hasDirectionalSheet = scene.textures.exists(walkSheetKey);
+    const hasDirectionalSheet = hasDirectionalArt(unitType) && scene.textures.exists(walkSheetKey);
     const hasSheet = hasDirectionalSheet || scene.textures.exists(sheetKey);
     const blueprint = UNIT_BLUEPRINTS[unitType as keyof typeof UNIT_BLUEPRINTS];
 
     let unitDisplay: Phaser.GameObjects.Sprite | Phaser.GameObjects.Image;
     const isCavalry = unitType === 'CAVALRY';
-    const visualOffsetY = isCavalry ? -52 : -40;
-    const visualScale = isCavalry ? 0.75 : 0.72;
+    // Geometry lives in `unitArt.ts`: sheets differ in cell size and the figure
+    // sits at a different height inside each of them.
+    const visualOffsetY = art.offsetY;
+    const visualScale = art.scale;
 
-    const ringRadiusX = isCavalry ? 40 : 26;
-    const ringRadiusY = isCavalry ? 20 : 13;
+    const ringRadiusX = art.ringRadiusX;
+    const ringRadiusY = art.ringRadiusY;
 
     // OWN-02: ownership ring, added before the sprite so it stays under the
     // unit's feet. `selectRing` is added last and therefore stays on top of it.
@@ -450,9 +453,9 @@ export class EntityRenderer {
     // Body ellipse measured from the sprite sheet content box (villager/spearman
     // content spans y 13..123 at scale 0.72, cavalry y 29..155 at 0.75), expressed
     // relative to the container origin which sits at the unit's feet.
-    container.setData('bodyOffsetY', isCavalry ? -43 : -37);
-    container.setData('bodyRadiusX', isCavalry ? 50 : 36);
-    container.setData('bodyRadiusY', isCavalry ? 46 : 40);
+    container.setData('bodyOffsetY', art.bodyOffsetY);
+    container.setData('bodyRadiusX', art.bodyRadiusX);
+    container.setData('bodyRadiusY', art.bodyRadiusY);
 
     // Selected indicator ring (AoE ground ellipse under feet, scaled for 128x64 tiles)
     const selectRing = scene.add.graphics();

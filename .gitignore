@@ -44,6 +44,14 @@ scripts/raw_downloads/**/_*
 scripts/raw_downloads/**/*_contact.png
 scripts/raw_downloads/**/jobs_*.json
 
+# Third-party art packs: archives and extracted frames are large and
+# regenerable (scripts/build_oga_walk_sheet.py documents the source URLs);
+# only the composited sheets belong in the repo.
+scripts/raw_downloads/oga/
+
+# Spike/experiment output (sheets + previews), regenerable from the scripts
+scripts/out/
+
 # Unit-sheet pipeline state: regenerable and not source art
 scripts/raw_downloads/**/*_raw_backup.png
 scripts/raw_downloads/**/*_ai_backup.png

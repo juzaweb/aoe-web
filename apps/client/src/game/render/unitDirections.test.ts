@@ -4,6 +4,7 @@ import {
   DIRECTION_HYSTERESIS_RAD,
   DIRECTION_NAMES,
   DIRECTION_STEP_RAD,
+  actionRowFrames,
   directionAngle,
   directionIndex,
   directionIndexFromAngle,
@@ -76,5 +77,30 @@ describe('shortestAngleDelta', () => {
 
   it('is zero for identical angles', () => {
     expect(shortestAngleDelta(1.25, 1.25)).toBe(0);
+  });
+});
+
+describe('actionRowFrames', () => {
+  it('lays one row of a sheet out contiguously', () => {
+    expect(actionRowFrames(0, 4)).toEqual([0, 1, 2, 3]);
+    expect(actionRowFrames(2, 4)).toEqual([8, 9, 10, 11]);
+  });
+
+  it('follows the sheet width, so an 11-frame walk does not read the idle row', () => {
+    expect(actionRowFrames(1, 11)).toEqual([11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]);
+    expect(actionRowFrames(7, 11).at(-1)).toBe(87);
+  });
+
+  it('covers every direction exactly once', () => {
+    const seen = new Set<number>();
+    for (let direction = 0; direction < DIRECTION_NAMES.length; direction++) {
+      const frames = actionRowFrames(direction, 4);
+      expect(frames).toHaveLength(4);
+      for (const frame of frames) {
+        expect(seen.has(frame)).toBe(false);
+        seen.add(frame);
+      }
+    }
+    expect(seen.size).toBe(DIRECTION_NAMES.length * 4);
   });
 });

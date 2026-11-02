@@ -3,9 +3,13 @@
  *
  * Every directional sheet stores one row per compass direction and one column
  * per animation frame, so a Phaser spritesheet frame index is
- * `directionIndex * FRAMES_PER_DIRECTION + frame`. Row order is compass-from-east
+ * `directionIndex * framesPerDirection + frame`. Row order is compass-from-east
  * (E, SE, S, SW, W, NW, N, NE) so the index falls straight out of
  * `atan2(screenDy, screenDx)` for every action, not just the walk.
+ *
+ * How many columns a sheet has is per unit *and* per action (the villager walk
+ * cycle is 11 frames, its idle only 4), so it arrives as an argument rather than
+ * a module constant; `unitArt.ts` owns that config.
  *
  * Sheets live at `assets/units/actions/<unit>_<action>.png`; the legacy
  * single-facing `<unit>_sheet.png` stays on disk as the fallback for units that
@@ -14,8 +18,6 @@
 export const DIRECTION_NAMES = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'] as const;
 
 export type DirectionName = (typeof DIRECTION_NAMES)[number];
-
-export const FRAMES_PER_DIRECTION = 4;
 
 /** Facing used before a unit has moved: toward the viewer. */
 export const DEFAULT_DIRECTION_INDEX = 2;
@@ -41,29 +43,6 @@ export const ACTION_REPEAT: Record<UnitAction, number> = {
   death: 0,
   build: -1,
   gather: -1
-};
-
-/** Frame size of each unit's action sheets, in pixels per cell. */
-export const UNIT_FRAME_SIZE: Record<string, number> = {
-  VILLAGER: 128,
-  SPEARMAN: 128,
-  ARCHER: 128,
-  CAVALRY: 160
-};
-
-/**
- * Which action sheets each unit ships. The villager predates the action set and
- * only has the directional walk sheet; its other states fall back to the legacy
- * single-facing sheet.
- */
-export const UNIT_ACTION_SETS: Record<string, readonly UnitAction[]> = {
-  VILLAGER: ['walk'],
-  // Only the sheets present in `assets/units/actions`. Missing actions keep the
-  // legacy single-facing sheet; requesting the absent files delayed the scene's
-  // preload and filled the console with 404s.
-  SPEARMAN: ['idle', 'walk', 'attack'],
-  ARCHER: [],
-  CAVALRY: []
 };
 
 /** Angular width of one compass row, in radians (360° / 8). */
@@ -144,7 +123,7 @@ export function unitActionKey(unitType: string, action: UnitAction, direction: n
 }
 
 /** Frame indices of one row of an action sheet. */
-export function actionRowFrames(direction: number): number[] {
-  const first = direction * FRAMES_PER_DIRECTION;
-  return Array.from({ length: FRAMES_PER_DIRECTION }, (_, index) => first + index);
+export function actionRowFrames(direction: number, framesPerDirection: number): number[] {
+  const first = direction * framesPerDirection;
+  return Array.from({ length: framesPerDirection }, (_, index) => first + index);
 }

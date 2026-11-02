@@ -27,11 +27,8 @@ import { EntityRenderer } from '../render/EntityRenderer.js';
 import { FocusIndicator } from '../render/FocusIndicator.js';
 import { TerrainLayer } from '../render/TerrainLayer.js';
 import { OwnerColorRegistry, colorToCss } from '../render/ownerColor.js';
-import {
-  UNIT_ACTION_SETS,
-  UNIT_FRAME_SIZE,
-  unitActionTexture
-} from '../render/unitDirections.js';
+import { unitActionTexture } from '../render/unitDirections.js';
+import { UNIT_ART, unitArt, unitSheets } from '../render/unitArt.js';
 import { RENDER_DELAY_MS } from '../render/unitMotion.js';
 import type { UnitMotion } from '../render/unitMotion.js';
 
@@ -311,7 +308,7 @@ export class WorldScene extends Phaser.Scene {
     generateProceduralTextures(this);
 
     // Preload generated unit assets with spritesheet & idle frame support (2x resolution)
-    const uv = 'v=4';
+    const uv = 'v=5';
     this.load.spritesheet('unit_VILLAGER_sheet', `/assets/units/villager_sheet.png?${uv}`, {
       frameWidth: 128,
       frameHeight: 128
@@ -336,16 +333,16 @@ export class WorldScene extends Phaser.Scene {
     });
     this.load.image('unit_CAVALRY_idle', `/assets/units/cavalry_idle.png?${uv}`);
 
-    // Directional action sheets, one file per (unit, action): 8 rows x 4 frames
-    // in assets/units/actions. Units without one keep the single-facing sheet
-    // above and are mirrored instead of rotated.
-    for (const [unitType, actions] of Object.entries(UNIT_ACTION_SETS)) {
-      const frame = UNIT_FRAME_SIZE[unitType] ?? 128;
-      for (const action of actions) {
+    // Directional action sheets, one file per (unit, action): 8 rows of frames in
+    // assets/units/actions, cell size from the unit's art config. Units without
+    // one keep the single-facing sheet above and are mirrored instead of rotated.
+    for (const unitType of Object.keys(UNIT_ART)) {
+      const art = unitArt(unitType);
+      for (const sheet of unitSheets(unitType)) {
         this.load.spritesheet(
-          unitActionTexture(unitType, action),
-          `/assets/units/actions/${unitType.toLowerCase()}_${action}.png?${uv}`,
-          { frameWidth: frame, frameHeight: frame }
+          unitActionTexture(unitType, sheet.sheetAction),
+          `/assets/units/actions/${unitType.toLowerCase()}_${sheet.sheetAction}.png?${uv}`,
+          { frameWidth: art.frameWidth, frameHeight: art.frameHeight }
         );
       }
     }

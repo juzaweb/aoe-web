@@ -103,3 +103,8 @@ pnpm build
 
 Private Project - All rights reserved.
 
+Third-party art is used under its own license. The villager artwork comes from the
+OpenGameArt pack *400+ Items - BaseHumanMale / Orc / Skeleton* by **SKYZ0R**,
+licensed **CC-BY 4.0**; see [CREDITS.md](CREDITS.md) for the attribution and the
+list of modifications.
+
