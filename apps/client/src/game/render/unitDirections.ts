@@ -66,12 +66,6 @@ export const UNIT_ACTION_SETS: Record<string, readonly UnitAction[]> = {
   CAVALRY: []
 };
 
-/**
- * Units that ship directional sheets. Units absent from this list keep the
- * legacy single-facing sheet and are flipped horizontally instead.
- */
-export const DIRECTIONAL_UNITS = Object.keys(UNIT_ACTION_SETS);
-
 /** Angular width of one compass row, in radians (360° / 8). */
 export const DIRECTION_STEP_RAD = Math.PI / 4;
 

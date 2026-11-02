@@ -73,6 +73,10 @@ sau sẽ nhận lại. Không có trường hợp nhân đôi hoặc mất quân
   save nếu đã bị thay thế.
 - `AccountSessionCoordinator` là singleton process-wide, đóng session cũ ở đúng room khi
   takeover, kể cả khi session đó đang ở map khác.
+- `ZonePersistence` token được kiểm tra ở `onJoin`, autosave, leave và dispose: room cũ không
+  thể ghi đè map đã bị room mới nhận.
+- Travel cooldown dùng map theo account (không reset khi đổi room), và điểm arrival tránh
+  footprint công trình đặt dưới cổng.
 - Population là account-wide: mỗi room load `populationElsewhere` /
   `populationCapElsewhere` từ DB và refresh trước mỗi autosave.
 
@@ -128,7 +132,7 @@ refill ngay.
 Đã chạy:
 
 - `tsc --noEmit` sạch cho `apps/server` và `apps/client`.
-- `vitest run` sạch: server 135 test, client 60 test.
+- `vitest run` sạch: server 137 test, client 60 test.
 - E2E qua browser SDK thật:
   - Kingdom: `zoneId = kingdom:<id>`, có TC + PORTAL, 3 villager.
   - Gửi TRAVEL 2 villager → nhận `TRAVEL_READY`, join battlefield, 2 unit xuất hiện cạnh cổng

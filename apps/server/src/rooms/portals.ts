@@ -282,26 +282,57 @@ export function ensurePortalFor(state: WorldState, ownerId: string): BuildingSta
   return portal;
 }
 
-/**
- * Where a travelling unit lands: a small block just below the portal, clamped
- * to the map. Units do not collide with each other, so overlapping is harmless;
- * this only keeps them out of the portal footprint.
- */
-export function arrivalPoint(
-  portal: BuildingState,
-  index: number
-): { x: number; y: number } {
-  const columns = Math.max(1, Math.ceil(Math.sqrt(Math.max(1, index + 1))));
-  const col = index % columns;
-  const row = Math.floor(index / columns);
+const ARRIVAL_COLUMNS = 7;
 
-  const x = portal.gridX + portal.sizeX / 2 + (col - (columns - 1) / 2) * 0.8;
+function arrivalCandidate(portal: BuildingState, slot: number): { x: number; y: number } {
+  const col = slot % ARRIVAL_COLUMNS;
+  const row = Math.floor(slot / ARRIVAL_COLUMNS);
+
+  const x = portal.gridX + portal.sizeX / 2 + (col - (ARRIVAL_COLUMNS - 1) / 2) * 0.8;
   const y = portal.gridY + portal.sizeY + 1 + row * 0.8;
 
   return {
     x: Math.max(0.5, Math.min(MAP_GRID_WIDTH - 0.5, x)),
     y: Math.max(0.5, Math.min(MAP_GRID_HEIGHT - 0.5, y))
   };
+}
+
+function isInsideBuilding(state: WorldState, x: number, y: number): boolean {
+  let inside = false;
+  state.buildings.forEach((building: BuildingState) => {
+    if (inside) return;
+    if (
+      x >= building.gridX &&
+      x < building.gridX + building.sizeX &&
+      y >= building.gridY &&
+      y < building.gridY + building.sizeY
+    ) {
+      inside = true;
+    }
+  });
+  return inside;
+}
+
+/**
+ * Where a travelling unit lands: a small grid just below the portal, clamped to
+ * the map. Units do not collide with each other; this only keeps them out of
+ * the portal or a building the owner placed under it.
+ */
+export function arrivalPoint(
+  portal: BuildingState,
+  index: number,
+  state?: WorldState
+): { x: number; y: number } {
+  if (state) {
+    for (let slot = index; slot < index + ARRIVAL_COLUMNS * 20; slot++) {
+      const candidate = arrivalCandidate(portal, slot);
+      if (!isInsideBuilding(state, candidate.x, candidate.y)) {
+        return candidate;
+      }
+    }
+  }
+
+  return arrivalCandidate(portal, index);
 }
 
 export { isPortalFootprintFree };

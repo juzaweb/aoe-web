@@ -12,7 +12,6 @@ import {
   MAX_TRAVEL_UNITS,
   NetworkMessage,
   RESOURCE_RESPAWN_MS,
-  TRAVEL_COOLDOWN_MS,
   TravelPayload,
   TravelReadyPayload,
   PlaceBuildingPayload,
@@ -58,6 +57,7 @@ import { ownerIdOf, RoomAuth } from './identity.js';
 import { accountSaves, accountSessions } from './AccountSessions.js';
 import { zonePersistence } from './ZonePersistence.js';
 import { arrivalPoint, ensurePortalFor, findOwnPortal } from './portals.js';
+import { isTravelCoolingDown, markTravel } from './travelCooldowns.js';
 import { entityIds } from '../services/EntityIdAllocator.js';
 import type { TravelUnitSnapshot } from '../services/DatabaseService.js';
 import {
@@ -101,7 +101,6 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   private readonly travelingOwners = new Set<string>();
   /** Where an account is travelling to while its leave save runs. */
   private readonly departureZoneByOwner = new Map<string, string>();
-  private readonly travelCooldowns = new Map<string, number>();
   /**
    * Depleted resource nodes and when they refill. In-memory only: a restart
    * refills them immediately, which is the same outcome a fresh room has.
@@ -211,6 +210,15 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   /** What a fresh empire gets when it joins this map with no entities. */
   protected async spawnZoneContent(ownerId: string): Promise<void> {
     this.spawnInitialBase(ownerId);
+  }
+
+  /**
+   * Whether this room still owns its zone. A token of 0 means the room was
+   * constructed without `onCreate` (the unit-test harness), which has no zone
+   * to compete for.
+   */
+  private isZoneOwner(): boolean {
+    return this.persistenceToken === 0 || zonePersistence.isCurrent(this.zoneId, this.persistenceToken);
   }
 
   onCreate(options: any) {
@@ -722,6 +730,14 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           `World restore failed: ${this.worldRestoreError.message}`
         );
       }
+      if (!this.isZoneOwner()) {
+        // A newer room has claimed this map; joining through the stale one
+        // would let two rooms write the same zone.
+        throw new ServerError(
+          ErrorCode.APPLICATION_ERROR,
+          'This map room has been replaced. Please rejoin.'
+        );
+      }
 
       const live = this.state.players.get(ownerId);
       if (live) {
@@ -1003,7 +1019,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     const arrived = await DatabaseService.consumeTravelTransfers(
       ownerId,
       this.zoneId,
-      (_unit, index) => arrivalPoint(portal, index)
+      (_unit, index) => arrivalPoint(portal, index, this.state)
     );
     if (arrived.length === 0) return;
 
@@ -1023,7 +1039,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     portal: BuildingState,
     index: number
   ): void {
-    const position = arrivalPoint(portal, index);
+    const position = arrivalPoint(portal, index, this.state);
     const unit = new UnitState();
     unit.id = snapshot.id;
     unit.ownerId = ownerId;
@@ -1049,8 +1065,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    */
   private async autosave(): Promise<void> {
     // A travel transaction deletes unit rows from this zone; saving a snapshot
-    // taken around that moment could re-create them from stale state.
-    if (!this.zoneReady || this.travelingOwners.size > 0) return;
+    // taken around that moment could re-create them from stale state. A room
+    // that has been replaced for this zone must never write at all.
+    if (!this.zoneReady || this.travelingOwners.size > 0 || !this.isZoneOwner()) return;
 
     // Snapshot the players: the loop awaits SQLite, and a leave/join in the
     // meantime mutates the MapSchema being iterated.
@@ -1085,7 +1102,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       this.rejectCommand(client, 'Bạn đang chuyển bản đồ.');
       return;
     }
-    if (Date.now() < (this.travelCooldowns.get(ownerId) ?? 0)) {
+    if (isTravelCoolingDown(ownerId)) {
       this.rejectCommand(client, 'Vui lòng đợi một chút rồi thử lại.');
       return;
     }
@@ -1149,7 +1166,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       this.movement.forgetUnit(unit.id);
     }
 
-    this.travelCooldowns.set(ownerId, Date.now() + TRAVEL_COOLDOWN_MS);
+    markTravel(ownerId);
     this.departureZoneByOwner.set(ownerId, toZone);
     this.updatePlayerPopulation(ownerId);
 
@@ -1552,6 +1569,17 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     const player = this.state.players.get(ownerId);
     if (!player) return;
+
+    // The zone was claimed by a newer room (the table was replaced while this
+    // one was still closing). Writing here would overwrite the successor.
+    if (!this.isZoneOwner()) {
+      console.warn(
+        `[WorldRoom] ${this.zoneId} is no longer owned by this room; skipping the leave save.`
+      );
+      this.departureZoneByOwner.delete(ownerId);
+      this.state.players.delete(ownerId);
+      return;
+    }
 
     player.isOnline = false;
     console.log(`[WorldRoom] Player ${player.name} left. Saving ${this.zoneId}...`);

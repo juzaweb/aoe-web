@@ -307,11 +307,6 @@ export class DatabaseService {
     }
   }
 
-  /** Awaits every write already committed to this zone's queue. */
-  public static async awaitZone(zone: string): Promise<void> {
-    await (this.zoneChains.get(zone) ?? Promise.resolve()).catch(() => undefined);
-  }
-
   // ---------------------------------------------------------------------------
   // Resources
   // ---------------------------------------------------------------------------
@@ -463,12 +458,11 @@ export class DatabaseService {
     player: PlayerState,
     buildings: BuildingState[],
     units: UnitState[],
-    zone = 'world',
-    lastZone = zone
+    zone = 'world'
   ) {
     await this.withZoneQueue(zone, async () => {
       await this.initialize();
-      await this.savePlayerAccountInternal(player, zone, lastZone);
+      await this.savePlayerAccountInternal(player, zone);
       await this.saveZoneEntitiesInternal(zone, player.id, buildings, units);
     });
   }
@@ -491,19 +485,7 @@ export class DatabaseService {
     });
   }
 
-  /** Persists only the account row (resources, research, last zone). */
-  public static async savePlayerAccount(player: PlayerState, zone: string) {
-    await this.withZoneQueue(zone, async () => {
-      await this.initialize();
-      await this.savePlayerAccountInternal(player, zone);
-    });
-  }
-
-  private static async savePlayerAccountInternal(
-    player: PlayerState,
-    zone: string,
-    lastZone = zone
-  ) {
+  private static async savePlayerAccountInternal(player: PlayerState, zone: string) {
     const ownerId = player.id;
     await prisma.player.upsert({
       where: { id: ownerId },
@@ -522,7 +504,7 @@ export class DatabaseService {
         researchProgressMs: player.researchProgressMs,
         researchTimeMs: player.researchTimeMs,
         isOnline: player.isOnline,
-        lastZone
+        lastZone: zone
       },
       update: {
         name: player.name,
@@ -538,7 +520,7 @@ export class DatabaseService {
         researchProgressMs: player.researchProgressMs,
         researchTimeMs: player.researchTimeMs,
         isOnline: player.isOnline,
-        lastZone
+        lastZone: zone
       }
     });
   }

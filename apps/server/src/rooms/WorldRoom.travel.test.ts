@@ -12,6 +12,7 @@ import { UnitState } from '../schema/UnitState.js';
 import { DatabaseService } from '../services/DatabaseService.js';
 import { accountSessions } from './AccountSessions.js';
 import { entityIds } from '../services/EntityIdAllocator.js';
+import { resetTravelCooldowns } from './travelCooldowns.js';
 
 vi.mock('../services/DatabaseService.js', () => ({
   DatabaseService: {
@@ -99,6 +100,7 @@ describe('WorldRoom.handleTravel', () => {
     vi.mocked(DatabaseService.savePlayerEmpire).mockClear();
     accountSessions.reset();
     entityIds.reset();
+    resetTravelCooldowns();
   });
 
   it('moves only owned units into a transfer and acks the client', async () => {
@@ -171,6 +173,32 @@ describe('WorldRoom.handleTravel', () => {
     expect(
       client.send.mock.calls.some(([message]) => message === NetworkMessage.ERROR_NOTIFICATION)
     ).toBe(true);
+  });
+
+  it('enforces the travel cooldown across rooms', async () => {
+    const first = createRoom();
+    addPlayer(first);
+    const firstPortal = addPortal(first);
+    const firstClient = createClient();
+    await internals(first).handleTravel(firstClient, {
+      portalId: firstPortal.id,
+      unitIds: []
+    });
+    expect(DatabaseService.commitTravel).toHaveBeenCalledTimes(1);
+
+    // A fresh room (the destination, or a reloaded source) must still see the
+    // cooldown: it is account-wide, not per room.
+    const second = createRoom();
+    addPlayer(second);
+    const secondPortal = addPortal(second);
+    const secondClient = createClient();
+    await internals(second).handleTravel(secondClient, {
+      portalId: secondPortal.id,
+      unitIds: []
+    });
+
+    expect(DatabaseService.commitTravel).toHaveBeenCalledTimes(1);
+    expect(readyMessages(secondClient)).toHaveLength(0);
   });
 
   it('a leave caused by travel saves entities only, never the source account row', async () => {

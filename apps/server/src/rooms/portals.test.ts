@@ -147,6 +147,21 @@ describe('arrivalPoint', () => {
     }
   });
 
+  it('moves arrivals out of a building placed below the portal', () => {
+    const state = createState('kingdom:user-1');
+    const portal = addBuilding(state, 'user-1', 'PORTAL', 100, 100);
+    const blocker = addBuilding(state, 'user-1', 'TOWN_CENTER', 98, 102);
+
+    const point = arrivalPoint(portal, 0, state);
+    const insideBlocker =
+      point.x >= blocker.gridX &&
+      point.x < blocker.gridX + blocker.sizeX &&
+      point.y >= blocker.gridY &&
+      point.y < blocker.gridY + blocker.sizeY;
+
+    expect(insideBlocker).toBe(false);
+  });
+
   it('clamps arrivals at the bottom edge of the map', () => {
     const state = createState('kingdom:user-1');
     const portal = addBuilding(state, 'user-1', 'PORTAL', 10, MAP_GRID_HEIGHT - 3);
