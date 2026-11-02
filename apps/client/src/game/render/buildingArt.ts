@@ -22,7 +22,8 @@ const SHEET_OFFSET_Y: Partial<Record<BuildingType, number>> = {
   // ECO: the three drop-off camps are drawn on the same sheet as the house.
   LUMBER_CAMP: -70,
   MILL: -70,
-  MINING_CAMP: -70
+  MINING_CAMP: -70,
+  PORTAL: -160
 };
 
 /** Procedural textures used when a building has no generated PNG. */
@@ -30,7 +31,10 @@ const FALLBACK_ART: Partial<Record<BuildingType, { textureKey: string; offsetY: 
   BARRACKS: { textureKey: 'b_barracks', offsetY: -70 },
   HOUSE: { textureKey: 'b_house', offsetY: -50 },
   FARM: { textureKey: 'b_farm', offsetY: 0 },
-  TOWER: { textureKey: 'b_tower', offsetY: -90 }
+  TOWER: { textureKey: 'b_tower', offsetY: -90 },
+  // D8: no dedicated portal art yet; the tower sheet plus the purple tint
+  // applied by `EntityRenderer` is the agreed placeholder.
+  PORTAL: { textureKey: 'b_tower', offsetY: -90 }
 };
 
 const DEFAULT_ART = { textureKey: 'b_town_center', offsetY: -130 };
@@ -51,7 +55,8 @@ const HP_BAR_Y: Partial<Record<BuildingType, number>> = {
   FARM: -100,
   LUMBER_CAMP: -190,
   MILL: -190,
-  MINING_CAMP: -190
+  MINING_CAMP: -190,
+  PORTAL: -350
 };
 
 /**
@@ -66,6 +71,17 @@ export function buildingArt(
   type: BuildingType,
   hasTexture: (textureKey: string) => boolean
 ): BuildingArt {
+  // D8: no dedicated gate art yet. The shipped watch-tower sheet is far more
+  // legible than the tiny procedural fallback, and the purple tint applied by
+  // the renderer still marks it as travel infrastructure.
+  if (type === 'PORTAL' && hasTexture('building_TOWER')) {
+    return {
+      textureKey: 'building_TOWER',
+      offsetY: SHEET_OFFSET_Y.TOWER ?? -160,
+      scale: 1
+    };
+  }
+
   const customKey = `building_${type}`;
   if (hasTexture(customKey)) {
     return {

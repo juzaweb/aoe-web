@@ -131,6 +131,12 @@ export class CommandSystem {
     const player = this.state.players.get(ownerId);
     if (!player) return;
 
+    // Portals are server-created travel infrastructure, never a build order.
+    if (payload.type === 'PORTAL') {
+      this.ports.rejectCommand(client, 'Portals cannot be built');
+      return;
+    }
+
     const blueprint = BUILDING_BLUEPRINTS[payload.type];
     if (!blueprint) {
       this.ports.rejectCommand(client, 'Invalid building type');
@@ -400,6 +406,10 @@ export class CommandSystem {
       this.ports.rejectCommand(client, 'Unknown building type');
       return;
     }
+    if (type === 'PORTAL') {
+      this.ports.rejectCommand(client, 'Portals cannot be upgraded');
+      return;
+    }
     if (building.level >= getBuildingMaxLevel(type)) {
       this.ports.rejectCommand(client, 'Building is already at max level');
       return;
@@ -423,6 +433,11 @@ export class CommandSystem {
 
     const building = this.requireOwnedBuilding(client, payload?.buildingId);
     if (!building) return;
+
+    if (building.type === 'PORTAL') {
+      this.ports.rejectCommand(client, 'Portals cannot be upgraded');
+      return;
+    }
 
     if (building.upgradeTimeMs <= 0) {
       this.ports.rejectCommand(client, 'No upgrade is in progress');
@@ -519,6 +534,16 @@ export class CommandSystem {
     if (target.ownerId === ownerId) {
       this.ports.rejectCommand(client, 'Cannot attack your own units or buildings');
       return;
+    }
+
+    // D8/D7: a portal is travel infrastructure, not a raid target. Making it
+    // attackable would let an opponent strand an empire on the other map.
+    if (payload.targetType === 'building') {
+      const targetBlueprint = BUILDING_BLUEPRINTS[(target as BuildingState).type as BuildingType];
+      if (targetBlueprint?.attackable === false) {
+        this.ports.rejectCommand(client, 'That structure cannot be attacked');
+        return;
+      }
     }
 
     payload.unitIds.forEach((uId) => {

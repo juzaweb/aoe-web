@@ -31,6 +31,11 @@ export interface EconomyPorts {
   resumeQueuedWaypoint(unit: UnitState): void;
   /** Sends an `ERROR_NOTIFICATION` to the client. */
   rejectCommand(client: Client, message: string): void;
+  /**
+   * A node just ran dry. The room keeps the empty node in state (so the client
+   * can hide it) and schedules its refill instead of deleting the row.
+   */
+  onNodeDepleted(node: ResourceNodeState): void;
 }
 
 /**
@@ -284,7 +289,10 @@ export class EconomySystem {
     }
 
     if (resource.remainingAmount <= 0) {
-      this.state.resourceNodes.delete(resource.id);
+      // MAPS: the node stays in the snapshot as an empty slot so the client can
+      // hide it and the room can refill it after a respawn delay. Deleting it
+      // would make the battlefield permanently poorer the longer it is played.
+      this.ports.onNodeDepleted(resource);
       // AoE behaviour: bank what is in hand, then walk to the next node of the
       // same type instead of standing idle next to an empty stump.
       if (unit.carryingAmount > 0) this.startReturning(unit);

@@ -46,6 +46,13 @@ export class TerrainLayer {
     }
   }
 
+  /** Forces the next frame to reposition the pool (new map, reset camera). */
+  invalidateViewport() {
+    this.lastViewportX = -999999;
+    this.lastViewportY = -999999;
+    this.lastViewportZoom = -1;
+  }
+
   /** Repositions the pool for the current viewport. Cheap no-op when idle. */
   render() {
     const cam = this.scene.cameras.main;

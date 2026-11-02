@@ -4,7 +4,8 @@ import cors from 'cors';
 import { Server } from '@colyseus/core';
 import { Encoder } from '@colyseus/schema';
 import { WebSocketTransport } from '@colyseus/ws-transport';
-import { WorldRoom } from './rooms/WorldRoom.js';
+import { KingdomRoom } from './rooms/KingdomRoom.js';
+import { BattlefieldRoom } from './rooms/BattlefieldRoom.js';
 import { DatabaseService } from './services/DatabaseService.js';
 import { AuthError, AuthService } from './services/AuthService.js';
 import { createRateLimit } from './services/RateLimiter.js';
@@ -104,8 +105,11 @@ export async function start() {
     })
   });
 
-  // Define persistent world room
-  gameServer.define('world_room', WorldRoom);
+  // One private kingdom room per account, plus the single shared battlefield.
+  // `filterBy` makes a rejoining client find its live kingdom room again; the
+  // kingdom's static `onAuth` separately proves the option names its account.
+  gameServer.define('kingdom_room', KingdomRoom).filterBy(['ownerId']);
+  gameServer.define('battlefield_room', BattlefieldRoom);
 
   await gameServer.listen(port);
   console.log(`⚔️  Chien Quoc Game Server is running on http://localhost:${port} and ws://localhost:${port}`);

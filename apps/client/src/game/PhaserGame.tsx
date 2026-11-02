@@ -147,9 +147,11 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
     };
   }, []);
 
-  // Update room when room is connected or changed
+  // Update room when room is connected or changed. Passing null detaches the
+  // scene while a travel swaps rooms, so its update loop never reads a state
+  // that `leave()` has already torn down.
   useEffect(() => {
-    if (sceneRef.current && room) {
+    if (sceneRef.current) {
       sceneRef.current.setRoom(room);
     }
   }, [room]);

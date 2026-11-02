@@ -115,6 +115,8 @@ export interface SelectedEntityData {
   level?: number;
   maxLevel?: number;
   isOwner?: boolean;
+  /** MAPS: an owned portal renders the travel panel. */
+  isPortal?: boolean;
   trainingQueue?: string[];
   /** LVL: building upgrade timer; `upgradeTimeMs = 0` means idle. */
   upgradeProgressMs?: number;
@@ -205,6 +207,17 @@ export class WorldScene extends Phaser.Scene {
   public unitSprites: Map<string, Phaser.GameObjects.Container> = new Map();
   public resourceSprites: Map<string, Phaser.GameObjects.Container> = new Map();
 
+  /**
+   * MAPS/PERF: a map carries ~1.3k nodes, and creating every container in one
+   * synchronous pass blocked the main thread for seconds on a map switch. Nodes
+   * are queued and materialised a slice per frame; the terrain shows
+   * immediately and the nodes pop in over a few frames.
+   */
+  private pendingResourceKeys: Set<string> = new Set();
+  private pendingResources: Array<{ key: string; node: any }> = [];
+  private roomCallbacks: any = null;
+  private static readonly RESOURCE_SPAWN_PER_FRAME = 80;
+
   // MOV-01: per-unit smoothing state — the last two authoritative positions, the
   // smoothed heading and the committed compass row. The scene samples the room
   // state once per frame into these, and the frame loop draws from them.
@@ -232,6 +245,13 @@ export class WorldScene extends Phaser.Scene {
 
   private hasCenteredOnSpawn: boolean = false;
   private centerAttempts: number = 0;
+  /**
+   * MAPS: while a travel swaps rooms, the last frame of the old map must stay
+   * on screen. Skipping the update keeps every sprite exactly where it was and
+   * avoids touching a Room whose socket has already left; the scene keeps
+   * rendering, so the canvas never goes blank.
+   */
+  private worldFrozen: boolean = false;
 
   // Selection Drag Box
   public isDragSelecting: boolean = false;
@@ -495,10 +515,29 @@ export class WorldScene extends Phaser.Scene {
     this.terrain.render();
   }
 
-  public setRoom(room: Room) {
+  /**
+   * Binds a room, or detaches the scene when `room` is null.
+   *
+   * A travel leaves the old room and joins the new one asynchronously. During
+   * that gap the scene must not keep reading the old snapshot: after `leave()`
+   * its state is gone, and an update tick against it stops the Phaser loop
+   * (which reads as a black screen). The React layer calls this with null as
+   * soon as the old room is released and with the new Room once it is joined.
+   */
+  public setRoom(room: Room | null) {
     // Same instance = nothing to wire up. React StrictMode and Phaser's 'ready'
     // event can both call this with the same object.
     if (room === this.room) return;
+
+    if (!room) {
+      this.resumeWorld();
+      this.room = null;
+      this.eventsBoundRoom = null;
+      this.boundRoomId = '';
+      this.resetForNewWorld();
+      this.centerCameraOnMap();
+      return;
+    }
 
     // Same roomId but a different Room instance means a reconnect: the snapshot
     // is the same world, but the cached owner id may not be resolvable yet, so
@@ -513,13 +552,17 @@ export class WorldScene extends Phaser.Scene {
     // restore a different profile colour, so re-resolve before repainting.
     this.ownerColorRegistry.invalidateAll();
 
+    // A travel freezes the old map on screen instead of going blank while the
+    // destination room syncs. Unfreeze before binding the new snapshot.
+    this.resumeWorld();
+
     if (isNewWorld) {
-      // Fresh world snapshot: allow re-centering on the base.
-      this.hasCenteredOnSpawn = false;
-      this.centerAttempts = 0;
-      // UIX-03: group members belong to the old world; their ids are meaningless
-      // in the new snapshot.
-      this.commands?.resetControlGroups();
+      // MAPS: a different room is a different map (or at least a different
+      // snapshot), so every sprite and selection from the old one is stale.
+      this.resetForNewWorld();
+      // Put the camera on the new map before waiting for its first patch; the
+      // base-centred pass below replaces this as soon as the snapshot lands.
+      this.centerCameraOnMap();
     }
 
     // Callbacks belong to a Room instance, so a new instance always needs binding.
@@ -528,6 +571,70 @@ export class WorldScene extends Phaser.Scene {
       this.entityRenderer?.refreshOwnershipVisuals();
       this.centerOnOwnBaseIfNeeded();
     }
+  }
+
+  /** Freezes the last rendered frame while a travel swaps rooms. */
+  public pauseWorld() {
+    this.worldFrozen = true;
+  }
+
+  public resumeWorld() {
+    this.worldFrozen = false;
+  }
+
+  /** Default view for a map with no known anchor yet: the whole terrain. */
+  private centerCameraOnMap() {
+    const center = gridToScreen(MAP_GRID_WIDTH / 2, MAP_GRID_HEIGHT / 2);
+    this.cameras.main.panEffect.reset();
+    this.cameras.main.centerOn(center.x, center.y);
+    this.cameras.main.setZoom(ZOOM_MIN);
+  }
+
+  /**
+   * Drops every visual and selection belonging to the previous map.
+   *
+   * Colyseus rooms have separate state, but the scene is one long-lived object:
+   * without this, sprites from the kingdom would remain painted over the
+   * battlefield (and their ids would shadow the new map's entities).
+   */
+  private resetForNewWorld() {
+    this.buildingSprites.forEach((container) => container.destroy());
+    this.buildingSprites.clear();
+    this.unitSprites.forEach((container) => container.destroy());
+    this.unitSprites.clear();
+    this.resourceSprites.forEach((container) => container.destroy());
+    this.resourceSprites.clear();
+    this.pendingResources = [];
+    this.pendingResourceKeys.clear();
+    this.unitMotion.clear();
+
+    this.selection?.clear();
+    this.selectedUnitIds.clear();
+    this.selectedBuildingId = null;
+    this.selectedResourceId = null;
+    this.isDragSelecting = false;
+    this.dragSelectionGraphics?.clear();
+
+    this.commands?.resetControlGroups();
+    this.commands?.cancelPendingOrder();
+    this.placement?.cancel();
+    this.cameraControl?.resetBookmarks();
+    // The pool is repositioned only when the viewport moves; a new map can start
+    // at a very different corner, so force the next frame to repaint it.
+    this.terrain?.invalidateViewport();
+
+    this.hasCenteredOnSpawn = false;
+    this.centerAttempts = 0;
+    this.cachedOwnerId = '';
+    this.ownerColorRegistry.invalidateAll();
+
+    // Repaint the overlays against the now-empty selection so nothing from the
+    // old map survives the frame. The new Room may not have delivered its first
+    // state patch yet, so the rally pass is guarded.
+    this.focus?.render();
+    this.commands?.updateWaypointPreview();
+    if (this.room?.state?.buildings) this.commands?.updateRallyMarkers();
+    this.onSelectionChange?.(null);
   }
 
   /**
@@ -558,7 +665,7 @@ export class WorldScene extends Phaser.Scene {
    * Own Town Center, or null when the snapshot does not contain it yet.
    */
   public findOwnTownCenter(): any | null {
-    if (!this.room) return null;
+    if (!this.room?.state?.buildings) return null;
 
     let target: any = null;
     this.room.state.buildings.forEach((b: any) => {
@@ -569,13 +676,28 @@ export class WorldScene extends Phaser.Scene {
     return target;
   }
 
+  /** Own portal, used as the camera anchor when the map has no Town Center. */
+  public findOwnPortal(): any | null {
+    if (!this.room?.state?.buildings) return null;
+
+    let target: any = null;
+    this.room.state.buildings.forEach((b: any) => {
+      if (!target && b.type === 'PORTAL' && this.isOwnBuilding(b.ownerId)) {
+        target = b;
+      }
+    });
+    return target;
+  }
+
   private centerOnOwnBaseIfNeeded() {
-    if (this.hasCenteredOnSpawn || !this.room) return;
+    if (this.hasCenteredOnSpawn || !this.room?.state) return;
 
     // Player name may not be known yet; retry on the next tick instead.
     if (!this.myPlayerName) return;
 
-    const target = this.findOwnTownCenter();
+    // A kingdom centres on its Town Center; the battlefield has no base, so the
+    // account's arrival portal is the next-best anchor.
+    const target = this.findOwnTownCenter() ?? this.findOwnPortal();
     if (!target) return;
 
     this.hasCenteredOnSpawn = true;
@@ -606,13 +728,17 @@ export class WorldScene extends Phaser.Scene {
     this.eventsBoundRoom = room;
 
     const cb = Callbacks.get(room);
+    this.roomCallbacks = cb;
+    this.pendingResources = [];
+    this.pendingResourceKeys.clear();
 
     // 1. Synchronize Resource Nodes
     cb.onAdd('resourceNodes', (node: any, key: any) => {
-      this.entityRenderer.createResourceNodeSprite(key, node);
+      this.enqueueResourceSprite(key, node);
     });
 
     cb.onRemove('resourceNodes', (node: any, key: any) => {
+      this.pendingResourceKeys.delete(key);
       const sprite = this.resourceSprites.get(key);
       if (sprite) {
         sprite.destroy();
@@ -622,6 +748,7 @@ export class WorldScene extends Phaser.Scene {
 
     // 2. Synchronize Buildings
     cb.onAdd('buildings', (building: any, key: any) => {
+      if (this.buildingSprites.has(key)) return;
       this.entityRenderer.createBuildingSprite(key, building, cb);
       this.centerOnOwnBaseIfNeeded();
     });
@@ -640,6 +767,7 @@ export class WorldScene extends Phaser.Scene {
 
     // 3. Synchronize Units
     cb.onAdd('units', (unit: any, key: any) => {
+      if (this.unitSprites.has(key)) return;
       this.entityRenderer.createUnitSprite(key, unit, cb);
     });
 
@@ -677,8 +805,59 @@ export class WorldScene extends Phaser.Scene {
       this.entityRenderer.refreshOwnershipVisuals();
     });
 
+    // A room that synced before these callbacks were attached would otherwise
+    // stay empty until its next patch (which can be seconds, or never for a
+    // static map). Materialise anything already in the snapshot.
+    this.hydrateExistingEntities(room, cb);
+
     // Repaint sprites that already exist against the newly bound snapshot.
     this.entityRenderer.refreshOwnershipVisuals();
+  }
+
+  private hydrateExistingEntities(room: Room, cb: any) {
+    const state = room.state as any;
+    if (!state) return;
+
+    state.resourceNodes?.forEach((node: any, key: string) => {
+      this.enqueueResourceSprite(key, node);
+    });
+
+    state.buildings?.forEach((building: any, key: string) => {
+      if (this.buildingSprites.has(key)) return;
+      this.entityRenderer.createBuildingSprite(key, building, cb);
+    });
+
+    state.units?.forEach((unit: any, key: string) => {
+      if (this.unitSprites.has(key)) return;
+      this.entityRenderer.createUnitSprite(key, unit, cb);
+    });
+  }
+
+  private enqueueResourceSprite(key: string, node: any): void {
+    if (this.resourceSprites.has(key) || this.pendingResourceKeys.has(key)) return;
+    this.pendingResourceKeys.add(key);
+    this.pendingResources.push({ key, node });
+  }
+
+  /** Materialises a bounded slice of the queued resource nodes per frame. */
+  private flushResourceSpawns(): void {
+    let created = 0;
+    while (
+      this.pendingResources.length > 0 &&
+      created < WorldScene.RESOURCE_SPAWN_PER_FRAME
+    ) {
+      const item = this.pendingResources.shift() as { key: string; node: any };
+      this.pendingResourceKeys.delete(item.key);
+
+      // The node may have been removed while queued (or the map changed); read
+      // the live snapshot instead of the queued reference.
+      const state = this.room?.state as any;
+      const node = state?.resourceNodes?.get(item.key);
+      if (!node || this.resourceSprites.has(item.key)) continue;
+
+      this.entityRenderer.createResourceNodeSprite(item.key, node, this.roomCallbacks);
+      created++;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -937,7 +1116,7 @@ export class WorldScene extends Phaser.Scene {
 
     if (this.selectedUnitIds.size > 0) {
       const firstId = Array.from(this.selectedUnitIds)[0];
-      const unit = this.room?.state.units.get(firstId);
+      const unit = this.room?.state?.units.get(firstId);
       if (unit) {
         this.onSelectionChange({
           id: firstId,
@@ -959,7 +1138,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     if (this.selectedBuildingId) {
-      const b = this.room?.state.buildings.get(this.selectedBuildingId);
+      const b = this.room?.state?.buildings.get(this.selectedBuildingId);
       if (b) {
         const bp = BUILDING_BLUEPRINTS[b.type as BuildingType];
         this.onSelectionChange({
@@ -975,6 +1154,7 @@ export class WorldScene extends Phaser.Scene {
           upgradeTimeMs: b.upgradeTimeMs,
           ...(b.ownerId === this.myOwnerId ? this.playerResearchDetails(b.ownerId) : {}),
           isOwner: b.ownerId === this.myOwnerId,
+          isPortal: b.type === 'PORTAL',
           trainingQueue: Array.from(b.trainingQueue),
           isConstructed: b.isConstructed,
           constructionProgress: b.constructionProgress,
@@ -988,7 +1168,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     if (this.selectedResourceId) {
-      const res = this.room?.state.resourceNodes.get(this.selectedResourceId);
+      const res = this.room?.state?.resourceNodes.get(this.selectedResourceId);
       if (res) {
         this.onSelectionChange({
           id: this.selectedResourceId,
@@ -1010,6 +1190,12 @@ export class WorldScene extends Phaser.Scene {
   // ---------------------------------------------------------------------------
 
   update(time: number, delta: number) {
+    if (this.worldFrozen) return;
+
+    // Spread the ~1.3k resource containers over frames instead of one long
+    // synchronous burst right after a map switch.
+    this.flushResourceSpawns();
+
     this.terrain.render();
 
     // Fallback: keep trying to focus this player's Town Center until the snapshot
@@ -1066,7 +1252,7 @@ export class WorldScene extends Phaser.Scene {
     const renderTime = time - RENDER_DELAY_MS;
     this.unitMotion.forEach((motion, unitId) => {
       const container = this.unitSprites.get(unitId);
-      const unit = this.room?.state.units.get(unitId);
+      const unit = this.room?.state?.units.get(unitId);
       if (!container || !unit) return;
 
       // Sampled once per frame from the snapshot rather than from per-property
@@ -1129,7 +1315,7 @@ export class WorldScene extends Phaser.Scene {
     this.nextIdleVillagerScanAt = time + IDLE_VILLAGER_SCAN_MS;
 
     let count = 0;
-    this.room.state.units.forEach((unit: any) => {
+    this.room?.state?.units?.forEach((unit: any) => {
       if (unit.type !== 'VILLAGER') return;
       if (unit.actionState !== 'IDLE') return;
       if (!this.isOwnBuilding(unit.ownerId)) return;
@@ -1205,7 +1391,7 @@ export class WorldScene extends Phaser.Scene {
     if (this.selectedUnitIds.size !== 1) return;
 
     const unitId = Array.from(this.selectedUnitIds)[0];
-    const unit = this.room?.state.units.get(unitId);
+    const unit = this.room?.state?.units.get(unitId);
     if (!unit) return;
 
     const signature = `${unit.hp}|${unit.maxHp}|${unit.level}|${unit.carryingAmount}|${unit.carryingResourceType}|${unit.actionState}|${unit.stance}`;

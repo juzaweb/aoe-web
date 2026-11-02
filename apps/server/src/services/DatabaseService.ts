@@ -9,6 +9,7 @@ import { UnitState } from '../schema/UnitState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { DATABASE_INDEX_STATEMENTS, DATABASE_TABLE_STATEMENTS } from './databaseSchema.js';
 import { serializeUnitLevels } from './playerLevels.js';
+import { entityIds } from './EntityIdAllocator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,9 +29,43 @@ export const prisma = new PrismaClient({
   }
 });
 
+/** One unit crossing a map boundary, stored inside `travel_transfers.units`. */
+export interface TravelUnitSnapshot {
+  id: string;
+  type: string;
+  level: number;
+  hp: number;
+  maxHp: number;
+  speed: number;
+}
+
+export interface CommitTravelInput {
+  player: PlayerState;
+  ownerId: string;
+  fromZone: string;
+  toZone: string;
+  transferId: string;
+  sourceSessionId: string;
+  units: TravelUnitSnapshot[];
+}
+
+/** Counts an account has on the other map, used to keep population global. */
+export interface ForeignBaseline {
+  unitCount: number;
+  buildings: Array<{ type: string; level: number }>;
+}
+
 export class DatabaseService {
   private static initPromise: Promise<void> | null = null;
-  private static isSaving = false;
+
+  /**
+   * One FIFO chain per zone. Two rooms can write different zones at the same
+   * time, but two writes to the same zone must never interleave: the second
+   * sweep could otherwise be computed from a snapshot the first write has
+   * already superseded.
+   */
+  private static readonly zoneChains = new Map<string, Promise<unknown>>();
+  private static readonly zoneWrites = new Map<string, number>();
 
   /**
    * Creates the schema and enables WAL. Concurrent callers share one in-flight
@@ -60,8 +95,15 @@ export class DatabaseService {
     // columns in place so a dev database keeps its accounts and empires.
     await this.ensureUpgradeColumns();
 
+    // MAPS: the same additive treatment for zones and travel transfers.
+    await this.ensureZoneColumns();
+
     // Drop empires whose account is gone before anything reads or writes them.
     await this.pruneOrphanedPlayers();
+
+    // Entity ids are primary keys across every zone, so the sequence must know
+    // about everything already stored before the first room mints a new id.
+    await this.seedEntityIds();
 
     // Enable WAL mode in SQLite for concurrent reads and writes
     await prisma.$queryRawUnsafe('PRAGMA journal_mode = WAL;');
@@ -136,6 +178,55 @@ export class DatabaseService {
   }
 
   /**
+   * MAPS: adds the zone columns to an existing database and moves every empire
+   * that predates the split into its owner's private kingdom.
+   *
+   * The UPDATE statements are idempotent: they only touch legacy `world` rows,
+   * which no room creates any more. The old shared resource nodes are dropped
+   * and regenerated per zone on the next join.
+   */
+  private static async ensureZoneColumns() {
+    const columns: Array<[table: string, column: string, definition: string]> = [
+      ['players', 'last_zone', "TEXT NOT NULL DEFAULT 'kingdom'"],
+      ['buildings', 'zone', "TEXT NOT NULL DEFAULT 'world'"],
+      ['units', 'zone', "TEXT NOT NULL DEFAULT 'world'"],
+      ['world_resource_nodes', 'zone', "TEXT NOT NULL DEFAULT 'world'"]
+    ];
+
+    for (const [table, column, definition] of columns) {
+      const existing = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+        `PRAGMA table_info("${table}")`
+      );
+      if (existing.some((row) => row.name === column)) continue;
+
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE "${table}" ADD COLUMN "${column}" ${definition}`
+      );
+      console.log(`🗄️  [DatabaseService] Added ${table}.${column} for map zones.`);
+    }
+
+    await prisma.$executeRawUnsafe(
+      'CREATE INDEX IF NOT EXISTS "buildings_zone_owner_id_idx" ON "buildings"("zone", "owner_id");'
+    );
+    await prisma.$executeRawUnsafe(
+      'CREATE INDEX IF NOT EXISTS "units_zone_owner_id_idx" ON "units"("zone", "owner_id");'
+    );
+    await prisma.$executeRawUnsafe(
+      'CREATE INDEX IF NOT EXISTS "world_resource_nodes_zone_idx" ON "world_resource_nodes"("zone");'
+    );
+
+    await prisma.$executeRawUnsafe(
+      "UPDATE buildings SET zone = 'kingdom:' || owner_id WHERE zone = 'world';"
+    );
+    await prisma.$executeRawUnsafe(
+      "UPDATE units SET zone = 'kingdom:' || owner_id WHERE zone = 'world';"
+    );
+    await prisma.$executeRawUnsafe(
+      "DELETE FROM world_resource_nodes WHERE zone = 'world';"
+    );
+  }
+
+  /**
    * Deletes empires whose account no longer exists.
    *
    * `Player.id` is `User.id`, so a player row without a matching account is
@@ -157,12 +248,26 @@ export class DatabaseService {
     await prisma.$transaction([
       prisma.building.deleteMany({ where: { ownerId: { in: ids } } }),
       prisma.unit.deleteMany({ where: { ownerId: { in: ids } } }),
+      prisma.travelTransfer.deleteMany({ where: { ownerId: { in: ids } } }),
       prisma.player.deleteMany({ where: { id: { in: ids } } })
     ]);
 
     console.log(
       `🧹 [DatabaseService] Removed ${ids.length} orphaned empire(s) with no matching account.`
     );
+  }
+
+  /** Seeds the process-wide id sequence from every persisted entity id. */
+  private static async seedEntityIds(): Promise<void> {
+    const [buildings, units, resources] = await Promise.all([
+      prisma.building.findMany({ select: { id: true } }),
+      prisma.unit.findMany({ select: { id: true } }),
+      prisma.worldResourceNode.findMany({ select: { id: true } })
+    ]);
+
+    for (const row of buildings) entityIds.observe(row.id);
+    for (const row of units) entityIds.observe(row.id);
+    for (const row of resources) entityIds.observe(row.id);
   }
 
   /**
@@ -172,54 +277,144 @@ export class DatabaseService {
     await prisma.$disconnect();
   }
 
-  /**
-   * Loads all saved resources from database. Returns empty array if none exist.
-   */
-  public static async loadResources() {
-    await this.initialize();
-    return await prisma.worldResourceNode.findMany();
-  }
+  // ---------------------------------------------------------------------------
+  // Zone write queue
+  // ---------------------------------------------------------------------------
 
   /**
-   * Clears all saved resource nodes (e.g. when regenerating for a larger map).
+   * Serializes writes for one zone. `skipIfBusy` is what the 30s autosave uses:
+   * a slow write is allowed to finish instead of piling up behind itself, while
+   * a leave/travel write passes `false` and is always queued.
    */
-  public static async clearAllResources() {
-    await this.initialize();
-    await prisma.worldResourceNode.deleteMany({});
+  private static async withZoneQueue<T>(
+    zone: string,
+    task: () => Promise<T>,
+    skipIfBusy = false
+  ): Promise<T | undefined> {
+    if (skipIfBusy && (this.zoneWrites.get(zone) ?? 0) > 0) return undefined;
+
+    this.zoneWrites.set(zone, (this.zoneWrites.get(zone) ?? 0) + 1);
+    const previous = this.zoneChains.get(zone) ?? Promise.resolve();
+    const run = previous.catch(() => undefined).then(task);
+    this.zoneChains.set(zone, run.catch(() => undefined));
+
+    try {
+      return await run;
+    } finally {
+      const remaining = (this.zoneWrites.get(zone) ?? 1) - 1;
+      if (remaining <= 0) this.zoneWrites.delete(zone);
+      else this.zoneWrites.set(zone, remaining);
+    }
   }
 
-  /**
-   * Persists all initial or updated resource nodes.
-   */
-  public static async saveAllResources(nodes: ResourceNodeState[]) {
+  /** Awaits every write already committed to this zone's queue. */
+  public static async awaitZone(zone: string): Promise<void> {
+    await (this.zoneChains.get(zone) ?? Promise.resolve()).catch(() => undefined);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Resources
+  // ---------------------------------------------------------------------------
+
+  /** Loads the resource nodes of one map. */
+  public static async loadResources(zone = 'world') {
+    await this.initialize();
+    return await prisma.worldResourceNode.findMany({ where: { zone } });
+  }
+
+  /** Clears the resource nodes of one map, or every map when `zone` is omitted. */
+  public static async clearAllResources(zone?: string) {
+    await this.initialize();
+    await prisma.worldResourceNode.deleteMany({ where: zone ? { zone } : undefined });
+  }
+
+  /** Inserts a freshly generated batch of resource nodes in one statement. */
+  public static async saveAllResources(nodes: ResourceNodeState[], zone = 'world') {
     await this.initialize();
     if (nodes.length === 0) return;
 
-    await prisma.$transaction(
-      nodes.map((node) =>
-        prisma.worldResourceNode.upsert({
-          where: { id: node.id },
-          create: {
+    await prisma.worldResourceNode.createMany({
+      data: nodes.map((node) => ({
+        id: node.id,
+        zone,
+        type: node.type,
+        resourceType: node.resourceType,
+        gridX: node.gridX,
+        gridY: node.gridY,
+        remainingAmount: node.remainingAmount,
+        maxAmount: node.maxAmount
+      }))
+    });
+  }
+
+  /**
+   * Upserts and sweeps the resource nodes of exactly one zone.
+   *
+   * A zone holds well over a thousand nodes, and almost none of them change
+   * between two autosaves. Upserting every row per save used to block the zone's
+   * write queue for seconds (a player's leave waits behind it), so the current
+   * rows are read once and only new/changed nodes are written.
+   */
+  private static async saveZoneResources(zone: string, nodes: ResourceNodeState[]) {
+    if (nodes.length > 0) {
+      const existing = await prisma.worldResourceNode.findMany({
+        where: { zone },
+        select: { id: true, remainingAmount: true }
+      });
+      const knownAmounts = new Map(
+        existing.map((row) => [row.id, row.remainingAmount] as const)
+      );
+
+      const created: ResourceNodeState[] = [];
+      const changed: ResourceNodeState[] = [];
+      for (const node of nodes) {
+        const known = knownAmounts.get(node.id);
+        if (known === undefined) created.push(node);
+        else if (known !== node.remainingAmount) changed.push(node);
+      }
+
+      if (created.length > 0) {
+        await prisma.worldResourceNode.createMany({
+          data: created.map((node) => ({
             id: node.id,
+            zone,
             type: node.type,
             resourceType: node.resourceType,
             gridX: node.gridX,
             gridY: node.gridY,
             remainingAmount: node.remainingAmount,
             maxAmount: node.maxAmount
-          },
-          update: {
-            remainingAmount: node.remainingAmount
-          }
-        })
-      )
-    );
+          }))
+        });
+      }
+
+      if (changed.length > 0) {
+        await prisma.$transaction(
+          changed.map((node) =>
+            prisma.worldResourceNode.update({
+              where: { id: node.id },
+              data: { remainingAmount: node.remainingAmount }
+            })
+          )
+        );
+      }
+    }
+
+    await prisma.worldResourceNode.deleteMany({
+      where: { zone, id: { notIn: nodes.map((node) => node.id) } }
+    });
   }
+
+  // ---------------------------------------------------------------------------
+  // Players and entities
+  // ---------------------------------------------------------------------------
 
   /**
    * Loads an existing player and their empire (buildings & units) by account id.
    *
    * The account id, not the display name: a rename must not orphan an empire.
+   * The result intentionally includes every zone; callers filter when they need
+   * one map's slice.
    */
   public static async loadPlayerProfile(playerId: string) {
     await this.initialize();
@@ -233,18 +428,25 @@ export class DatabaseService {
   }
 
   /**
-   * Loads all players, buildings, and units from the database on room bootstrap.
+   * Loads players whose empire may live on `zone`, optionally narrowed to one
+   * account. Battlefield rooms load every participant (including offline ones,
+   * whose forward base must still be attackable); kingdom rooms load only the
+   * owner.
    */
-  public static async loadAllWorldEntities() {
+  public static async loadAllWorldEntities(zone?: string, ownerId?: string) {
     await this.initialize();
-    const players = await prisma.player.findMany({
+    return await prisma.player.findMany({
+      where: ownerId ? { id: ownerId } : undefined,
       include: {
-        buildings: true,
-        units: true
+        buildings: zone ? { where: { zone } } : true,
+        units: zone ? { where: { zone } } : true
       }
     });
+  }
 
-    return players;
+  /** Zone-scoped alias used by the room restore path. */
+  public static async loadZoneEntities(zone: string, ownerId?: string) {
+    return this.loadAllWorldEntities(zone, ownerId);
   }
 
   /**
@@ -253,191 +455,438 @@ export class DatabaseService {
    * `player.id` is the account id and the only ownership key: it is the primary
    * key of `Player` and the `ownerId` foreign key of every row synced below.
    * `player.name` is display text, so a rename just updates the column.
+   *
+   * `zone` is required for correctness: the sweep only deletes rows of this
+   * account on this map, never the same account's units standing on the other.
    */
   public static async savePlayerEmpire(
     player: PlayerState,
     buildings: BuildingState[],
-    units: UnitState[]
+    units: UnitState[],
+    zone = 'world',
+    lastZone = zone
   ) {
-    await this.initialize();
-    const ownerId = player.id;
-
-    try {
-      await prisma.$transaction(async (tx) => {
-        // 1. Upsert player record
-        await tx.player.upsert({
-          where: { id: ownerId },
-          create: {
-            id: ownerId,
-            name: player.name,
-            color: player.color,
-            wood: player.wood,
-            food: player.food,
-            gold: player.gold,
-            stone: player.stone,
-            population: player.population,
-            populationCap: player.populationCap,
-            unitLevels: serializeUnitLevels(player.unitLevels),
-            researchUnitType: player.researchUnitType,
-            researchProgressMs: player.researchProgressMs,
-            researchTimeMs: player.researchTimeMs,
-            isOnline: player.isOnline
-          },
-          update: {
-            name: player.name,
-            color: player.color,
-            wood: player.wood,
-            food: player.food,
-            gold: player.gold,
-            stone: player.stone,
-            population: player.population,
-            populationCap: player.populationCap,
-            unitLevels: serializeUnitLevels(player.unitLevels),
-            researchUnitType: player.researchUnitType,
-            researchProgressMs: player.researchProgressMs,
-            researchTimeMs: player.researchTimeMs,
-            isOnline: player.isOnline
-          }
-        });
-
-        // 2. Sync buildings: delete removed ones, upsert active ones
-        const currentBuildingIds = buildings.map((b) => b.id);
-        await tx.building.deleteMany({
-          where: {
-            ownerId,
-            id: { notIn: currentBuildingIds }
-          }
-        });
-
-        for (const b of buildings) {
-          await tx.building.upsert({
-            where: { id: b.id },
-            create: {
-              id: b.id,
-              ownerId,
-              type: b.type,
-              gridX: b.gridX,
-              gridY: b.gridY,
-              sizeX: b.sizeX,
-              sizeY: b.sizeY,
-              hp: b.hp,
-              maxHp: b.maxHp,
-              level: b.level,
-              upgradeProgressMs: b.upgradeProgressMs,
-              upgradeTimeMs: b.upgradeTimeMs,
-              isConstructed: b.isConstructed,
-              constructionProgress: b.constructionProgress
-            },
-            update: {
-              hp: b.hp,
-              maxHp: b.maxHp,
-              level: b.level,
-              upgradeProgressMs: b.upgradeProgressMs,
-              upgradeTimeMs: b.upgradeTimeMs,
-              isConstructed: b.isConstructed,
-              constructionProgress: b.constructionProgress
-            }
-          });
-        }
-
-        // 3. Sync units: delete killed ones, upsert active ones
-        const currentUnitIds = units.map((u) => u.id);
-        await tx.unit.deleteMany({
-          where: {
-            ownerId,
-            id: { notIn: currentUnitIds }
-          }
-        });
-
-        for (const u of units) {
-          await tx.unit.upsert({
-            where: { id: u.id },
-            create: {
-              id: u.id,
-              ownerId,
-              type: u.type,
-              x: u.x,
-              y: u.y,
-              speed: u.speed,
-              level: u.level,
-              hp: u.hp,
-              maxHp: u.maxHp,
-              actionState: u.actionState
-            },
-            update: {
-              x: u.x,
-              y: u.y,
-              level: u.level,
-              hp: u.hp,
-              maxHp: u.maxHp,
-              actionState: u.actionState
-            }
-          });
-        }
-      });
-    } catch (err) {
-      console.error(`❌ [DatabaseService] Failed to save empire for ${player.name} (${ownerId}):`, err);
-    }
+    await this.withZoneQueue(zone, async () => {
+      await this.initialize();
+      await this.savePlayerAccountInternal(player, zone, lastZone);
+      await this.saveZoneEntitiesInternal(zone, player.id, buildings, units);
+    });
   }
 
   /**
-   * Persists entire WorldState to SQLite (Auto-save snapshot).
+   * Persists one account's buildings/units on a zone without touching the
+   * account row. Used when a room is left because of travel: the travel
+   * transaction already wrote the authoritative resources and destination, and
+   * re-writing them from the source room would roll the player back.
    */
-  public static async saveFullWorldState(state: WorldState) {
-    if (this.isSaving) return;
-    this.isSaving = true;
-
-    try {
+  public static async saveZonePlayerEntities(
+    zone: string,
+    ownerId: string,
+    buildings: BuildingState[],
+    units: UnitState[]
+  ) {
+    await this.withZoneQueue(zone, async () => {
       await this.initialize();
+      await this.saveZoneEntitiesInternal(zone, ownerId, buildings, units);
+    });
+  }
 
-      // One player entry per account, keyed by account id; entities are matched
-      // against the same id, so no name lookup is needed here.
-      for (const playerState of state.players.values()) {
-        const ownedBuildings: BuildingState[] = [];
-        state.buildings.forEach((b: BuildingState) => {
-          if (b.ownerId === playerState.id) {
-            ownedBuildings.push(b);
+  /** Persists only the account row (resources, research, last zone). */
+  public static async savePlayerAccount(player: PlayerState, zone: string) {
+    await this.withZoneQueue(zone, async () => {
+      await this.initialize();
+      await this.savePlayerAccountInternal(player, zone);
+    });
+  }
+
+  private static async savePlayerAccountInternal(
+    player: PlayerState,
+    zone: string,
+    lastZone = zone
+  ) {
+    const ownerId = player.id;
+    await prisma.player.upsert({
+      where: { id: ownerId },
+      create: {
+        id: ownerId,
+        name: player.name,
+        color: player.color,
+        wood: player.wood,
+        food: player.food,
+        gold: player.gold,
+        stone: player.stone,
+        population: player.population,
+        populationCap: player.populationCap,
+        unitLevels: serializeUnitLevels(player.unitLevels),
+        researchUnitType: player.researchUnitType,
+        researchProgressMs: player.researchProgressMs,
+        researchTimeMs: player.researchTimeMs,
+        isOnline: player.isOnline,
+        lastZone
+      },
+      update: {
+        name: player.name,
+        color: player.color,
+        wood: player.wood,
+        food: player.food,
+        gold: player.gold,
+        stone: player.stone,
+        population: player.population,
+        populationCap: player.populationCap,
+        unitLevels: serializeUnitLevels(player.unitLevels),
+        researchUnitType: player.researchUnitType,
+        researchProgressMs: player.researchProgressMs,
+        researchTimeMs: player.researchTimeMs,
+        isOnline: player.isOnline,
+        lastZone
+      }
+    });
+  }
+
+  /**
+   * Upserts one account's buildings and units for `zone`, deleting whatever it
+   * no longer has there. This is the only entity sweep: every caller passes a
+   * zone, so a save on one map can never delete another map's rows.
+   */
+  private static async saveZoneEntitiesInternal(
+    zone: string,
+    ownerId: string,
+    buildings: BuildingState[],
+    units: UnitState[]
+  ) {
+    await prisma.$transaction(async (tx) => {
+      const currentBuildingIds = buildings.map((b) => b.id);
+      await tx.building.deleteMany({
+        where: {
+          ownerId,
+          zone,
+          id: { notIn: currentBuildingIds }
+        }
+      });
+
+      for (const b of buildings) {
+        await tx.building.upsert({
+          where: { id: b.id },
+          create: {
+            id: b.id,
+            ownerId,
+            zone,
+            type: b.type,
+            gridX: b.gridX,
+            gridY: b.gridY,
+            sizeX: b.sizeX,
+            sizeY: b.sizeY,
+            hp: b.hp,
+            maxHp: b.maxHp,
+            level: b.level,
+            upgradeProgressMs: b.upgradeProgressMs,
+            upgradeTimeMs: b.upgradeTimeMs,
+            isConstructed: b.isConstructed,
+            constructionProgress: b.constructionProgress
+          },
+          update: {
+            zone,
+            // Positions are stable for player-built structures, but the
+            // server-owned kingdom portal is re-positioned to the map edge on
+            // join after a layout change, so the move must persist.
+            gridX: b.gridX,
+            gridY: b.gridY,
+            sizeX: b.sizeX,
+            sizeY: b.sizeY,
+            hp: b.hp,
+            maxHp: b.maxHp,
+            level: b.level,
+            upgradeProgressMs: b.upgradeProgressMs,
+            upgradeTimeMs: b.upgradeTimeMs,
+            isConstructed: b.isConstructed,
+            constructionProgress: b.constructionProgress
+          }
+        });
+      }
+
+      const currentUnitIds = units.map((u) => u.id);
+      await tx.unit.deleteMany({
+        where: {
+          ownerId,
+          zone,
+          id: { notIn: currentUnitIds }
+        }
+      });
+
+      for (const u of units) {
+        await tx.unit.upsert({
+          where: { id: u.id },
+          create: {
+            id: u.id,
+            ownerId,
+            zone,
+            type: u.type,
+            x: u.x,
+            y: u.y,
+            speed: u.speed,
+            level: u.level,
+            hp: u.hp,
+            maxHp: u.maxHp,
+            actionState: u.actionState
+          },
+          update: {
+            zone,
+            x: u.x,
+            y: u.y,
+            level: u.level,
+            hp: u.hp,
+            maxHp: u.maxHp,
+            actionState: u.actionState
+          }
+        });
+      }
+    });
+  }
+
+  /**
+   * Persists an entire zone snapshot: every building/unit the room holds,
+   * including entities whose owner is offline (a battlefield forward base must
+   * not be erased just because its owner is not in `state.players`), plus the
+   * account rows of everyone currently connected.
+   */
+  public static async saveFullWorldState(
+    state: WorldState,
+    zone = state.zoneId || 'world',
+    options: { skipIfBusy?: boolean; skipAccountFor?: Set<string> } = {}
+  ) {
+    await this.withZoneQueue(
+      zone,
+      async () => {
+        await this.initialize();
+
+        const entitiesByOwner = new Map<
+          string,
+          { buildings: BuildingState[]; units: UnitState[] }
+        >();
+        const groupFor = (ownerId: string) => {
+          let group = entitiesByOwner.get(ownerId);
+          if (!group) {
+            group = { buildings: [], units: [] };
+            entitiesByOwner.set(ownerId, group);
+          }
+          return group;
+        };
+
+        state.buildings.forEach((building: BuildingState) => {
+          groupFor(building.ownerId).buildings.push(building);
+        });
+        state.units.forEach((unit: UnitState) => {
+          groupFor(unit.ownerId).units.push(unit);
+        });
+
+        // Online players are always swept, even with no entities left, so their
+        // account row is saved and stale rows are removed. Snapshot first: this
+        // method awaits SQLite and a leave/join would mutate the MapSchema.
+        for (const playerState of Array.from(state.players.values())) {
+          if (!entitiesByOwner.has(playerState.id)) {
+            entitiesByOwner.set(playerState.id, { buildings: [], units: [] });
+          }
+        }
+
+        for (const [ownerId, group] of entitiesByOwner) {
+          const player = state.players.get(ownerId);
+          // A player who travelled away must not have the source room's stale
+          // resources written back over the travel commit / destination room.
+          if (player && !options.skipAccountFor?.has(ownerId)) {
+            await this.savePlayerAccountInternal(player, zone);
+          }
+          await this.saveZoneEntitiesInternal(zone, ownerId, group.buildings, group.units);
+        }
+
+        const nodes: ResourceNodeState[] = [];
+        state.resourceNodes.forEach((node: ResourceNodeState) => nodes.push(node));
+        await this.saveZoneResources(zone, nodes);
+
+        console.log(
+          `💾 [DatabaseService] ${zone} auto-saved (Players: ${state.players.size}, Buildings: ${state.buildings.size}, Units: ${state.units.size})`
+        );
+      },
+      options.skipIfBusy === true
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Travel
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Commits a travel order atomically: the account row gets the new last zone,
+   * the selected unit rows leave the source zone, and a transfer row holds the
+   * snapshot the destination will materialise. If this throws, nothing moved.
+   */
+  public static async commitTravel(input: CommitTravelInput): Promise<void> {
+    await this.withZoneQueue(input.fromZone, async () => {
+      await this.initialize();
+      const ids = input.units.map((unit) => unit.id);
+
+      await prisma.$transaction(async (tx) => {
+        await tx.player.upsert({
+          where: { id: input.ownerId },
+          create: {
+            id: input.ownerId,
+            name: input.player.name,
+            color: input.player.color,
+            wood: input.player.wood,
+            food: input.player.food,
+            gold: input.player.gold,
+            stone: input.player.stone,
+            population: input.player.population,
+            populationCap: input.player.populationCap,
+            unitLevels: serializeUnitLevels(input.player.unitLevels),
+            researchUnitType: input.player.researchUnitType,
+            researchProgressMs: input.player.researchProgressMs,
+            researchTimeMs: input.player.researchTimeMs,
+            isOnline: input.player.isOnline,
+            lastZone: input.toZone
+          },
+          update: {
+            wood: input.player.wood,
+            food: input.player.food,
+            gold: input.player.gold,
+            stone: input.player.stone,
+            population: input.player.population,
+            populationCap: input.player.populationCap,
+            unitLevels: serializeUnitLevels(input.player.unitLevels),
+            researchUnitType: input.player.researchUnitType,
+            researchProgressMs: input.player.researchProgressMs,
+            researchTimeMs: input.player.researchTimeMs,
+            lastZone: input.toZone
           }
         });
 
-        const ownedUnits: UnitState[] = [];
-        state.units.forEach((u: UnitState) => {
-          if (u.ownerId === playerState.id) {
-            ownedUnits.push(u);
+        if (ids.length > 0) {
+          await tx.unit.deleteMany({
+            where: { ownerId: input.ownerId, zone: input.fromZone, id: { in: ids } }
+          });
+        }
+
+        await tx.travelTransfer.create({
+          data: {
+            id: input.transferId,
+            ownerId: input.ownerId,
+            fromZone: input.fromZone,
+            toZone: input.toZone,
+            sourceSessionId: input.sourceSessionId,
+            units: JSON.stringify(input.units)
           }
         });
+      });
+    });
+  }
 
-        await this.savePlayerEmpire(playerState, ownedBuildings, ownedUnits);
-      }
+  /**
+   * Materialises every pending transfer for this account on `zone` and deletes
+   * the transfer rows in the same transaction. Positions come from `place`,
+   * which the room derives from the destination portal.
+   *
+   * Idempotent: a second call finds no rows and returns an empty list.
+   */
+  public static async consumeTravelTransfers(
+    ownerId: string,
+    zone: string,
+    place: (unit: TravelUnitSnapshot, index: number) => { x: number; y: number }
+  ): Promise<TravelUnitSnapshot[]> {
+    const result = await this.withZoneQueue(zone, async () => {
+      await this.initialize();
+      const transfers = await prisma.travelTransfer.findMany({
+        where: { ownerId, toZone: zone },
+        orderBy: { createdAt: 'asc' }
+      });
+      if (transfers.length === 0) return [] as TravelUnitSnapshot[];
 
-      // Sync active resources
-      const activeResIds: string[] = [];
-      const resList: ResourceNodeState[] = [];
-      state.resourceNodes.forEach((res: ResourceNodeState) => {
-        activeResIds.push(res.id);
-        resList.push(res);
+      const consumed: TravelUnitSnapshot[] = [];
+
+      await prisma.$transaction(async (tx) => {
+        for (const transfer of transfers) {
+          let units: TravelUnitSnapshot[];
+          try {
+            units = JSON.parse(transfer.units) as TravelUnitSnapshot[];
+          } catch {
+            units = [];
+          }
+
+          for (let index = 0; index < units.length; index++) {
+            const unit = units[index];
+            const position = place(unit, index);
+
+            await tx.unit.upsert({
+              where: { id: unit.id },
+              create: {
+                id: unit.id,
+                ownerId,
+                zone,
+                type: unit.type,
+                x: position.x,
+                y: position.y,
+                speed: unit.speed,
+                level: unit.level,
+                hp: unit.hp,
+                maxHp: unit.maxHp,
+                actionState: 'IDLE'
+              },
+              update: {
+                zone,
+                x: position.x,
+                y: position.y,
+                level: unit.level,
+                hp: unit.hp,
+                maxHp: unit.maxHp,
+                actionState: 'IDLE'
+              }
+            });
+
+            consumed.push(unit);
+          }
+
+          await tx.travelTransfer.delete({ where: { id: transfer.id } });
+        }
       });
 
-      // Delete depleted resource nodes from DB
-      await prisma.worldResourceNode.deleteMany({
-        where: { id: { notIn: activeResIds } }
-      });
+      return consumed;
+    });
 
-      // Update remaining amounts
-      for (const res of resList) {
-        await prisma.worldResourceNode.updateMany({
-          where: { id: res.id },
-          data: { remainingAmount: res.remainingAmount }
-        });
+    return result ?? [];
+  }
+
+  /**
+   * Population and capacity this account holds on maps other than `zone`, plus
+   * units currently in a transfer heading somewhere else. Used to keep the
+   * population counter global while only one map is simulated at a time.
+   */
+  public static async loadForeignBaseline(ownerId: string, zone: string): Promise<ForeignBaseline> {
+    await this.initialize();
+
+    const [unitCount, buildings, transfers] = await Promise.all([
+      prisma.unit.count({ where: { ownerId, zone: { not: zone } } }),
+      prisma.building.findMany({
+        where: { ownerId, zone: { not: zone }, isConstructed: true },
+        select: { type: true, level: true }
+      }),
+      prisma.travelTransfer.findMany({
+        where: { ownerId, toZone: { not: zone } },
+        select: { units: true }
+      })
+    ]);
+
+    let transferredUnits = 0;
+    for (const transfer of transfers) {
+      try {
+        const units = JSON.parse(transfer.units) as TravelUnitSnapshot[];
+        transferredUnits += units.length;
+      } catch {
+        // A malformed snapshot is ignored; the row is cleaned up by the
+        // destination's consume pass or by a full reset.
       }
-
-      console.log(
-        `💾 [DatabaseService] World state auto-saved at ${new Date().toLocaleTimeString()} (Players: ${state.players.size}, Buildings: ${state.buildings.size}, Units: ${state.units.size})`
-      );
-    } catch (err) {
-      console.error('❌ [DatabaseService] World save failed:', err);
-    } finally {
-      this.isSaving = false;
     }
+
+    return {
+      unitCount: unitCount + transferredUnits,
+      buildings
+    };
   }
 }

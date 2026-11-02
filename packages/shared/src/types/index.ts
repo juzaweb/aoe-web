@@ -7,6 +7,15 @@ export interface Resources {
   stone: number;
 }
 
+/**
+ * Which map a room simulates. A kingdom is private to one account; the
+ * battlefield is the single shared PvP map every kingdom's portal leads to.
+ */
+export type MapZoneKind = 'kingdom' | 'battlefield';
+
+/** Room names registered on the Colyseus server, one per zone kind. */
+export type WorldRoomName = 'kingdom_room' | 'battlefield_room';
+
 export type BuildingType =
   | 'TOWN_CENTER'
   | 'BARRACKS'
@@ -18,7 +27,12 @@ export type BuildingType =
   /** ECO: food drop-off, placed next to berries or a cluster of farms. */
   | 'MILL'
   /** ECO: gold and stone drop-off, placed between two mines. */
-  | 'MINING_CAMP';
+  | 'MINING_CAMP'
+  /**
+   * Travel gateway between a kingdom and the battlefield. Server-created, never
+   * buildable and never attackable (see `BuildingBlueprint.attackable`).
+   */
+  | 'PORTAL';
 
 export type UnitType = 'VILLAGER' | 'SPEARMAN' | 'ARCHER' | 'CAVALRY';
 
@@ -84,6 +98,12 @@ export interface BuildingBlueprint {
    * Re-planting a depleted farm costs the building's own `cost` again.
    */
   gatherCapacity?: number;
+  /**
+   * Whether units may order an attack against this building. Unset means true.
+   * Portals are travel infrastructure owned by their player, so making them
+   * untargetable keeps a misclick from stranding an empire.
+   */
+  attackable?: boolean;
   description: string;
 }
 
@@ -264,6 +284,28 @@ export interface SetStancePayload {
   stance: UnitStance;
 }
 
+/**
+ * Travel order: the selected units step through the player's own portal and are
+ * moved to the other map. `unitIds` may be empty, which moves the player alone.
+ * The destination is derived server-side from the room's current zone, so a
+ * client cannot choose an arbitrary map.
+ */
+export interface TravelPayload {
+  portalId: string;
+  unitIds: string[];
+}
+
+/**
+ * Sent after the server has committed the transfer to SQLite. The client only
+ * leaves the current room once this arrives, because leaving earlier would drop
+ * the units from a snapshot that has not been saved yet.
+ */
+export interface TravelReadyPayload {
+  transferId: string;
+  destination: MapZoneKind;
+  roomName: WorldRoomName;
+}
+
 export enum NetworkMessage {
   PLACE_BUILDING = 'PLACE_BUILDING',
   MOVE_UNITS = 'MOVE_UNITS',
@@ -282,6 +324,8 @@ export enum NetworkMessage {
   STOP_UNITS = 'STOP_UNITS',
   SET_RALLY_POINT = 'SET_RALLY_POINT',
   SET_STANCE = 'SET_STANCE',
+  TRAVEL = 'TRAVEL',
+  TRAVEL_READY = 'TRAVEL_READY',
   ERROR_NOTIFICATION = 'ERROR_NOTIFICATION',
   SYSTEM_ANNOUNCEMENT = 'SYSTEM_ANNOUNCEMENT'
 }

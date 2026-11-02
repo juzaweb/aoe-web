@@ -99,6 +99,7 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
 
         // 2. Draw Resource Nodes
         room.state.resourceNodes?.forEach((res: any) => {
+          if (res.remainingAmount <= 0) return;
           if (res.type === 'TREE') {
             ctx.fillStyle = '#166534';
             ctx.fillRect(res.gridX * scaleX, res.gridY * scaleY, 2, 2);
@@ -122,6 +123,22 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
         const colorFor = (ownerId: string) =>
           scene?.ownerColorCss(ownerId) ?? colorToCss(UNKNOWN_OWNER_COLOR);
         room.state.buildings?.forEach((b: any) => {
+          // MAPS: portals are travel infrastructure, drawn as a cyan diamond so
+          // they stand out from the owner-coloured building blocks.
+          if (b.type === 'PORTAL') {
+            const cx = (b.gridX + b.sizeX / 2) * scaleX;
+            const cy = (b.gridY + b.sizeY / 2) * scaleY;
+            ctx.fillStyle = '#22d3ee';
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - 4);
+            ctx.lineTo(cx + 4, cy);
+            ctx.lineTo(cx, cy + 4);
+            ctx.lineTo(cx - 4, cy);
+            ctx.closePath();
+            ctx.fill();
+            return;
+          }
+
           ctx.fillStyle = colorFor(b.ownerId);
           const bw = Math.max(3.5, b.sizeX * scaleX);
           const bh = Math.max(3.5, b.sizeY * scaleY);
@@ -198,10 +215,17 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
     onCommandAtGrid(grid.gx, grid.gy);
   };
 
+  const zoneKind = (room?.state as { zoneId?: string } | undefined)?.zoneId;
+  const zoneLabel = zoneKind === 'battlefield' ? 'CHIẾN TRƯỜNG' : 'VƯƠNG QUỐC';
+
   return (
     <div className="aoe-panel p-2 rounded-lg pointer-events-auto flex flex-col items-center">
-      <div className="font-medieval text-[10px] font-bold text-amber-400 mb-1 tracking-wider">
-        BẢN ĐỒ THẾ GIỚI
+      <div
+        className={`font-medieval text-[10px] font-bold mb-1 tracking-wider ${
+          zoneKind === 'battlefield' ? 'text-red-400' : 'text-amber-400'
+        }`}
+      >
+        BẢN ĐỒ · {zoneLabel}
       </div>
       <canvas
         ref={canvasRef}

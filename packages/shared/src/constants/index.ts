@@ -1,10 +1,12 @@
 import {
   BuildingBlueprint,
   BuildingType,
+  MapZoneKind,
   Resources,
   UnitBlueprint,
   UnitStance,
-  UnitType
+  UnitType,
+  WorldRoomName
 } from '../types/index.js';
 
 export const TILE_WIDTH = 128;
@@ -14,6 +16,45 @@ export const MAP_GRID_WIDTH = 220;
 export const MAP_GRID_HEIGHT = 220;
 
 export const SERVER_TICK_RATE = 20; // 20 ticks per second (50ms per tick)
+
+// ---------------------------------------------------------------------------
+// Maps and travel
+// ---------------------------------------------------------------------------
+
+export const KINGDOM_ROOM_NAME: WorldRoomName = 'kingdom_room';
+export const BATTLEFIELD_ROOM_NAME: WorldRoomName = 'battlefield_room';
+
+export const BATTLEFIELD_ZONE = 'battlefield';
+export const KINGDOM_ZONE_PREFIX = 'kingdom:';
+
+/** Persistent zone id of one account's private kingdom. */
+export function zoneForOwner(ownerId: string): string {
+  return `${KINGDOM_ZONE_PREFIX}${ownerId}`;
+}
+
+/** Which kind of map a zone id describes. */
+export function zoneKindOf(zone: string): MapZoneKind {
+  return zone === BATTLEFIELD_ZONE ? 'battlefield' : 'kingdom';
+}
+
+/** The other map a player can travel to from `zone`. */
+export function otherZone(zone: string, ownerId: string): string {
+  return zoneKindOf(zone) === 'kingdom' ? BATTLEFIELD_ZONE : zoneForOwner(ownerId);
+}
+
+/** Room a player joins after leaving `zone`. */
+export function roomNameForZone(zone: string): WorldRoomName {
+  return zoneKindOf(zone) === 'kingdom' ? KINGDOM_ROOM_NAME : BATTLEFIELD_ROOM_NAME;
+}
+
+/** Upper bound on units one travel order may move; matches `MAX_SELECTION`. */
+export const MAX_TRAVEL_UNITS = 120;
+
+/** Server-side cooldown between two travel orders from the same account. */
+export const TRAVEL_COOLDOWN_MS = 2000;
+
+/** How long a depleted resource node stays empty before it refills. */
+export const RESOURCE_RESPAWN_MS = 90_000;
 
 /**
  * Upper bound on how many unit ids a single client command may reference.
@@ -241,6 +282,25 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     // it would just make the player pick the worse of the two spots.
     dropOffs: ['gold', 'stone'],
     description: 'Gold and stone drop-off. Serves both mine types from one spot.'
+  },
+  // Server-created gateway. It has no cost because players never place it, and
+  // it is not attackable so a raid cannot strand an empire on the other map.
+  PORTAL: {
+    type: 'PORTAL',
+    name: 'Portal',
+    sizeX: 2,
+    sizeY: 2,
+    cost: { wood: 0, food: 0, gold: 0, stone: 0 },
+    buildTimeMs: 0,
+    maxHp: 99999,
+    populationProvided: 0,
+    trainableUnits: [],
+    attackPower: 0,
+    attackRange: 0,
+    attackCooldownMs: 0,
+    dropOffs: [],
+    attackable: false,
+    description: 'Gateway between your kingdom and the shared battlefield.'
   }
 };
 

@@ -73,6 +73,11 @@ export class CameraController {
   // Bookmarks
   // ---------------------------------------------------------------------------
 
+  /** Drops every saved view; bookmarks are coordinates of the previous map. */
+  resetBookmarks() {
+    this.bookmarks.clear();
+  }
+
   /** Stores the current camera centre and zoom under `slot` (1-based). */
   saveBookmark(slot: number) {
     const camera = this.camera;

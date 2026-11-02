@@ -94,7 +94,7 @@ export class EntityRenderer {
     }
   }
 
-  createResourceNodeSprite(id: string, node: any) {
+  createResourceNodeSprite(id: string, node: any, cb?: any) {
     const screenPos = gridToScreen(node.gridX, node.gridY);
     let textureKey = 'res_tree';
     let offsetY = -42;
@@ -133,6 +133,15 @@ export class EntityRenderer {
     container.setData('entityType', 'resource');
     container.setData('resourceType', node.type);
     container.setData('visualCenterY', offsetY);
+
+    // A depleted node stays in the snapshot (so it can respawn) but must not be
+    // drawn or hit-tested while it is empty.
+    container.setVisible(node.remainingAmount > 0);
+    if (cb) {
+      cb.listen(node, 'remainingAmount', () => {
+        container.setVisible(node.remainingAmount > 0);
+      });
+    }
 
     this.scene.resourceSprites.set(id, container);
   }
@@ -180,6 +189,9 @@ export class EntityRenderer {
 
     const img = scene.add.image(0, offsetY, textureKey);
     img.setScale(scale);
+    // D8: the portal borrows the tower sheet; the tint is what makes it read as
+    // travel infrastructure rather than a defensive building.
+    if (building.type === 'PORTAL') img.setTint(0xc084fc);
     container.add(img);
     // ECO-01: kept so the gather state of a field can be drawn without
     // rebuilding the container.

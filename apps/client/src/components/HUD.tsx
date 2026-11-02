@@ -4,6 +4,8 @@ import { Axe, Drumstick, Coins, Mountain, Users, ShieldCheck, Wifi } from 'lucid
 interface HUDProps {
   playerName: string;
   playerColor: string;
+  /** MAPS: "VƯƠNG QUỐC" or "CHIẾN TRƯỜNG", so the map is never ambiguous. */
+  zoneLabel: string;
   wood: number;
   food: number;
   gold: number;
@@ -20,6 +22,7 @@ interface HUDProps {
 export const HUD: React.FC<HUDProps> = ({
   playerName,
   playerColor,
+  zoneLabel,
   wood,
   food,
   gold,
@@ -40,6 +43,15 @@ export const HUD: React.FC<HUDProps> = ({
         />
         <span className="font-medieval text-amber-300 font-bold tracking-wide text-base">
           {playerName || 'Emperor'}
+        </span>
+        <span
+          className={`text-[9px] font-bold tracking-widest px-1.5 py-0.5 rounded border ${
+            zoneLabel === 'CHIẾN TRƯỜNG'
+              ? 'text-red-300 border-red-700/70 bg-red-950/50'
+              : 'text-emerald-300 border-emerald-700/70 bg-emerald-950/50'
+          }`}
+        >
+          {zoneLabel}
         </span>
       </div>
 

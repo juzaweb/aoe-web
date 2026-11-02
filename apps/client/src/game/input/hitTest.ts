@@ -134,6 +134,9 @@ export function findResourceAt(
   let foundId: string | null = null;
   scene.room.state.resourceNodes.forEach((res: any, resId: string) => {
     if (foundId) return;
+    // Depleted nodes stay in the snapshot until they respawn, but they are not
+    // visible and must not be selectable or harvestable.
+    if (res.remainingAmount <= 0) return;
     const resSprite = scene.resourceSprites.get(resId);
     if (resSprite) {
       const centerY = res.type === 'TREE' ? resSprite.y - 45 : resSprite.y - 18;

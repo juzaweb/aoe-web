@@ -132,6 +132,8 @@ export class SelectionController {
     if (scene.room) {
       scene.room.state.resourceNodes.forEach((res: any, resId: string) => {
         if (clickedResId) return;
+        // Empty nodes are only waiting for their respawn; the sprite is hidden.
+        if (res.remainingAmount <= 0) return;
         const resSprite = scene.resourceSprites.get(resId);
         if (resSprite) {
           const centerY = res.type === 'TREE' ? resSprite.y - 45 : resSprite.y - 18;

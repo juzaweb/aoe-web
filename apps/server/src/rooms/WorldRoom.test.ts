@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BUILDING_BLUEPRINTS,
   MAP_GRID_WIDTH,
@@ -23,6 +23,8 @@ import { PlayerState } from '../schema/PlayerState.js';
 import { BuildingState } from '../schema/BuildingState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
+import { accountSaves, accountSessions } from './AccountSessions.js';
+import { zonePersistence } from './ZonePersistence.js';
 
 // The join/leave ownership tests at the end of this file must never touch
 // SQLite. Only the room's persistence entry points are stubbed; every other test
@@ -31,9 +33,20 @@ vi.mock('../services/DatabaseService.js', () => ({
   DatabaseService: {
     loadPlayerProfile: vi.fn().mockResolvedValue(null),
     savePlayerEmpire: vi.fn().mockResolvedValue(undefined),
-    saveFullWorldState: vi.fn().mockResolvedValue(undefined)
+    saveZonePlayerEntities: vi.fn().mockResolvedValue(undefined),
+    saveFullWorldState: vi.fn().mockResolvedValue(undefined),
+    loadForeignBaseline: vi.fn().mockResolvedValue({ unitCount: 0, buildings: [] }),
+    consumeTravelTransfers: vi.fn().mockResolvedValue([]),
+    commitTravel: vi.fn().mockResolvedValue(undefined)
   }
 }));
+
+// The session gate is process-wide now, so state must not leak between tests.
+beforeEach(() => {
+  accountSessions.reset();
+  accountSaves.reset();
+  zonePersistence.reset();
+});
 
 /**
  * These tests drive `WorldRoom` without `onCreate()`: that method wires the
@@ -583,7 +596,10 @@ describe('gathering and drop-off (SIM-02)', () => {
     internals(room).update(1000);
 
     expect(unit.carryingAmount).toBe(4);
-    expect(room.state.resourceNodes.has(node.id)).toBe(false);
+    // MAPS: a depleted node stays in the snapshot as an empty slot so it can
+    // respawn; the client hides it while `remainingAmount` is 0.
+    expect(room.state.resourceNodes.has(node.id)).toBe(true);
+    expect(node.remainingAmount).toBe(0);
     expect(unit.actionState).toBe('RETURNING');
     expect(player.wood).toBe(0);
   });

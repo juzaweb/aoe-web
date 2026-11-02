@@ -3,6 +3,7 @@ import { SelectedEntityData } from '../game/scenes/WorldScene.js';
 import {
   BUILDING_BLUEPRINTS,
   BuildingType,
+  MapZoneKind,
   Resources,
   UNIT_BLUEPRINTS,
   UnitType,
@@ -40,6 +41,10 @@ interface EntityDetailsProps {
    */
   entity: SelectedEntityData;
   playerResources: Resources;
+  /** Map the player is on, which decides the portal button's label. */
+  zoneKind: MapZoneKind;
+  /** Solo travel through an owned portal (right-click carries the selection). */
+  onTravel: (portalId: string) => void;
   onTrainUnit: (buildingId: string, unitType: UnitType) => void;
   /** CMD-04a: drops the first unit in the training queue and refunds it. */
   onCancelTrain: (buildingId: string) => void;
@@ -58,6 +63,8 @@ interface EntityDetailsProps {
 export const EntityDetails: React.FC<EntityDetailsProps> = ({
   entity,
   playerResources,
+  zoneKind,
+  onTravel,
   onTrainUnit,
   onCancelTrain,
   onCancelBuilding,
@@ -88,7 +95,11 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
             />
           ) : entity.type === 'building' && entity.subType ? (
             <img
-              src={`/assets/buildings/${entity.subType.toLowerCase()}.png?v=3`}
+              // D8: there is no portal art yet; the tower sheet is the agreed
+              // placeholder used by the world renderer too.
+              src={`/assets/buildings/${
+                entity.subType === 'PORTAL' ? 'tower' : entity.subType.toLowerCase()
+              }.png?v=3`}
               alt={entity.name}
               className="w-10 h-10 object-contain rounded-md bg-slate-900/90 border border-amber-500/60 p-0.5 shadow-md"
               onError={(e) => {
@@ -149,6 +160,26 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
               style={{ width: `${Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100))}%` }}
             />
           </div>
+        </div>
+      )}
+
+      {/* MAPS: owned portal. Right-click travels with the current selection;
+          this button is the way to travel when nothing is selected. */}
+      {entity.type === 'building' && entity.isPortal && entity.isOwner && (
+        <div className="border-t border-violet-800/60 pt-2 space-y-1.5">
+          <span className="text-[10px] font-bold text-violet-300 tracking-wider">
+            CỔNG DỊCH CHUYỂN
+          </span>
+          <button
+            type="button"
+            onClick={() => onTravel(entity.id)}
+            className="w-full px-2 py-1.5 rounded border border-violet-600/80 bg-violet-950/60 text-[11px] font-semibold text-violet-200 hover:border-violet-400 transition-all"
+          >
+            {zoneKind === 'battlefield' ? 'Về vương quốc' : 'Đi tới chiến trường'}
+          </button>
+          <p className="text-[10px] text-slate-400 italic">
+            Chọn quân/dân rồi chuột phải vào cổng để mang họ theo.
+          </p>
         </div>
       )}
 
@@ -316,8 +347,11 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
         </div>
       )}
 
-      {/* LVL: every owned, finished building can upgrade itself */}
-      {buildingIsOwnedAndFinished && entity.level !== undefined && (
+      {/* LVL: every owned, finished building can upgrade itself, except the
+          portal (server-created travel infrastructure). */}
+      {buildingIsOwnedAndFinished &&
+        entity.subType !== 'PORTAL' &&
+        entity.level !== undefined && (
         <BuildingUpgradePanel
           buildingId={entity.id}
           type={entity.subType as BuildingType}

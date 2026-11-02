@@ -58,9 +58,12 @@ export const UNIT_FRAME_SIZE: Record<string, number> = {
  */
 export const UNIT_ACTION_SETS: Record<string, readonly UnitAction[]> = {
   VILLAGER: ['walk'],
-  SPEARMAN: UNIT_ACTIONS,
-  ARCHER: UNIT_ACTIONS,
-  CAVALRY: UNIT_ACTIONS
+  // Only the sheets present in `assets/units/actions`. Missing actions keep the
+  // legacy single-facing sheet; requesting the absent files delayed the scene's
+  // preload and filled the console with 404s.
+  SPEARMAN: ['idle', 'walk', 'attack'],
+  ARCHER: [],
+  CAVALRY: []
 };
 
 /**

@@ -9,7 +9,12 @@ import {
   MAX_UNIT_LEVEL,
   MAP_GRID_HEIGHT,
   MAP_GRID_WIDTH,
+  MAX_TRAVEL_UNITS,
   NetworkMessage,
+  RESOURCE_RESPAWN_MS,
+  TRAVEL_COOLDOWN_MS,
+  TravelPayload,
+  TravelReadyPayload,
   PlaceBuildingPayload,
   MoveUnitsPayload,
   TrainUnitPayload,
@@ -50,8 +55,18 @@ import { CombatSystem } from './CombatSystem.js';
 import { CommandSystem } from './CommandSystem.js';
 import { MovementSystem } from './MovementSystem.js';
 import { ownerIdOf, RoomAuth } from './identity.js';
-import { SessionRegistry } from './Sessions.js';
-import { loadPlayerLevels, applyBuildingUpgrade, applyUnitResearch } from './upgrades.js';
+import { accountSaves, accountSessions } from './AccountSessions.js';
+import { zonePersistence } from './ZonePersistence.js';
+import { arrivalPoint, ensurePortalFor, findOwnPortal } from './portals.js';
+import { entityIds } from '../services/EntityIdAllocator.js';
+import type { TravelUnitSnapshot } from '../services/DatabaseService.js';
+import {
+  loadPlayerLevels,
+  applyBuildingUpgrade,
+  applyUnitResearch
+} from './upgrades.js';
+import { otherZone, roomNameForZone, zoneKindOf } from '@chien-quoc/shared';
+import { randomUUID } from 'crypto';
 
 const PLAYER_COLORS = [
   '#3b82f6', // Blue
@@ -72,7 +87,27 @@ function clampStoredLevel(raw: number | null | undefined, maxLevel: number): num
 }
 
 export class WorldRoom extends Room<{ state: WorldState }> {
-  private nextEntityId: number = 1000;
+  /**
+   * Persistent map id this room simulates. The base room is generic; the
+   * kingdom/battlefield subclasses override it in `onCreate`.
+   */
+  protected zoneId: string = 'world';
+  /** Account that owns this kingdom room; null on the shared battlefield. */
+  protected ownerScope: string | null = null;
+  /** See `ZonePersistence`; a stale room must never flush over its successor. */
+  private persistenceToken = 0;
+  private zoneReady = false;
+  /** Accounts with a travel transaction in flight; autosave waits for them. */
+  private readonly travelingOwners = new Set<string>();
+  /** Where an account is travelling to while its leave save runs. */
+  private readonly departureZoneByOwner = new Map<string, string>();
+  private readonly travelCooldowns = new Map<string, number>();
+  /**
+   * Depleted resource nodes and when they refill. In-memory only: a restart
+   * refills them immediately, which is the same outcome a fresh room has.
+   */
+  private readonly resourceRespawnAt = new Map<string, number>();
+  private lastRespawnScanAt = 0;
   /**
    * Combat rules (damage, cooldowns, target resolution) and their transient
    * maps. Built on first use for the same reason as {@link economySystem}.
@@ -102,7 +137,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       clearHarvestOrder: (unitId) => this.economy.clearHarvestOrder(unitId),
       forgetBuilding: (buildingId) => this.combat.forgetBuilding(buildingId),
       harvestOrder: (client, payload) => this.economy.handleHarvestOrder(client, payload),
-      allocateEntityId: () => ++this.nextEntityId,
+      allocateEntityId: () => entityIds.nextId(),
       updatePlayerPopulation: (ownerId) => this.updatePlayerPopulation(ownerId)
     });
     return this.commandSystem;
@@ -131,7 +166,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.economySystem ??= new EconomySystem(this.state, {
       setWalkTarget: (unit, x, y) => this.movement.setWalkTarget(unit, x, y),
       resumeQueuedWaypoint: (unit) => this.movement.resumeQueuedWaypoint(unit),
-      rejectCommand: (client, message) => this.rejectCommand(client, message)
+      rejectCommand: (client, message) => this.rejectCommand(client, message),
+      onNodeDepleted: (node) => this.scheduleResourceRespawn(node)
     });
     return this.economySystem;
   }
@@ -144,7 +180,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    * reserving it. One account owns one empire, so a second session is refused
    * instead of silently sharing it.
    */
-  private readonly sessions = new SessionRegistry();
+  private readonly sessions = accountSessions;
   /**
    * SESS-05: the in-flight leave of each account. A join waits for it before
    * reading state, so a refresh never claims while the old leave is saving and
@@ -152,8 +188,38 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    */
   private readonly leaveByUser = new Map<string, Promise<void>>();
 
+  // ---------------------------------------------------------------------------
+  // Zone hooks. The base room keeps the pre-split behaviour (`world`, no
+  // owner restriction) so the existing unit tests can drive it directly; the
+  // kingdom and battlefield subclasses override these.
+  // ---------------------------------------------------------------------------
+
+  /** Account allowed to join this room, or null when any account may. */
+  protected resolveOwnerScope(_options: any): string | null {
+    return null;
+  }
+
+  protected resolveZoneId(_options: any): string {
+    return 'world';
+  }
+
+  /** Whether `ownerId` may join this room at all. */
+  protected canJoinOwner(_ownerId: string): boolean {
+    return true;
+  }
+
+  /** What a fresh empire gets when it joins this map with no entities. */
+  protected async spawnZoneContent(ownerId: string): Promise<void> {
+    this.spawnInitialBase(ownerId);
+  }
+
   onCreate(options: any) {
+    this.ownerScope = this.resolveOwnerScope(options);
+    this.zoneId = this.resolveZoneId(options);
+    this.persistenceToken = zonePersistence.claim(this.zoneId);
+
     this.setState(new WorldState());
+    this.state.zoneId = this.zoneId;
 
     // Keep a reference so onJoin can wait until the persisted world is restored.
     // Without this, a client could join while state.buildings is still empty and
@@ -235,12 +301,17 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       }
     );
 
+    this.onMessage(NetworkMessage.TRAVEL, (client, message: TravelPayload) => {
+      void this.handleTravel(client, message);
+    });
+
     // Run authoritative tick loop
     this.setSimulationInterval((deltaTime) => this.update(deltaTime), 1000 / SERVER_TICK_RATE);
 
-    // Auto-save world state to SQLite every 30 seconds
+    // Auto-save this map's slice to SQLite every 30 seconds. The zone queue
+    // drops an autosave that arrives while another write is still in flight.
     this.clock.setInterval(() => {
-      DatabaseService.saveFullWorldState(this.state);
+      void this.autosave();
     }, 30000);
 
     console.log('[WorldRoom] Room created with SQLite persistence.');
@@ -248,15 +319,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
   private async initializeWorldPersistence() {
     try {
-      // 1. Load resources from SQLite (regenerate if old snapshot is from small 60x60 map)
-      const savedResources = await DatabaseService.loadResources();
-      let maxStoredCoord = 0;
-      for (const res of savedResources || []) {
-        maxStoredCoord = Math.max(maxStoredCoord, res.gridX, res.gridY);
-      }
-      const isOutdatedMap = !savedResources || savedResources.length < 500 || maxStoredCoord < 100;
+      // 1. Load this map's resource nodes from SQLite.
+      const savedResources = await DatabaseService.loadResources(this.zoneId);
 
-      if (!isOutdatedMap && savedResources.length > 0) {
+      if (savedResources.length > 0) {
         for (const res of savedResources) {
           const node = new ResourceNodeState();
           node.id = res.id;
@@ -264,23 +330,32 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           node.resourceType = res.resourceType;
           node.gridX = res.gridX;
           node.gridY = res.gridY;
-          node.remainingAmount = res.remainingAmount;
+          // A depleted node is kept as an empty slot so the client can hide it
+          // and the respawn scan can refill it. A restart refills immediately.
+          node.remainingAmount = res.remainingAmount > 0 ? res.remainingAmount : res.maxAmount;
           node.maxAmount = res.maxAmount;
           this.state.resourceNodes.set(res.id, node);
         }
-        console.log(`📦 [WorldRoom] Restored ${savedResources.length} resource nodes from database.`);
+        console.log(
+          `📦 [WorldRoom] Restored ${savedResources.length} resource nodes for ${this.zoneId}.`
+        );
       } else {
-        console.log(`🗺️ [WorldRoom] Regenerating fresh resource clusters across entire 220x220 world map...`);
-        await DatabaseService.clearAllResources();
+        console.log(`🗺️ [WorldRoom] Generating fresh resource clusters for ${this.zoneId}...`);
+        await DatabaseService.clearAllResources(this.zoneId);
         this.generateWorldResources();
         const resArray: ResourceNodeState[] = [];
         this.state.resourceNodes.forEach((node: ResourceNodeState) => resArray.push(node));
-        await DatabaseService.saveAllResources(resArray);
-        console.log(`✨ [WorldRoom] Saved ${resArray.length} fresh resource clusters to database.`);
+        await DatabaseService.saveAllResources(resArray, this.zoneId);
+        console.log(`✨ [WorldRoom] Saved ${resArray.length} fresh resource clusters.`);
       }
 
-      // 2. Restore all saved player empires from SQLite
-      const savedPlayers = await DatabaseService.loadAllWorldEntities();
+      // 2. Restore this map's empires. A kingdom loads only its owner; the
+      // battlefield loads every participant, including offline ones whose
+      // forward base must stay attackable.
+      const savedPlayers = await DatabaseService.loadZoneEntities(
+        this.zoneId,
+        this.ownerScope ?? undefined
+      );
       for (const p of savedPlayers) {
         for (const b of p.buildings) {
           const building = new BuildingState();
@@ -333,6 +408,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       this.state.resourceNodes.forEach((n) => this.bumpEntityId(n.id));
       this.state.buildings.forEach((b) => this.bumpEntityId(b.id));
       this.state.units.forEach((u) => this.bumpEntityId(u.id));
+
+      this.zoneReady = true;
+      console.log(`✅ [WorldRoom] Zone ${this.zoneId} is ready.`);
     } catch (err) {
       // Record instead of rethrowing: a rejected readyPromise would surface as an
       // unhandled rejection. onJoin aborts the join when this is set.
@@ -341,16 +419,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     }
   }
 
-  /**
-   * Advances nextEntityId past any persisted id (`b_1234`, `u_1234`, `res_1234`).
-   */
+  /** Advances the process-wide id sequence past a persisted id. */
   private bumpEntityId(id: string) {
-    const match = /(\d+)$/.exec(id);
-    if (!match) return;
-    const value = Number(match[1]);
-    if (Number.isFinite(value) && value > this.nextEntityId) {
-      this.nextEntityId = value;
-    }
+    entityIds.observe(id);
   }
 
   /**
@@ -486,7 +557,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       if (occupiedTiles.has(key)) return;
 
       occupiedTiles.add(key);
-      const id = `res_${++this.nextEntityId}`;
+      const id = `res_${entityIds.nextId()}`;
       const node = new ResourceNodeState();
       node.id = id;
       node.type = type;
@@ -594,10 +665,25 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     const ownerId = authUser.userId;
     const playerName = authUser.displayName;
 
-    // SESS-05: a refresh closes the old socket before the new page joins, and
-    // the in-flight leave is what saves the empire. Wait for it so this join
-    // never reads a half-written account.
-    await this.leaveByUser.get(ownerId)?.catch(() => undefined);
+    // A kingdom room is private. `filterBy` and `onAuth` already reject a
+    // mismatched `ownerId`, but the room itself is the last line of defence: a
+    // mis-registered room must never let a stranger read the owner's empire.
+    if (!this.canJoinOwner(ownerId)) {
+      throw new ServerError(ErrorCode.AUTH_FAILED, 'Bạn không thể vào vương quốc này.');
+    }
+
+    // MAPS: a travel hand-off has already committed the authoritative account
+    // row in `commitTravel`, and the old room only flushes entities (its own
+    // zone) from here on. Waiting for that leave here was adding seconds to the
+    // switch, so only a normal refresh waits for a half-written empire.
+    const isHandoff = this.sessions.hasHandoff(ownerId, this.zoneId);
+    if (!isHandoff) {
+      // SESS-05: a refresh closes the old socket before the new page joins, and
+      // the in-flight leave is what saves the empire. Wait for it so this join
+      // never reads a half-written account.
+      await this.leaveByUser.get(ownerId)?.catch(() => undefined);
+      await accountSaves.awaitPending(ownerId);
+    }
 
     const takeover = (options as { force?: unknown } | undefined)?.force === true;
 
@@ -605,6 +691,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     // so instead of silently sharing the empire.
     const claim = this.sessions.claim(ownerId, client.sessionId, {
       takeover,
+      zone: this.zoneId,
       isAlive: (sessionId) => this.clients.get(sessionId) !== undefined
     });
     if (claim === 'occupied') {
@@ -644,6 +731,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         // resources back.
         live.isOnline = true;
         live.name = playerName;
+        await this.refreshForeignBaseline(live);
+        await this.materializeTravel(ownerId);
         this.updatePlayerPopulation(ownerId);
         console.log(`🏰 [WorldRoom] Session ${client.sessionId} resumed the live empire of ${playerName}.`);
       } else {
@@ -670,8 +759,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           player.researchProgressMs = savedProfile.researchProgressMs ?? 0;
           player.researchTimeMs = savedProfile.researchTimeMs ?? 0;
         } else {
-          const playerIndex = this.state.players.size % PLAYER_COLORS.length;
-          player.color = PLAYER_COLORS[playerIndex];
+          // A kingdom room only ever holds one player, so `players.size` would
+          // always pick the same colour. Hash the stable owner id instead.
+          player.color = PLAYER_COLORS[this.hashPlayerName(ownerId) % PLAYER_COLORS.length];
         }
         player.isOnline = true;
 
@@ -679,21 +769,33 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         // session's leave already dropped the old entry, never for a second tab.
         this.state.players.set(ownerId, player);
 
+        // MAPS: the other map is not simulated here, so its unit count and
+        // building capacity are loaded from SQLite and added to this room's.
+        await this.refreshForeignBaseline(player);
+
         if (owned.buildings.length === 0 && owned.units.length === 0) {
           if (savedProfile) {
             console.log(`[WorldRoom] Player ${playerName} has no remaining units/buildings. Spawning starter base.`);
           }
-          // Spawn initial base: Town Center + 3 starting Villagers
-          this.spawnInitialBase(ownerId);
+          await this.spawnZoneContent(ownerId);
         }
+
+        // Transferred units land next to the destination portal, which is
+        // created on demand for a player who has never been on this map.
+        await this.materializeTravel(ownerId);
 
         this.updatePlayerPopulation(ownerId);
 
         if (!savedProfile) {
-          console.log(`⚔️ [WorldRoom] New Emperor ${playerName} (${ownerId}) joined.`);
+          console.log(`⚔️ [WorldRoom] New Emperor ${playerName} (${ownerId}) joined ${this.zoneId}.`);
           // Persist new empire immediately to DB
           const newEmpire = this.ownedBy(ownerId);
-          await DatabaseService.savePlayerEmpire(player, newEmpire.buildings, newEmpire.units);
+          await DatabaseService.savePlayerEmpire(
+            player,
+            newEmpire.buildings,
+            newEmpire.units,
+            this.zoneId
+          );
         } else {
           console.log(`🏰 [WorldRoom] Welcome back Emperor ${playerName}! Empire restored from SQLite.`);
         }
@@ -701,15 +803,20 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
       // SESS-03/D2: hand the account to this session first, then close the
       // superseded socket. The old onLeave therefore sees `isActive === false`
-      // and never saves its stale snapshot over the live empire.
-      const superseded = this.sessions.activeSession(ownerId);
-      this.sessions.activate(ownerId, client.sessionId);
-      if (superseded && superseded !== client.sessionId) {
-        console.log(
-          `[WorldRoom] Session ${superseded} superseded by ${client.sessionId} for ${playerName}.`
-        );
-        this.clients.get(superseded)?.leave(SESSION_REPLACED_CLOSE, 'Session replaced by a newer login');
-      }
+      // and never saves its stale snapshot over the live empire. The close
+      // callback is stored process-wide, so it also reaches a session sitting
+      // in the other map's room.
+      this.sessions.activate(
+        ownerId,
+        client.sessionId,
+        this.zoneId,
+        () => {
+          this.clients
+            .get(client.sessionId)
+            ?.leave(SESSION_REPLACED_CLOSE, 'Session replaced by a newer login');
+        },
+        () => this.clients.get(client.sessionId) !== undefined
+      );
     } catch (err) {
       // A half-joined client must not hold a reservation, and must not stay in
       // the room as a player-less ghost: release, then let Colyseus tear it down.
@@ -757,7 +864,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     }
 
     // Create Town Center
-    const tcId = `b_${++this.nextEntityId}`;
+    const tcId = `b_${entityIds.nextId()}`;
     const townCenter = new BuildingState();
     townCenter.id = tcId;
     townCenter.ownerId = ownerId;
@@ -786,7 +893,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       const gridY = spawnY + off.dy;
       if (this.hasResourceAt(gridX, gridY)) return;
 
-      const id = `res_${++this.nextEntityId}`;
+      const id = `res_${entityIds.nextId()}`;
       const node = new ResourceNodeState();
       node.id = id;
       node.type = 'TREE';
@@ -809,7 +916,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       const gridY = spawnY + off.dy;
       if (this.hasResourceAt(gridX, gridY)) return;
 
-      const id = `res_${++this.nextEntityId}`;
+      const id = `res_${entityIds.nextId()}`;
       const node = new ResourceNodeState();
       node.id = id;
       node.type = 'BERRY_BUSH';
@@ -832,7 +939,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     ];
 
     villagerOffsets.forEach((off, idx) => {
-      const vId = `u_${++this.nextEntityId}`;
+      const vId = `u_${entityIds.nextId()}`;
       const villager = new UnitState();
       villager.id = vId;
       villager.ownerId = ownerId;
@@ -850,7 +957,210 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       this.state.units.set(vId, villager);
     });
 
+    // Every kingdom needs its exit. The battlefield portal is created on join
+    // by `materializeTravel`; `ensurePortalFor` is idempotent for both.
+    ensurePortalFor(this.state, ownerId);
+
     this.updatePlayerPopulation(ownerId);
+  }
+
+  /**
+   * Loads the population/capacity this account holds on the other map.
+   *
+   * Only one map is simulated at a time, so this baseline is the only way the
+   * shared population cap stays meaningful. It is refreshed on join and before
+   * each autosave; a forward base destroyed while its owner is home therefore
+   * reflects within one autosave interval.
+   */
+  private async refreshForeignBaseline(player: PlayerState): Promise<void> {
+    try {
+      const baseline = await DatabaseService.loadForeignBaseline(player.id, this.zoneId);
+      player.populationElsewhere = baseline.unitCount;
+
+      let foreignCap = 0;
+      for (const building of baseline.buildings) {
+        foreignCap += getBuildingLevelStats(
+          building.type as BuildingType,
+          building.level
+        ).populationProvided;
+      }
+      player.populationCapElsewhere = foreignCap;
+      this.updatePlayerPopulation(player.id);
+    } catch (err) {
+      console.error(`❌ [WorldRoom] Failed to load the other map's population for ${player.id}:`, err);
+    }
+  }
+
+  /**
+   * Moves any units waiting in `travel_transfers` for this account onto this
+   * map. The destination portal is created first so arrivals have a fixed
+   * anchor even when the account has never visited this map.
+   */
+  private async materializeTravel(ownerId: string): Promise<void> {
+    const portal = ensurePortalFor(this.state, ownerId);
+    if (!portal) return;
+
+    const arrived = await DatabaseService.consumeTravelTransfers(
+      ownerId,
+      this.zoneId,
+      (_unit, index) => arrivalPoint(portal, index)
+    );
+    if (arrived.length === 0) return;
+
+    arrived.forEach((snapshot, index) => {
+      this.addArrivedUnit(ownerId, snapshot, portal, index);
+    });
+
+    this.updatePlayerPopulation(ownerId);
+    console.log(
+      `🚪 [WorldRoom] ${arrived.length} unit(s) arrived in ${this.zoneId} for ${ownerId}.`
+    );
+  }
+
+  private addArrivedUnit(
+    ownerId: string,
+    snapshot: TravelUnitSnapshot,
+    portal: BuildingState,
+    index: number
+  ): void {
+    const position = arrivalPoint(portal, index);
+    const unit = new UnitState();
+    unit.id = snapshot.id;
+    unit.ownerId = ownerId;
+    unit.type = snapshot.type;
+    unit.x = position.x;
+    unit.y = position.y;
+    unit.targetX = position.x;
+    unit.targetY = position.y;
+    unit.speed = snapshot.speed;
+    unit.level = snapshot.level;
+    unit.hp = snapshot.hp;
+    unit.maxHp = snapshot.maxHp;
+    unit.actionState = 'IDLE';
+
+    entityIds.observe(snapshot.id);
+    this.state.units.set(unit.id, unit);
+  }
+
+  /**
+   * The 30s save. It first refreshes the other-map baseline so a death in the
+   * shared battlefield is reflected in the kingdom's population view, then
+   * writes this zone. `skipIfBusy` keeps a slow save from queueing behind itself.
+   */
+  private async autosave(): Promise<void> {
+    // A travel transaction deletes unit rows from this zone; saving a snapshot
+    // taken around that moment could re-create them from stale state.
+    if (!this.zoneReady || this.travelingOwners.size > 0) return;
+
+    // Snapshot the players: the loop awaits SQLite, and a leave/join in the
+    // meantime mutates the MapSchema being iterated.
+    for (const player of Array.from(this.state.players.values())) {
+      await this.refreshForeignBaseline(player);
+    }
+
+    await DatabaseService.saveFullWorldState(this.state, this.zoneId, { skipIfBusy: true });
+  }
+
+  /**
+   * Moves the selected units through the player's portal.
+   *
+   * The order of operations is the whole protocol: validate everything, commit
+   * the transfer to SQLite (unit rows leave this zone and a transfer row holds
+   * their snapshot), only then drop them from memory, then acknowledge. The
+   * client leaves the room after the ack, so a crash at any point either moves
+   * nothing or leaves the units waiting safely in `travel_transfers`.
+   */
+  private async handleTravel(client: Client, payload: TravelPayload): Promise<void> {
+    const ownerId = ownerIdOf(client);
+    const player = this.state.players.get(ownerId);
+    if (!player || !this.zoneReady) return;
+
+    const portal = payload?.portalId ? this.state.buildings.get(payload.portalId) : undefined;
+    if (!portal || portal.type !== 'PORTAL' || portal.ownerId !== ownerId) {
+      this.rejectCommand(client, 'Cổng dịch chuyển không hợp lệ.');
+      return;
+    }
+
+    if (this.travelingOwners.has(ownerId)) {
+      this.rejectCommand(client, 'Bạn đang chuyển bản đồ.');
+      return;
+    }
+    if (Date.now() < (this.travelCooldowns.get(ownerId) ?? 0)) {
+      this.rejectCommand(client, 'Vui lòng đợi một chút rồi thử lại.');
+      return;
+    }
+
+    const requested = Array.isArray(payload.unitIds) ? [...new Set(payload.unitIds)] : [];
+    if (requested.length > MAX_TRAVEL_UNITS) {
+      this.rejectCommand(client, 'Quá nhiều đơn vị trong một lần chuyển.');
+      return;
+    }
+
+    // Foreign or stale ids are dropped silently, the same way every other group
+    // order treats them; the player still travels with whoever is left.
+    const units: UnitState[] = [];
+    for (const unitId of requested) {
+      const unit = this.state.units.get(unitId);
+      if (!unit || unit.ownerId !== ownerId || unit.hp <= 0) continue;
+      units.push(unit);
+    }
+
+    // A previous transfer that has not been consumed yet is not a reason to
+    // refuse: the destination consumes every pending transfer for this account
+    // when it joins, so travelling again simply carries the new selection too.
+    // Rejecting here would trap a player whose destination join failed, because
+    // a reload returns them to the source map with no way to reach the other.
+    const toZone = otherZone(this.zoneId, ownerId);
+    const transferId = randomUUID();
+    const snapshots: TravelUnitSnapshot[] = units.map((unit) => ({
+      id: unit.id,
+      type: unit.type,
+      level: unit.level,
+      hp: unit.hp,
+      maxHp: unit.maxHp,
+      speed: unit.speed
+    }));
+
+    this.travelingOwners.add(ownerId);
+    try {
+      await DatabaseService.commitTravel({
+        player,
+        ownerId,
+        fromZone: this.zoneId,
+        toZone,
+        transferId,
+        sourceSessionId: client.sessionId,
+        units: snapshots
+      });
+    } catch (err) {
+      console.error(`❌ [WorldRoom] Travel commit failed for ${ownerId}:`, err);
+      this.rejectCommand(client, 'Không thể chuyển bản đồ. Vui lòng thử lại.');
+      return;
+    } finally {
+      this.travelingOwners.delete(ownerId);
+    }
+
+    // The transaction is durable; drop the units from memory so the upcoming
+    // leave/autosave cannot put them back into this zone.
+    for (const unit of units) {
+      this.state.units.delete(unit.id);
+      this.combat.forgetUnit(unit.id);
+      this.economy.forgetUnit(unit.id);
+      this.movement.forgetUnit(unit.id);
+    }
+
+    this.travelCooldowns.set(ownerId, Date.now() + TRAVEL_COOLDOWN_MS);
+    this.departureZoneByOwner.set(ownerId, toZone);
+    this.updatePlayerPopulation(ownerId);
+
+    accountSessions.beginHandoff(ownerId, toZone);
+
+    const ready: TravelReadyPayload = {
+      transferId,
+      destination: zoneKindOf(toZone),
+      roomName: roomNameForZone(toZone)
+    };
+    client.send(NetworkMessage.TRAVEL_READY, ready);
   }
 
   /**
@@ -882,8 +1192,34 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     client.send(NetworkMessage.ERROR_NOTIFICATION, { message });
   }
 
+  private scheduleResourceRespawn(node: ResourceNodeState): void {
+    if (this.resourceRespawnAt.has(node.id)) return;
+    this.resourceRespawnAt.set(node.id, Date.now() + RESOURCE_RESPAWN_MS);
+  }
+
+  /** Refills depleted nodes whose respawn delay has elapsed. */
+  private scanResourceRespawns(now: number): void {
+    if (now - this.lastRespawnScanAt < 5000) return;
+    this.lastRespawnScanAt = now;
+
+    for (const [nodeId, respawnAt] of this.resourceRespawnAt) {
+      if (now < respawnAt) continue;
+
+      const node = this.state.resourceNodes.get(nodeId);
+      if (!node) {
+        this.resourceRespawnAt.delete(nodeId);
+        continue;
+      }
+
+      node.remainingAmount = node.maxAmount;
+      this.resourceRespawnAt.delete(nodeId);
+    }
+  }
+
   private update(deltaTime: number) {
     const dtSeconds = deltaTime / 1000;
+
+    this.scanResourceRespawns(Date.now());
 
     // SIM-01: hand out a few routes before anyone moves. Units whose request is
     // still queued keep walking straight, which is exactly the pre-SIM-01
@@ -1120,7 +1456,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     const player = this.state.players.get(ownerId);
     const level = player ? getPlayerUnitLevel(player.unitLevels, unitType) : 1;
     const levelStats = getUnitLevelStats(unitType, level);
-    const uId = `u_${++this.nextEntityId}`;
+    const uId = `u_${entityIds.nextId()}`;
     const unit = new UnitState();
     unit.id = uId;
     unit.ownerId = ownerId;
@@ -1168,8 +1504,12 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       }
     });
 
-    player.population = unitCount;
-    player.populationCap = Math.min(MAX_POPULATION_LIMIT, totalCap);
+    // MAPS: the counter is account-wide even though only this map is simulated.
+    player.population = unitCount + player.populationElsewhere;
+    player.populationCap = Math.min(
+      MAX_POPULATION_LIMIT,
+      totalCap + player.populationCapElsewhere
+    );
   }
 
   async onLeave(client: Client, code?: number) {
@@ -1194,6 +1534,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     const leaving = this.saveAndRelease(ownerId, client);
     this.leaveByUser.set(ownerId, leaving);
+    accountSaves.track(ownerId, leaving);
     try {
       await leaving;
     } finally {
@@ -1212,20 +1553,53 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     const player = this.state.players.get(ownerId);
     if (!player) return;
 
-    this.state.players.delete(ownerId);
     player.isOnline = false;
-    console.log(`[WorldRoom] Player ${player.name} left. Saving empire to SQLite...`);
+    console.log(`[WorldRoom] Player ${player.name} left. Saving ${this.zoneId}...`);
 
     // The empire is owned by the account id, which is what this leave is about:
-    // the snapshot below is the whole current empire, never an empty list that
-    // `savePlayerEmpire` would turn into a delete of every row.
+    // the snapshot below is the whole current empire on this map, never an empty
+    // list that the sweep would turn into a delete of every row.
     const owned = this.ownedBy(ownerId);
+    const departedTo = this.departureZoneByOwner.get(ownerId);
 
-    await DatabaseService.savePlayerEmpire(player, owned.buildings, owned.units);
+    try {
+      if (departedTo) {
+        // The travel transaction is the authority on resources and the new
+        // `last_zone`; this room only has to flush the entities it still owns.
+        await DatabaseService.saveZonePlayerEntities(
+          this.zoneId,
+          ownerId,
+          owned.buildings,
+          owned.units
+        );
+      } else {
+        await DatabaseService.savePlayerEmpire(
+          player,
+          owned.buildings,
+          owned.units,
+          this.zoneId
+        );
+      }
+    } finally {
+      this.departureZoneByOwner.delete(ownerId);
+      this.state.players.delete(ownerId);
+    }
   }
 
   async onDispose() {
-    console.log('🛑 [WorldRoom] Room disposing. Executing final SQLite database flush...');
-    await DatabaseService.saveFullWorldState(this.state);
+    // A room that has already been replaced for this zone must not flush its
+    // stale snapshot over the successor's state.
+    if (this.zoneReady && zonePersistence.isCurrent(this.zoneId, this.persistenceToken)) {
+      console.log(`🛑 [WorldRoom] ${this.zoneId} disposing. Final SQLite flush...`);
+      await DatabaseService.saveFullWorldState(this.state, this.zoneId, {
+        // A hand-off leave may have returned early (the destination already
+        // owned the session), leaving the player entry in this state. Flush the
+        // entities but not the stale account row.
+        skipAccountFor: new Set(this.departureZoneByOwner.keys())
+      });
+    } else {
+      console.log(`🛑 [WorldRoom] ${this.zoneId} disposing; newer room owns the zone.`);
+    }
+    zonePersistence.release(this.zoneId, this.persistenceToken);
   }
 }

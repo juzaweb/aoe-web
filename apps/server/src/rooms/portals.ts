@@ -1,0 +1,307 @@
+import {
+  BUILDING_BLUEPRINTS,
+  MAP_GRID_HEIGHT,
+  MAP_GRID_WIDTH,
+  isDirtRoadTile,
+  zoneKindOf
+} from '@chien-quoc/shared';
+import { BuildingState } from '../schema/BuildingState.js';
+import { ResourceNodeState } from '../schema/ResourceNodeState.js';
+import { WorldState } from '../schema/WorldState.js';
+import { entityIds } from '../services/EntityIdAllocator.js';
+
+const PORTAL_BLUEPRINT = BUILDING_BLUEPRINTS.PORTAL;
+const PORTAL_MARGIN = 5;
+
+/** The account's portal in this room, if it already exists. */
+export function findOwnPortal(state: WorldState, ownerId: string): BuildingState | null {
+  let found: BuildingState | null = null;
+  state.buildings.forEach((building: BuildingState) => {
+    if (!found && building.ownerId === ownerId && building.type === 'PORTAL') {
+      found = building;
+    }
+  });
+  return found;
+}
+
+/** The account's Town Center in this room, if it has one. */
+export function findOwnTownCenter(state: WorldState, ownerId: string): BuildingState | null {
+  let found: BuildingState | null = null;
+  state.buildings.forEach((building: BuildingState) => {
+    if (!found && building.ownerId === ownerId && building.type === 'TOWN_CENTER') {
+      found = building;
+    }
+  });
+  return found;
+}
+
+/** 32-bit FNV-1a hash, so a battlefield portal is stable across restarts. */
+function hashOwner(ownerId: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < ownerId.length; i++) {
+    hash ^= ownerId.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+interface FreeSpotOptions {
+  /** The fixed kingdom gateway may sit on a road/resource tile. */
+  ignoreRoads?: boolean;
+  ignoreResources?: boolean;
+  /** The portal being re-positioned must not block its own target spot. */
+  ignoreBuildingId?: string;
+}
+
+function isPortalFootprintFree(
+  state: WorldState,
+  gx: number,
+  gy: number,
+  options: FreeSpotOptions = {}
+): boolean {
+  const sizeX = PORTAL_BLUEPRINT.sizeX;
+  const sizeY = PORTAL_BLUEPRINT.sizeY;
+
+  if (
+    gx < PORTAL_MARGIN ||
+    gy < PORTAL_MARGIN ||
+    gx + sizeX > MAP_GRID_WIDTH - PORTAL_MARGIN ||
+    gy + sizeY > MAP_GRID_HEIGHT - PORTAL_MARGIN
+  ) {
+    return false;
+  }
+
+  if (!options.ignoreRoads) {
+    for (let x = gx; x < gx + sizeX; x++) {
+      for (let y = gy; y < gy + sizeY; y++) {
+        if (isDirtRoadTile(x, y)) return false;
+      }
+    }
+  }
+
+  let clear = true;
+  state.buildings.forEach((building: BuildingState) => {
+    if (!clear) return;
+    if (building.id === options.ignoreBuildingId) return;
+    if (
+      gx < building.gridX + building.sizeX &&
+      gx + sizeX > building.gridX &&
+      gy < building.gridY + building.sizeY &&
+      gy + sizeY > building.gridY
+    ) {
+      clear = false;
+    }
+  });
+  if (!clear) return false;
+
+  if (!options.ignoreResources) {
+    state.resourceNodes.forEach((node: ResourceNodeState) => {
+      if (!clear) return;
+      if (node.gridX >= gx && node.gridX < gx + sizeX && node.gridY >= gy && node.gridY < gy + sizeY) {
+        clear = false;
+      }
+    });
+  }
+
+  return clear;
+}
+
+/** Spiral out from a preferred spot, then from the map centre. */
+function findPortalSpot(
+  state: WorldState,
+  preferred: { x: number; y: number } | null
+): { x: number; y: number } | null {
+  const centres: Array<{ x: number; y: number }> = [];
+  if (preferred) centres.push(preferred);
+  centres.push({
+    x: Math.floor(MAP_GRID_WIDTH / 2) - Math.floor(PORTAL_BLUEPRINT.sizeX / 2),
+    y: Math.floor(MAP_GRID_HEIGHT / 2) - Math.floor(PORTAL_BLUEPRINT.sizeY / 2)
+  });
+
+  for (const centre of centres) {
+    for (let radius = 0; radius < 80; radius += 2) {
+      const samples = radius === 0 ? 1 : radius * 8;
+      for (let index = 0; index < samples; index++) {
+        const angle = (index / samples) * Math.PI * 2;
+        const gx = Math.round(centre.x + Math.cos(angle) * radius);
+        const gy = Math.round(centre.y + Math.sin(angle) * radius);
+        if (isPortalFootprintFree(state, gx, gy)) return { x: gx, y: gy };
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Fixed gateway position for a kingdom: the right edge of the map, vertically
+ * centred. Resources and roads may be under it (they are cleared when the
+ * gateway is placed); only a building can push it along the edge.
+ */
+function findKingdomPortalSpot(
+  state: WorldState,
+  ignoreBuildingId?: string
+): { x: number; y: number } | null {
+  const sizeX = PORTAL_BLUEPRINT.sizeX;
+  const sizeY = PORTAL_BLUEPRINT.sizeY;
+  const edgeX = MAP_GRID_WIDTH - PORTAL_MARGIN - sizeX;
+  const centreY = Math.floor(MAP_GRID_HEIGHT / 2) - Math.floor(sizeY / 2);
+  const options = { ignoreRoads: true, ignoreResources: true, ignoreBuildingId };
+
+  const tryColumn = (x: number): { x: number; y: number } | null => {
+    for (let offset = 0; offset <= 80; offset += 2) {
+      const candidates = offset === 0 ? [centreY] : [centreY - offset, centreY + offset];
+      for (const y of candidates) {
+        if (y < PORTAL_MARGIN || y + sizeY > MAP_GRID_HEIGHT - PORTAL_MARGIN) continue;
+        if (isPortalFootprintFree(state, x, y, options)) return { x, y };
+      }
+    }
+    return null;
+  };
+
+  const onEdge = tryColumn(edgeX);
+  if (onEdge) return onEdge;
+
+  // A building already occupies the edge at the centre; step inward a little so
+  // the gateway still reads as "on the right side" of the map.
+  for (let x = edgeX - 3; x >= edgeX - 30; x -= 3) {
+    const spot = tryColumn(x);
+    if (spot) return spot;
+  }
+
+  return null;
+}
+
+/** Removes resource nodes buried under a server-placed gateway. */
+function clearPortalResources(state: WorldState, portal: { gridX: number; gridY: number }): void {
+  const sizeX = PORTAL_BLUEPRINT.sizeX;
+  const sizeY = PORTAL_BLUEPRINT.sizeY;
+  const buried: string[] = [];
+
+  state.resourceNodes.forEach((node: ResourceNodeState, id: string) => {
+    if (
+      node.gridX >= portal.gridX &&
+      node.gridX < portal.gridX + sizeX &&
+      node.gridY >= portal.gridY &&
+      node.gridY < portal.gridY + sizeY
+    ) {
+      buried.push(id);
+    }
+  });
+
+  for (const id of buried) state.resourceNodes.delete(id);
+}
+
+/**
+ * Finds the account's deterministic battlefield plot. The golden-ratio stride
+ * keeps consecutive accounts far apart, and the spiral fallback keeps a crowded
+ * map playable instead of refusing the join.
+ */
+function findBattlefieldSpot(state: WorldState, ownerId: string): { x: number; y: number } | null {
+  const hash = hashOwner(ownerId);
+  const usableX = MAP_GRID_WIDTH - 2 * PORTAL_MARGIN;
+  const usableY = MAP_GRID_HEIGHT - 2 * PORTAL_MARGIN;
+
+  for (let attempt = 0; attempt < 512; attempt++) {
+    const seedX = (hash + Math.imul(attempt, 0x9e3779b1)) >>> 0;
+    const seedY = ((hash >>> 16) + Math.imul(attempt, 0x85ebca6b)) >>> 0;
+    const gx = PORTAL_MARGIN + (seedX % usableX);
+    const gy = PORTAL_MARGIN + (seedY % usableY);
+    if (isPortalFootprintFree(state, gx, gy)) return { x: gx, y: gy };
+  }
+
+  return findPortalSpot(state, null);
+}
+
+function createPortal(ownerId: string, x: number, y: number): BuildingState {
+  const portal = new BuildingState();
+  portal.id = `b_${entityIds.nextId()}`;
+  portal.ownerId = ownerId;
+  portal.type = 'PORTAL';
+  portal.gridX = x;
+  portal.gridY = y;
+  portal.sizeX = PORTAL_BLUEPRINT.sizeX;
+  portal.sizeY = PORTAL_BLUEPRINT.sizeY;
+  portal.maxHp = PORTAL_BLUEPRINT.maxHp;
+  portal.hp = PORTAL_BLUEPRINT.maxHp;
+  portal.level = 1;
+  portal.isConstructed = true;
+  portal.constructionProgress = 100;
+  return portal;
+}
+
+/**
+ * Ensures the account has a portal in this map and returns it.
+ *
+ * A kingdom gateway is fixed on the right edge of the map, vertically centred
+ * (an existing one is moved there on the next join). The battlefield uses the
+ * account's deterministic plot. The base `WorldRoom` (`zoneId === 'world'`, used
+ * by the legacy unit tests) has no maps to travel between and no portal.
+ */
+export function ensurePortalFor(state: WorldState, ownerId: string): BuildingState | null {
+  if (state.zoneId === 'world') return null;
+
+  const kind = zoneKindOf(state.zoneId);
+
+  if (kind === 'kingdom') {
+    const existing = findOwnPortal(state, ownerId);
+    const fixed = findKingdomPortalSpot(state, existing?.id);
+
+    if (existing) {
+      if (fixed && (existing.gridX !== fixed.x || existing.gridY !== fixed.y)) {
+        existing.gridX = fixed.x;
+        existing.gridY = fixed.y;
+        clearPortalResources(state, existing);
+      }
+      return existing;
+    }
+
+    // The fixed edge is fully occupied by buildings: fall back to the old
+    // near-Town-Center placement rather than leaving the kingdom without a gate.
+    const townCenter = findOwnTownCenter(state, ownerId);
+    const preferred = townCenter
+      ? { x: townCenter.gridX + townCenter.sizeX + 1, y: townCenter.gridY }
+      : null;
+    const spot = fixed ?? findPortalSpot(state, preferred);
+    if (!spot) return null;
+
+    const portal = createPortal(ownerId, spot.x, spot.y);
+    state.buildings.set(portal.id, portal);
+    clearPortalResources(state, portal);
+    return portal;
+  }
+
+  const existing = findOwnPortal(state, ownerId);
+  if (existing) return existing;
+
+  const spot = findBattlefieldSpot(state, ownerId);
+  if (!spot) return null;
+
+  const portal = createPortal(ownerId, spot.x, spot.y);
+  state.buildings.set(portal.id, portal);
+  return portal;
+}
+
+/**
+ * Where a travelling unit lands: a small block just below the portal, clamped
+ * to the map. Units do not collide with each other, so overlapping is harmless;
+ * this only keeps them out of the portal footprint.
+ */
+export function arrivalPoint(
+  portal: BuildingState,
+  index: number
+): { x: number; y: number } {
+  const columns = Math.max(1, Math.ceil(Math.sqrt(Math.max(1, index + 1))));
+  const col = index % columns;
+  const row = Math.floor(index / columns);
+
+  const x = portal.gridX + portal.sizeX / 2 + (col - (columns - 1) / 2) * 0.8;
+  const y = portal.gridY + portal.sizeY + 1 + row * 0.8;
+
+  return {
+    x: Math.max(0.5, Math.min(MAP_GRID_WIDTH - 0.5, x)),
+    y: Math.max(0.5, Math.min(MAP_GRID_HEIGHT - 0.5, y))
+  };
+}
+
+export { isPortalFootprintFree };

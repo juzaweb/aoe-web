@@ -37,6 +37,7 @@ export const DATABASE_TABLE_STATEMENTS: readonly string[] = [
     "research_progress_ms" REAL NOT NULL DEFAULT 0,
     "research_time_ms" REAL NOT NULL DEFAULT 0,
     "is_online" BOOLEAN NOT NULL DEFAULT true,
+    "last_zone" TEXT NOT NULL DEFAULT 'kingdom',
     "last_saved_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
   );`,
@@ -44,6 +45,7 @@ export const DATABASE_TABLE_STATEMENTS: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS "buildings" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "owner_id" TEXT NOT NULL,
+    "zone" TEXT NOT NULL DEFAULT 'world',
     "type" TEXT NOT NULL,
     "grid_x" INTEGER NOT NULL,
     "grid_y" INTEGER NOT NULL,
@@ -64,6 +66,7 @@ export const DATABASE_TABLE_STATEMENTS: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS "units" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "owner_id" TEXT NOT NULL,
+    "zone" TEXT NOT NULL DEFAULT 'world',
     "type" TEXT NOT NULL,
     "x" REAL NOT NULL,
     "y" REAL NOT NULL,
@@ -79,6 +82,7 @@ export const DATABASE_TABLE_STATEMENTS: readonly string[] = [
 
   `CREATE TABLE IF NOT EXISTS "world_resource_nodes" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "zone" TEXT NOT NULL DEFAULT 'world',
     "type" TEXT NOT NULL,
     "resource_type" TEXT NOT NULL,
     "grid_x" INTEGER NOT NULL,
@@ -86,6 +90,16 @@ export const DATABASE_TABLE_STATEMENTS: readonly string[] = [
     "remaining_amount" REAL NOT NULL,
     "max_amount" REAL NOT NULL,
     "updated_at" DATETIME NOT NULL
+  );`,
+
+  `CREATE TABLE IF NOT EXISTS "travel_transfers" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "owner_id" TEXT NOT NULL,
+    "from_zone" TEXT NOT NULL,
+    "to_zone" TEXT NOT NULL,
+    "source_session_id" TEXT NOT NULL,
+    "units" TEXT NOT NULL,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
   );`
 ];
 
@@ -95,5 +109,6 @@ export const DATABASE_INDEX_STATEMENTS: readonly string[] = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "players_name_key" ON "players"("name");`,
   `CREATE INDEX IF NOT EXISTS "buildings_owner_id_idx" ON "buildings"("owner_id");`,
   `CREATE INDEX IF NOT EXISTS "units_owner_id_idx" ON "units"("owner_id");`,
-  `CREATE INDEX IF NOT EXISTS "world_resource_nodes_grid_x_grid_y_idx" ON "world_resource_nodes"("grid_x", "grid_y");`
+  `CREATE INDEX IF NOT EXISTS "world_resource_nodes_grid_x_grid_y_idx" ON "world_resource_nodes"("grid_x", "grid_y");`,
+  `CREATE INDEX IF NOT EXISTS "travel_transfers_owner_id_to_zone_idx" ON "travel_transfers"("owner_id", "to_zone");`
 ];

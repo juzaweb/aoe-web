@@ -15,6 +15,14 @@ export class PlayerState extends Schema {
   @type('number') stone: number = INITIAL_PLAYER_RESOURCES.stone;
   @type('number') population: number = 0;
   @type('number') populationCap: number = INITIAL_POPULATION_CAP;
+  /**
+   * MAPS: units and building capacity this account holds on the other map.
+   * Only one map ticks at a time, so the room loads the other side's baseline
+   * from SQLite and adds it to its own counts, keeping the global population
+   * cap meaningful on both maps.
+   */
+  @type('number') populationElsewhere: number = 0;
+  @type('number') populationCapElsewhere: number = 0;
   @type('boolean') isOnline: boolean = true;
   /**
    * Research level per unit type, indexed by `UNIT_UPGRADE_ORDER`. Every entry

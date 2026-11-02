@@ -29,7 +29,10 @@ const BUILDING_THUMBNAILS: Record<BuildingType, string> = {
   TOWER: '/assets/buildings/tower.png?v=3',
   LUMBER_CAMP: '/assets/buildings/lumber_camp.png?v=1',
   MILL: '/assets/buildings/mill.png?v=1',
-  MINING_CAMP: '/assets/buildings/mining_camp.png?v=1'
+  MINING_CAMP: '/assets/buildings/mining_camp.png?v=1',
+  // Not listed in BUILDINGS: portals are server-created. The entry only keeps
+  // the exhaustive Record type-checking.
+  PORTAL: '/assets/buildings/tower.png?v=3'
 };
 
 export const BuildMenu: React.FC<BuildMenuProps> = ({

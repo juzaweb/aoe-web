@@ -571,6 +571,22 @@ export class CommandController {
       return;
     }
 
+    // MAPS: right-clicking your own portal while units are selected carries
+    // that selection to the other map. Checked before foundations/resources so
+    // a portal click never becomes a walk order under its footprint.
+    const ownBuildingId = findBuildingAt(scene, targetGrid, scene.myOwnerId);
+    if (ownBuildingId) {
+      const building = scene.room.state.buildings.get(ownBuildingId);
+      if (building?.type === 'PORTAL') {
+        scene.room.send(NetworkMessage.TRAVEL, {
+          portalId: ownBuildingId,
+          unitIds: Array.from(scene.selectedUnitIds)
+        });
+        this.showFeedback(worldPoint.x, worldPoint.y, 0xa855f7);
+        return;
+      }
+    }
+
     // 3. CMD-05: right-clicking your own foundation with villagers selected puts
     // them to work on it instead of walking them onto the footprint.
     const ownFoundationId = findOwnFoundationAt(scene, targetGrid);
@@ -698,7 +714,7 @@ export class CommandController {
     const scene = this.scene;
     const markers: { id: string; rallyX: number; rallyY: number }[] = [];
 
-    if (scene.room) {
+    if (scene.room?.state?.buildings) {
       scene.room.state.buildings.forEach((b: any) => {
         if (!scene.isOwnBuilding(b.ownerId)) return;
         if (!(b.rallyX >= 0 && b.rallyY >= 0)) return;
