@@ -24,6 +24,7 @@ import { installHudPointerGuard } from '../input/hudPointerGuard.js';
 import { EntityRenderer } from '../render/EntityRenderer.js';
 import { FocusIndicator } from '../render/FocusIndicator.js';
 import { TerrainLayer } from '../render/TerrainLayer.js';
+import { OwnerColorRegistry, colorToCss } from '../render/ownerColor.js';
 import {
   UNIT_ACTION_SETS,
   UNIT_FRAME_SIZE,
@@ -173,6 +174,16 @@ export class WorldScene extends Phaser.Scene {
   private cachedOwnerId: string = '';
   private boundRoomId: string = '';
   private eventsBoundRoom: Room | null = null;
+
+  /**
+   * OWN-01 / D4: per-owner colour cache. The resolver reads
+   * `PlayerState.color`; a cached entry survives the player leaving the room so
+   * their units keep their colour instead of turning grey mid-session.
+   */
+  public readonly ownerColorRegistry = new OwnerColorRegistry((ownerId) => {
+    const player = this.room?.state?.players?.get(ownerId);
+    return player?.color ?? null;
+  });
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
 
@@ -483,6 +494,10 @@ export class WorldScene extends Phaser.Scene {
     this.cachedOwnerId = '';
     this.boundRoomId = room.roomId;
 
+    // OWN-05: the cache belongs to the previous Room's snapshot. A reconnect may
+    // restore a different profile colour, so re-resolve before repainting.
+    this.ownerColorRegistry.invalidateAll();
+
     if (isNewWorld) {
       // Fresh world snapshot: allow re-centering on the base.
       this.hasCenteredOnSpawn = false;
@@ -495,6 +510,7 @@ export class WorldScene extends Phaser.Scene {
     // Callbacks belong to a Room instance, so a new instance always needs binding.
     if (this.scene.isActive()) {
       this.bindRoomEvents(room);
+      this.entityRenderer?.refreshOwnershipVisuals();
       this.centerOnOwnBaseIfNeeded();
     }
   }
@@ -505,13 +521,22 @@ export class WorldScene extends Phaser.Scene {
    */
   public setPlayerName(playerName: string) {
     this.myPlayerName = playerName;
+    // OWN-05: resolving our own id is what hides the ownership marker on our own
+    // units and buildings. The pass may run before the first state patch, in
+    // which case the lazy getter keeps retrying and a later players event wins.
     this.cachedOwnerId = '';
+    this.entityRenderer?.refreshOwnershipVisuals();
     this.centerOnOwnBaseIfNeeded();
   }
 
   public isOwnBuilding(ownerId: string): boolean {
     if (!ownerId) return false;
     return ownerId === this.myOwnerId;
+  }
+
+  /** OWN-04: CSS colour of an owner, so the canvas minimap matches the world. */
+  public ownerColorCss(ownerId: string): string {
+    return colorToCss(this.ownerColorRegistry.colorOf(ownerId));
   }
 
   /**
@@ -616,6 +641,29 @@ export class WorldScene extends Phaser.Scene {
         this.notifySelectionChange();
       }
     });
+
+    // 4. Ownership colours (OWN-05). Entities can enter the scene before their
+    // owner's player entry arrives (the world is restored from the database on
+    // server boot), so every players event re-evaluates the ownership markers.
+    cb.onAdd('players', (player: any) => {
+      if (!player?.id) return;
+      this.ownerColorRegistry.invalidate(player.id);
+      // A rejoin can restore a different profile colour from the database.
+      cb.listen(player, 'color', () => {
+        this.ownerColorRegistry.invalidate(player.id);
+        this.entityRenderer.refreshOwnershipVisuals();
+      });
+      this.entityRenderer.refreshOwnershipVisuals();
+    });
+
+    cb.onRemove('players', () => {
+      // D4: the colour stays cached so units of a player who left keep it. The
+      // pass still runs because entries can arrive in any order on restore.
+      this.entityRenderer.refreshOwnershipVisuals();
+    });
+
+    // Repaint sprites that already exist against the newly bound snapshot.
+    this.entityRenderer.refreshOwnershipVisuals();
   }
 
   // ---------------------------------------------------------------------------

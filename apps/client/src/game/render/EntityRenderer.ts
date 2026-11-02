@@ -24,6 +24,14 @@ import { UnitMotion, walkTimeScale } from './unitMotion.js';
  * simulation layer only reports `actionState` / `hp` / `constructionProgress`.
  */
 export class EntityRenderer {
+  /**
+   * OWN-05: last applied ownership signature per entity id: `-1` when the
+   * marker is hidden (our own entity), otherwise the ring/outline colour. The
+   * refresh pass compares against it so a players event only repaints entities
+   * whose owner colour actually changed.
+   */
+  private readonly ownershipSignatures = new Map<string, number>();
+
   constructor(private readonly scene: WorldScene) {}
 
   /** Registers the per-type animation clips. Call once, from create(). */
@@ -160,6 +168,16 @@ export class EntityRenderer {
     container.add(foundation);
     container.setData('foundation', foundation);
 
+    // OWN-03: ownership diamond. Deliberately separate from `foundation`, which
+    // is the "selected" indicator and is toggled by SelectionController. Added
+    // before the art so the outline never covers the building itself.
+    const ownerBase = scene.add.graphics();
+    ownerBase.setVisible(false);
+    container.add(ownerBase);
+    container.setData('ownerBase', ownerBase);
+    container.setData('ownerBaseHalfW', halfW);
+    container.setData('ownerBaseHalfH', halfH);
+
     const img = scene.add.image(0, offsetY, textureKey);
     img.setScale(scale);
     container.add(img);
@@ -178,6 +196,7 @@ export class EntityRenderer {
     container.setData('buildingType', building.type);
     container.setData('visualCenterY', offsetY);
 
+    this.refreshOwnerBase(container, id, building.ownerId);
     this.updateBuildingBar(container, building);
 
     if (cb) {
@@ -235,6 +254,96 @@ export class EntityRenderer {
     hpBar.strokeRect(-width / 2, barY, width, height);
   }
 
+  /**
+   * OWN-02: paints the ownership ring for one unit, or hides it for our own
+   * units (D2). A no-op when the colour and visibility did not change, so the
+   * OWN-05 refresh pass can call it for every unit without repainting.
+   */
+  refreshOwnerRing(container: Phaser.GameObjects.Container, entityId: string, ownerId: string) {
+    const ring = container.getData('ownerRing') as Phaser.GameObjects.Graphics | undefined;
+    if (!ring) return;
+
+    const visible = !!ownerId && ownerId !== this.scene.myOwnerId;
+    const color = visible ? this.scene.ownerColorRegistry.colorOf(ownerId) : -1;
+    if (this.ownershipSignatures.get(entityId) === color) return;
+    this.ownershipSignatures.set(entityId, color);
+
+    if (!visible) {
+      ring.setVisible(false);
+      return;
+    }
+
+    const radiusX = container.getData('ownerRingRadiusX') as number;
+    const radiusY = container.getData('ownerRingRadiusY') as number;
+    ring.clear();
+    ring.fillStyle(color, 0.18);
+    ring.fillEllipse(0, 0, radiusX, radiusY);
+    ring.lineStyle(2, color, 0.85);
+    ring.strokeEllipse(0, 0, radiusX, radiusY);
+    ring.setVisible(true);
+  }
+
+  /**
+   * OWN-03: paints the ownership diamond under one building, or hides it for
+   * our own buildings (D3). Foundations of enemy buildings keep the outline too;
+   * it is independent from the construction bar and the selection foundation.
+   */
+  refreshOwnerBase(container: Phaser.GameObjects.Container, entityId: string, ownerId: string) {
+    const base = container.getData('ownerBase') as Phaser.GameObjects.Graphics | undefined;
+    if (!base) return;
+
+    const visible = !!ownerId && ownerId !== this.scene.myOwnerId;
+    const color = visible ? this.scene.ownerColorRegistry.colorOf(ownerId) : -1;
+    if (this.ownershipSignatures.get(entityId) === color) return;
+    this.ownershipSignatures.set(entityId, color);
+
+    if (!visible) {
+      base.setVisible(false);
+      return;
+    }
+
+    const halfW = container.getData('ownerBaseHalfW') as number;
+    const halfH = container.getData('ownerBaseHalfH') as number;
+    base.clear();
+    base.lineStyle(2, color, 0.7);
+    base.beginPath();
+    base.moveTo(0, -halfH);
+    base.lineTo(halfW, 0);
+    base.lineTo(0, halfH);
+    base.lineTo(-halfW, 0);
+    base.closePath();
+    base.fillStyle(color, 0.12);
+    base.fillPath();
+    base.strokePath();
+    base.setVisible(true);
+  }
+
+  /**
+   * OWN-05: repaints every ownership marker after the players map changed.
+   *
+   * Entities can be created before their owner's player entry arrives (world
+   * restored from the database on server boot), so setting the colour only at
+   * creation time is not enough. Only entities whose signature changed touch
+   * their Graphics object, and ids that no longer exist are pruned.
+   */
+  refreshOwnershipVisuals() {
+    const scene = this.scene;
+    scene.unitSprites.forEach((container, id) => {
+      const unit = scene.room?.state?.units?.get(id);
+      if (unit) this.refreshOwnerRing(container, id, unit.ownerId);
+    });
+    scene.buildingSprites.forEach((container, id) => {
+      const building = scene.room?.state?.buildings?.get(id);
+      if (building) this.refreshOwnerBase(container, id, building.ownerId);
+    });
+
+    for (const id of this.ownershipSignatures.keys()) {
+      if (!scene.unitSprites.has(id) && !scene.buildingSprites.has(id)) {
+        this.ownershipSignatures.delete(id);
+      }
+    }
+  }
+
   createUnitSprite(id: string, unit: any, cb?: any) {
     const scene = this.scene;
     const screenPos = gridToScreen(unit.x, unit.y);
@@ -253,6 +362,19 @@ export class EntityRenderer {
     const isCavalry = unitType === 'CAVALRY';
     const visualOffsetY = isCavalry ? -52 : -40;
     const visualScale = isCavalry ? 0.75 : 0.72;
+
+    const ringRadiusX = isCavalry ? 40 : 26;
+    const ringRadiusY = isCavalry ? 20 : 13;
+
+    // OWN-02: ownership ring, added before the sprite so it stays under the
+    // unit's feet. `selectRing` is added last and therefore stays on top of it.
+    // It is a little larger than the selection ring so both read together.
+    const ownerRing = scene.add.graphics();
+    ownerRing.setVisible(false);
+    container.add(ownerRing);
+    container.setData('ownerRing', ownerRing);
+    container.setData('ownerRingRadiusX', ringRadiusX + 4);
+    container.setData('ownerRingRadiusY', ringRadiusY + 2);
 
     if (hasSheet) {
       const sprite = scene.add.sprite(0, visualOffsetY, hasDirectionalSheet ? walkSheetKey : sheetKey, 0);
@@ -288,8 +410,6 @@ export class EntityRenderer {
     // Selected indicator ring (AoE ground ellipse under feet, scaled for 128x64 tiles)
     const selectRing = scene.add.graphics();
     selectRing.lineStyle(2, 0x38bdf8, 0.9);
-    const ringRadiusX = isCavalry ? 40 : 26;
-    const ringRadiusY = isCavalry ? 20 : 13;
     selectRing.strokeEllipse(0, 0, ringRadiusX, ringRadiusY);
     selectRing.fillStyle(0x0284c7, 0.2);
     selectRing.fillEllipse(0, 0, ringRadiusX, ringRadiusY);
@@ -305,6 +425,8 @@ export class EntityRenderer {
     container.setDepth(getIsoDepth(unit.x, unit.y, 25));
     container.setData('entityId', id);
     container.setData('entityType', 'unit');
+
+    this.refreshOwnerRing(container, id, unit.ownerId);
 
     scene.unitSprites.set(id, container);
     // MOV-01: the scene owns the per-frame sampling from here on. It starts

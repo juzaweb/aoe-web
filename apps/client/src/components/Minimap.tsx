@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Room } from '@colyseus/sdk';
 import { MAP_GRID_HEIGHT, MAP_GRID_WIDTH, screenToGrid, TILE_HEIGHT, TILE_WIDTH } from '@chien-quoc/shared';
 import { WorldScene } from '../game/scenes/WorldScene.js';
+import { UNKNOWN_OWNER_COLOR, colorToCss } from '../game/render/ownerColor.js';
 
 interface MinimapProps {
   room: Room | null;
@@ -114,10 +115,14 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
         });
 
         // 2. Draw Buildings
-        const myOwnerId = sceneRef?.current?.myOwnerId ?? '';
+        // OWN-04: blips use the owner's real colour so the minimap matches the
+        // world; only the size distinguishes our units (see below).
+        const scene = sceneRef?.current;
+        const myOwnerId = scene?.myOwnerId ?? '';
+        const colorFor = (ownerId: string) =>
+          scene?.ownerColorCss(ownerId) ?? colorToCss(UNKNOWN_OWNER_COLOR);
         room.state.buildings?.forEach((b: any) => {
-          const isMe = b.ownerId === myOwnerId;
-          ctx.fillStyle = isMe ? '#38bdf8' : '#ef4444';
+          ctx.fillStyle = colorFor(b.ownerId);
           const bw = Math.max(3.5, b.sizeX * scaleX);
           const bh = Math.max(3.5, b.sizeY * scaleY);
           ctx.fillRect(b.gridX * scaleX, b.gridY * scaleY, bw, bh);
@@ -126,12 +131,12 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
         // 3. Draw Units
         room.state.units?.forEach((u: any) => {
           const isMe = u.ownerId === myOwnerId;
-          ctx.fillStyle = isMe ? '#4ade80' : '#f87171';
-          ctx.fillRect(u.x * scaleX, u.y * scaleY, 2.5, 2.5);
+          ctx.fillStyle = colorFor(u.ownerId);
+          const size = isMe ? 3 : 2.5;
+          ctx.fillRect(u.x * scaleX, u.y * scaleY, size, size);
         });
 
         // 4. Draw Camera Viewport Box (AoE white view rectangle)
-        const scene = sceneRef?.current;
         if (scene && scene.cameras?.main) {
           const cam = scene.cameras.main;
           const centerGrid = screenToGrid(cam.scrollX + cam.width / 2, cam.scrollY + cam.height / 2);
