@@ -9,6 +9,7 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | --- | --- | --- |
 | [`01-owner-visibility.md`](./01-owner-visibility.md) | Nhìn ra quân / nhà nào của ai trên chiến trường (`OWN-01..OWN-05`; `OWN-06` DEFERRED) | APPROVED — chờ code |
 | [`02-single-session.md`](./02-single-session.md) | Một tài khoản một phiên: chặn tab/thiết bị thứ hai, cưỡng chiếm phiên có xác nhận (`SESS-01..SESS-07`) | DONE — code + test |
+| [`03-level-upgrades.md`](./03-level-upgrades.md) | Nâng cấp công trình (TC 100 cấp, còn lại 10) và nghiên cứu lính toàn cục (10 cấp) (`LVL-00..LVL-07`) | IMPLEMENTED — chờ verify tay |
 
 Status: `DRAFT` (chưa chốt quyết định) → `APPROVED` (bắt đầu code) → `DONE`.
 

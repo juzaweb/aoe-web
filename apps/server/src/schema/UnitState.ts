@@ -9,6 +9,8 @@ export class UnitState extends Schema {
   @type('number') targetX: number = 0;
   @type('number') targetY: number = 0;
   @type('number') speed: number = 2.0;
+  /** Unit-type research level this unit was spawned/upgraded at. */
+  @type('number') level: number = 1;
   @type('number') hp: number = 50;
   @type('number') maxHp: number = 50;
   @type('string') actionState: string = 'IDLE'; // IDLE, MOVING, ATTACKING, HARVESTING, ATTACK_MOVE, PATROL, BUILDING

@@ -190,6 +190,22 @@ export class EntityRenderer {
     container.add(hpBar);
     container.setData('hpBar', hpBar);
 
+    // LVL: level badge above the artwork. Hidden at level 1 so the baseline map
+    // is unchanged until the player actually invests in the building. Anchored
+    // to the image top instead of the HP bar, whose per-type offsets are tuned
+    // for combat bars and can sit far above small buildings.
+    const levelBadge = scene.add
+      .text(0, offsetY - img.displayHeight / 2 - 6, '', {
+        fontFamily: 'monospace',
+        fontSize: '11px',
+        color: '#fbbf24',
+        stroke: '#0f172a',
+        strokeThickness: 3
+      })
+      .setOrigin(0.5, 1);
+    container.add(levelBadge);
+    container.setData('levelBadge', levelBadge);
+
     container.setDepth(getIsoDepth(building.gridX + building.sizeX, building.gridY + building.sizeY, 15));
     container.setData('entityId', id);
     container.setData('entityType', 'building');
@@ -215,6 +231,13 @@ export class EntityRenderer {
     const hpBar = container.getData('hpBar') as any;
     if (!hpBar) return;
 
+    const levelBadge = container.getData('levelBadge') as Phaser.GameObjects.Text | undefined;
+    if (levelBadge) {
+      const level = building.level ?? 1;
+      levelBadge.setText(level > 1 ? `Lv ${level}` : '');
+      levelBadge.setVisible(level > 1);
+    }
+
     // ECO-01: a field with nothing left in it turns brown, so an empty farm is
     // readable at a glance instead of only through the detail panel.
     const image = container.getData('buildingImage') as Phaser.GameObjects.Image | undefined;
@@ -224,9 +247,12 @@ export class EntityRenderer {
 
     hpBar.clear();
 
+    // LVL: an upgrade in progress keeps a bar visible even at full HP.
+    const upgrading = (building.upgradeTimeMs ?? 0) > 0;
+
     // CMB-02: a finished, undamaged building shows nothing. The construction bar
     // still has to draw, so the early exit only covers the built case.
-    if (building.isConstructed && building.hp >= building.maxHp) return;
+    if (building.isConstructed && building.hp >= building.maxHp && !upgrading) return;
 
     const width = Math.max(70, building.sizeX * 36);
     const height = 6;
@@ -241,6 +267,15 @@ export class EntityRenderer {
       // Construction progress (Yellow)
       const prog = Phaser.Math.Clamp(building.constructionProgress / 100, 0, 1);
       hpBar.fillStyle(0xf59e0b, 1);
+      hpBar.fillRect(-width / 2, barY, width * prog, height);
+    } else if (upgrading) {
+      // Upgrade progress (Sky) — distinct from both HP and construction.
+      const prog = Phaser.Math.Clamp(
+        building.upgradeProgressMs / Math.max(1, building.upgradeTimeMs),
+        0,
+        1
+      );
+      hpBar.fillStyle(0x38bdf8, 1);
       hpBar.fillRect(-width / 2, barY, width * prog, height);
     } else {
       // HP Bar (Green to Red)

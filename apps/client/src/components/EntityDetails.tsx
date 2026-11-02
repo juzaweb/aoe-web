@@ -5,9 +5,13 @@ import {
   BuildingType,
   Resources,
   UNIT_BLUEPRINTS,
-  UnitType
+  UnitType,
+  getPlayerUnitLevel,
+  getUnitLevelStats,
+  getUnitMaxLevel
 } from '@chien-quoc/shared';
 import { Shield, UserPlus, Heart, Hammer, X, Boxes } from 'lucide-react';
+import { BarracksResearchPanel, BuildingUpgradePanel } from './UpgradePanels.js';
 
 /** Vietnamese labels for the resource types a villager can haul. */
 const RESOURCE_LABELS: Record<string, string> = {
@@ -41,6 +45,14 @@ interface EntityDetailsProps {
   onCancelTrain: (buildingId: string) => void;
   /** CMD-04b: removes a foundation that is still under construction. */
   onCancelBuilding: (buildingId: string) => void;
+  /** LVL: starts upgrading one owned, finished building. */
+  onUpgradeBuilding: (buildingId: string) => void;
+  /** LVL: cancels an in-flight upgrade and refunds its cost. */
+  onCancelBuildingUpgrade: (buildingId: string) => void;
+  /** LVL: starts a player-wide research for one unit type (Barracks only). */
+  onUpgradeUnitType: (unitType: UnitType) => void;
+  /** LVL: cancels the in-flight unit research. */
+  onCancelUnitUpgrade: (unitType: UnitType) => void;
 }
 
 export const EntityDetails: React.FC<EntityDetailsProps> = ({
@@ -48,13 +60,20 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
   playerResources,
   onTrainUnit,
   onCancelTrain,
-  onCancelBuilding
+  onCancelBuilding,
+  onUpgradeBuilding,
+  onCancelBuildingUpgrade,
+  onUpgradeUnitType,
+  onCancelUnitUpgrade
 }) => {
   const buildingBp = entity.type === 'building' ? BUILDING_BLUEPRINTS[entity.subType as BuildingType] : null;
   const trainableUnits = buildingBp ? buildingBp.trainableUnits : [];
 
+  const buildingIsOwnedAndFinished =
+    entity.type === 'building' && entity.isOwner === true && entity.isConstructed === true;
+
   return (
-    <div className="aoe-panel w-80 min-h-[144px] p-3 rounded-lg flex flex-col gap-2 pointer-events-auto">
+    <div className="aoe-panel w-80 min-h-[144px] max-h-[72vh] overflow-y-auto p-3 rounded-lg flex flex-col gap-2 pointer-events-auto">
       {/* Header Info */}
       <div className="flex items-center justify-between border-b border-amber-800/40 pb-2">
         <div className="flex items-center gap-2.5">
@@ -96,6 +115,12 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
             </span>
             <span className="text-[10px] text-slate-400 uppercase font-mono tracking-wider">
               {entity.type}
+              {entity.level !== undefined && (
+                <span className="ml-1.5 text-amber-400 normal-case">
+                  Lv {entity.level}
+                  {entity.maxLevel !== undefined ? `/${entity.maxLevel}` : ''}
+                </span>
+              )}
             </span>
           </div>
         </div>
@@ -231,19 +256,23 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
           <div className="flex gap-2">
             {trainableUnits.map((uType) => {
               const uBp = UNIT_BLUEPRINTS[uType];
-              const canAfford =
+              const canAffordUnit =
                 playerResources.wood >= uBp.cost.wood &&
                 playerResources.food >= uBp.cost.food &&
                 playerResources.gold >= uBp.cost.gold &&
                 playerResources.stone >= uBp.cost.stone;
+              const unitLevel = entity.unitLevels
+                ? getPlayerUnitLevel(entity.unitLevels, uType)
+                : 1;
+              const unitLevelStats = getUnitLevelStats(uType, unitLevel);
 
               return (
                 <div key={uType} className="relative group/train">
                   <button
                     onClick={() => onTrainUnit(entity.id, uType)}
-                    disabled={!canAfford}
+                    disabled={!canAffordUnit}
                     className={`px-2.5 py-1.5 rounded border text-[11px] font-semibold transition-all flex flex-col items-center gap-1 ${
-                      canAfford
+                      canAffordUnit
                         ? 'aoe-button text-slate-200 hover:border-amber-400'
                         : 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed opacity-50'
                     }`}
@@ -268,7 +297,10 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
                       {uBp.cost.wood > 0 && <span className="text-amber-400 mr-2">Gỗ: {uBp.cost.wood}</span>}
                       {uBp.cost.gold > 0 && <span className="text-yellow-400 mr-2">Vàng: {uBp.cost.gold}</span>}
                       <div className="text-slate-400 text-[9px] mt-0.5">
-                        Tấn công: {uBp.attackPower} | Máu: {uBp.maxHp}
+                        Tấn công: {unitLevelStats.attackPower} | Máu: {unitLevelStats.maxHp}
+                      </div>
+                      <div className="text-slate-400 text-[9px]">
+                        Cấp hiện tại: {unitLevel}/{getUnitMaxLevel()}
                       </div>
                       {/* UIX-02: AoE2 tooltips advertise the training time, which is
                           the only way to compare two units' cost-per-second. */}
@@ -283,6 +315,36 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
           </div>
         </div>
       )}
+
+      {/* LVL: every owned, finished building can upgrade itself */}
+      {buildingIsOwnedAndFinished && entity.level !== undefined && (
+        <BuildingUpgradePanel
+          buildingId={entity.id}
+          type={entity.subType as BuildingType}
+          level={entity.level}
+          maxLevel={entity.maxLevel}
+          upgradeProgressMs={entity.upgradeProgressMs}
+          upgradeTimeMs={entity.upgradeTimeMs}
+          playerResources={playerResources}
+          onUpgrade={onUpgradeBuilding}
+          onCancel={onCancelBuildingUpgrade}
+        />
+      )}
+
+      {/* LVL: barracks is the single research point for player-wide unit levels */}
+      {buildingIsOwnedAndFinished &&
+        entity.subType === 'BARRACKS' &&
+        (entity.unitLevels?.length ?? 0) > 0 && (
+          <BarracksResearchPanel
+            unitLevels={entity.unitLevels ?? []}
+            researchUnitType={entity.researchUnitType}
+            researchProgressMs={entity.researchProgressMs}
+            researchTimeMs={entity.researchTimeMs}
+            playerResources={playerResources}
+            onUpgradeUnitType={onUpgradeUnitType}
+            onCancelResearch={onCancelUnitUpgrade}
+          />
+        )}
     </div>
   );
 };

@@ -12,6 +12,11 @@ export class BuildingState extends Schema {
   @type('number') maxHp: number = 1000;
   @type('boolean') isConstructed: boolean = true;
   @type('number') constructionProgress: number = 100;
+  /** Current upgrade level, starting at 1. Max depends on the building type. */
+  @type('number') level: number = 1;
+  /** Upgrade timer. `upgradeTimeMs = 0` means no upgrade is in progress. */
+  @type('number') upgradeProgressMs: number = 0;
+  @type('number') upgradeTimeMs: number = 0;
   @type(['string']) trainingQueue = new ArraySchema<string>();
   @type('number') trainingProgressMs: number = 0;
   /** Rally point in grid coordinates; -1 on both axes means "not set". */

@@ -1,8 +1,11 @@
 import {
   BuildingBlueprint,
+  BuildingType,
   UNIT_BLUEPRINTS,
   UnitBlueprint,
-  UnitType
+  UnitType,
+  getBuildingLevelStats,
+  getUnitLevelStats
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { UnitState } from '../schema/UnitState.js';
@@ -234,6 +237,9 @@ export class CombatSystem {
     const blueprint = UNIT_BLUEPRINTS[unit.type as UnitType];
     if (!blueprint) return;
 
+    // LVL: the level scales damage; range and cooldown stay blueprint rules.
+    const levelStats = getUnitLevelStats(unit.type as UnitType, unit.level);
+
     // CMB-01 before the cooldown: a stance that has given up should not keep a
     // weapon timer parked against a target it is no longer fighting.
     if (!this.keepsTarget(unit, blueprint)) return;
@@ -255,7 +261,7 @@ export class CombatSystem {
 
       if (!this.isTargetInWeaponRange(unit, blueprint)) return;
 
-      targetUnit.hp -= blueprint.attackPower;
+      targetUnit.hp -= levelStats.attackPower;
       this.attackTimers.set(unit.id, blueprint.attackCooldownMs);
 
       if (targetUnit.hp <= 0) {
@@ -278,7 +284,7 @@ export class CombatSystem {
 
       if (!this.isTargetInWeaponRange(unit, blueprint)) return;
 
-      targetBuilding.hp -= blueprint.attackPower;
+      targetBuilding.hp -= levelStats.attackPower;
       this.attackTimers.set(unit.id, blueprint.attackCooldownMs);
 
       if (targetBuilding.hp <= 0) {
@@ -313,7 +319,10 @@ export class CombatSystem {
       return;
     }
 
-    target.hp -= blueprint.attackPower;
+    target.hp -= getBuildingLevelStats(
+      building.type as BuildingType,
+      building.level
+    ).attackPower;
     this.towerTimers.set(building.id, blueprint.attackCooldownMs);
 
     if (target.hp <= 0) this.killUnit(target);

@@ -21,12 +21,19 @@ import {
   SetStancePayload,
   CancelTrainPayload,
   CancelBuildingPayload,
+  CancelBuildingUpgradePayload,
+  CancelUnitUpgradePayload,
+  UpgradeBuildingPayload,
+  UpgradeUnitTypePayload,
   SERVER_TICK_RATE,
   UNIT_BLUEPRINTS,
   UnitType,
   SESSION_ALREADY_ACTIVE,
   SESSION_BUSY,
   SESSION_REPLACED_CLOSE,
+  getBuildingLevelStats,
+  getUnitLevelStats,
+  getPlayerUnitLevel,
   isDirtRoadTile
 } from '@chien-quoc/shared';
 import { WorldState } from '../schema/WorldState.js';
@@ -42,6 +49,7 @@ import { CommandSystem } from './CommandSystem.js';
 import { MovementSystem } from './MovementSystem.js';
 import { ownerIdOf, RoomAuth } from './identity.js';
 import { SessionRegistry } from './Sessions.js';
+import { loadPlayerLevels, applyBuildingUpgrade, applyUnitResearch } from './upgrades.js';
 
 const PLAYER_COLORS = [
   '#3b82f6', // Blue
@@ -196,6 +204,28 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       this.commands.handleCancelBuilding(client, message);
     });
 
+    this.onMessage(NetworkMessage.UPGRADE_BUILDING, (client, message: UpgradeBuildingPayload) => {
+      this.commands.handleUpgradeBuilding(client, message);
+    });
+
+    this.onMessage(
+      NetworkMessage.CANCEL_BUILDING_UPGRADE,
+      (client, message: CancelBuildingUpgradePayload) => {
+        this.commands.handleCancelBuildingUpgrade(client, message);
+      }
+    );
+
+    this.onMessage(NetworkMessage.UPGRADE_UNIT_TYPE, (client, message: UpgradeUnitTypePayload) => {
+      this.commands.handleUpgradeUnitType(client, message);
+    });
+
+    this.onMessage(
+      NetworkMessage.CANCEL_UNIT_UPGRADE,
+      (client, message: CancelUnitUpgradePayload) => {
+        this.commands.handleCancelUnitUpgrade(client, message);
+      }
+    );
+
     // Run authoritative tick loop
     this.setSimulationInterval((deltaTime) => this.update(deltaTime), 1000 / SERVER_TICK_RATE);
 
@@ -252,8 +282,12 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           building.gridY = b.gridY;
           building.sizeX = b.sizeX;
           building.sizeY = b.sizeY;
-          building.hp = b.hp;
-          building.maxHp = b.maxHp;
+          building.level = b.level ?? 1;
+          building.upgradeProgressMs = b.upgradeProgressMs ?? 0;
+          building.upgradeTimeMs = b.upgradeTimeMs ?? 0;
+          const levelStats = getBuildingLevelStats(b.type as BuildingType, building.level);
+          building.maxHp = levelStats.maxHp;
+          building.hp = Math.min(b.hp, levelStats.maxHp);
           building.isConstructed = b.isConstructed;
           building.constructionProgress = b.constructionProgress;
 
@@ -274,8 +308,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           unit.targetX = u.x;
           unit.targetY = u.y;
           unit.speed = u.speed;
-          unit.hp = u.hp;
-          unit.maxHp = u.maxHp;
+          unit.level = u.level ?? 1;
+          const levelStats = getUnitLevelStats(u.type as UnitType, unit.level);
+          unit.maxHp = levelStats.maxHp;
+          unit.hp = Math.min(u.hp, levelStats.maxHp);
           unit.actionState = u.actionState;
           this.state.units.set(u.id, unit);
         }
@@ -620,6 +656,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           player.stone = savedProfile.stone;
           player.population = savedProfile.population;
           player.populationCap = savedProfile.populationCap;
+          loadPlayerLevels(player, savedProfile.unitLevels);
+          player.researchUnitType = savedProfile.researchUnitType ?? '';
+          player.researchProgressMs = savedProfile.researchProgressMs ?? 0;
+          player.researchTimeMs = savedProfile.researchTimeMs ?? 0;
         } else {
           const playerIndex = this.state.players.size % PLAYER_COLORS.length;
           player.color = PLAYER_COLORS[playerIndex];
@@ -718,7 +758,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     townCenter.sizeX = tcBlueprint.sizeX;
     townCenter.sizeY = tcBlueprint.sizeY;
     townCenter.hp = tcBlueprint.maxHp;
-    townCenter.maxHp = tcBlueprint.maxHp;
+    townCenter.maxHp = getBuildingLevelStats('TOWN_CENTER', 1).maxHp;
+    townCenter.level = 1;
     townCenter.isConstructed = true;
     townCenter.constructionProgress = 100;
 
@@ -771,7 +812,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       this.state.resourceNodes.set(id, node);
     });
 
-    // Spawn 3 starter villagers outside 4x4 Town Center
+    // Spawn 3 starter villagers outside 4x4 Town Center. A returning player
+    // whose empire was wiped keeps the villager research they already paid for.
+    const villagerLevel = getPlayerUnitLevel(player.unitLevels, 'VILLAGER');
+    const villagerStats = getUnitLevelStats('VILLAGER', villagerLevel);
     const villagerOffsets = [
       { dx: 4, dy: 1 },
       { dx: 1, dy: 4 },
@@ -789,8 +833,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       villager.targetX = villager.x;
       villager.targetY = villager.y;
       villager.speed = UNIT_BLUEPRINTS.VILLAGER.speed;
-      villager.hp = UNIT_BLUEPRINTS.VILLAGER.maxHp;
-      villager.maxHp = UNIT_BLUEPRINTS.VILLAGER.maxHp;
+      villager.level = villagerLevel;
+      villager.hp = villagerStats.maxHp;
+      villager.maxHp = villagerStats.maxHp;
       villager.actionState = 'IDLE';
 
       this.state.units.set(vId, villager);
@@ -862,6 +907,17 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         }
       }
 
+      // LVL: a finished building can be upgrading itself. The timer runs even
+      // while the site is under attack; only the building's owner can start it.
+      if (building.isConstructed && building.upgradeTimeMs > 0) {
+        building.upgradeProgressMs += deltaTime;
+        if (building.upgradeProgressMs >= building.upgradeTimeMs) {
+          applyBuildingUpgrade(building);
+          // Town Centers and Houses change the population ceiling.
+          this.updatePlayerPopulation(building.ownerId);
+        }
+      }
+
       // SIM-03: a finished defensive building shoots at whatever enemy comes
       // inside its range. Foundations are defenceless until they are done.
       if (building.isConstructed) {
@@ -881,6 +937,19 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           building.trainingProgressMs = 0;
           this.spawnTrainedUnit(building, currentUnitType);
         }
+      }
+    });
+
+    // LVL: one player-wide unit research at a time. Offline players have no
+    // PlayerState in the room, so their research pauses until they rejoin.
+    this.state.players.forEach((player: PlayerState) => {
+      if (!player.researchUnitType) return;
+
+      if (player.researchProgressMs < player.researchTimeMs) {
+        player.researchProgressMs += deltaTime;
+      }
+      if (player.researchProgressMs >= player.researchTimeMs) {
+        applyUnitResearch(this.state, player, player.researchUnitType as UnitType);
       }
     });
 
@@ -1033,6 +1102,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     const x = building.gridX;
     const y = building.gridY + building.sizeY;
     const blueprint = UNIT_BLUEPRINTS[unitType];
+    const player = this.state.players.get(ownerId);
+    const level = player ? getPlayerUnitLevel(player.unitLevels, unitType) : 1;
+    const levelStats = getUnitLevelStats(unitType, level);
     const uId = `u_${++this.nextEntityId}`;
     const unit = new UnitState();
     unit.id = uId;
@@ -1043,8 +1115,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     unit.targetX = unit.x;
     unit.targetY = unit.y;
     unit.speed = blueprint.speed;
-    unit.hp = blueprint.maxHp;
-    unit.maxHp = blueprint.maxHp;
+    unit.level = level;
+    unit.hp = levelStats.maxHp;
+    unit.maxHp = levelStats.maxHp;
     unit.actionState = 'IDLE';
 
     if (building.rallyX >= 0 && building.rallyY >= 0) {
@@ -1075,7 +1148,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       if (b.ownerId === ownerId && b.isConstructed) {
         const bp = BUILDING_BLUEPRINTS[b.type as BuildingType];
         if (bp) {
-          totalCap += bp.populationProvided;
+          totalCap += getBuildingLevelStats(b.type as BuildingType, b.level).populationProvided;
         }
       }
     });

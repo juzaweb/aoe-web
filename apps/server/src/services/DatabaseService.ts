@@ -8,6 +8,7 @@ import { BuildingState } from '../schema/BuildingState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { DATABASE_INDEX_STATEMENTS, DATABASE_TABLE_STATEMENTS } from './databaseSchema.js';
+import { serializeUnitLevels } from './playerLevels.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,6 +56,10 @@ export class DatabaseService {
     // Create the schema on a brand-new database file (idempotent DDL).
     await this.ensureSchema();
 
+    // LVL: the boot DDL cannot alter an existing database. Add the upgrade
+    // columns in place so a dev database keeps its accounts and empires.
+    await this.ensureUpgradeColumns();
+
     // Drop empires whose account is gone before anything reads or writes them.
     await this.pruneOrphanedPlayers();
 
@@ -93,6 +98,40 @@ export class DatabaseService {
 
     for (const statement of DATABASE_INDEX_STATEMENTS) {
       await prisma.$executeRawUnsafe(statement);
+    }
+  }
+
+  /**
+   * LVL: additive migration for databases created before upgrade levels
+   * existed. `ensureSchema` only runs `CREATE TABLE IF NOT EXISTS`, so an
+   * existing `dev.db` would otherwise be missing every new column.
+   *
+   * `prisma db push` is deliberately not used here: the boot DDL and the Prisma
+   * schema differ in ways that make Prisma propose dropping non-empty tables.
+   * These columns are constant strings and never come from user input.
+   */
+  private static async ensureUpgradeColumns() {
+    const columns: Array<[table: string, column: string, definition: string]> = [
+      ['players', 'unit_levels', "TEXT NOT NULL DEFAULT '1,1,1,1'"],
+      ['players', 'research_unit_type', "TEXT NOT NULL DEFAULT ''"],
+      ['players', 'research_progress_ms', 'REAL NOT NULL DEFAULT 0'],
+      ['players', 'research_time_ms', 'REAL NOT NULL DEFAULT 0'],
+      ['buildings', 'level', 'INTEGER NOT NULL DEFAULT 1'],
+      ['buildings', 'upgrade_progress_ms', 'REAL NOT NULL DEFAULT 0'],
+      ['buildings', 'upgrade_time_ms', 'REAL NOT NULL DEFAULT 0'],
+      ['units', 'level', 'INTEGER NOT NULL DEFAULT 1']
+    ];
+
+    for (const [table, column, definition] of columns) {
+      const existing = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+        `PRAGMA table_info("${table}")`
+      );
+      if (existing.some((row) => row.name === column)) continue;
+
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE "${table}" ADD COLUMN "${column}" ${definition}`
+      );
+      console.log(`🗄️  [DatabaseService] Added ${table}.${column} for upgrade levels.`);
     }
   }
 
@@ -238,6 +277,10 @@ export class DatabaseService {
             stone: player.stone,
             population: player.population,
             populationCap: player.populationCap,
+            unitLevels: serializeUnitLevels(player.unitLevels),
+            researchUnitType: player.researchUnitType,
+            researchProgressMs: player.researchProgressMs,
+            researchTimeMs: player.researchTimeMs,
             isOnline: player.isOnline
           },
           update: {
@@ -249,6 +292,10 @@ export class DatabaseService {
             stone: player.stone,
             population: player.population,
             populationCap: player.populationCap,
+            unitLevels: serializeUnitLevels(player.unitLevels),
+            researchUnitType: player.researchUnitType,
+            researchProgressMs: player.researchProgressMs,
+            researchTimeMs: player.researchTimeMs,
             isOnline: player.isOnline
           }
         });
@@ -275,11 +322,18 @@ export class DatabaseService {
               sizeY: b.sizeY,
               hp: b.hp,
               maxHp: b.maxHp,
+              level: b.level,
+              upgradeProgressMs: b.upgradeProgressMs,
+              upgradeTimeMs: b.upgradeTimeMs,
               isConstructed: b.isConstructed,
               constructionProgress: b.constructionProgress
             },
             update: {
               hp: b.hp,
+              maxHp: b.maxHp,
+              level: b.level,
+              upgradeProgressMs: b.upgradeProgressMs,
+              upgradeTimeMs: b.upgradeTimeMs,
               isConstructed: b.isConstructed,
               constructionProgress: b.constructionProgress
             }
@@ -305,6 +359,7 @@ export class DatabaseService {
               x: u.x,
               y: u.y,
               speed: u.speed,
+              level: u.level,
               hp: u.hp,
               maxHp: u.maxHp,
               actionState: u.actionState
@@ -312,7 +367,9 @@ export class DatabaseService {
             update: {
               x: u.x,
               y: u.y,
+              level: u.level,
               hp: u.hp,
+              maxHp: u.maxHp,
               actionState: u.actionState
             }
           });

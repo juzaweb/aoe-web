@@ -6,7 +6,8 @@ import {
   MAX_SELECTION,
   ResourceType,
   UnitType,
-  UNIT_BLUEPRINTS
+  UNIT_BLUEPRINTS,
+  getUnitLevelStats
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { PlayerState } from '../schema/PlayerState.js';
@@ -219,7 +220,7 @@ export class EconomySystem {
   }
 
   private processGathering(unit: UnitState, deltaTime: number) {
-    const carryCapacity = UNIT_BLUEPRINTS[unit.type as UnitType]?.carryCapacity ?? 0;
+    const carryCapacity = getUnitLevelStats(unit.type as UnitType, unit.level).carryCapacity;
     if (carryCapacity <= 0) return;
 
     // SIM-02: a villager holding a full load banks it instead of harvesting over

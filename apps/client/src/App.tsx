@@ -274,6 +274,30 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleUpgradeBuilding = (buildingId: string) => {
+    if (room) {
+      room.send(NetworkMessage.UPGRADE_BUILDING, { buildingId });
+    }
+  };
+
+  const handleCancelBuildingUpgrade = (buildingId: string) => {
+    if (room) {
+      room.send(NetworkMessage.CANCEL_BUILDING_UPGRADE, { buildingId });
+    }
+  };
+
+  const handleUpgradeUnitType = (unitType: UnitType) => {
+    if (room) {
+      room.send(NetworkMessage.UPGRADE_UNIT_TYPE, { unitType });
+    }
+  };
+
+  const handleCancelUnitUpgrade = (unitType: UnitType) => {
+    if (room) {
+      room.send(NetworkMessage.CANCEL_UNIT_UPGRADE, { unitType });
+    }
+  };
+
   // CMD-04b: tear down a foundation that is still under construction. Named
   // separately from handleCancelBuilding, which exits placement mode.
   const handleCancelFoundation = (buildingId: string) => {
@@ -336,6 +360,10 @@ export const App: React.FC = () => {
               onTrainUnit={handleTrainUnit}
               onCancelTrain={handleCancelTrain}
               onCancelBuilding={handleCancelFoundation}
+              onUpgradeBuilding={handleUpgradeBuilding}
+              onCancelBuildingUpgrade={handleCancelBuildingUpgrade}
+              onUpgradeUnitType={handleUpgradeUnitType}
+              onCancelUnitUpgrade={handleCancelUnitUpgrade}
             />
           )}
 

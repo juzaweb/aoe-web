@@ -6,7 +6,14 @@ import {
   NetworkMessage,
   SESSION_ALREADY_ACTIVE,
   SESSION_REPLACED_CLOSE,
-  UNIT_BLUEPRINTS
+  UNIT_BLUEPRINTS,
+  getBuildingLevelStats,
+  getBuildingUpgradeCost,
+  getBuildingUpgradeTimeMs,
+  getPlayerUnitLevel,
+  getUnitLevelStats,
+  getUnitUpgradeCost,
+  getUnitUpgradeTimeMs
 } from '@chien-quoc/shared';
 import { WorldRoom } from './WorldRoom.js';
 import { isWithinBuildRange } from './construction.js';
@@ -1633,5 +1640,342 @@ describe('empire ownership by account (ACCT)', () => {
       (b: BuildingState) => b.type === 'HOUSE'
     );
     expect(placed?.ownerId).toBe('user-1');
+  });
+});
+
+describe('starter base levels (LVL)', () => {
+  it('spawns starter villagers at the researched villager level', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    const player = room.state.players.get('player-a');
+    expect(player).toBeDefined();
+    player!.unitLevels[0] = 3;
+
+    internals(room).spawnInitialBase('player-a');
+
+    const villagers: UnitState[] = [];
+    room.state.units.forEach((unit: UnitState) => {
+      if (unit.type === 'VILLAGER') villagers.push(unit);
+    });
+    const stats = getUnitLevelStats('VILLAGER', 3);
+    expect(villagers).toHaveLength(3);
+    for (const villager of villagers) {
+      expect(villager.level).toBe(3);
+      expect(villager.maxHp).toBe(stats.maxHp);
+    }
+  });
+});
+
+describe('building upgrades (LVL)', () => {
+  it('charges the next level, ticks, and applies HP + population', () => {
+    const room = createRoom();
+    const player = addPlayer(room, 'player-a', {
+      wood: 5000,
+      food: 5000,
+      gold: 5000,
+      stone: 5000
+    });
+    const townCenter = addBuilding(room, { id: 'b_1', ownerId: 'player-a' });
+    const client = createClient('player-a');
+    const cost = getBuildingUpgradeCost('TOWN_CENTER', 1);
+    const duration = getBuildingUpgradeTimeMs('TOWN_CENTER', 1);
+
+    internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_1' });
+
+    expect(player.wood).toBe(5000 - cost.wood);
+    expect(player.stone).toBe(5000 - cost.stone);
+    expect(townCenter.level).toBe(1);
+    expect(townCenter.upgradeTimeMs).toBe(duration);
+    expect(client.send).not.toHaveBeenCalled();
+
+    internals(room).update(duration);
+
+    const expected = getBuildingLevelStats('TOWN_CENTER', 2);
+    expect(townCenter.level).toBe(2);
+    expect(townCenter.maxHp).toBe(expected.maxHp);
+    expect(townCenter.hp).toBe(expected.maxHp);
+    expect(townCenter.upgradeProgressMs).toBe(0);
+    expect(townCenter.upgradeTimeMs).toBe(0);
+    expect(player.populationCap).toBe(10 + expected.populationProvided);
+  });
+
+  it('keeps missing HP missing when the upgrade lands', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 5000, stone: 5000 });
+    const townCenter = addBuilding(room, { id: 'b_1', ownerId: 'player-a' });
+    townCenter.hp = townCenter.maxHp - 500;
+    const duration = getBuildingUpgradeTimeMs('TOWN_CENTER', 1);
+
+    internals(room).commands.handleUpgradeBuilding(createClient('player-a'), { buildingId: 'b_1' });
+    internals(room).update(duration);
+
+    expect(townCenter.maxHp).toBe(getBuildingLevelStats('TOWN_CENTER', 2).maxHp);
+    expect(townCenter.hp).toBe(townCenter.maxHp - 500);
+  });
+
+  it('rejects foundations, foreign buildings, max level and a second upgrade', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 5000, stone: 5000 });
+    addPlayer(room, 'player-b', { wood: 5000, stone: 5000 });
+    const clientA = createClient('player-a');
+    const foundation = addBuilding(room, {
+      id: 'b_foundation',
+      ownerId: 'player-a',
+      isConstructed: false
+    });
+    const foreign = addBuilding(room, { id: 'b_foreign', ownerId: 'player-b' });
+    const maxed = addBuilding(room, { id: 'b_maxed', ownerId: 'player-a', type: 'HOUSE' });
+    maxed.level = 10;
+    const busy = addBuilding(room, { id: 'b_busy', ownerId: 'player-a', type: 'HOUSE' });
+    busy.upgradeTimeMs = 1000;
+
+    internals(room).commands.handleUpgradeBuilding(clientA, { buildingId: foundation.id });
+    expect(clientA.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Building is still under construction'
+    });
+
+    internals(room).commands.handleUpgradeBuilding(clientA, { buildingId: foreign.id });
+    expect(clientA.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Not your building'
+    });
+
+    internals(room).commands.handleUpgradeBuilding(clientA, { buildingId: maxed.id });
+    expect(clientA.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Building is already at max level'
+    });
+
+    internals(room).commands.handleUpgradeBuilding(clientA, { buildingId: busy.id });
+    expect(clientA.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Building is already upgrading'
+    });
+  });
+
+  it('rejects an upgrade the player cannot afford', () => {
+    const room = createRoom();
+    const player = addPlayer(room, 'player-a', { wood: 0, stone: 0 });
+    addBuilding(room, { id: 'b_1', ownerId: 'player-a' });
+    const client = createClient('player-a');
+
+    internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_1' });
+
+    expect(client.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Insufficient resources to upgrade building'
+    });
+    expect(player.wood).toBe(0);
+  });
+
+  it('refunds the full price when the upgrade is cancelled', () => {
+    const room = createRoom();
+    const player = addPlayer(room, 'player-a', {
+      wood: 5000,
+      food: 5000,
+      gold: 5000,
+      stone: 5000
+    });
+    const townCenter = addBuilding(room, { id: 'b_1', ownerId: 'player-a' });
+    const client = createClient('player-a');
+    const cost = getBuildingUpgradeCost('TOWN_CENTER', 1);
+
+    internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_1' });
+    internals(room).commands.handleCancelBuildingUpgrade(client, { buildingId: 'b_1' });
+
+    expect(player.wood).toBe(5000);
+    expect(player.stone).toBe(5000);
+    expect(townCenter.upgradeProgressMs).toBe(0);
+    expect(townCenter.upgradeTimeMs).toBe(0);
+    expect(cost.wood).toBeGreaterThan(0);
+  });
+});
+
+describe('unit research (LVL)', () => {
+  it('requires a finished Barracks', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 5000, food: 5000, gold: 5000 });
+    const client = createClient('player-a');
+
+    internals(room).commands.handleUpgradeUnitType(client, { unitType: 'SPEARMAN' });
+
+    expect(client.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Build a Barracks before researching unit upgrades'
+    });
+  });
+
+  it('rejects a foundation Barracks and an unaffordable research', () => {
+    const room = createRoom();
+    const player = addPlayer(room, 'player-a', { wood: 0, food: 0, gold: 0 });
+    addBuilding(room, {
+      id: 'b_foundation',
+      ownerId: 'player-a',
+      type: 'BARRACKS',
+      isConstructed: false
+    });
+    const client = createClient('player-a');
+
+    internals(room).commands.handleUpgradeUnitType(client, { unitType: 'SPEARMAN' });
+    expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Build a Barracks before researching unit upgrades'
+    });
+
+    addBuilding(room, { id: 'b_ready', ownerId: 'player-a', type: 'BARRACKS' });
+    internals(room).commands.handleUpgradeUnitType(client, { unitType: 'SPEARMAN' });
+    expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Insufficient resources to research unit upgrade'
+    });
+    expect(player.researchUnitType).toBe('');
+  });
+
+  it('charges once, ticks, and upgrades every existing unit of that type', () => {
+    const room = createRoom();
+    const player = addPlayer(room, 'player-a', {
+      wood: 5000,
+      food: 5000,
+      gold: 5000,
+      stone: 5000
+    });
+    addBuilding(room, { id: 'b_barracks', ownerId: 'player-a', type: 'BARRACKS' });
+    const spearmanA = addUnit(room, { id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN' });
+    const spearmanB = addUnit(room, { id: 'u_2', ownerId: 'player-a', type: 'SPEARMAN' });
+    const villager = addUnit(room, { id: 'u_3', ownerId: 'player-a', type: 'VILLAGER' });
+    const cost = getUnitUpgradeCost('SPEARMAN', 1);
+    const duration = getUnitUpgradeTimeMs('SPEARMAN', 1);
+    const client = createClient('player-a');
+
+    internals(room).commands.handleUpgradeUnitType(client, { unitType: 'SPEARMAN' });
+
+    expect(player.gold).toBe(5000 - cost.gold);
+    expect(player.food).toBe(5000 - cost.food);
+    expect(player.researchUnitType).toBe('SPEARMAN');
+    expect(player.researchTimeMs).toBe(duration);
+
+    internals(room).update(duration);
+
+    const stats = getUnitLevelStats('SPEARMAN', 2);
+    expect(getPlayerUnitLevel(player.unitLevels, 'SPEARMAN')).toBe(2);
+    expect(spearmanA.level).toBe(2);
+    expect(spearmanB.level).toBe(2);
+    expect(spearmanA.maxHp).toBe(stats.maxHp);
+    expect(spearmanB.maxHp).toBe(stats.maxHp);
+    expect(villager.level).toBe(1);
+    expect(player.researchUnitType).toBe('');
+    expect(player.researchProgressMs).toBe(0);
+  });
+
+  it('still spawns new units at the researched level', () => {
+    const room = createRoom();
+    const player = addPlayer(room, 'player-a');
+    player.unitLevels[1] = 2;
+    const barracks = addBuilding(room, {
+      id: 'b_barracks',
+      ownerId: 'player-a',
+      type: 'BARRACKS'
+    });
+    barracks.trainingQueue.push('SPEARMAN');
+    barracks.trainingProgressMs = UNIT_BLUEPRINTS.SPEARMAN.trainTimeMs;
+
+    internals(room).update(1);
+
+    const spawned = Array.from(room.state.units.values()).find(
+      (unit: UnitState) => unit.type === 'SPEARMAN'
+    );
+    expect(spawned?.level).toBe(2);
+    expect(spawned?.maxHp).toBe(getUnitLevelStats('SPEARMAN', 2).maxHp);
+  });
+
+  it('rejects max level, a second research, and an unknown type', () => {
+    const room = createRoom();
+    const player = addPlayer(room, 'player-a', {
+      wood: 5000,
+      food: 5000,
+      gold: 5000,
+      stone: 5000
+    });
+    addBuilding(room, { id: 'b_barracks', ownerId: 'player-a', type: 'BARRACKS' });
+    const client = createClient('player-a');
+
+    player.unitLevels[1] = 10;
+    internals(room).commands.handleUpgradeUnitType(client, { unitType: 'SPEARMAN' });
+    expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Unit type is already at max level'
+    });
+
+    internals(room).commands.handleUpgradeUnitType(client, { unitType: 'DRAGON' as never });
+    expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Invalid unit type'
+    });
+
+    internals(room).commands.handleUpgradeUnitType(client, { unitType: 'ARCHER' });
+    expect(player.researchUnitType).toBe('ARCHER');
+    internals(room).commands.handleUpgradeUnitType(client, { unitType: 'CAVALRY' });
+    expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Another unit research is already in progress'
+    });
+  });
+
+  it('refunds the full price when research is cancelled', () => {
+    const room = createRoom();
+    const player = addPlayer(room, 'player-a', {
+      wood: 5000,
+      food: 5000,
+      gold: 5000,
+      stone: 5000
+    });
+    addBuilding(room, { id: 'b_barracks', ownerId: 'player-a', type: 'BARRACKS' });
+    const client = createClient('player-a');
+
+    internals(room).commands.handleUpgradeUnitType(client, { unitType: 'ARCHER' });
+    internals(room).commands.handleCancelUnitUpgrade(client, { unitType: 'ARCHER' });
+
+    expect(player.wood).toBe(5000);
+    expect(player.food).toBe(5000);
+    expect(player.gold).toBe(5000);
+    expect(player.researchUnitType).toBe('');
+    expect(player.researchProgressMs).toBe(0);
+  });
+});
+
+describe('level-aware combat (LVL)', () => {
+  it('scales unit damage by the researched level', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const attacker = addUnit(room, {
+      id: 'u_1',
+      ownerId: 'player-a',
+      type: 'SPEARMAN',
+      x: 10,
+      y: 10,
+      actionState: 'ATTACKING'
+    });
+    attacker.level = 10;
+    const victim = addUnit(room, { id: 'u_2', ownerId: 'player-b', type: 'VILLAGER', x: 11, y: 10 });
+    attacker.targetEntityId = victim.id;
+    attacker.targetEntityType = 'unit';
+
+    internals(room).update(100);
+
+    expect(victim.hp).toBe(
+      UNIT_BLUEPRINTS.VILLAGER.maxHp - getUnitLevelStats('SPEARMAN', 10).attackPower
+    );
+  });
+
+  it('scales tower damage by the building level', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const tower = addBuilding(room, {
+      id: 'b_1',
+      ownerId: 'player-a',
+      type: 'TOWER',
+      gridX: 40,
+      gridY: 40
+    });
+    tower.level = 5;
+    const enemy = addUnit(room, { id: 'u_2', ownerId: 'player-b', x: 42, y: 41 });
+
+    internals(room).update(100);
+
+    expect(enemy.hp).toBe(
+      UNIT_BLUEPRINTS.VILLAGER.maxHp - getBuildingLevelStats('TOWER', 5).attackPower
+    );
   });
 });

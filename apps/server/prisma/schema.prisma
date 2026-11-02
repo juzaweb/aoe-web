@@ -37,6 +37,11 @@ model Player {
   stone         Float      @default(100)
   population    Int        @default(0)
   populationCap Int        @default(10) @map("population_cap")
+  /// Per-unit-type research levels, CSV in UNIT_UPGRADE_ORDER order.
+  unitLevels    String     @default("1,1,1,1") @map("unit_levels")
+  researchUnitType   String @default("") @map("research_unit_type")
+  researchProgressMs Float  @default(0) @map("research_progress_ms")
+  researchTimeMs     Float  @default(0) @map("research_time_ms")
   isOnline      Boolean    @default(true) @map("is_online")
   lastSavedAt   DateTime   @default(now()) @updatedAt @map("last_saved_at")
   createdAt     DateTime   @default(now()) @map("created_at")
@@ -58,6 +63,9 @@ model Building {
   sizeY                Int      @map("size_y")
   hp                   Float
   maxHp                Float    @map("max_hp")
+  level                Int      @default(1)
+  upgradeProgressMs    Float    @default(0) @map("upgrade_progress_ms")
+  upgradeTimeMs        Float    @default(0) @map("upgrade_time_ms")
   isConstructed        Boolean  @default(true) @map("is_constructed")
   constructionProgress Float    @default(100) @map("construction_progress")
   createdAt            DateTime @default(now()) @map("created_at")
@@ -76,6 +84,7 @@ model Unit {
   x           Float
   y           Float
   speed       Float
+  level       Int      @default(1)
   hp          Float
   maxHp       Float    @map("max_hp")
   actionState String   @default("IDLE") @map("action_state")

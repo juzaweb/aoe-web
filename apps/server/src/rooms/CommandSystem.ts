@@ -6,7 +6,9 @@ import {
   AttackTargetPayload,
   BuildTargetPayload,
   CancelBuildingPayload,
+  CancelBuildingUpgradePayload,
   CancelTrainPayload,
+  CancelUnitUpgradePayload,
   HarvestResourcePayload,
   MAP_GRID_HEIGHT,
   MAP_GRID_WIDTH,
@@ -22,7 +24,17 @@ import {
   UNIT_BLUEPRINTS,
   UNIT_STANCES,
   UnitType,
-  canTrainUnitsAt
+  UpgradeBuildingPayload,
+  UpgradeUnitTypePayload,
+  canTrainUnitsAt,
+  getBuildingMaxLevel,
+  getBuildingLevelStats,
+  getBuildingUpgradeCost,
+  getBuildingUpgradeTimeMs,
+  getPlayerUnitLevel,
+  getUnitMaxLevel,
+  getUnitUpgradeCost,
+  getUnitUpgradeTimeMs
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { PlayerState } from '../schema/PlayerState.js';
@@ -31,6 +43,7 @@ import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { getBuildApproachPoint } from './construction.js';
 import { ownerIdOf } from './identity.js';
+import { clearUnitResearch, isUpgradableUnitType } from './upgrades.js';
 
 /**
  * What the command layer needs from the room and its sibling systems.
@@ -183,7 +196,10 @@ export class CommandSystem {
     building.sizeX = blueprint.sizeX;
     building.sizeY = blueprint.sizeY;
     building.hp = 1; // CMD-05: a foundation is nearly defenceless until it is finished
-    building.maxHp = blueprint.maxHp;
+    building.maxHp = getBuildingLevelStats(payload.type, 1).maxHp;
+    building.level = 1;
+    building.upgradeProgressMs = 0;
+    building.upgradeTimeMs = 0;
     building.isConstructed = false;
     building.constructionProgress = 0;
 
@@ -356,6 +372,120 @@ export class CommandSystem {
     // on their next tick, so nothing has to be repointed here.
     this.state.buildings.delete(building.id);
     this.ports.forgetBuilding(building.id);
+  }
+
+  /**
+   * Starts a building upgrade. The price and duration come from the building's
+   * own level, never from the client, and the tick is the only thing that can
+   * finish it.
+   */
+  handleUpgradeBuilding(client: Client, payload: UpgradeBuildingPayload) {
+    const player = this.state.players.get(ownerIdOf(client));
+    if (!player) return;
+
+    const building = this.requireOwnedBuilding(client, payload.buildingId);
+    if (!building) return;
+
+    if (!building.isConstructed) {
+      this.ports.rejectCommand(client, 'Building is still under construction');
+      return;
+    }
+    if (building.upgradeTimeMs > 0) {
+      this.ports.rejectCommand(client, 'Building is already upgrading');
+      return;
+    }
+
+    const type = building.type as BuildingType;
+    if (building.level >= getBuildingMaxLevel(type)) {
+      this.ports.rejectCommand(client, 'Building is already at max level');
+      return;
+    }
+
+    const cost = getBuildingUpgradeCost(type, building.level);
+    if (!this.canAfford(player, cost)) {
+      this.ports.rejectCommand(client, 'Insufficient resources to upgrade building');
+      return;
+    }
+
+    this.spendResources(player, cost);
+    building.upgradeProgressMs = 0;
+    building.upgradeTimeMs = getBuildingUpgradeTimeMs(type, building.level);
+  }
+
+  /** Cancels a building upgrade and returns its full price. */
+  handleCancelBuildingUpgrade(client: Client, payload: CancelBuildingUpgradePayload) {
+    const player = this.state.players.get(ownerIdOf(client));
+    if (!player) return;
+
+    const building = this.requireOwnedBuilding(client, payload.buildingId);
+    if (!building) return;
+
+    if (building.upgradeTimeMs <= 0) {
+      this.ports.rejectCommand(client, 'No upgrade is in progress');
+      return;
+    }
+
+    const cost = getBuildingUpgradeCost(building.type as BuildingType, building.level);
+    building.upgradeProgressMs = 0;
+    building.upgradeTimeMs = 0;
+    this.refundResources(player, cost, 1);
+  }
+
+  /**
+   * Starts a player-wide unit research. One Barracks is enough to unlock it, but
+   * the timer lives on the player so losing that Barracks mid-research does not
+   * silently cancel the investment.
+   */
+  handleUpgradeUnitType(client: Client, payload: UpgradeUnitTypePayload) {
+    const ownerId = ownerIdOf(client);
+    const player = this.state.players.get(ownerId);
+    if (!player) return;
+
+    if (!isUpgradableUnitType(payload.unitType)) {
+      this.ports.rejectCommand(client, 'Invalid unit type');
+      return;
+    }
+
+    const currentLevel = getPlayerUnitLevel(player.unitLevels, payload.unitType);
+    if (currentLevel >= getUnitMaxLevel()) {
+      this.ports.rejectCommand(client, 'Unit type is already at max level');
+      return;
+    }
+    if (player.researchUnitType) {
+      this.ports.rejectCommand(client, 'Another unit research is already in progress');
+      return;
+    }
+    if (!this.hasConstructedBuilding(ownerId, 'BARRACKS')) {
+      this.ports.rejectCommand(client, 'Build a Barracks before researching unit upgrades');
+      return;
+    }
+
+    const cost = getUnitUpgradeCost(payload.unitType, currentLevel);
+    if (!this.canAfford(player, cost)) {
+      this.ports.rejectCommand(client, 'Insufficient resources to research unit upgrade');
+      return;
+    }
+
+    this.spendResources(player, cost);
+    player.researchUnitType = payload.unitType;
+    player.researchProgressMs = 0;
+    player.researchTimeMs = getUnitUpgradeTimeMs(payload.unitType, currentLevel);
+  }
+
+  /** Cancels the single in-flight unit research and returns its full price. */
+  handleCancelUnitUpgrade(client: Client, payload: CancelUnitUpgradePayload) {
+    const player = this.state.players.get(ownerIdOf(client));
+    if (!player) return;
+
+    if (!player.researchUnitType || player.researchUnitType !== payload.unitType) {
+      this.ports.rejectCommand(client, 'No matching unit research is in progress');
+      return;
+    }
+
+    const type = player.researchUnitType as UnitType;
+    const cost = getUnitUpgradeCost(type, getPlayerUnitLevel(player.unitLevels, type));
+    clearUnitResearch(player);
+    this.refundResources(player, cost, 1);
   }
 
   handleAttackTarget(client: Client, payload: AttackTargetPayload) {
@@ -708,6 +838,40 @@ export class CommandSystem {
     player.food += Math.floor(cost.food * share);
     player.gold += Math.floor(cost.gold * share);
     player.stone += Math.floor(cost.stone * share);
+  }
+
+  /** True when every resource in `cost` is available. */
+  private canAfford(player: PlayerState, cost: Resources): boolean {
+    return (
+      player.wood >= cost.wood &&
+      player.food >= cost.food &&
+      player.gold >= cost.gold &&
+      player.stone >= cost.stone
+    );
+  }
+
+  /** Deducts every resource in `cost`; callers check `canAfford` first. */
+  private spendResources(player: PlayerState, cost: Resources): void {
+    player.wood -= cost.wood;
+    player.food -= cost.food;
+    player.gold -= cost.gold;
+    player.stone -= cost.stone;
+  }
+
+  /** Whether the player still owns at least one finished building of this type. */
+  private hasConstructedBuilding(ownerId: string, type: BuildingType): boolean {
+    let found = false;
+    this.state.buildings.forEach((building: BuildingState) => {
+      if (
+        !found &&
+        building.ownerId === ownerId &&
+        building.type === type &&
+        building.isConstructed
+      ) {
+        found = true;
+      }
+    });
+    return found;
   }
 
   /**

@@ -230,6 +230,30 @@ export interface CancelBuildingPayload {
   buildingId: string;
 }
 
+/** Starts upgrading one owned, finished building to its next level. */
+export interface UpgradeBuildingPayload {
+  buildingId: string;
+}
+
+/** Cancels an in-flight building upgrade and refunds its full cost. */
+export interface CancelBuildingUpgradePayload {
+  buildingId: string;
+}
+
+/**
+ * Starts a player-wide research that raises every existing and future unit of
+ * `unitType` by one level. Requires a finished Barracks; only one research may
+ * run per player.
+ */
+export interface UpgradeUnitTypePayload {
+  unitType: UnitType;
+}
+
+/** Cancels the single in-flight unit research and refunds its full cost. */
+export interface CancelUnitUpgradePayload {
+  unitType: UnitType;
+}
+
 /**
  * CMB-01: sets the stance of every unit in the selection. The client sends the
  * stance it wants rather than "cycle this one", so two players pressing the key
@@ -246,6 +270,10 @@ export enum NetworkMessage {
   TRAIN_UNIT = 'TRAIN_UNIT',
   CANCEL_TRAIN = 'CANCEL_TRAIN',
   CANCEL_BUILDING = 'CANCEL_BUILDING',
+  UPGRADE_BUILDING = 'UPGRADE_BUILDING',
+  CANCEL_BUILDING_UPGRADE = 'CANCEL_BUILDING_UPGRADE',
+  UPGRADE_UNIT_TYPE = 'UPGRADE_UNIT_TYPE',
+  CANCEL_UNIT_UPGRADE = 'CANCEL_UNIT_UPGRADE',
   ATTACK_TARGET = 'ATTACK_TARGET',
   ATTACK_MOVE = 'ATTACK_MOVE',
   PATROL = 'PATROL',

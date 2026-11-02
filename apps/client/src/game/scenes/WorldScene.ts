@@ -6,8 +6,10 @@ import {
   BuildingType,
   MAP_GRID_HEIGHT,
   MAP_GRID_WIDTH,
+  MAX_UNIT_LEVEL,
   TILE_HEIGHT,
   TILE_WIDTH,
+  getBuildingMaxLevel,
   getIsoDepth,
   gridToScreen,
   screenToGrid
@@ -109,8 +111,19 @@ export interface SelectedEntityData {
   subType: string;
   hp?: number;
   maxHp?: number;
+  /** LVL: current upgrade level and the cap for this entity's type. */
+  level?: number;
+  maxLevel?: number;
   isOwner?: boolean;
   trainingQueue?: string[];
+  /** LVL: building upgrade timer; `upgradeTimeMs = 0` means idle. */
+  upgradeProgressMs?: number;
+  upgradeTimeMs?: number;
+  /** LVL: player-wide research levels, indexed by UNIT_UPGRADE_ORDER. */
+  unitLevels?: number[];
+  researchUnitType?: string;
+  researchProgressMs?: number;
+  researchTimeMs?: number;
   /** CMD-04b: foundations can be cancelled; finished buildings cannot. */
   isConstructed?: boolean;
   constructionProgress?: number;
@@ -253,6 +266,8 @@ export class WorldScene extends Phaser.Scene {
   public onControlGroupsChange: ((groups: ControlGroupSummary[]) => void) | null = null;
   /** Last `hp|carrying|actionState` string published to the entity panel. */
   private lastUnitDetailSignature = '';
+  /** LVL: last building/panel signature, including player research progress. */
+  private lastBuildingDetailSignature = '';
   /** ECO-02: last count published, and when the next scan is allowed. */
   private lastIdleVillagerCount = -1;
   private nextIdleVillagerScanAt = 0;
@@ -931,6 +946,8 @@ export class WorldScene extends Phaser.Scene {
           subType: unit.type,
           hp: unit.hp,
           maxHp: unit.maxHp,
+          level: unit.level,
+          maxLevel: MAX_UNIT_LEVEL,
           isOwner: unit.ownerId === this.myOwnerId,
           carryingAmount: unit.carryingAmount,
           carryingResourceType: unit.carryingResourceType,
@@ -952,6 +969,11 @@ export class WorldScene extends Phaser.Scene {
           subType: b.type,
           hp: b.hp,
           maxHp: b.maxHp,
+          level: b.level,
+          maxLevel: getBuildingMaxLevel(b.type as BuildingType),
+          upgradeProgressMs: b.upgradeProgressMs,
+          upgradeTimeMs: b.upgradeTimeMs,
+          ...(b.ownerId === this.myOwnerId ? this.playerResearchDetails(b.ownerId) : {}),
           isOwner: b.ownerId === this.myOwnerId,
           trainingQueue: Array.from(b.trainingQueue),
           isConstructed: b.isConstructed,
@@ -1026,6 +1048,7 @@ export class WorldScene extends Phaser.Scene {
     this.focus.render();
 
     this.syncSelectedUnitDetails();
+    this.syncSelectedBuildingDetails();
     this.publishIdleVillagerCount(time);
   }
 
@@ -1116,6 +1139,52 @@ export class WorldScene extends Phaser.Scene {
     if (count === this.lastIdleVillagerCount) return;
     this.lastIdleVillagerCount = count;
     this.onIdleVillagersChange(count);
+  }
+
+  /**
+   * LVL: research lives on `PlayerState`, so the selected-building panel needs
+   * its own live signature. Building `onChange` covers level/HP, but it never
+   * fires while a player-wide research ticks, and the panel would freeze.
+   */
+  private syncSelectedBuildingDetails() {
+    if (!this.selectedBuildingId) return;
+
+    const building = this.room?.state?.buildings?.get(this.selectedBuildingId);
+    if (!building) return;
+
+    const research = this.playerResearchDetails(building.ownerId);
+    const signature = [
+      building.hp,
+      building.maxHp,
+      building.level,
+      building.upgradeProgressMs,
+      building.upgradeTimeMs,
+      building.constructionProgress,
+      building.trainingQueue.length,
+      research.researchUnitType,
+      research.researchProgressMs,
+      research.researchTimeMs
+    ].join('|');
+
+    if (signature === this.lastBuildingDetailSignature) return;
+
+    this.lastBuildingDetailSignature = signature;
+    this.notifySelectionChange();
+  }
+
+  private playerResearchDetails(ownerId: string): Pick<
+    SelectedEntityData,
+    'unitLevels' | 'researchUnitType' | 'researchProgressMs' | 'researchTimeMs'
+  > {
+    const player = this.room?.state?.players?.get(ownerId);
+    return {
+      unitLevels: player?.unitLevels
+        ? Array.from(player.unitLevels as ArrayLike<number>)
+        : undefined,
+      researchUnitType: player?.researchUnitType ?? '',
+      researchProgressMs: player?.researchProgressMs ?? 0,
+      researchTimeMs: player?.researchTimeMs ?? 0
+    };
   }
 
   /**
