@@ -20,8 +20,8 @@ export const SessionBlocked: React.FC<SessionBlockedProps> = ({
   onUseAnotherAccount
 }) => {
   return (
-    <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="aoe-panel w-full max-w-md p-6 rounded-xl flex flex-col items-center text-center shadow-2xl border-2 border-amber-600 my-auto">
+    <div className="absolute inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/85 p-3 backdrop-blur-md">
+      <div className="aoe-panel my-auto flex max-h-[94dvh] w-full max-w-md flex-col items-center overflow-y-auto rounded-xl border-2 border-amber-600 p-4 text-center shadow-2xl sm:p-6">
         <div className="p-3 rounded-full bg-amber-950/60 border border-amber-600/50 mb-3 text-amber-400">
           <ShieldAlert size={36} />
         </div>
@@ -38,7 +38,7 @@ export const SessionBlocked: React.FC<SessionBlockedProps> = ({
           <button
             type="button"
             onClick={onTakeover}
-            className="w-full py-2.5 rounded bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-slate-950 font-bold tracking-wider text-sm uppercase shadow-lg transition-all border border-amber-400 cursor-pointer flex items-center justify-center gap-2"
+            className="flex min-h-[48px] w-full cursor-pointer items-center justify-center gap-2 rounded border border-amber-400 bg-gradient-to-r from-amber-600 to-amber-700 py-2.5 text-sm font-bold uppercase tracking-wider text-slate-950 shadow-lg transition-all hover:from-amber-500 hover:to-amber-600"
           >
             <LogIn size={16} />
             Đăng xuất thiết bị khác &amp; vào game
@@ -47,7 +47,7 @@ export const SessionBlocked: React.FC<SessionBlockedProps> = ({
           <button
             type="button"
             onClick={onUseAnotherAccount}
-            className="w-full py-2.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold tracking-wider text-sm uppercase transition-all border border-slate-700 hover:border-amber-600 cursor-pointer flex items-center justify-center gap-2"
+            className="flex min-h-[48px] w-full cursor-pointer items-center justify-center gap-2 rounded border border-slate-700 bg-slate-900 py-2.5 text-sm font-bold uppercase tracking-wider text-slate-300 transition-all hover:border-amber-600 hover:bg-slate-800"
           >
             <UserPlus size={16} />
             Đăng nhập tài khoản khác

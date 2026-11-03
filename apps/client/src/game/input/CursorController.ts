@@ -68,7 +68,8 @@ export class CursorController {
 
     // CMD-01: an armed attack-move / patrol is waiting for a destination click,
     // so the pointer is picking a point rather than targeting what is under it.
-    if (this.scene.commands.pendingOrder) return 'order';
+    // MOB-05: the touch bar's contextual arm is the same promise with no mode.
+    if (this.scene.commands.pendingOrder || this.scene.commands.contextualArmed) return 'order';
 
     if (!this.scene.room || this.scene.selectedUnitIds.size === 0) return 'default';
 
@@ -98,8 +99,12 @@ export class CursorController {
    * Applies `mode` to the canvas. Phaser writes the CSS cursor, so re-asserting
    * the same value every pointermove would touch the DOM ~60 times a second -
    * the applied value is cached and only actual changes are written.
+   *
+   * MOB-09: a touch-only player has no cursor to show, and every write would be
+   * wasted DOM work behind their finger, so the touch path skips it entirely.
    */
   set(mode: CursorMode) {
+    if (this.scene.touchMode) return;
     const css = CURSOR_CSS[mode];
     if (css === this.appliedCss) return;
     this.appliedCss = css;

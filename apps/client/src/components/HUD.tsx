@@ -1,5 +1,5 @@
 import React from 'react';
-import { Axe, Drumstick, Coins, Mountain, Users, ShieldCheck, Wifi } from 'lucide-react';
+import { Axe, Drumstick, Coins, Mountain, Users, ShieldCheck, Wifi, LogOut } from 'lucide-react';
 
 interface HUDProps {
   playerName: string;
@@ -17,8 +17,45 @@ interface HUDProps {
   idleVillagers: number;
   /** ECO-02: jumps to the next idle villager, like pressing `.`. */
   onSelectIdleVillager: () => void;
+  /** MOB-06: render the one-row mobile bar instead of the three-panel desktop one. */
+  compact?: boolean;
+  /** MOB-06: compact only; the desktop layout keeps its own floating button. */
+  onLeaveGame?: () => void;
 }
 
+interface ResourceChipProps {
+  icon: React.ReactNode;
+  value: number;
+  label: string;
+  /** Highlights the population chip at its cap, and nothing else. */
+  danger?: boolean;
+}
+
+/**
+ * One number with its icon. Used by the compact bar only: on a phone there is no
+ * room for the desktop's 28 px framed icons, and the numbers are what the player
+ * actually reads mid-game.
+ */
+const ResourceChip: React.FC<ResourceChipProps> = ({ icon, value, label, danger = false }) => (
+  <span className="flex items-center gap-1" title={label}>
+    {icon}
+    <span
+      className={`text-[11px] font-semibold tabular-nums ${
+        danger ? 'text-red-400' : 'text-slate-100'
+      }`}
+    >
+      {Math.floor(value)}
+    </span>
+  </span>
+);
+
+/**
+ * Resource bar + empire identity.
+ *
+ * The compact branch (MOB-06) is the same information in one row with safe-area
+ * offsets: a landscape phone has roughly 44 px of vertical space to spend here
+ * before the map starts shrinking.
+ */
 export const HUD: React.FC<HUDProps> = ({
   playerName,
   playerColor,
@@ -31,8 +68,98 @@ export const HUD: React.FC<HUDProps> = ({
   populationCap,
   isConnected,
   idleVillagers,
-  onSelectIdleVillager
+  onSelectIdleVillager,
+  compact = false,
+  onLeaveGame
 }) => {
+  const zoneIsBattle = zoneLabel === 'CHIẾN TRƯỜNG';
+
+  if (compact) {
+    return (
+      <div className="pointer-events-none absolute left-[calc(env(safe-area-inset-left)+0.5rem)] right-[calc(env(safe-area-inset-right)+0.5rem)] top-[calc(env(safe-area-inset-top)+0.25rem)] z-20 flex select-none items-center gap-1.5">
+        {/* Identity: a dot, a name short enough for a thumb-wide screen, and the
+            map colour as a dot so the zone chip's text can be dropped. */}
+        <div className="pointer-events-auto flex items-center gap-1.5 rounded-md border border-amber-600/70 bg-slate-900/90 px-2 py-1 shadow-lg backdrop-blur-sm">
+          <div
+            className="h-3 w-3 shrink-0 rounded-full border border-white/50"
+            style={{ backgroundColor: playerColor || '#3b82f6' }}
+          />
+          <span className="font-medieval max-w-[68px] truncate text-xs font-bold tracking-wide text-amber-300">
+            {playerName || 'Emperor'}
+          </span>
+          <span
+            className={`h-2 w-2 shrink-0 rounded-full ${
+              zoneIsBattle ? 'bg-red-500' : 'bg-emerald-500'
+            }`}
+            title={zoneLabel}
+          />
+        </div>
+
+        {/* Resources: icon + number only, dividers instead of labels. */}
+        <div className="pointer-events-auto flex items-center gap-2 rounded-md border border-amber-700/80 bg-slate-950/90 px-2 py-1 shadow-2xl backdrop-blur-md">
+          <ResourceChip icon={<Axe size={13} className="text-amber-400" />} value={wood} label="Gỗ" />
+          <ResourceChip
+            icon={<Drumstick size={13} className="text-red-400" />}
+            value={food}
+            label="Lương thực"
+          />
+          <ResourceChip icon={<Coins size={13} className="text-yellow-400" />} value={gold} label="Vàng" />
+          <ResourceChip icon={<Mountain size={13} className="text-slate-400" />} value={stone} label="Đá" />
+
+          <div className="h-3.5 w-px bg-slate-700" />
+
+          <span className="flex items-center gap-1" title="Dân số">
+            <ShieldCheck size={13} className="text-sky-400" />
+            <span
+              className={`text-[11px] font-semibold tabular-nums ${
+                population >= populationCap ? 'text-red-400' : 'text-slate-100'
+              }`}
+            >
+              {population}/{populationCap}
+            </span>
+          </span>
+
+          <div className="h-3.5 w-px bg-slate-700" />
+
+          <button
+            type="button"
+            onClick={onSelectIdleVillager}
+            disabled={idleVillagers === 0}
+            data-idle-villagers={idleVillagers}
+            title="Nông dân đang rảnh"
+            className={`flex items-center gap-1 ${
+              idleVillagers > 0 ? 'cursor-pointer text-amber-300' : 'cursor-default text-slate-500'
+            }`}
+          >
+            <Users size={13} className={idleVillagers > 0 ? 'animate-pulse' : ''} />
+            <span className="text-[11px] font-semibold tabular-nums">{idleVillagers}</span>
+          </button>
+        </div>
+
+        <div className="ml-auto pointer-events-auto flex items-center gap-1.5 rounded-md border border-slate-700/80 bg-slate-900/90 px-2 py-1 backdrop-blur-sm">
+          <span
+            className={`h-2 w-2 rounded-full ${
+              isConnected ? 'bg-emerald-400' : 'animate-pulse bg-red-500'
+            }`}
+            title={isConnected ? 'ONLINE' : 'OFFLINE'}
+          />
+          <Wifi size={13} className={isConnected ? 'text-emerald-400' : 'text-red-500'} />
+          {onLeaveGame && (
+            <button
+              type="button"
+              onClick={onLeaveGame}
+              title="Đăng xuất"
+              aria-label="Đăng xuất"
+              className="ml-0.5 flex h-7 w-7 items-center justify-center rounded border border-slate-700 text-slate-300 active:border-amber-400"
+            >
+              <LogOut size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none select-none z-20">
       {/* Player Emblem & Name */}
@@ -173,4 +300,3 @@ export const HUD: React.FC<HUDProps> = ({
     </div>
   );
 };
-

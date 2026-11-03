@@ -18,6 +18,16 @@ export interface EdgeScrollOptions {
   pointerInsideCanvas: boolean;
   /** World units to pan this frame. */
   cameraSpeed: number;
+  /**
+   * Whether this input source edge-scrolls at all.
+   *
+   * Touch is the reason this exists: a lifted finger leaves `activePointer` at the
+   * last coordinates forever, so a phone released near the screen edge would keep
+   * the camera crawling to the map bound. Touch pans by dragging instead.
+   *
+   * @default true
+   */
+  enabled?: boolean;
 }
 
 /**
@@ -25,7 +35,10 @@ export interface EdgeScrollOptions {
  * Uses `activePointer` screen coordinates, which are immune to camera scroll.
  */
 export function applyEdgeScroll(options: EdgeScrollOptions) {
-  const { camera, pointer, viewWidth, viewHeight, pointerInsideCanvas, cameraSpeed } = options;
+  const { camera, pointer, viewWidth, viewHeight, pointerInsideCanvas, cameraSpeed, enabled } =
+    options;
+
+  if (enabled === false) return;
 
   // Phaser keeps reporting the last coordinates it saw after the pointer leaves
   // the canvas or the window, so a mouse dragged out over the right edge would

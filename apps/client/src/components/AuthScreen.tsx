@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AlertCircle, Loader2, Lock, LogIn, Swords, UserPlus } from 'lucide-react';
 import { AuthUser, login, register } from '../auth/api.js';
+import { useInputMode } from '../device/useInputMode.js';
 
 type AuthMode = 'login' | 'register';
 
@@ -16,6 +17,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** MOB-07: the shortcut cheat-sheet has to teach the gesture this device has. */
+  const isTouch = useInputMode() === 'touch';
 
   const switchMode = (next: AuthMode) => {
     if (isSubmitting) return;
@@ -44,8 +47,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
   };
 
   return (
-    <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="aoe-panel w-full max-w-md p-6 rounded-xl flex flex-col items-center text-center shadow-2xl border-2 border-amber-600 my-auto">
+    <div className="absolute inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/85 p-3 backdrop-blur-md">
+      <div className="aoe-panel my-auto flex max-h-[94dvh] w-full max-w-md flex-col items-center overflow-y-auto border-2 border-amber-600 p-4 text-center shadow-2xl sm:p-6">
         <div className="p-3 rounded-full bg-amber-950/60 border border-amber-600/50 mb-3 text-amber-400">
           <Swords size={36} />
         </div>
@@ -62,7 +65,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
           <button
             type="button"
             onClick={() => switchMode('login')}
-            className={`py-2 rounded text-xs font-bold uppercase tracking-wider border transition-all cursor-pointer ${
+            className={`min-h-[44px] rounded border py-2 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
               mode === 'login'
                 ? 'bg-amber-600 text-slate-950 border-amber-400'
                 : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-amber-600'
@@ -73,7 +76,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
           <button
             type="button"
             onClick={() => switchMode('register')}
-            className={`py-2 rounded text-xs font-bold uppercase tracking-wider border transition-all cursor-pointer ${
+            className={`min-h-[44px] rounded border py-2 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
               mode === 'register'
                 ? 'bg-amber-600 text-slate-950 border-amber-400'
                 : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-amber-600'
@@ -99,7 +102,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
               spellCheck={false}
               required
               maxLength={24}
-              className="w-full px-3 py-2 rounded bg-slate-900 border border-amber-800 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-amber-400"
+              className="w-full min-h-[44px] rounded border border-amber-800 bg-slate-900 px-3 py-2 text-base text-slate-100 placeholder-slate-500 focus:border-amber-400 focus:outline-none"
             />
           </div>
 
@@ -115,7 +118,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="vd: Đại Việt"
                 maxLength={24}
-                className="w-full px-3 py-2 rounded bg-slate-900 border border-amber-800 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-amber-400"
+                className="w-full min-h-[44px] rounded border border-amber-800 bg-slate-900 px-3 py-2 text-base text-slate-100 placeholder-slate-500 focus:border-amber-400 focus:outline-none"
               />
             </div>
           )}
@@ -134,7 +137,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
               required
               minLength={mode === 'register' ? 6 : undefined}
               maxLength={128}
-              className="w-full px-3 py-2 rounded bg-slate-900 border border-amber-800 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-amber-400"
+              className="w-full min-h-[44px] rounded border border-amber-800 bg-slate-900 px-3 py-2 text-base text-slate-100 placeholder-slate-500 focus:border-amber-400 focus:outline-none"
             />
           </div>
 
@@ -148,7 +151,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-2.5 rounded bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-slate-950 font-bold tracking-wider text-sm uppercase shadow-lg transition-all border border-amber-400 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="flex min-h-[48px] w-full cursor-pointer items-center justify-center gap-2 rounded border border-amber-400 bg-gradient-to-r from-amber-600 to-amber-700 py-2.5 text-sm font-bold uppercase tracking-wider text-slate-950 shadow-lg transition-all hover:from-amber-500 hover:to-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? (
               <>
@@ -174,6 +177,32 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
           <span>Mật khẩu được mã hoá bằng scrypt trên máy chủ.</span>
         </div>
 
+        {isTouch ? (
+          <div className="mt-4 space-y-1 text-[11px] text-slate-400">
+            <div>
+              <span className="font-mono text-amber-400">Kéo 1 ngón</span> để di chuyển camera,{' '}
+              <span className="font-mono text-amber-400">chụm 2 ngón</span> để phóng to / thu nhỏ
+            </div>
+            <div>
+              <span className="font-mono text-amber-400">Chạm</span> để chọn quân / công trình, chạm
+              nền trống để đi tới
+            </div>
+            <div>
+              <span className="font-mono text-amber-400">Giữ lâu</span> vào mục tiêu để đánh / khai
+              thác / vào cổng
+            </div>
+            <div>
+              Thanh lệnh dưới màn hình có{' '}
+              <span className="font-mono text-amber-400">Ra lệnh</span>,{' '}
+              <span className="font-mono text-amber-400">Đánh</span>,{' '}
+              <span className="font-mono text-amber-400">Tuần tra</span>,{' '}
+              <span className="font-mono text-amber-400">Chọn vùng</span> và zoom
+            </div>
+            <div>
+              Chạm minimap để nhảy camera, giữ lâu trên minimap để điều quân tới đó
+            </div>
+          </div>
+        ) : (
         <div className="mt-4 text-[11px] text-slate-400 space-y-1">
           <div>
             <span className="text-amber-400 font-mono">Phím mũi tên</span> hoặc rê chuột ra{' '}
@@ -243,6 +272,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
             huỷ đơn vị đang huấn luyện
           </div>
         </div>
+        )}
       </div>
     </div>
   );

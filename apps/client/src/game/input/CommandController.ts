@@ -67,6 +67,16 @@ export class CommandController {
   /** CMD-01: an armed attack-move or patrol waiting for its destination click. */
   public pendingOrder: OrderMode | null = null;
 
+  /**
+   * MOB-05: the touch bar's "Ra lệnh" button armed a contextual order.
+   *
+   * A finger has no right-click, so the contextual dispatch of
+   * `handleRightClick` (attack / harvest / travel / rally / move) is armed from
+   * the command bar and then fired by the next tap. Kept apart from
+   * `pendingOrder`, which carries an explicit move mode (attack-move / patrol).
+   */
+  public contextualArmed = false;
+
   private lastOrderKey: { mode: OrderMode | ''; at: number } = { mode: '', at: 0 };
   private lastCancelKeyAt = 0;
   private lastEscapeAt = 0;
@@ -220,6 +230,7 @@ export class CommandController {
       event.preventDefault();
       this.pendingOrder = mode;
       this.scene.cursor.refresh();
+      this.scene.publishArmedOrder();
     };
 
     keyboard.on('keydown-A', arm('ATTACK_MOVE'));
@@ -480,21 +491,78 @@ export class CommandController {
     return true;
   }
 
+  /**
+   * MOB-05: arms an explicit order mode from the touch command bar.
+   *
+   * Mirrors the keyboard path (`A`/`P`), including the "already armed = disarm"
+   * behaviour so the same button both arms and backs out.
+   */
+  armOrder(mode: OrderMode) {
+    const scene = this.scene;
+    if (scene.buildingToPlace) return;
+    if (scene.selectedUnitIds.size === 0) return;
+    if (this.pendingOrder === mode) {
+      this.cancelPendingOrder();
+      return;
+    }
+    this.contextualArmed = false;
+    this.pendingOrder = mode;
+    scene.cursor.refresh();
+    scene.publishArmedOrder();
+  }
+
+  /**
+   * MOB-05: arms the contextual order (the right-click equivalent) for the next tap.
+   *
+   * Only offered when there is something the order can apply to: selected units, or
+   * exactly one own building (the rally-point branch of `handleRightClick`).
+   */
+  armContextualOrder() {
+    const scene = this.scene;
+    if (scene.buildingToPlace) return;
+    const hasUnits = scene.selectedUnitIds.size > 0;
+    const hasBuilding = scene.selectedBuildingId !== null;
+    if (!hasUnits && !hasBuilding) return;
+
+    if (this.contextualArmed) {
+      this.cancelPendingOrder();
+      return;
+    }
+    this.pendingOrder = null;
+    this.contextualArmed = true;
+    scene.cursor.refresh();
+    scene.publishArmedOrder();
+  }
+
   /** Drops an armed order (right click, Escape) and restores the pointer. */
   cancelPendingOrder() {
-    if (!this.pendingOrder) return;
+    if (!this.pendingOrder && !this.contextualArmed) return;
     this.pendingOrder = null;
+    this.contextualArmed = false;
     this.scene.cursor.refresh();
+    this.scene.publishArmedOrder();
   }
 
   /**
    * Turns the armed order into a message. The destination is read from the same
    * pointer position the click used, so the order lands on the highlighted tile.
+   *
+   * A contextual arm carries no destination mode of its own: it fires the same
+   * dispatch a right click would, which is why `handleRightClick` is called here.
    */
   commitPendingOrder(pointer: Phaser.Input.Pointer) {
+    if (this.contextualArmed) {
+      this.contextualArmed = false;
+      this.scene.cursor.refresh();
+      this.scene.publishArmedOrder();
+      this.handleRightClick(pointer, false);
+      return;
+    }
+
     const mode = this.pendingOrder;
     this.pendingOrder = null;
     this.scene.cursor.refresh();
+    this.scene.publishArmedOrder();
     if (mode) this.issueAttackMove(pointer, mode);
   }
 

@@ -1,10 +1,12 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Map as MapIcon, X } from 'lucide-react';
 import { Room } from '@colyseus/sdk';
 import { MAP_GRID_HEIGHT, MAP_GRID_WIDTH, TILE_HEIGHT, TILE_WIDTH, screenToGrid, terrainForZone } from '@chien-quoc/shared';
 import { WorldScene } from '../game/scenes/WorldScene.js';
 import { UNKNOWN_OWNER_COLOR, colorToCss } from '../game/render/ownerColor.js';
 import {
   MINIMAP_COLORS,
+  MINIMAP_COMPACT_CSS_SIZE,
   MINIMAP_CSS_SIZE,
   MINIMAP_SIZE,
   buildGroundPixels,
@@ -22,6 +24,8 @@ interface MinimapProps {
   onPanToGrid: (gx: number, gy: number) => void;
   /** CTL-07: right-click issues a move order to the grid cell under the cursor. */
   onCommandAtGrid: (gx: number, gy: number) => void;
+  /** MOB-06: 96 px radar for the landscape phone dock. */
+  compact?: boolean;
 }
 
 type MinimapState = {
@@ -88,8 +92,22 @@ function drawTriangle(ctx: CanvasRenderingContext2D, x: number, y: number, radiu
   ctx.fill();
 }
 
-export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, onCommandAtGrid }) => {
+export const Minimap: React.FC<MinimapProps> = ({
+  room,
+  sceneRef,
+  onPanToGrid,
+  onCommandAtGrid,
+  compact = false
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  /** MOB-06: compact only — the radar is collapsed behind its button by default. */
+  const [open, setOpen] = useState(false);
+  /**
+   * MOB-06: a long-press on the minimap is the touch right-click, so a move order
+   * needs a timer and the pan that the tap would otherwise fire must be suppressed.
+   */
+  const longPressTimer = useRef<number | null>(null);
+  const longPressFired = useRef(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -98,8 +116,12 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
     if (!ctx) return;
 
     let animId: number;
+    // MOB-09: a phone that is locked or switched away keeps the tab alive; the
+    // radar redraw is pure CPU and has nothing to show while hidden.
+    let running = !document.hidden;
 
     const render = () => {
+      if (!running) return;
       // Scheduled before anything can throw: a single bad frame used to end the
       // loop for the rest of the session.
       animId = requestAnimationFrame(render);
@@ -227,12 +249,32 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
       ctx.strokeRect(0, 0, canvas.width, canvas.height);
     };
 
+    const onVisibilityChange = () => {
+      const next = !document.hidden;
+      if (next === running) return;
+      running = next;
+      if (running) {
+        render();
+      } else {
+        cancelAnimationFrame(animId);
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
     render();
 
     return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      running = false;
       cancelAnimationFrame(animId);
     };
   }, [room, sceneRef]);
+
+  useEffect(() => {
+    return () => {
+      if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
+    };
+  }, []);
 
   /**
    * Maps a minimap pointer event to fractional grid coordinates.
@@ -244,7 +286,7 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
    * right-click order. `clientWidth` excludes the border, and its inset is
    * removed from the pointer position.
    */
-  const gridFromEvent = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const gridFromEvent = (e: { clientX: number; clientY: number }) => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
@@ -253,16 +295,44 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
     return pointerToGrid(e, rect, { width: canvas.clientWidth, height: canvas.clientHeight }, width, height);
   };
 
-  const handleMinimapClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const clearLongPress = () => {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  /**
+   * MOB-06: touch has no right-click, so holding on the radar issues the move order
+   * and a plain tap still pans. The press position is captured up front because the
+   * timer fires while the finger has not moved.
+   */
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    longPressFired.current = false;
+    if (e.pointerType !== 'touch') return;
+
+    const grid = gridFromEvent(e);
+    if (!grid) return;
+
+    longPressTimer.current = window.setTimeout(() => {
+      longPressTimer.current = null;
+      longPressFired.current = true;
+      onCommandAtGrid(grid.gx, grid.gy);
+    }, 350);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    clearLongPress();
+    // The pan is the fallback: a long-press already issued its order.
+    if (longPressFired.current) {
+      longPressFired.current = false;
+      return;
+    }
     const grid = gridFromEvent(e);
     if (!grid) return;
     onPanToGrid(grid.gx, grid.gy);
   };
 
-  /**
-   * CTL-07: right-click orders the selection to that spot instead of panning.
-   * The native context menu is suppressed so the order is the only effect.
-   */
   const handleMinimapContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     const grid = gridFromEvent(e);
@@ -273,10 +343,73 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
   const zoneKind = (room?.state as MinimapState | undefined)?.zoneId;
   const zoneLabel = zoneKind === 'battlefield' ? 'CHIẾN TRƯỜNG' : 'VƯƠNG QUỐC';
 
+  if (compact) {
+    return (
+      <div className="pointer-events-auto relative flex flex-col items-start" data-minimap-compact>
+        {/* MOB-06: the radar is the tallest part of the dock, so on a phone it is a
+            button. Opening it floats the real radar above the dock; the button keeps
+            the dock ~50 px tall when closed, which is the difference between a
+            playable map and a HUD with a window in it. */}
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          aria-expanded={open}
+          title="Bản đồ"
+          className={`flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-md border ${
+            open
+              ? 'border-amber-400 bg-amber-600/40 text-amber-100'
+              : 'aoe-button border-amber-900/70 text-slate-200'
+          }`}
+        >
+          <MapIcon size={18} />
+          <span className="text-[9px] font-semibold leading-none">Bản đồ</span>
+        </button>
+
+        {open && (
+          <div className="aoe-panel absolute bottom-full left-0 z-30 mb-2 flex flex-col items-center rounded-lg p-1">
+            <div className="mb-1 flex w-full items-center justify-between px-0.5">
+              <span
+                className={`font-medieval text-[9px] font-bold tracking-wider ${
+                  zoneKind === 'battlefield' ? 'text-red-400' : 'text-amber-400'
+                }`}
+              >
+                {zoneLabel}
+              </span>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label="Đóng bản đồ"
+                title="Đóng"
+                className="flex h-7 w-7 items-center justify-center rounded border border-slate-700 text-slate-300"
+              >
+                <X size={13} />
+              </button>
+            </div>
+            <canvas
+              ref={canvasRef}
+              width={MINIMAP_SIZE}
+              height={MINIMAP_SIZE}
+              onPointerDown={handlePointerDown}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={clearLongPress}
+              onPointerLeave={clearLongPress}
+              onContextMenu={handleMinimapContextMenu}
+              className="rounded cursor-crosshair border border-amber-900/50 shadow-inner"
+              style={{ width: MINIMAP_COMPACT_CSS_SIZE, height: MINIMAP_COMPACT_CSS_SIZE }}
+            />
+            <p className="mt-0.5 text-[8px] leading-tight text-slate-400">
+              Chạm: xem · Giữ lâu: điều quân
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="aoe-panel p-2 rounded-lg pointer-events-auto flex flex-col items-center">
+    <div className="aoe-panel pointer-events-auto flex flex-col items-center rounded-lg p-2">
       <div
-        className={`font-medieval text-[10px] font-bold mb-1 tracking-wider ${
+        className={`font-medieval mb-1 text-[10px] font-bold tracking-wider ${
           zoneKind === 'battlefield' ? 'text-red-400' : 'text-amber-400'
         }`}
       >
@@ -286,7 +419,10 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
         ref={canvasRef}
         width={MINIMAP_SIZE}
         height={MINIMAP_SIZE}
-        onClick={handleMinimapClick}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={clearLongPress}
+        onPointerLeave={clearLongPress}
         onContextMenu={handleMinimapContextMenu}
         className="rounded cursor-crosshair border border-amber-900/50 shadow-inner"
         style={{ width: MINIMAP_CSS_SIZE, height: MINIMAP_CSS_SIZE }}

@@ -30,20 +30,25 @@ export function ownerMatches(scene: HitTestScene, ownerId: string, filter: strin
  * box and stored on the container at creation time. Every pointer interaction
  * (left-click, right-click, box-select) reads it from here, so they can never
  * disagree about where the unit actually is.
+ *
+ * @param slack Multiplier applied to both radii. A fingertip covers far more area
+ *   than a mouse cursor, so the touch path asks for a wider box
+ *   (`TOUCH_PICK_SLACK`); the mouse path keeps the default of exactly 1.
  */
-export function getUnitBodyBox(container: Phaser.GameObjects.Container) {
+export function getUnitBodyBox(container: Phaser.GameObjects.Container, slack = 1) {
   const centerY = container.y + ((container.getData('bodyOffsetY') as number) ?? -37);
-  const radiusX = (container.getData('bodyRadiusX') as number) ?? 36;
-  const radiusY = (container.getData('bodyRadiusY') as number) ?? 40;
+  const radiusX = ((container.getData('bodyRadiusX') as number) ?? 36) * slack;
+  const radiusY = ((container.getData('bodyRadiusY') as number) ?? 40) * slack;
   return { centerX: container.x, centerY, radiusX, radiusY };
 }
 
 export function hitTestUnit(
   worldX: number,
   worldY: number,
-  container: Phaser.GameObjects.Container
+  container: Phaser.GameObjects.Container,
+  slack = 1
 ): boolean {
-  const { centerX, centerY, radiusX, radiusY } = getUnitBodyBox(container);
+  const { centerX, centerY, radiusX, radiusY } = getUnitBodyBox(container, slack);
   const nx = (worldX - centerX) / radiusX;
   const ny = (worldY - centerY) / radiusY;
   return nx * nx + ny * ny <= 1;
@@ -53,11 +58,14 @@ export function hitTestUnit(
  * Topmost unit of `ownerFilter` under the pointer. Shared by right-click
  * targeting and the CMD-03 cursor so the two can never disagree about what the
  * pointer is over.
+ *
+ * @param slack Widened hit box for touch; see `hitTestUnit`.
  */
 export function findUnitAt(
   scene: HitTestScene,
   worldPoint: WorldPoint,
-  ownerFilter?: string
+  ownerFilter?: string,
+  slack = 1
 ): string | null {
   if (!scene.room) return null;
   let foundId: string | null = null;
@@ -65,7 +73,11 @@ export function findUnitAt(
   scene.room.state.units.forEach((unit: any, uId: string) => {
     if (ownerFilter !== undefined && !ownerMatches(scene, unit.ownerId, ownerFilter)) return;
     const container = scene.unitSprites.get(uId);
-    if (container && hitTestUnit(worldPoint.x, worldPoint.y, container) && container.depth > foundDepth) {
+    if (
+      container &&
+      hitTestUnit(worldPoint.x, worldPoint.y, container, slack) &&
+      container.depth > foundDepth
+    ) {
       foundId = uId;
       foundDepth = container.depth;
     }
@@ -128,9 +140,11 @@ export function findOwnGatherableAt(scene: HitTestScene, grid: GridPoint): strin
 export function findResourceAt(
   scene: HitTestScene,
   worldPoint: WorldPoint,
-  grid: GridPoint
+  grid: GridPoint,
+  slack = 1
 ): string | null {
   if (!scene.room) return null;
+  const radius = 38 * slack;
   let foundId: string | null = null;
   scene.room.state.resourceNodes.forEach((res: any, resId: string) => {
     if (foundId) return;
@@ -140,7 +154,7 @@ export function findResourceAt(
     const resSprite = scene.resourceSprites.get(resId);
     if (resSprite) {
       const centerY = res.type === 'TREE' ? resSprite.y - 45 : resSprite.y - 18;
-      if (Math.hypot(worldPoint.x - resSprite.x, worldPoint.y - centerY) < 38) {
+      if (Math.hypot(worldPoint.x - resSprite.x, worldPoint.y - centerY) < radius) {
         foundId = resId;
       }
     }

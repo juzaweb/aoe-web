@@ -1,6 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BUILDING_BLUEPRINTS, BuildingType, Resources } from '@chien-quoc/shared';
-import { Landmark, ShieldAlert, Home, Wheat, TowerControl, TreePine, Warehouse, Pickaxe } from 'lucide-react';
+import {
+  Landmark,
+  ShieldAlert,
+  House,
+  Wheat,
+  TowerControl,
+  TreePine,
+  Warehouse,
+  Pickaxe,
+  Hammer,
+  X
+} from 'lucide-react';
 import { BUILDING_HOTKEY_BY_TYPE } from '../game/input/buildingHotkeys';
 
 interface BuildMenuProps {
@@ -8,12 +19,14 @@ interface BuildMenuProps {
   activeBuildingType: BuildingType | null;
   onSelectBuilding: (type: BuildingType) => void;
   onCancelBuilding: () => void;
+  /** MOB-06: a collapsible 4x2 sheet instead of the always-open desktop dock. */
+  compact?: boolean;
 }
 
 const BUILDINGS: { type: BuildingType; icon: React.ReactNode }[] = [
   { type: 'TOWN_CENTER', icon: <Landmark size={20} /> },
   { type: 'BARRACKS', icon: <ShieldAlert size={20} /> },
-  { type: 'HOUSE', icon: <Home size={20} /> },
+  { type: 'HOUSE', icon: <House size={20} /> },
   { type: 'FARM', icon: <Wheat size={20} /> },
   { type: 'TOWER', icon: <TowerControl size={20} /> },
   { type: 'LUMBER_CAMP', icon: <TreePine size={20} /> },
@@ -39,88 +52,181 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
   playerResources,
   activeBuildingType,
   onSelectBuilding,
-  onCancelBuilding
+  onCancelBuilding,
+  compact = false
 }) => {
+  const [open, setOpen] = useState(false);
+
+  const canAfford = (type: BuildingType) => {
+    const bp = BUILDING_BLUEPRINTS[type];
+    return (
+      playerResources.wood >= bp.cost.wood &&
+      playerResources.food >= bp.cost.food &&
+      playerResources.gold >= bp.cost.gold &&
+      playerResources.stone >= bp.cost.stone
+    );
+  };
+
+  /**
+   * MOB-06: the sheet collapses after a pick — the next tap is the placement on the
+   * map, so leaving the sheet over it would only hide the target tile.
+   */
+  const pick = (type: BuildingType) => {
+    const isSelected = activeBuildingType === type;
+    if (isSelected) onCancelBuilding();
+    else onSelectBuilding(type);
+    if (compact) setOpen(false);
+  };
+
+  const tiles = (compactTiles: boolean) =>
+    BUILDINGS.map(({ type, icon }) => {
+      const hotkey = BUILDING_HOTKEY_BY_TYPE[type];
+      const bp = BUILDING_BLUEPRINTS[type];
+      const affordable = canAfford(type);
+      const isSelected = activeBuildingType === type;
+
+      const button = (
+        <button
+          key={type}
+          onClick={() => pick(type)}
+          disabled={!affordable}
+          title={`${bp.name} — ${bp.description}`}
+          className={`relative flex flex-col items-center justify-between rounded-md border transition-all ${
+            compactTiles ? 'h-12 w-12 p-0.5' : 'h-16 w-16 p-1'
+          } ${
+            isSelected
+              ? 'border-amber-400 bg-amber-600/40 ring-2 ring-amber-400/60 shadow-lg'
+              : affordable
+                ? 'aoe-button text-slate-200'
+                : 'cursor-not-allowed border-slate-800 bg-slate-900/60 text-slate-600 opacity-50'
+          }`}
+        >
+          <div
+            className={`relative flex items-center justify-center ${
+              compactTiles ? 'mt-0.5 h-7 w-7' : 'mt-0.5 h-10 w-10'
+            }`}
+          >
+            <img
+              src={BUILDING_THUMBNAILS[type]}
+              alt={bp.name}
+              className="h-full w-full object-contain filter drop-shadow"
+              onError={(e) => {
+                (e.target as HTMLElement).style.display = 'none';
+              }}
+            />
+            <div className="absolute inset-0 -z-10 flex items-center justify-center opacity-40">
+              {icon}
+            </div>
+          </div>
+          <span
+            className={`max-w-full truncate font-semibold leading-none text-slate-300 ${
+              compactTiles ? 'text-[8px]' : 'mb-0.5 max-w-[56px] text-[10px]'
+            }`}
+          >
+            {bp.name}
+          </span>
+          {/* MOB-06: no keyboard on a phone, so the hotkey badge is desktop only. */}
+          {!compactTiles && (
+            <span className="absolute right-1 top-0.5 rounded bg-black/60 px-1 font-mono text-[9px] font-bold text-amber-400">
+              {hotkey}
+            </span>
+          )}
+        </button>
+      );
+
+      if (compactTiles) return button;
+
+      return (
+        <div key={type} className="group relative">
+          {button}
+          {/* Tooltip */}
+          <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-48 -translate-x-1/2 rounded border border-amber-600/70 bg-slate-950/95 p-2 text-left opacity-0 shadow-2xl transition-opacity group-hover:opacity-100">
+            <div className="font-medieval mb-1 text-xs font-bold text-amber-300">{bp.name}</div>
+            <div className="mb-2 text-[11px] leading-tight text-slate-300">{bp.description}</div>
+            <div className="space-y-0.5 border-t border-slate-800 pt-1 font-mono text-[10px]">
+              {bp.cost.wood > 0 && <div className="text-amber-400">Gỗ: {bp.cost.wood}</div>}
+              {bp.cost.food > 0 && <div className="text-red-400">Thịt: {bp.cost.food}</div>}
+              {bp.cost.gold > 0 && <div className="text-yellow-400">Vàng: {bp.cost.gold}</div>}
+              {bp.cost.stone > 0 && <div className="text-slate-300">Đá: {bp.cost.stone}</div>}
+              {bp.populationProvided > 0 && (
+                <div className="text-sky-400">Dân số: +{bp.populationProvided}</div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    });
+
+  if (compact) {
+    return (
+      <div className="pointer-events-auto relative">
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          aria-expanded={open}
+          title="Xây công trình"
+          className={`flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-md border ${
+            activeBuildingType
+              ? 'border-amber-400 bg-amber-600/40 text-amber-100'
+              : 'aoe-button border-amber-900/70 text-slate-200'
+          }`}
+        >
+          <Hammer size={18} />
+          <span className="text-[9px] font-semibold leading-none">Xây</span>
+        </button>
+
+        {open && (
+          <div className="aoe-panel absolute bottom-full right-0 z-30 mb-2 w-[214px] rounded-lg p-2">
+            <div className="mb-1.5 flex items-center justify-between border-b border-amber-800/40 pb-1">
+              <span className="font-medieval text-[11px] font-bold tracking-wider text-amber-400">
+                XÂY CÔNG TRÌNH
+              </span>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                title="Đóng"
+                aria-label="Đóng"
+                className="flex h-7 w-7 items-center justify-center rounded border border-slate-700 text-slate-300"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="grid grid-cols-4 gap-1.5">{tiles(true)}</div>
+            {activeBuildingType && (
+              <button
+                type="button"
+                onClick={() => {
+                  onCancelBuilding();
+                  setOpen(false);
+                }}
+                className="mt-1.5 w-full rounded border border-red-800/60 bg-red-950/50 py-1.5 text-[11px] font-semibold uppercase text-red-300"
+              >
+                Huỷ đặt
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col gap-1.5 aoe-panel p-3 rounded-lg pointer-events-auto">
+    <div className="aoe-panel pointer-events-auto flex flex-col gap-1.5 rounded-lg p-3">
       <div className="flex items-center justify-between border-b border-amber-800/40 pb-1.5">
-        <span className="font-medieval text-xs font-bold text-amber-400 tracking-wider">
+        <span className="font-medieval text-xs font-bold tracking-wider text-amber-400">
           XÂY CÔNG TRÌNH
         </span>
         {activeBuildingType && (
           <button
             onClick={onCancelBuilding}
-            className="text-[10px] text-red-400 hover:text-red-300 font-semibold uppercase px-1.5 py-0.5 rounded bg-red-950/50 border border-red-800/50"
+            className="rounded border border-red-800/50 bg-red-950/50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-red-400 hover:text-red-300"
           >
             Hủy (Esc)
           </button>
         )}
       </div>
 
-      <div className="grid grid-cols-4 gap-2">
-        {BUILDINGS.map(({ type, icon }) => {
-          const hotkey = BUILDING_HOTKEY_BY_TYPE[type];
-          const bp = BUILDING_BLUEPRINTS[type];
-          const canAfford =
-            playerResources.wood >= bp.cost.wood &&
-            playerResources.food >= bp.cost.food &&
-            playerResources.gold >= bp.cost.gold &&
-            playerResources.stone >= bp.cost.stone;
-
-          const isSelected = activeBuildingType === type;
-
-          return (
-            <div key={type} className="relative group">
-              <button
-                onClick={() => {
-                  if (isSelected) onCancelBuilding();
-                  else onSelectBuilding(type);
-                }}
-                disabled={!canAfford}
-                className={`relative flex flex-col items-center justify-between p-1 w-16 h-16 rounded-md border transition-all ${
-                  isSelected
-                    ? 'bg-amber-600/40 border-amber-400 ring-2 ring-amber-400/60 shadow-lg'
-                    : canAfford
-                    ? 'aoe-button text-slate-200 hover:border-amber-400'
-                    : 'bg-slate-900/60 border-slate-800 text-slate-600 cursor-not-allowed opacity-50'
-                }`}
-              >
-                <div className="w-10 h-10 flex items-center justify-center relative mt-0.5">
-                  <img
-                    src={BUILDING_THUMBNAILS[type]}
-                    alt={bp.name}
-                    className="w-full h-full object-contain filter drop-shadow group-hover:scale-105 transition-transform"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
-                  />
-                  <div className="absolute inset-0 flex items-center justify-center -z-10 opacity-40">
-                    {icon}
-                  </div>
-                </div>
-                <span className="text-[10px] font-semibold truncate max-w-[56px] text-slate-300 leading-none mb-0.5">{bp.name}</span>
-                <span className="absolute top-0.5 right-1 text-[9px] text-amber-400 font-mono font-bold bg-black/60 px-1 rounded">{hotkey}</span>
-              </button>
-
-              {/* Tooltip */}
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 rounded bg-slate-950/95 border border-amber-600/70 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-left">
-                <div className="font-medieval text-xs font-bold text-amber-300 mb-1">{bp.name}</div>
-                <div className="text-[11px] text-slate-300 leading-tight mb-2">{bp.description}</div>
-                <div className="text-[10px] space-y-0.5 border-t border-slate-800 pt-1 font-mono">
-                  {bp.cost.wood > 0 && <div className="text-amber-400">Gỗ: {bp.cost.wood}</div>}
-                  {bp.cost.food > 0 && <div className="text-red-400">Thịt: {bp.cost.food}</div>}
-                  {bp.cost.gold > 0 && <div className="text-yellow-400">Vàng: {bp.cost.gold}</div>}
-                  {bp.cost.stone > 0 && <div className="text-slate-300">Đá: {bp.cost.stone}</div>}
-                  {bp.populationProvided > 0 && (
-                    <div className="text-sky-400">Dân số: +{bp.populationProvided}</div>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <div className="grid grid-cols-4 gap-2">{tiles(false)}</div>
     </div>
   );
 };
-

@@ -1,7 +1,7 @@
 import { MAX_SELECTION, screenToGrid } from '@chien-quoc/shared';
 import type * as Phaser from 'phaser';
 import type { WorldScene } from '../scenes/WorldScene.js';
-import { getUnitBodyBox, hitTestUnit } from './hitTest.js';
+import { findResourceAt, findUnitAt, getUnitBodyBox } from './hitTest.js';
 import { pointerWorldPoint } from './pointer.js';
 
 /**
@@ -35,21 +35,21 @@ export class SelectionController {
    * resource. Shift-clicking anything that is not a unit keeps the current
    * selection, so a stray shift-click on terrain does not wipe the army being
    * gathered.
+   *
+   * @param pickSlack Widened hit boxes for a finger; see `TOUCH_PICK_SLACK`.
    */
-  handleClick(pointer: Phaser.Input.Pointer, additive = false, selectSameType = false) {
+  handleClick(
+    pointer: Phaser.Input.Pointer,
+    additive = false,
+    selectSameType = false,
+    pickSlack = 1
+  ) {
     const scene = this.scene;
     const worldPoint = pointerWorldPoint(scene.cameras.main, pointer);
     const clickGrid = screenToGrid(worldPoint.x, worldPoint.y);
 
     // Check click on units first (shared hit-test, topmost depth wins)
-    let clickedUnitId: string | null = null;
-    let clickedUnitDepth = -Infinity;
-    scene.unitSprites.forEach((container, unitId) => {
-      if (hitTestUnit(worldPoint.x, worldPoint.y, container) && container.depth > clickedUnitDepth) {
-        clickedUnitId = unitId;
-        clickedUnitDepth = container.depth;
-      }
-    });
+    const clickedUnitId = findUnitAt(scene, worldPoint, undefined, pickSlack);
 
     if (clickedUnitId) {
       const unit = scene.room?.state.units.get(clickedUnitId);
@@ -87,36 +87,7 @@ export class SelectionController {
     this.clear();
 
     // Check click on buildings (first check visual sprite bounds, then grid footprint)
-    let clickedBuildingId: string | null = null;
-    if (scene.room) {
-      scene.buildingSprites.forEach((container, bId) => {
-        const b = scene.room?.state.buildings.get(bId);
-        if (!b) return;
-        const visualY = (container.getData('visualCenterY') as number) ?? -30;
-        const width = b.sizeX * 64;
-        const height = b.sizeY * 32 + 60;
-        if (
-          Math.abs(worldPoint.x - container.x) <= width / 2 &&
-          worldPoint.y >= container.y + visualY - height / 2 &&
-          worldPoint.y <= container.y + 20
-        ) {
-          clickedBuildingId = bId;
-        }
-      });
-
-      if (!clickedBuildingId) {
-        scene.room.state.buildings.forEach((b: any, bId: string) => {
-          if (
-            clickGrid.gridX >= b.gridX &&
-            clickGrid.gridX < b.gridX + b.sizeX &&
-            clickGrid.gridY >= b.gridY &&
-            clickGrid.gridY < b.gridY + b.sizeY
-          ) {
-            clickedBuildingId = bId;
-          }
-        });
-      }
-    }
+    const clickedBuildingId = this.buildingAt(worldPoint, clickGrid, (pickSlack - 1) * 16);
 
     if (clickedBuildingId) {
       scene.selectedBuildingId = clickedBuildingId;
@@ -128,30 +99,80 @@ export class SelectionController {
     }
 
     // Check click on resources (first check visual sprite distance, fallback to grid)
-    let clickedResId: string | null = null;
-    if (scene.room) {
-      scene.room.state.resourceNodes.forEach((res: any, resId: string) => {
-        if (clickedResId) return;
-        // Empty nodes are only waiting for their respawn; the sprite is hidden.
-        if (res.remainingAmount <= 0) return;
-        const resSprite = scene.resourceSprites.get(resId);
-        if (resSprite) {
-          const centerY = res.type === 'TREE' ? resSprite.y - 45 : resSprite.y - 18;
-          if (Math.hypot(worldPoint.x - resSprite.x, worldPoint.y - centerY) < 38) {
-            clickedResId = resId;
-          }
-        }
-        if (!clickedResId && res.gridX === clickGrid.gridX && res.gridY === clickGrid.gridY) {
-          clickedResId = resId;
-        }
-      });
-    }
+    const clickedResId = findResourceAt(scene, worldPoint, clickGrid, pickSlack);
 
     if (clickedResId) {
       scene.selectedResourceId = clickedResId;
     }
 
     scene.notifySelectionChange();
+  }
+
+  /**
+   * MOB-03: would a tap at this point hit anything at all?
+   *
+   * The touch path needs the answer before it decides between "select" and "move
+   * the selection here", and it must not run the selection side effects twice.
+   * Shares the exact hit tests `handleClick` uses, so the two can never disagree
+   * about whether a tap landed on an entity.
+   */
+  hasTargetAt(pointer: Phaser.Input.Pointer, pickSlack = 1): boolean {
+    const scene = this.scene;
+    if (!scene.room) return false;
+
+    const worldPoint = pointerWorldPoint(scene.cameras.main, pointer);
+    const grid = screenToGrid(worldPoint.x, worldPoint.y);
+
+    if (findUnitAt(scene, worldPoint, undefined, pickSlack)) return true;
+    if (this.buildingAt(worldPoint, grid, (pickSlack - 1) * 16)) return true;
+    return findResourceAt(scene, worldPoint, grid, pickSlack) !== null;
+  }
+
+  /**
+   * Building under a point: the rendered sprite's bounds first (a tall town centre
+   * sticks up out of its footprint), then the footprint itself.
+   *
+   * @param pad Extra world pixels added to the visual bounds for a finger tap.
+   */
+  private buildingAt(
+    worldPoint: { x: number; y: number },
+    grid: { gridX: number; gridY: number },
+    pad = 0
+  ): string | null {
+    const scene = this.scene;
+    if (!scene.room) return null;
+
+    let clickedBuildingId: string | null = null;
+
+    scene.buildingSprites.forEach((container, bId) => {
+      const b = scene.room?.state.buildings.get(bId);
+      if (!b) return;
+      const visualY = (container.getData('visualCenterY') as number) ?? -30;
+      const width = b.sizeX * 64;
+      const height = b.sizeY * 32 + 60;
+      if (
+        Math.abs(worldPoint.x - container.x) <= width / 2 + pad &&
+        worldPoint.y >= container.y + visualY - height / 2 - pad &&
+        worldPoint.y <= container.y + 20 + pad
+      ) {
+        clickedBuildingId = bId;
+      }
+    });
+
+    if (clickedBuildingId) return clickedBuildingId;
+
+    scene.room.state.buildings.forEach((b: any, bId: string) => {
+      if (
+        grid.gridX >= b.gridX &&
+        grid.gridX < b.gridX + b.sizeX &&
+        grid.gridY >= b.gridY &&
+        grid.gridY < b.gridY + b.sizeY
+      ) {
+        clickedBuildingId = bId;
+      }
+    });
+
+    return clickedBuildingId;
   }
 
   /** Box-drag: every own unit whose body ellipse overlaps the rectangle. */

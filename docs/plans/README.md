@@ -17,6 +17,7 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | [`08-progression-curve.md`](./08-progression-curve.md) | Đường cong nâng cấp dài hạn: 1-10 tính bằng phút, từ 11 tính bằng giờ (×1,05/cấp), gate TC ↔ 4 trụ cột, 2 slot (`LVL2-00..LVL2-07`) | APPROVED — chờ code |
 | [`09-road-and-gate-assets.md`](./09-road-and-gate-assets.md) | Thay art đường đất + cổng bằng 2 ảnh AI gen, bỏ tint tím mượn tower (`GATE-01..ROAD-02`) | IMPLEMENTED — chờ verify tay |
 | [`10-persistence-scaling.md`](./10-persistence-scaling.md) | Chi phí autosave theo zone, tải theo số user, dirty tracking + batch upsert + resource delta (`SAVE-01..SAVE-07`) | DRAFT |
+| [`11-mobile-touch.md`](./11-mobile-touch.md) | Chơi trên mobile: touch gesture (pan/pinch/tap/long-press), thanh lệnh, HUD compact landscape, join lại khi resume (`MOB-01..MOB-10`) | IMPLEMENTED — chờ verify máy thật |
 
 Status: `DRAFT` (chưa chốt quyết định) → `APPROVED` (bắt đầu code) → `DONE`.
 
@@ -76,6 +77,17 @@ mỗi user là **không đáng kể**; nút thắt là số statement bên trong
 và SQLite một writer, cộng thêm 20 Hz tick cho mỗi room. Số đo trên dev DB: battlefield 1258 resource
 node, kingdom ~260 node. **Chưa có dòng code nào**, các quyết định D1–D7 còn ở trạng thái ĐỀ XUẤT; xem
 `10-persistence-scaling.md` §2–§5.
+
+Phase 11 (mobile) chuyển input từ chuột/phím sang touch: Phaser hiện chỉ nhận 1 pointer và mọi lần
+chạm bị đọc thành chuột trái (⇒ box-select), nên phase này thêm máy trạng thái gesture thuần
+(pan / pinch / tap / long-press), nhánh touch riêng trong `WorldScene`, một thanh lệnh nút 46×48 px
+dưới màn hình, HUD compact landscape và cơ chế join lại khi mở lại app (khoá màn hình). Chốt ngày
+2026-11-03 với user: full touch RTS, landscape bắt buộc, **không** PWA, chưa làm gán nhóm quân trên
+mobile. Đã implement cùng ngày, **không** đổi server/shared/schema/DB, không migration: 5 module mới
+có test thuần (36 test), `tsc` sạch 2 app, vitest 336/336, và kiểm chứng tay bằng Chrome headless
+CDP (chọn / pan / pinch / đặt nhà / giữ lâu thu hoạch / tap move đều pass). Còn verify trên máy thật
+(iOS Safari page-zoom, safe-area, reconnect sau khoá màn hình). Xem `11-mobile-touch.md` §2 (D1–D10),
+§4 (bảng cử chỉ) và §11 (kết quả đo).
 
 ## Quy ước
 

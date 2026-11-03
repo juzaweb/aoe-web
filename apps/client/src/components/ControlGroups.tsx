@@ -14,6 +14,8 @@ interface ControlGroupsProps {
   groups: ControlGroupSummary[];
   /** UIX-03: same recall as pressing the group's digit key. */
   onSelectGroup: (index: number) => void;
+  /** MOB-06: narrower, one-line rows for the landscape phone HUD. */
+  compact?: boolean;
 }
 
 /**
@@ -24,12 +26,14 @@ interface ControlGroupsProps {
  * visible and clickable. Nothing renders while no group exists, so a player who
  * never groups units sees no extra chrome.
  */
-export const ControlGroups: React.FC<ControlGroupsProps> = ({ groups, onSelectGroup }) => {
+export const ControlGroups: React.FC<ControlGroupsProps> = ({ groups, onSelectGroup, compact = false }) => {
   if (groups.length === 0) return null;
 
   return (
     <div
-      className="aoe-panel w-40 p-2 rounded-lg pointer-events-auto flex flex-col gap-1"
+      className={`aoe-panel pointer-events-auto flex flex-col gap-1 rounded-lg ${
+        compact ? 'w-32 p-1.5' : 'w-40 p-2'
+      }`}
       data-control-groups
     >
       <div className="flex items-center gap-1.5 border-b border-amber-800/40 pb-1 text-[10px] font-bold tracking-wider text-amber-400">
@@ -45,7 +49,9 @@ export const ControlGroups: React.FC<ControlGroupsProps> = ({ groups, onSelectGr
           title={group.breakdown
             .map((entry) => `${UNIT_SHORT_LABELS[entry.type] ?? entry.type} ×${entry.count}`)
             .join(', ')}
-          className="flex items-center gap-2 rounded border border-slate-700/70 bg-slate-900/70 px-1.5 py-1 text-left transition-colors hover:border-amber-400 hover:bg-slate-800/80"
+          className={`flex items-center gap-2 rounded border border-slate-700/70 bg-slate-900/70 px-1.5 text-left transition-colors hover:border-amber-400 hover:bg-slate-800/80 ${
+            compact ? 'min-h-[34px] py-0.5' : 'py-1'
+          }`}
         >
           <span className="w-4 shrink-0 text-center font-mono text-[10px] font-bold text-amber-300">
             {group.index}

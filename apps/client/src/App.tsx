@@ -13,7 +13,12 @@ import {
   TravelReadyPayload,
   UnitType
 } from '@chien-quoc/shared';
-import { WorldScene, SelectedEntityData, ControlGroupSummary } from './game/scenes/WorldScene.js';
+import {
+  WorldScene,
+  SelectedEntityData,
+  ControlGroupSummary,
+  type ArmedOrder
+} from './game/scenes/WorldScene.js';
 import { PhaserGame } from './game/PhaserGame.js';
 import { HUD } from './components/HUD.js';
 import { BuildMenu } from './components/BuildMenu.js';
@@ -22,6 +27,10 @@ import { Minimap } from './components/Minimap.js';
 import { ControlGroups } from './components/ControlGroups.js';
 import { AuthScreen } from './components/AuthScreen.js';
 import { SessionBlocked } from './components/SessionBlocked.js';
+import { OrientationGate } from './components/mobile/OrientationGate.js';
+import { MobileCommandBar } from './components/mobile/MobileCommandBar.js';
+import { useInputMode, useIsPortrait } from './device/useInputMode.js';
+import { RESUME_ATTEMPTS, RESUME_RETRY_DELAY_MS, shouldAutoReconnect } from './device/resume.js';
 import {
   AuthUser,
   classifySessionJoinError,
@@ -74,6 +83,13 @@ export const App: React.FC = () => {
   const [sessionTaken, setSessionTaken] = useState<boolean>(false);
   const playerName = authUser?.displayName ?? '';
 
+  /** MOB-01: `'touch'` swaps the desktop HUD for the compact mobile one. */
+  const inputMode = useInputMode();
+  const isCompact = inputMode === 'touch';
+  /** MOB-02: a touch device held upright shows the rotate overlay. */
+  const isPortrait = useIsPortrait();
+  const showOrientationGate = isCompact && isPortrait;
+
   // Player state
   const [playerColor, setPlayerColor] = useState<string>('#3b82f6');
   const [resources, setResources] = useState<Resources>(INITIAL_PLAYER_RESOURCES);
@@ -83,6 +99,10 @@ export const App: React.FC = () => {
   const [idleVillagers, setIdleVillagers] = useState<number>(0);
   /** UIX-03: `Ctrl+1..9` rosters, published by the scene on every change. */
   const [controlGroups, setControlGroups] = useState<ControlGroupSummary[]>([]);
+  /** MOB-05: which order the touch bar has armed, mirrored from the scene. */
+  const [armedOrder, setArmedOrder] = useState<ArmedOrder | null>(null);
+  /** MOB-04: the touch box-selection mode is armed for the next drag. */
+  const [boxSelectArmed, setBoxSelectArmed] = useState<boolean>(false);
 
   // Selection & Placement
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntityData | null>(null);
@@ -108,6 +128,8 @@ export const App: React.FC = () => {
   const switchingRef = useRef<boolean>(false);
   /** The ack being applied, kept so a failed switch can be retried. */
   const pendingTravelRef = useRef<TravelReadyPayload | null>(null);
+  /** MOB-08: one resume join at a time; two sockets for one account is a conflict. */
+  const resumingRef = useRef(false);
 
   const showNotification = (msg: string) => {
     setNotification(msg);
@@ -154,7 +176,18 @@ export const App: React.FC = () => {
    */
   const connectToZone = async (
     user: AuthUser,
-    opts: { zone?: MapZoneKind; force?: boolean; attempt?: number; quiet?: boolean } = {}
+    opts: {
+      zone?: MapZoneKind;
+      force?: boolean;
+      attempt?: number;
+      quiet?: boolean;
+      /**
+       * MOB-08: how many times a "session in use" refusal is retried before the
+       * takeover screen appears. A phone coming back from a lock screen races the
+       * server's release of the socket it just lost, and that is not a conflict.
+       */
+      tolerateTakenAttempts?: number;
+    } = {}
   ): Promise<boolean> => {
     const token = getStoredToken();
     if (!token) {
@@ -252,6 +285,10 @@ export const App: React.FC = () => {
       // failure, so it must not clear the token or show the generic banner.
       const sessionError = classifySessionJoinError(err);
       if (sessionError === 'taken') {
+        if (retry < (opts.tolerateTakenAttempts ?? 0)) {
+          await new Promise((resolve) => setTimeout(resolve, RESUME_RETRY_DELAY_MS));
+          return connectToZone(user, { ...opts, attempt: retry + 1 });
+        }
         setSessionTaken(true);
         return false;
       }
@@ -345,6 +382,57 @@ export const App: React.FC = () => {
     const travel = pendingTravelRef.current;
     if (!travel || !authUser || switchingRef.current) return;
     void switchZone(travel, authUser);
+  };
+
+  /**
+   * MOB-08: rejoin after the app comes back to the foreground.
+   *
+   * A locked phone suspends the socket, the server releases the account session and
+   * the tab is left with no room. Rejoining quietly turns that into "the game
+   * paused"; `tolerateTakenAttempts` covers the race where the server has not yet
+   * processed the old socket's close.
+   */
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const onVisibilityChange = () => {
+      const visible = !document.hidden;
+      if (!authUser || resumingRef.current) return;
+
+      const shouldReconnect = shouldAutoReconnect({
+        hasUser: true,
+        isJoined,
+        isJoining,
+        sessionTaken,
+        isLeaving: isLeavingRef.current,
+        isVisible: visible,
+        isSwitchingZone,
+        hasSwitchError: switchError !== null
+      });
+      if (!shouldReconnect) return;
+
+      const user = authUser;
+      resumingRef.current = true;
+      void connectToZone(user, {
+        zone: zoneKind,
+        quiet: true,
+        tolerateTakenAttempts: RESUME_ATTEMPTS - 1
+      }).finally(() => {
+        resumingRef.current = false;
+      });
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+    // `connectToZone` closes over the current state and is intentionally not a dep:
+    // adding it would re-register the listener on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser, isJoined, isJoining, sessionTaken, isSwitchingZone, switchError, zoneKind]);
+
+  /** MOB-08: manual retry from the disconnect panel (no tolerated refusals). */
+  const handleReconnect = () => {
+    if (!authUser || isJoining) return;
+    void connectToZone(authUser, { zone: zoneKind });
   };
 
   /** Solo portal interaction from the entity panel; right-click carries units. */
@@ -472,8 +560,21 @@ export const App: React.FC = () => {
     sceneRef.current?.commandMoveTo(gx, gy);
   };
 
+  // MOB-05: the touch command bar. Every handler is a one-liner on top of an API
+  // the desktop input path already had, so touch and mouse can never drift.
+  const handleArmContextual = () => sceneRef.current?.armContextualOrder();
+  const handleArmAttackMove = () => sceneRef.current?.armOrder('ATTACK_MOVE');
+  const handleArmPatrol = () => sceneRef.current?.armOrder('PATROL');
+  const handleStopUnits = () => sceneRef.current?.stopSelectedUnits();
+  const handleCycleStance = () => sceneRef.current?.cycleSelectedStance();
+  const handleToggleBoxSelect = () => sceneRef.current?.setBoxSelectMode(!boxSelectArmed);
+  const handleClearSelection = () => sceneRef.current?.clearSelection();
+  const handleZoomIn = () => sceneRef.current?.zoomByStep(1);
+  const handleZoomOut = () => sceneRef.current?.zoomByStep(-1);
+  const handleCenterBase = () => sceneRef.current?.centerOnBase();
+
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans">
+    <div className="app-shell bg-slate-950 font-sans">
       {/* Phaser Canvas — stays mounted during a map switch so the new Room can
           reset the existing scene instead of rebuilding Phaser from scratch. */}
       {(isJoined || isSwitchingZone || switchError !== null) && (
@@ -485,6 +586,8 @@ export const App: React.FC = () => {
           onBuildingHotkey={handleSelectBuilding}
           onIdleVillagersChange={setIdleVillagers}
           onControlGroupsChange={setControlGroups}
+          onArmedOrderChange={setArmedOrder}
+          onBoxSelectChange={setBoxSelectArmed}
           gameRef={gameRef}
           sceneRef={sceneRef}
         />
@@ -505,46 +608,119 @@ export const App: React.FC = () => {
           isConnected={isConnected}
           idleVillagers={idleVillagers}
           onSelectIdleVillager={() => sceneRef.current?.cycleToIdleUnit('villager')}
+          compact={isCompact}
+          onLeaveGame={handleLeaveGame}
         />
       )}
 
-      {/* Bottom RTS Dock Bar */}
+      {/* Bottom dock. Desktop keeps the AoE-style three-column bar; touch stacks
+          the command bar above a tighter row, because a 390 px landscape phone has
+          no room for a 140 px minimap, a 320 px card and an 8-button build panel
+          side by side (MOB-06). */}
       {isJoined && (
-        <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between pointer-events-none select-none z-20 gap-3">
-          {/* Left: Minimap */}
-          <Minimap room={room} sceneRef={sceneRef} onPanToGrid={handlePanToGrid} onCommandAtGrid={handleCommandAtGrid} />
+        isCompact ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col gap-1.5 px-2 pb-[calc(env(safe-area-inset-bottom)+0.25rem)] select-none">
+            {/* The card floats above the controls so the dock row underneath stays
+                ~50 px tall; a permanently docked 320x144 panel would cover half a
+                landscape phone (MOB-06). */}
+            {selectedEntity && (
+              <div className="flex justify-center">
+                <EntityDetails
+                  compact
+                  interactionHint="long-press"
+                  entity={selectedEntity}
+                  playerResources={resources}
+                  zoneKind={zoneKind}
+                  onTravel={handleTravel}
+                  onTrainUnit={handleTrainUnit}
+                  onCancelTrain={handleCancelTrain}
+                  onCancelBuilding={handleCancelFoundation}
+                  onUpgradeBuilding={handleUpgradeBuilding}
+                  onCancelBuildingUpgrade={handleCancelBuildingUpgrade}
+                  onUpgradeUnitType={handleUpgradeUnitType}
+                  onCancelUnitUpgrade={handleCancelUnitUpgrade}
+                />
+              </div>
+            )}
 
-          {/* Center: Selected Entity Info & Unit Training. Nothing selected
-              means no card at all (UIX-07), matching the build dock. */}
-          {selectedEntity && (
-            <EntityDetails
-              entity={selectedEntity}
-              playerResources={resources}
-              zoneKind={zoneKind}
-              onTravel={handleTravel}
-              onTrainUnit={handleTrainUnit}
-              onCancelTrain={handleCancelTrain}
-              onCancelBuilding={handleCancelFoundation}
-              onUpgradeBuilding={handleUpgradeBuilding}
-              onCancelBuildingUpgrade={handleCancelBuildingUpgrade}
-              onUpgradeUnitType={handleUpgradeUnitType}
-              onCancelUnitUpgrade={handleCancelUnitUpgrade}
-            />
-          )}
+            <div className="flex items-end gap-1.5">
+              <Minimap
+                compact
+                room={room}
+                sceneRef={sceneRef}
+                onPanToGrid={handlePanToGrid}
+                onCommandAtGrid={handleCommandAtGrid}
+              />
 
-          {/* Right: Building Construction Dock — villagers only (UIX-06). Nothing
-              selected means no card at all, exactly like AoE, so the empty-state
-              placeholder is gone rather than being drawn as blank slots. */}
-          {(activeBuildingType !== null ||
-            selectedEntity?.villagerSelected === true) && (
-            <BuildMenu
-              playerResources={resources}
-              activeBuildingType={activeBuildingType}
-              onSelectBuilding={handleSelectBuilding}
-              onCancelBuilding={handleCancelBuilding}
-            />
-          )}
-        </div>
+              <div className="min-w-0 flex-1">
+                <MobileCommandBar
+              hasUnits={selectedEntity?.type === 'unit'}
+              hasOwnBuilding={selectedEntity?.type === 'building' && selectedEntity.isOwner === true}
+              armed={armedOrder}
+              boxSelectArmed={boxSelectArmed}
+              onArmContextual={handleArmContextual}
+              onArmAttackMove={handleArmAttackMove}
+              onArmPatrol={handleArmPatrol}
+              onStop={handleStopUnits}
+              onCycleStance={handleCycleStance}
+              onToggleBoxSelect={handleToggleBoxSelect}
+              onClearSelection={handleClearSelection}
+              onZoomIn={handleZoomIn}
+              onZoomOut={handleZoomOut}
+              onCenterBase={handleCenterBase}
+                  onCancelArmed={() => sceneRef.current?.cancelArmedOrder()}
+                />
+              </div>
+
+              {(activeBuildingType !== null ||
+                selectedEntity?.villagerSelected === true) && (
+                <BuildMenu
+                  compact
+                  playerResources={resources}
+                  activeBuildingType={activeBuildingType}
+                  onSelectBuilding={handleSelectBuilding}
+                  onCancelBuilding={handleCancelBuilding}
+                />
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between pointer-events-none select-none z-20 gap-3">
+            {/* Left: Minimap */}
+            <Minimap room={room} sceneRef={sceneRef} onPanToGrid={handlePanToGrid} onCommandAtGrid={handleCommandAtGrid} />
+
+            {/* Center: Selected Entity Info & Unit Training. Nothing selected
+                means no card at all (UIX-07), matching the build dock. */}
+            {selectedEntity && (
+              <EntityDetails
+                entity={selectedEntity}
+                playerResources={resources}
+                zoneKind={zoneKind}
+                onTravel={handleTravel}
+                onTrainUnit={handleTrainUnit}
+                onCancelTrain={handleCancelTrain}
+                onCancelBuilding={handleCancelFoundation}
+                onUpgradeBuilding={handleUpgradeBuilding}
+                onCancelBuildingUpgrade={handleCancelBuildingUpgrade}
+                onUpgradeUnitType={handleUpgradeUnitType}
+                onCancelUnitUpgrade={handleCancelUnitUpgrade}
+              />
+            )}
+
+            {/* Right: Building Construction Dock — villagers only (UIX-06). Nothing
+                selected means no card at all, exactly like AoE, so the empty-state
+                placeholder is gone rather than being drawn as blank slots. */}
+            {(activeBuildingType !== null ||
+              selectedEntity?.villagerSelected === true) && (
+              <BuildMenu
+                playerResources={resources}
+                activeBuildingType={activeBuildingType}
+                onSelectBuilding={handleSelectBuilding}
+                onCancelBuilding={handleCancelBuilding}
+              />
+            )}
+          </div>
+        )
       )}
 
       {/* In-game Notification Banner */}
@@ -566,10 +742,51 @@ export const App: React.FC = () => {
       {/* Auth Gate: register / login before entering the world */}
       {!isJoined &&
         !sessionTaken &&
+        !authUser &&
         !isRestoringSession &&
         !isJoining &&
         !isSwitchingZone &&
         !switchError && <AuthScreen onAuthenticated={handleAuthenticated} />}
+
+      {/* MOB-08: the account is still logged in but the room is gone (phone locked,
+          tab suspended, server restarted). Offering a retry beats silently showing
+          the login screen with a token that is still valid. */}
+      {authUser &&
+        !isJoined &&
+        !sessionTaken &&
+        !isRestoringSession &&
+        !isJoining &&
+        !isSwitchingZone &&
+        !switchError && (
+          <div className="absolute inset-0 z-40 flex items-center justify-center bg-slate-950/90 p-3 backdrop-blur-md">
+            <div className="aoe-panel flex w-full max-w-sm flex-col items-center gap-3 rounded-xl border-2 border-amber-600 p-5 text-center shadow-2xl">
+              <div className="flex items-center gap-2 text-amber-400">
+                <AlertCircle size={22} />
+                <span className="font-medieval text-sm font-bold tracking-wider">MẤT KẾT NỐI</span>
+              </div>
+              <p className="text-xs leading-relaxed text-slate-300">
+                Tài khoản <span className="text-amber-300">{playerName}</span> vẫn đang đăng nhập.
+                Kết nối lại để tiếp tục đế chế và quân đang chơi.
+              </p>
+              <div className="mt-1 flex w-full gap-2">
+                <button
+                  type="button"
+                  onClick={handleReconnect}
+                  className="min-h-[46px] flex-1 rounded border border-amber-400 bg-gradient-to-r from-amber-600 to-amber-700 text-xs font-bold uppercase tracking-wider text-slate-950"
+                >
+                  Kết nối lại
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLeaveGame}
+                  className="min-h-[46px] flex-1 rounded border border-slate-700 bg-slate-900 text-xs font-bold uppercase tracking-wider text-slate-300"
+                >
+                  Đăng xuất
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       {/* MAPS: travel is in flight (leave + join the other room) */}
       {isSwitchingZone && (
@@ -627,8 +844,8 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Leave game */}
-      {isJoined && (
+      {/* Leave game. Touch renders the same action inside the compact HUD row. */}
+      {isJoined && !isCompact && (
         <button
           type="button"
           onClick={handleLeaveGame}
@@ -638,15 +855,24 @@ export const App: React.FC = () => {
         </button>
       )}
 
-      {/* UIX-03: control-group rosters, click to recall */}
+      {/* UIX-03: control-group rosters, click to recall. On touch they tuck under
+          the compact top bar, which is only ~44 px tall (MOB-06). */}
       {isJoined && (
-        <div className="absolute top-28 right-2 z-20">
+        <div
+          className={`absolute right-2 z-20 ${
+            isCompact ? 'top-[calc(env(safe-area-inset-top)+3.1rem)]' : 'top-28'
+          }`}
+        >
           <ControlGroups
+            compact={isCompact}
             groups={controlGroups}
             onSelectGroup={(index) => sceneRef.current?.selectControlGroup(index)}
           />
         </div>
       )}
+
+      {/* MOB-02: landscape-only layout; the game keeps running behind the gate. */}
+      <OrientationGate visible={showOrientationGate} />
     </div>
   );
 };

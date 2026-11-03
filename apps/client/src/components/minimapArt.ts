@@ -12,6 +12,11 @@ import { fbm } from '../game/render/visualVariation.js';
  */
 export const MINIMAP_SIZE = 280;
 export const MINIMAP_CSS_SIZE = 140;
+/**
+ * MOB-06: the landscape phone dock. The backing store stays at `MINIMAP_SIZE`, so
+ * the radar keeps its detail and only the on-screen scale changes.
+ */
+export const MINIMAP_COMPACT_CSS_SIZE = 96;
 
 /** Palette measured against the world sprites, then darkened for contrast. */
 export const MINIMAP_COLORS = {

@@ -58,6 +58,13 @@ interface EntityDetailsProps {
   onUpgradeUnitType: (unitType: UnitType) => void;
   /** LVL: cancels the in-flight unit research. */
   onCancelUnitUpgrade: (unitType: UnitType) => void;
+  /** MOB-06: fit the landscape phone dock instead of the desktop centre column. */
+  compact?: boolean;
+  /**
+   * MOB-06: how this player orders units. Touch players hold the target, mouse
+   * players right-click it, and the help text must not teach the wrong gesture.
+   */
+  interactionHint?: 'right-click' | 'long-press';
 }
 
 export const EntityDetails: React.FC<EntityDetailsProps> = ({
@@ -71,7 +78,9 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
   onUpgradeBuilding,
   onCancelBuildingUpgrade,
   onUpgradeUnitType,
-  onCancelUnitUpgrade
+  onCancelUnitUpgrade,
+  compact = false,
+  interactionHint = 'right-click'
 }) => {
   const buildingBp = entity.type === 'building' ? BUILDING_BLUEPRINTS[entity.subType as BuildingType] : null;
   const trainableUnits = buildingBp ? buildingBp.trainableUnits : [];
@@ -80,7 +89,15 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
     entity.type === 'building' && entity.isOwner === true && entity.isConstructed === true;
 
   return (
-    <div className="aoe-panel w-80 min-h-[144px] max-h-[72vh] overflow-y-auto p-3 rounded-lg flex flex-col gap-2 pointer-events-auto">
+    <div
+      className={`aoe-panel pointer-events-auto flex flex-col gap-2 overflow-y-auto rounded-lg ${
+        compact
+          ? // MOB-06: full width of the dock's centre column, capped by the shorter
+            // landscape viewport, with every inner button lifted to a thumb target.
+            'w-full max-w-[420px] max-h-[28dvh] p-2 [&_button]:min-h-[38px]'
+          : 'w-80 min-h-[144px] max-h-[72vh] p-3'
+      }`}
+    >
       {/* Header Info */}
       <div className="flex items-center justify-between border-b border-amber-800/40 pb-2">
         <div className="flex items-center gap-2.5">
@@ -174,7 +191,9 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
             {zoneKind === 'battlefield' ? 'Về vương quốc' : 'Đi tới chiến trường'}
           </button>
           <p className="text-[10px] text-slate-400 italic">
-            Chọn quân/dân rồi chuột phải vào cổng để mang họ theo.
+            {interactionHint === 'long-press'
+              ? 'Chọn quân/dân rồi giữ lâu vào cổng để mang họ theo.'
+              : 'Chọn quân/dân rồi chuột phải vào cổng để mang họ theo.'}
           </p>
         </div>
       )}
@@ -220,9 +239,13 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
             </span>
           </div>
           <p className="text-[10px] text-slate-400 italic">
-            {entity.type === 'building'
-              ? 'Chuột phải dân làng vào ruộng để khai thác; ruộng cạn sẽ được gieo lại bằng gỗ.'
-              : 'Chuột phải dân làng vào mỏ để tiến hành khai thác.'}
+            {interactionHint === 'long-press'
+              ? entity.type === 'building'
+                ? 'Giữ lâu dân làng vào ruộng để khai thác; ruộng cạn sẽ được gieo lại bằng gỗ.'
+                : 'Giữ lâu dân làng vào mỏ để tiến hành khai thác.'
+              : entity.type === 'building'
+                ? 'Chuột phải dân làng vào ruộng để khai thác; ruộng cạn sẽ được gieo lại bằng gỗ.'
+                : 'Chuột phải dân làng vào mỏ để tiến hành khai thác.'}
           </p>
         </div>
       )}

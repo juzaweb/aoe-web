@@ -10,17 +10,49 @@
 body {
   margin: 0;
   padding: 0;
-  width: 100vw;
+  /* `100%` instead of `100vw`: a classic scrollbar would otherwise make the
+     layout one scrollbar wider than the viewport and let it drift sideways. */
+  width: 100%;
   height: 100vh;
+  /* Mobile: the dynamic viewport unit follows the browser chrome (iOS Safari's
+     collapsing URL bar), so the bottom dock never ends up underneath it. The
+     `vh` line above stays as the fallback for browsers without `dvh`. */
+  height: 100dvh;
   overflow: hidden;
+  overscroll-behavior: none;
   background-color: #020617;
   user-select: none;
   -webkit-user-select: none;
+  /* No iOS callout ("Copy / Look up") on a long-press, and no grey tap flash. */
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/*
+ * Every canvas (the Phaser world and the minimap) owns its gestures: the browser
+ * must not scroll, bounce or page-zoom while a finger drags across it. Pinch zoom
+ * is implemented by `TouchController`, so the browser gesture is only in the way.
+ */
+canvas {
+  touch-action: none;
 }
 
 #root {
   width: 100%;
-  height: 100%;
+  height: 100vh;
+  height: 100dvh;
+}
+
+/*
+ * App shell. The HUD layers are absolutely positioned inside a box that must be
+ * exactly one viewport tall; `dvh` keeps that true on mobile.
+ */
+.app-shell {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 .font-medieval {

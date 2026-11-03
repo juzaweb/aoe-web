@@ -26,6 +26,9 @@ import type { BoxSelectFilter } from '../input/SelectionController.js';
 import { applyEdgeScroll, installCanvasPresence } from '../input/cameraInput.js';
 import { CameraController, ZOOM_MIN } from '../input/CameraController.js';
 import { installHudPointerGuard } from '../input/hudPointerGuard.js';
+import { TouchController } from '../input/TouchController.js';
+import { pointerWorldGrid } from '../input/pointer.js';
+import { TOUCH_PICK_SLACK } from '../../device/inputMode.js';
 import { EntityRenderer } from '../render/EntityRenderer.js';
 import { FocusIndicator } from '../render/FocusIndicator.js';
 import { DecorLayer } from '../render/DecorLayer.js';
@@ -105,6 +108,15 @@ export interface ControlGroupSummary {
   count: number;
   breakdown: Array<{ type: string; count: number }>;
 }
+
+/**
+ * MOB-05: an order waiting for its destination.
+ *
+ * `'CONTEXT'` is the right-click equivalent (attack / harvest / travel / rally /
+ * move, decided by what is under the target), while the other two carry the
+ * explicit move mode the desktop `A` / `P` keys arm.
+ */
+export type ArmedOrder = 'ATTACK_MOVE' | 'PATROL' | 'CONTEXT';
 
 export interface SelectedEntityData {
   id: string;
@@ -261,6 +273,25 @@ export class WorldScene extends Phaser.Scene {
    */
   private worldFrozen: boolean = false;
 
+  /**
+   * MOB-03: true once a touch event has reached the scene.
+   *
+   * Latched for the session rather than derived per event, because it gates
+   * mouse-only affordances (CSS cursor, edge scroll) that must stay off while a
+   * finger is driving even if a stray mouse event passes through.
+   */
+  public touchMode = false;
+
+  /**
+   * MOB-04: the command bar armed a one-shot box selection, so the next
+   * one-finger drag paints a rectangle instead of panning. Cleared automatically
+   * when that drag finishes.
+   */
+  public boxSelectArmed = false;
+
+  /** MOB-04: the armed box selection is currently painting. */
+  private touchBoxActive = false;
+
   // Selection Drag Box
   public isDragSelecting: boolean = false;
   private dragStartScreen: { x: number; y: number } = { x: 0, y: 0 };
@@ -292,6 +323,13 @@ export class WorldScene extends Phaser.Scene {
    * a member dying), so the right-hand group panel mirrors the real groups.
    */
   public onControlGroupsChange: ((groups: ControlGroupSummary[]) => void) | null = null;
+  /**
+   * MOB-05: the armed order changed (armed from the touch bar, committed by a tap,
+   * or cancelled). The bar's pressed state and its "Huỷ lệnh" button read this.
+   */
+  public onArmedOrderChange: ((armed: ArmedOrder | null) => void) | null = null;
+  /** MOB-04: the one-shot box-selection mode was armed or consumed. */
+  public onBoxSelectChange: ((armed: boolean) => void) | null = null;
   /** Last `hp|carrying|actionState` string published to the entity panel. */
   private lastUnitDetailSignature = '';
   /** LVL: last building/panel signature, including player research progress. */
@@ -306,6 +344,8 @@ export class WorldScene extends Phaser.Scene {
   public cursor!: CursorController;
   public placement!: PlacementController;
   public commands!: CommandController;
+  /** MOB-02: gestures, camera pan/pinch and the touch order dispatch. */
+  public touch!: TouchController;
   public entityRenderer!: EntityRenderer;
   public terrain!: TerrainLayer;
   public decor!: DecorLayer;
@@ -472,6 +512,10 @@ export class WorldScene extends Phaser.Scene {
     this.selection = new SelectionController(this);
     this.cursor = new CursorController(this);
 
+    // 5b. Touch gestures (MOB-02): pan, pinch, tap and long-press. Built last
+    // because every intent it emits goes through the layers above.
+    this.touch = new TouchController(this);
+
     // 6. Camera & Controls
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
@@ -524,7 +568,7 @@ export class WorldScene extends Phaser.Scene {
       onPressOutside: () => {
         if (this.buildingToPlace) {
           this.placement.cancel();
-        } else if (this.commands.pendingOrder) {
+        } else if (this.commands.pendingOrder || this.commands.contextualArmed) {
           this.commands.cancelPendingOrder();
         }
       },
@@ -542,6 +586,9 @@ export class WorldScene extends Phaser.Scene {
         // sub-threshold click is skipped for the same reason as above, and the
         // pan must stop because no `pointerup` is coming.
         this.cameraControl.endMiddleDrag();
+        // Same for the touch gesture: no release is coming, so any half-open
+        // pinch or box would otherwise keep the next finger's events.
+        this.touch.cancel();
         if (this.isDragSelecting) this.handlePointerUp(this.input.activePointer, true);
       }
     });
@@ -981,6 +1028,17 @@ export class WorldScene extends Phaser.Scene {
     // edge-scroll presence flag too (`pointerenter` normally sets it first).
     this.pointerInsideCanvas = true;
 
+    // MOB-02: a finger moves the camera, paints a box or is part of a pinch; it
+    // never hovers, so the desktop hover work below (cursor, ghost) is skipped.
+    if (pointer.wasTouch) {
+      this.touchMode = true;
+      this.touch.move(pointer);
+      return;
+    }
+
+    // A mouse is driving again (hybrid laptop): restore the cursor and edge pan.
+    this.touchMode = false;
+
     // Middle-drag pan moves the camera under a still pointer, so the world point
     // below the cursor is recomputed first: the cursor and the waypoint preview
     // both read it, and a stale one would pin them to the tile left behind.
@@ -1002,37 +1060,54 @@ export class WorldScene extends Phaser.Scene {
 
     // Drag selection rendering
     if (this.isDragSelecting) {
-      this.dragSelectionGraphics.clear();
-      this.dragSelectionGraphics.lineStyle(1.5, 0x38bdf8, 1);
-      this.dragSelectionGraphics.fillStyle(0x0284c7, 0.2);
-
-      const start = this.dragStartScreen;
-      const current = { x: pointer.x, y: pointer.y };
-
-      const minX = Math.min(start.x, current.x);
-      const minY = Math.min(start.y, current.y);
-      const width = Math.abs(current.x - start.x);
-      const height = Math.abs(current.y - start.y);
-
-      // Draw in camera-fixed screen space
-      this.dragSelectionGraphics.fillRect(
-        this.cameras.main.worldView.x + minX / this.cameras.main.zoom,
-        this.cameras.main.worldView.y + minY / this.cameras.main.zoom,
-        width / this.cameras.main.zoom,
-        height / this.cameras.main.zoom
-      );
-      this.dragSelectionGraphics.strokeRect(
-        this.cameras.main.worldView.x + minX / this.cameras.main.zoom,
-        this.cameras.main.worldView.y + minY / this.cameras.main.zoom,
-        width / this.cameras.main.zoom,
-        height / this.cameras.main.zoom
-      );
+      this.drawDragBox({ x: pointer.x, y: pointer.y });
     }
 
     this.cursor.refresh();
   }
 
+  /**
+   * Paints the drag-selection rectangle in camera-fixed screen space.
+   *
+   * Extracted because two input paths own a rectangle: the mouse box-drag and the
+   * armed touch box-drag. Drawing it in two places had already started to drift.
+   */
+  private drawDragBox(current: { x: number; y: number }) {
+    this.dragSelectionGraphics.clear();
+    this.dragSelectionGraphics.lineStyle(1.5, 0x38bdf8, 1);
+    this.dragSelectionGraphics.fillStyle(0x0284c7, 0.2);
+
+    const start = this.dragStartScreen;
+    const minX = Math.min(start.x, current.x);
+    const minY = Math.min(start.y, current.y);
+    const width = Math.abs(current.x - start.x);
+    const height = Math.abs(current.y - start.y);
+
+    this.dragSelectionGraphics.fillRect(
+      this.cameras.main.worldView.x + minX / this.cameras.main.zoom,
+      this.cameras.main.worldView.y + minY / this.cameras.main.zoom,
+      width / this.cameras.main.zoom,
+      height / this.cameras.main.zoom
+    );
+    this.dragSelectionGraphics.strokeRect(
+      this.cameras.main.worldView.x + minX / this.cameras.main.zoom,
+      this.cameras.main.worldView.y + minY / this.cameras.main.zoom,
+      width / this.cameras.main.zoom,
+      height / this.cameras.main.zoom
+    );
+  }
+
   private handlePointerDown(pointer: Phaser.Input.Pointer) {
+    // MOB-02: Phaser reports a touch as the left button, so every desktop branch
+    // below would misfire (a tap would start a box selection). The gesture layer
+    // owns touch entirely and dispatches back through the public touch methods.
+    if (pointer.wasTouch) {
+      this.touchMode = true;
+      this.touch.begin(pointer);
+      return;
+    }
+
+    this.touchMode = false;
     const native = pointer.event as MouseEvent | undefined;
     // macOS: Phaser rewrites Ctrl+left-click into a right-click to match the OS
     // convention (see Pointer#down). Ctrl+click is our same-type-selection
@@ -1053,8 +1128,9 @@ export class WorldScene extends Phaser.Scene {
     // CMD-01: an armed attack-move / patrol consumes the next left click as its
     // destination, before anything can start a drag selection box. Placement mode
     // keeps its click: the cursor is already promising a building there.
+    // MOB-05: a contextual arm (touch bar) consumes the click the same way.
     if (
-      this.commands.pendingOrder &&
+      (this.commands.pendingOrder || this.commands.contextualArmed) &&
       !this.buildingToPlace &&
       (pointer.leftButtonDown() || ctrlLeftClick)
     ) {
@@ -1066,7 +1142,7 @@ export class WorldScene extends Phaser.Scene {
       // Right Click
       if (this.buildingToPlace) {
         this.placement.cancel();
-      } else if (this.commands.pendingOrder) {
+      } else if (this.commands.pendingOrder || this.commands.contextualArmed) {
         // Right click used to fire a normal order; with an order armed it only
         // backs out, like cancelling a placement.
         this.commands.cancelPendingOrder();
@@ -1099,6 +1175,13 @@ export class WorldScene extends Phaser.Scene {
    *   the pointer coordinates then point at the panel, not at the world.
    */
   private handlePointerUp(pointer: Phaser.Input.Pointer, outside = false) {
+    // MOB-02: a finger release is resolved by the gesture layer (tap, end of a
+    // box drag, or the tail of a pinch); there is no button state to inspect.
+    if (pointer.wasTouch) {
+      this.touch.end(pointer, outside);
+      return;
+    }
+
     // The middle button can be released outside the drag state (e.g. pressed
     // while placing a building), so this is unconditional.
     this.cameraControl.endMiddleDrag();
@@ -1194,6 +1277,207 @@ export class WorldScene extends Phaser.Scene {
   public panTo(gridX: number, gridY: number) {
     const screenPos = gridToScreen(gridX, gridY);
     this.cameras.main.pan(screenPos.x, screenPos.y, 350, 'Power2');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Touch API (MOB-03 / MOB-04 / MOB-05)
+  //
+  // `TouchController` owns the gestures and calls back into these; React's mobile
+  // command bar uses the same methods for its buttons. None of them touch the
+  // snapshot: everything ends in an existing `NetworkMessage` sent by the
+  // controller that already owned that order.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * MOB-03: zoom from the command bar's +/- buttons, clamped by the same range the
+   * wheel and pinch use.
+   */
+  public setCameraZoom(zoom: number) {
+    this.cameraControl.setZoom(zoom);
+  }
+
+  /** One zoom step for the touch bar: `1` in, `-1` out. */
+  public zoomByStep(steps: number) {
+    this.cameraControl.zoomBySteps(steps);
+  }
+
+  /** MOB-05: arm attack-move / patrol, exactly like `A` / `P` on desktop. */
+  public armOrder(mode: 'ATTACK_MOVE' | 'PATROL') {
+    this.commands.armOrder(mode);
+  }
+
+  /** MOB-05: arm the contextual (right-click equivalent) order for the next tap. */
+  public armContextualOrder() {
+    this.commands.armContextualOrder();
+  }
+
+  public cancelArmedOrder() {
+    this.commands.cancelPendingOrder();
+  }
+
+  /** What the command bar should highlight: an explicit mode, the contextual arm, or none. */
+  public get armedOrder(): ArmedOrder | null {
+    if (this.commands.pendingOrder) return this.commands.pendingOrder;
+    return this.commands.contextualArmed ? 'CONTEXT' : null;
+  }
+
+  /**
+   * MOB-05: publishes the armed order to React whenever it changes.
+   *
+   * The command bar owns the arm/cancel buttons, so it has to know when a tap or a
+   * committed order cleared the arm; there is no other React-visible signal for it.
+   */
+  public publishArmedOrder() {
+    this.onArmedOrderChange?.(this.armedOrder);
+  }
+
+  /** CMB-01: cycle the stance of the selection, the touch `D` key. */
+  public cycleSelectedStance() {
+    this.commands.cycleSelectedStance();
+  }
+
+  /** MOB-05: the touch "Nhà chính" button — the same jump as pressing `H`. */
+  public centerOnBase() {
+    const townCenter = this.findOwnTownCenter();
+    if (!townCenter) return;
+    this.panTo(townCenter.gridX + townCenter.sizeX / 2, townCenter.gridY + townCenter.sizeY / 2);
+  }
+
+  /**
+   * MOB-04: arm a one-shot box selection. Arming replaces interaction with the
+   * map for exactly one drag; `TouchController` clears it when that drag ends.
+   */
+  public setBoxSelectMode(armed: boolean) {
+    if (armed === this.boxSelectArmed) return;
+    this.boxSelectArmed = armed;
+    if (!armed && this.touchBoxActive) {
+      this.isDragSelecting = false;
+      this.touchBoxActive = false;
+      this.dragSelectionGraphics.clear();
+    }
+    this.onBoxSelectChange?.(this.boxSelectArmed);
+  }
+
+  public get isBoxSelectArmed(): boolean {
+    return this.boxSelectArmed;
+  }
+
+  /**
+   * MOB-04: a finger landed. There is no hover on touch, so this is the only
+   * chance to show the placement ghost where it will be dropped.
+   */
+  public touchPressPointer(pointer: Phaser.Input.Pointer) {
+    this.touchMode = true;
+    if (!this.buildingToPlace) return;
+
+    const grid = pointerWorldGrid(this.cameras.main, pointer);
+    this.placement.updateGhost(grid.gridX, grid.gridY);
+  }
+
+  /**
+   * MOB-04: what a tap does, in priority order.
+   *
+   * Mirrors the desktop click dispatch (placement, armed order, select, move) with
+   * one deliberate difference: an empty-ground tap while units are selected is a
+   * move order, because on a phone that is the whole point of tapping the map (D5).
+   */
+  public touchTapPointer(pointer: Phaser.Input.Pointer) {
+    // A tap in armed box mode is a back-out, not a selection: the player picked a
+    // drag mode and tapped instead of dragging.
+    if (this.boxSelectArmed) {
+      this.setBoxSelectMode(false);
+      return;
+    }
+
+    if (this.buildingToPlace) {
+      this.placement.commit(pointer);
+      return;
+    }
+
+    if (this.commands.pendingOrder || this.commands.contextualArmed) {
+      this.commands.commitPendingOrder(pointer);
+      return;
+    }
+
+    if (this.selection.hasTargetAt(pointer, TOUCH_PICK_SLACK)) {
+      this.selection.handleClick(pointer, false, false, TOUCH_PICK_SLACK);
+      return;
+    }
+
+    if (this.selectedUnitIds.size > 0) {
+      const grid = pointerWorldGrid(this.cameras.main, pointer);
+      this.commands.commandMoveTo(grid.gridX, grid.gridY);
+      return;
+    }
+
+    // Nothing to command: an empty-ground tap still drops a selected building or
+    // resource, so the panel does not stay open on a stale selection.
+    if (this.selectedBuildingId || this.selectedResourceId) this.selection.clear();
+  }
+
+  /**
+   * MOB-04: the long-press, i.e. the right-click equivalent.
+   *
+   * With an order already armed it backs out instead of firing (the same
+   * "cancel with the other button" gesture desktop players expect); otherwise it
+   * runs the full contextual dispatch, so attack / harvest / travel / rally all
+   * behave exactly as a right click would.
+   */
+  public touchLongPressPointer(pointer: Phaser.Input.Pointer) {
+    if (this.buildingToPlace) return;
+
+    if (this.commands.pendingOrder || this.commands.contextualArmed) {
+      this.commands.cancelPendingOrder();
+      return;
+    }
+
+    this.commands.handleRightClick(pointer, false);
+  }
+
+  /**
+   * MOB-04: a one-finger drag began.
+   *
+   * @returns true when the drag paints a box selection (armed from the bar), so
+   *   the caller pans the camera only when this is false.
+   */
+  public beginTouchDrag(pointer: Phaser.Input.Pointer): boolean {
+    if (!this.boxSelectArmed) return false;
+
+    this.touchBoxActive = true;
+    this.isDragSelecting = true;
+    // Start at the press point, not at the sample that crossed the threshold: the
+    // rectangle must include the tiles the finger already covered.
+    this.dragStartScreen = { x: pointer.downX, y: pointer.downY };
+    this.dragSelectionGraphics.clear();
+    return true;
+  }
+
+  public updateTouchDrag(pointer: Phaser.Input.Pointer) {
+    if (!this.touchBoxActive) return;
+    this.drawDragBox({ x: pointer.x, y: pointer.y });
+  }
+
+  /** MOB-04: finishes the armed box selection and disarms the mode (one shot). */
+  public endTouchDrag(pointer: Phaser.Input.Pointer) {
+    if (!this.touchBoxActive) return;
+
+    this.touchBoxActive = false;
+    this.isDragSelecting = false;
+    this.dragSelectionGraphics.clear();
+    this.selection.handleBoxSelect(this.dragStartScreen, { x: pointer.x, y: pointer.y }, false, 'all');
+    // One shot by design: leaving it armed would make the next pan paint a box.
+    this.boxSelectArmed = false;
+    this.onBoxSelectChange?.(false);
+  }
+
+  /** MOB-04: a pinch took over, so the half-drawn rectangle is dropped unseen. */
+  public cancelTouchDrag() {
+    if (!this.touchBoxActive) return;
+    this.touchBoxActive = false;
+    this.isDragSelecting = false;
+    this.dragSelectionGraphics.clear();
+    // D9: a pinch is a camera gesture, so the armed mode does not survive it.
+    this.setBoxSelectMode(false);
   }
 
   // The old camera wrappers (`zoomTo`, `zoomBySteps`, `saveCameraBookmark`,
@@ -1334,8 +1618,14 @@ export class WorldScene extends Phaser.Scene {
       viewWidth: this.scale.width,
       viewHeight: this.scale.height,
       pointerInsideCanvas: this.pointerInsideCanvas,
-      cameraSpeed
+      cameraSpeed,
+      // MOB-03: a finger has no "parked at the edge" state — it lifts and leaves
+      // `activePointer` there — so touch pans by dragging and never edge-scrolls.
+      enabled: !this.touchMode
     });
+
+    // MOB-02: long-press needs the clock advancing, not another event.
+    this.touch.tick(time);
 
     this.commands.updateWaypointPreview();
     this.commands.updateRallyMarkers();

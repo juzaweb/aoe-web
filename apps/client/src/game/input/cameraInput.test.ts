@@ -18,7 +18,7 @@ const INSIDE_BAND = 4;
  * the only thing that stops it.
  */
 describe('applyEdgeScroll', () => {
-  function scroll(x: number, y: number, pointerInsideCanvas: boolean) {
+  function scroll(x: number, y: number, pointerInsideCanvas: boolean, enabled?: boolean) {
     const camera = { scrollX: 0, scrollY: 0 };
     const options = {
       camera,
@@ -26,7 +26,8 @@ describe('applyEdgeScroll', () => {
       viewWidth: VIEW_WIDTH,
       viewHeight: VIEW_HEIGHT,
       pointerInsideCanvas,
-      cameraSpeed: BASE_SPEED
+      cameraSpeed: BASE_SPEED,
+      ...(enabled === undefined ? {} : { enabled })
     } as unknown as EdgeScrollOptions;
     applyEdgeScroll(options);
     return camera;
@@ -47,6 +48,13 @@ describe('applyEdgeScroll', () => {
 
   it('does not pan while the pointer is away from every edge', () => {
     expect(scroll(VIEW_WIDTH / 2, VIEW_HEIGHT / 2, true)).toEqual({ scrollX: 0, scrollY: 0 });
+  });
+
+  it('stays put when the input source opts out, however close to the edge it sits', () => {
+    // Touch: a lifted finger leaves the pointer parked on the edge forever, so the
+    // pan must be off regardless of position or presence.
+    expect(scroll(VIEW_WIDTH - 1, VIEW_HEIGHT - 1, true, false)).toEqual({ scrollX: 0, scrollY: 0 });
+    expect(scroll(0, 0, true, false)).toEqual({ scrollX: 0, scrollY: 0 });
   });
 });
 
