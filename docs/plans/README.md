@@ -11,6 +11,9 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | [`02-single-session.md`](./02-single-session.md) | Một tài khoản một phiên: chặn tab/thiết bị thứ hai, cưỡng chiếm phiên có xác nhận (`SESS-01..SESS-07`) | DONE — code + test |
 | [`03-level-upgrades.md`](./03-level-upgrades.md) | Nâng cấp công trình (TC 100 cấp, còn lại 10) và nghiên cứu lính toàn cục (10 cấp) (`LVL-00..LVL-07`) | IMPLEMENTED — chờ verify tay |
 | [`04-kingdoms-battlefield.md`](./04-kingdoms-battlefield.md) | Kinh thành riêng mỗi tài khoản + cổng ra chiến trường chung, travel mang quân, persistence theo zone (`MAPS-01..MAPS-10`) | IMPLEMENTED — chờ verify tay UI |
+| [`05-map-realism.md`](./05-map-realism.md) | Map tự nhiên hơn: nền cỏ/tint, đường đất, decor PNG + rừng viền, minimap icon PNG (`VIS-01..VIS-08`) | DRAFT — chờ duyệt |
+| [`06-aoe-asset-rebuild.md`](./06-aoe-asset-rebuild.md) | Tạo lại art công trình/cây/tài nguyên/terrain từ collection "AoE like Assets" (`ART-01..ART-12`) | IMPLEMENTED (một phần) — 8 sprite đã thay; terrain bỏ vì atlas không cắt được; chờ verify tay |
+| [`07-smaller-kingdom-map.md`](./07-smaller-kingdom-map.md) | Kingdom riêng nhỏ lại 96×96, TC ở giữa map, map size theo zone (`D1–D8`) | DRAFT — chờ duyệt |
 
 Status: `DRAFT` (chưa chốt quyết định) → `APPROVED` (bắt đầu code) → `DONE`.
 
@@ -22,6 +25,29 @@ vì DB khi takeover, heartbeat/`allowReconnection` để backlog) ngày 2026-11-
 2026-11-02: `SessionRegistry` ở server, join gate + close code 4004/4009/4011 trong
 `@chien-quoc/shared`, màn chặn + nút cưỡng chiếm ở client. Verify tay 2 phiên cùng account đã chạy
 (join thứ hai bị 4009, force takeover đá tab cũ bằng 4004, F5 không bị chặn).
+
+Phase 05 (map realism) là phase **visual-only**: chỉ sửa client + thêm asset PNG CC-BY, không đụng
+server/shared/schema/DB. Nguồn asset free pack được chọn vì local ComfyUI không truy cập được lúc
+lập plan; xem `05-map-realism.md` §2 và §4 để biết quyết định D1–D8 và license/attribution.
+
+Phase 06 (asset rebuild) thay **file PNG đang ship** bằng art lấy từ collection
+[AoE like Assets](https://opengameart.org/content/aoe-like-assets), thay vì đổi cách vẽ map như phase
+05. Hai phase không trùng file: 05 sửa `TerrainLayer`/`DecorLayer`/`Minimap`, 06 sửa
+`apps/client/public/assets` + `buildingArt.ts` + preload. Đã implement ngày 2026-11-03 với D1 = B
+(chấp nhận công trình Tây Âu), D5 = A (asset thiếu giữ art cũ): 8 sprite (4 cây + barracks, house,
+town centre, lumber camp) được dựng lại bằng `scripts/assets/build.py`, có lock hash và test. Tertiary
+`ART-03` (terrain) đã bị bỏ vì `grassland_tiles.png` là atlas đóng gói, không phải lưới 64×32, và
+được render unlit (tối hơn palette client ~2×) — D2 vì thế không áp dụng; lý do đo được ở
+`06-aoe-asset-rebuild.md` §16.3. Danh sách asset **không có nguồn** trong collection (farm, tower,
+portal, gold mine, cavalry, icon, cursor) nằm ở §5 và `scripts/assets/README.md`.
+
+Phase 07 tách kích thước map khỏi hằng toàn cục: kingdom **96×96**, battlefield giữ **220×220**,
+TC luôn ở tâm kingdom, và `WorldState.mapWidth/mapHeight` (field có sẵn nhưng chưa dùng) trở
+thành nguồn sự thật cho server + client. Phase này **có** migration dữ liệu một lần: xoá
+`buildings`/`units`/`world_resource_nodes` của zone `kingdom:%` và sinh lại TC ở tâm, giữ row
+`players` (tài nguyên, level, research); chi tiết và edge case ở `07-smaller-kingdom-map.md` §4.5
+và §5. Không đổi schema bảng, không cần reset DB, nhưng nên backup `apps/server/database/dev.db`
+trước lần boot đầu tiên.
 
 ## Quy ước
 
