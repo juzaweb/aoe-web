@@ -21,6 +21,42 @@ Use Chrome DevTools MCP to give your agent eyes into the browser. This bridges t
 
 **When NOT to use:** Backend-only changes, CLI tools, or code that doesn't run in a browser.
 
+## This repository
+
+`chrome-devtools-mcp` is a root devDependency, and opencode starts it from `opencode.json`
+(`mcp["chrome-devtools"]`) as `pnpm exec chrome-devtools-mcp --headless --isolated
+--no-usage-statistics`. `--isolated` is not optional here: it gives every run a temporary Chrome
+profile that is wiped on exit, so no agent ever inherits a logged-in session.
+
+Tool names arrive prefixed with the server name — `chrome-devtools_new_page`,
+`chrome-devtools_take_snapshot`, `chrome-devtools_list_console_messages`, and so on. The bare
+names in the table above are the suffixes.
+
+**The page under test.** The game is client + server, not a static page:
+
+```bash
+pnpm --filter @chien-quoc/server run start        # API + Colyseus room on :2567
+pnpm --filter @chien-quoc/client exec vite --host 127.0.0.1 --port 5173 --strictPort
+```
+
+Vite proxies `/colyseus` to `:2567`, and the client resolves the account API from the page host,
+so both must be up before you navigate. The first screen is an account form: register
+`#auth-username` (max 24), `#auth-display` (max 24) and `#auth-password` (min 6) before any
+in-game UI exists. `apps/server/database/dev.db` is gitignored and created on boot.
+
+**Headless is not a GPU.** WebGL and GPU init failures, and Phaser's fallback warnings, are
+environment artifacts in headless Chrome. Report them as Nit and never let them alone decide a
+verdict — judge the criteria you can actually observe: DOM, computed styles, console errors,
+network status and screenshots.
+
+**Verdict protocol.** The loop's `Browser check` step greps the log for a final
+`BROWSER_VERDICT: PASS` or `BROWSER_VERDICT: FAIL` line, so an agent working under it must end
+with exactly that marker. A missing marker counts as a failure.
+
+**If Chrome will not start on a runner**, the CLI rejects a bare `--no-sandbox`
+(`Unknown arguments: --sandbox` in 1.12.0). Pass it through Chrome instead:
+`--chrome-arg=--no-sandbox`.
+
 ## Setting Up Chrome DevTools MCP
 
 ### Installation

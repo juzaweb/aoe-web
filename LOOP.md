@@ -85,7 +85,7 @@ For `triage` the `STATE.md` diff **is** the deliverable, so the PR is the propos
 You can also edit `STATE.md` on `develop` directly, or use `/loop-pick <ID>` in the TUI.
 All three produce the same thing: one row reading `APPROVED`.
 
-### The three hard stops
+### The four hard stops
 
 1. **Gate before anything is committed.** `gate check --action merge` must exit 0. If it does
    not, the slice is **thrown away** — the working tree is reverted and the run fails. It does
@@ -96,6 +96,9 @@ All three produce the same thing: one row reading `APPROVED`.
    the exact tree that is about to be committed. Red suite, no PR, no merge. After the PR is
    opened the workflow also waits for the `Tests` check that `ci.yml` records against it, and
    merges only when that check is green.
+4. **Browser check before merge.** Unit tests cannot see a rendered page, so the same tree is
+   served (`:2567` API, `:5173` client) and an agent drives it in real headless Chrome. The run
+   stops unless the agent ends with `BROWSER_VERDICT: PASS`.
 
 `APPROVE`/`APPROVED` belongs to you alone. The verifier's verdict is `PASS` or `FAIL`, so the
 word `approve` in this repo always means a human decision and never a machine one.
@@ -175,6 +178,31 @@ The loop still works with that protection on, because it waits for `Tests` to go
 calling `gh pr merge`. Without `LOOP_PAT` the loop's PRs do not trigger `pull_request` at all
 (GitHub suppresses workflow runs caused by `GITHUB_TOKEN`), so the wait step falls back to the
 in-job test run and says so in the log.
+
+## Browser check
+
+`browser-verifier` is the only agent that looks at the running game. It has no edit permission
+and no shell beyond `curl` against the local API, so it can report a broken page but never
+patch one. Its instructions come from `.agents/skills/browser-testing-with-devtools/SKILL.md`,
+and the browser comes from the `chrome-devtools` MCP server registered in `opencode.json`
+(`chrome-devtools-mcp`, headless, isolated profile, wiped on exit).
+
+```bash
+# what the loop does before the agent runs
+pnpm --filter @chien-quoc/server run start                                  # :2567
+pnpm --filter @chien-quoc/client exec vite --host 127.0.0.1 --port 5173 --strictPort
+```
+
+The report is one line per acceptance criterion, then console findings, then network findings,
+and a last line of `BROWSER_VERDICT: PASS` or `BROWSER_VERDICT: FAIL`. Anything else counts as a
+failure. Headless Chrome has no GPU, so WebGL and Phaser fallback warnings are Nit environment
+artifacts rather than blockers.
+
+Run it by hand when you want the same eyes outside CI:
+
+```bash
+opencode run --agent browser-verifier --auto "Browser check for slice ALERT-01"
+```
 
 ## Troubleshooting
 

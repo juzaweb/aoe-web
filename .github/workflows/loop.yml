@@ -426,14 +426,109 @@ jobs:
           fi
           echo "verdict=pass" >> "$GITHUB_OUTPUT"
 
-      # Nothing below this line runs on a red suite: the ship step requires the
-      # tests step to have succeeded, and a failed step aborts the job.
+      # Unit tests cannot see a rendered page. This stage serves the very tree
+      # that is about to be committed and lets an agent judge it in a real
+      # Chrome, via the chrome-devtools MCP server configured in opencode.json.
+      #
+      # The server runs from apps/server/dist, which the test gate just built,
+      # and Vite runs in dev mode because that is what proxies /colyseus to the
+      # API. dev.db is created on boot when it is missing and is gitignored, so
+      # nothing here can end up in the commit.
+      - name: Start the game for the browser check
+        id: serve
+        if: |
+          (inputs.step == 'ship' || inputs.step == 'full')
+          && steps.gate.outputs.allowed == 'true'
+          && steps.tests.outcome == 'success'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/game-logs
+          nohup pnpm --filter @chien-quoc/server run start \
+            > /tmp/game-logs/server.log 2>&1 &
+          nohup pnpm --filter @chien-quoc/client exec vite \
+            --host 127.0.0.1 --port 5173 --strictPort \
+            > /tmp/game-logs/client.log 2>&1 &
+
+          wait_for() {
+            local url="$1" name="$2" log="$3"
+            for _ in $(seq 1 60); do
+              if curl -sf "$url" >/dev/null 2>&1; then
+                echo "::notice::${name} is up on ${url}"
+                return 0
+              fi
+              sleep 2
+            done
+            echo "::error::${name} did not answer on ${url} within 120s."
+            echo "::group::${name} log"
+            tail -40 "$log" || true
+            echo "::endgroup::"
+            return 1
+          }
+
+          wait_for http://127.0.0.1:2567/health server /tmp/game-logs/server.log
+          wait_for http://127.0.0.1:5173/ client /tmp/game-logs/client.log
+
+      # The browser check. Judged by what the page does, not by what the code
+      # says: console errors, failed requests and the slice's acceptance
+      # criteria driven by hand in a real browser.
+      #
+      # The agent cannot edit and cannot run git, so a failing check reports and
+      # stops — the fix belongs to the next build attempt, not to the checker.
+      - name: Browser check
+        id: browser
+        if: |
+          (inputs.step == 'ship' || inputs.step == 'full')
+          && steps.gate.outputs.allowed == 'true'
+          && steps.tests.outcome == 'success'
+          && steps.serve.outcome == 'success'
+        env:
+          SLICE: ${{ steps.slice.outputs.slice }}
+          MODEL: ${{ inputs.model }}
+        run: |
+          set -euo pipefail
+          model_args=()
+          if [ -n "$MODEL" ]; then model_args=(--model "$MODEL"); fi
+
+          prompt="Browser check for slice ${SLICE}. Find its plan file under docs/plans/ (the file naming ${SLICE}) and treat its acceptance criteria as the checklist. The app is running: client http://127.0.0.1:5173, API http://127.0.0.1:2567. Drive the real UI, then judge every criterion."
+
+          # 15 minutes is generous for a handful of interactions; a hung Chrome
+          # or a page that never loads must not hold the job hostage.
+          set +e
+          timeout --signal=TERM 900 opencode run --agent browser-verifier --auto \
+            "${model_args[@]}" "$prompt" 2>&1 | tee /tmp/browser-check.log
+          rc=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$rc" -eq 124 ]; then
+            echo "::error::The browser check timed out after 15 minutes."
+            exit 1
+          fi
+
+          # The verdict is the last marker in the log, not the first: an earlier
+          # retry inside the same session must not decide this run.
+          verdict=$(grep -E '^BROWSER_VERDICT: (PASS|FAIL)' /tmp/browser-check.log \
+            | tail -1 || true)
+          echo "verdict=${verdict#BROWSER_VERDICT: }" >> "$GITHUB_OUTPUT"
+
+          if [ "$rc" -ne 0 ] || [ "$verdict" != "BROWSER_VERDICT: PASS" ]; then
+            echo "::error::The browser check did not pass (${verdict:-no verdict}, exit ${rc})."
+            echo "::error::No PR was opened; the next build attempt gets the findings."
+            echo "::group::Browser check output"
+            tail -80 /tmp/browser-check.log || true
+            echo "::endgroup::"
+            exit 1
+          fi
+          echo "::notice::Browser check passed: $verdict"
+
+      # Nothing below this line runs on a red suite or a failed browser check:
+      # the ship step requires both, and a failed step aborts the job.
       - name: Commit, push and open PR
         id: ship
         if: |
           (inputs.step == 'ship' || inputs.step == 'full')
           && steps.gate.outputs.allowed == 'true'
           && steps.tests.outcome == 'success'
+          && steps.browser.outcome == 'success'
         env:
           SLICE: ${{ steps.slice.outputs.slice }}
           GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
@@ -558,6 +653,7 @@ jobs:
           inputs.merge
           && steps.ship.outputs.url != ''
           && steps.tests.outcome == 'success'
+          && steps.browser.outcome == 'success'
           && (steps.wait.outcome == 'success' || steps.wait.outcome == 'skipped')
         env:
           GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
@@ -575,6 +671,7 @@ jobs:
             echo ""
             echo "- Slice: \`${{ steps.slice.outputs.slice }}\`"
             echo "- In-job tests: ${{ steps.tests.outputs.verdict || 'not run' }}"
+            echo "- Browser check: ${{ steps.browser.outputs.verdict || 'not run' }}"
             echo "- CI check on the PR: ${{ steps.wait.outputs.verdict || 'not run' }}"
             echo "- Proposal PR (state): ${{ steps.state.outputs.url || 'none' }}"
             echo "- Code PR: ${{ steps.ship.outputs.url || 'none' }}"
