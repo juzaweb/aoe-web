@@ -4,7 +4,6 @@
 - **Interpersonal Communication:** ALL chat, logic explanations, and feedback MUST be in **VIETNAMESE**.
 - **Technical Artifacts:** ALL code, docstrings, and **GIT COMMIT MESSAGES** MUST be in **ENGLISH**.
 - **STRICT:** Never use Vietnamese in Git logs or Commit messages under any circumstances.
-- **DO NOT** commit or push anything without permission.
 
 ### General Rules
 
