@@ -1,0 +1,64 @@
+# OpenGameArt asset pipeline
+
+Rebuilds the client's third-party sprites from `manifest.json`. The shipped PNGs
+and `assets.lock.json` are the only committed outputs; downloaded archives and
+extracted frames stay in `scripts/.cache/assets/` (gitignored).
+
+## Commands
+
+```bash
+python scripts/assets/build.py --fetch        # download + extract into the cache
+python scripts/assets/build.py --fetch --force  # refetch even when hashes match
+python scripts/assets/build.py --all          # rebuild every target
+python scripts/assets/build.py --only tree    # rebuild targets whose id matches
+python scripts/assets/build.py --check        # verify shipped files against the lock
+python scripts/assets/build.py --report       # measured box, top inset, scale, gain
+```
+
+`--fetch` refuses to reuse a cached archive whose hash does not match the lock,
+and deletes a fresh download that does not match: an upstream re-upload must be
+inspected, not silently absorbed.
+
+`--check` is the CI gate. It fails when a shipped PNG no longer matches its lock
+hash, when the canvas or the recorded artwork box/insets drifted, when the bottom
+row is empty (art not bottom-anchored), or when a source lost its author/license
+or is missing from `CREDITS.md`.
+
+## Adding a sprite
+
+1. Add the source under `sources` in `manifest.json` (`page`, `author`,
+   `license`, and one entry per uploaded file). OGA download URLs are direct
+   `https://opengameart.org/sites/default/files/<name>` links.
+2. Add a target with:
+   - `source` + `file` (and `entry` for a member of an archive),
+   - `op`: `crop` (`alpha`/`none`), `fit`, `matchLum`, `anchor`,
+   - `out` and `canvas`; the license is inherited from the source.
+3. `--fetch`, then `--all`.
+4. Check `--report`: an upscale factor above ~1.6 means the source is too small
+   for the canvas; widen the canvas instead of stretching a painted sprite.
+   A `lumGain` far from 1.0 means the pack was lit for a different engine.
+5. Add the author to `CREDITS.md` (the build warns, `--check` fails).
+
+## Conventions
+
+- Canvas sizes are the client's existing ones, and every sprite is anchored to
+  the bottom-centre row. `buildingArt.ts` and `EntityRenderer.ts` keep their
+  offsets; the health-bar heights are derived from `topInset` and guarded by
+  `assetManifest.test.ts`.
+- `matchLum` keeps the map's brightness stable when a pack was lit for another
+  engine. The gain is clamped in `ops.py`, recorded as `lumGain`, and hue is
+  preserved.
+- Resampling is done in premultiplied alpha to avoid dark fringes.
+- The lock records `bbox`, `topInset`, `bottomInset`, `scale`, `lumGain`,
+  `sourceSha256` and the license/author for every file. Hashes are of the PNG
+  bytes, so a different Pillow build may need a rebuild (same pixels, new bytes).
+
+## Not migrated
+
+`terrain/*`, `resources/{gold,stone,berry}.png`, `buildings/{farm,mill,
+mining_camp,tower}.png`, cavalry, icons and cursors keep their previous art.
+The grassland tileset ships no tile map (its OGA page points at the Flare repo,
+whose current tileset definition maps a different image), and only 19 of its
+64x32 cells are real iso diamonds - all dirt, none grass. It is also drawn
+unlit, about 2x darker than the client's grass. See
+`docs/plans/06-aoe-asset-rebuild.md` §16.3 for the measurements.

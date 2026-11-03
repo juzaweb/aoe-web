@@ -36,6 +36,11 @@ Thumbs.db
 __pycache__/
 *.pyc
 
+# OpenGameArt pipeline: downloaded archives and extracted frames are large and
+# regenerable from scripts/assets/manifest.json. Only the normalised PNGs and
+# the lock file belong in the repo.
+scripts/.cache/
+
 # Scratch artifacts from the asset pipelines (previews, probes, debug dumps)
 scripts/raw_downloads/**/preview_*
 scripts/raw_downloads/**/check_*

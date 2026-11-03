@@ -1,0 +1,258 @@
+{
+  "sources": {
+    "oga.bleed-building06": {
+      "author": "Bleed",
+      "files": {
+        "pack": {
+          "sha256": "a469871dbeebfcaa11a416efeadfa81db5f0bad8b5f9063e991d385c755458ed",
+          "url": "https://opengameart.org/sites/default/files/Medieval_Building_06.zip"
+        }
+      },
+      "license": "CC-BY-3.0",
+      "page": "https://opengameart.org/content/medieval-building-06"
+    },
+    "oga.bleed-hovel": {
+      "author": "Bleed",
+      "files": {
+        "pack": {
+          "sha256": "d05298651047d188278a726feac7d285305121fa6717d36c53a1084dc45c7653",
+          "url": "https://opengameart.org/sites/default/files/Simple-Hovel_isometric.zip"
+        }
+      },
+      "license": "CC-BY-4.0",
+      "page": "https://opengameart.org/content/simple-isometric-hovel"
+    },
+    "oga.bleed-trees": {
+      "author": "Bleed",
+      "files": {
+        "tree02": {
+          "sha256": "4b5999d6383c7321b4866a98ccba9c05b57f80a8ef0ca4cd2938af716ba901c3",
+          "url": "https://opengameart.org/sites/default/files/_tree_02_1.zip"
+        },
+        "tree04": {
+          "sha256": "7168417f64391af6f711107bea49a04162e01c1e07bea6b76b4c923916981a7b",
+          "url": "https://opengameart.org/sites/default/files/_tree_04_1.zip"
+        },
+        "tree06": {
+          "sha256": "c62ae2d8a617c60ac9492d624b7367c14cd7905ff47d19719cc8cbb091a65996",
+          "url": "https://opengameart.org/sites/default/files/_tree_06_1.zip"
+        },
+        "tree11": {
+          "sha256": "744231ade49f2957d31bee6616c596a4dd2972e36a9391c8b66801932d895cde",
+          "url": "https://opengameart.org/sites/default/files/_tree_11.zip"
+        }
+      },
+      "license": "CC-BY-3.0",
+      "page": "https://opengameart.org/content/tree-collection-v26-bleeds-game-art"
+    },
+    "oga.feudal-barracks": {
+      "author": "feudalwars",
+      "files": {
+        "sprite": {
+          "sha256": "cf8ab7e58dad85ef0443c1c6f18b4f156c0a9bbbf9d8d56f8ec04617a51d58f2",
+          "url": "https://opengameart.org/sites/default/files/barracks_1.png"
+        }
+      },
+      "license": "CC0-1.0",
+      "page": "https://opengameart.org/content/medieval-barracks-isometric-25d"
+    },
+    "oga.feudal-stable": {
+      "author": "feudalwars",
+      "files": {
+        "sprite": {
+          "sha256": "6ac29f94bc3526b2522ff56d595a8f671e0c1fa44e11f19e821889259096c99e",
+          "url": "https://opengameart.org/sites/default/files/stable_0.png"
+        }
+      },
+      "license": "CC0-1.0",
+      "page": "https://opengameart.org/content/medieval-stable-isometric-25d"
+    }
+  },
+  "targets": {
+    "building.barracks": {
+      "author": "feudalwars",
+      "bbox": [
+        1,
+        4,
+        400,
+        320
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        400,
+        320
+      ],
+      "license": "CC0-1.0",
+      "lumGain": 1.3395,
+      "out": "apps/client/public/assets/buildings/barracks.png",
+      "page": "https://opengameart.org/content/medieval-barracks-isometric-25d",
+      "scale": 1.2698,
+      "sha256": "ba2a20dcabc37ab2fcf35a1e891fffc95c6985944a430a8dc878d0b6e4cba342",
+      "source": "oga.feudal-barracks",
+      "sourceSha256": "cf8ab7e58dad85ef0443c1c6f18b4f156c0a9bbbf9d8d56f8ec04617a51d58f2",
+      "topInset": 4
+    },
+    "building.house": {
+      "author": "Bleed",
+      "bbox": [
+        2,
+        0,
+        253,
+        220
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        256,
+        220
+      ],
+      "license": "CC-BY-4.0",
+      "lumGain": 0.9286,
+      "out": "apps/client/public/assets/buildings/house.png",
+      "page": "https://opengameart.org/content/simple-isometric-hovel",
+      "scale": 0.6304,
+      "sha256": "a0b5836899b6745db49fc018880d67f399e5a5738c6f093c14110261c5f9fefb",
+      "source": "oga.bleed-hovel",
+      "sourceSha256": "98ddedb0e1197693bcccc7238dd8f0b7714aca6d44e82151d392b79140676387",
+      "topInset": 0
+    },
+    "building.lumber-camp": {
+      "author": "feudalwars",
+      "bbox": [
+        1,
+        17,
+        256,
+        220
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        256,
+        220
+      ],
+      "license": "CC0-1.0",
+      "lumGain": 1.4194,
+      "out": "apps/client/public/assets/buildings/lumber_camp.png",
+      "page": "https://opengameart.org/content/medieval-stable-isometric-25d",
+      "scale": 0.805,
+      "sha256": "e0cd4388b90c42e96eb2005cada7e578492b11e171b89befa8b65072ed9931c9",
+      "source": "oga.feudal-stable",
+      "sourceSha256": "6ac29f94bc3526b2522ff56d595a8f671e0c1fa44e11f19e821889259096c99e",
+      "topInset": 17
+    },
+    "building.town-center": {
+      "author": "Bleed",
+      "bbox": [
+        2,
+        10,
+        576,
+        440
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        576,
+        440
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 0.7867,
+      "out": "apps/client/public/assets/buildings/town_center.png",
+      "page": "https://opengameart.org/content/medieval-building-06",
+      "scale": 0.5255,
+      "sha256": "33aabcc796def2e284d5bb2ba07f7c2cf7c8cf48e69d934e7379b8e776714910",
+      "source": "oga.bleed-building06",
+      "sourceSha256": "d68dd009f1933aa85df24bdb9c57dc990ab4994a070161e1f6e620136d5239e0",
+      "topInset": 10
+    },
+    "resource.tree": {
+      "author": "Bleed",
+      "bbox": [
+        28,
+        0,
+        131,
+        219
+      ],
+      "bottomInset": 1,
+      "canvas": [
+        160,
+        220
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.5212,
+      "out": "apps/client/public/assets/resources/tree.png",
+      "page": "https://opengameart.org/content/tree-collection-v26-bleeds-game-art",
+      "scale": 0.309,
+      "sha256": "b7a007e9eaacb4e56227ecefc7b4f0eabd7a0dc119879747916c1093c7719715",
+      "source": "oga.bleed-trees",
+      "sourceSha256": "43ed0b8d79852514d823e0c8bf3b92998f8a2bff8d5d5454414180cff4de9664",
+      "topInset": 0
+    },
+    "resource.tree-2": {
+      "author": "Bleed",
+      "bbox": [
+        1,
+        7,
+        158,
+        219
+      ],
+      "bottomInset": 1,
+      "canvas": [
+        160,
+        220
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 0.6166,
+      "out": "apps/client/public/assets/resources/tree_2.png",
+      "page": "https://opengameart.org/content/tree-collection-v26-bleeds-game-art",
+      "scale": 0.3048,
+      "sha256": "c4961fcb426bbbf1b1913a9c5d482135deb4a2fbc5d04ab405dbfc15c8e5e926",
+      "source": "oga.bleed-trees",
+      "sourceSha256": "f1ee09cbce218e5d314814b892ec96725d3e3d35dd98731471a7008d601a5f88",
+      "topInset": 7
+    },
+    "resource.tree-3": {
+      "author": "Bleed",
+      "bbox": [
+        2,
+        3,
+        156,
+        217
+      ],
+      "bottomInset": 3,
+      "canvas": [
+        160,
+        220
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.2784,
+      "out": "apps/client/public/assets/resources/tree_3.png",
+      "page": "https://opengameart.org/content/tree-collection-v26-bleeds-game-art",
+      "scale": 0.3053,
+      "sha256": "869ed2c13501d724dff40b938d0c72d1d98dae243f0c7cb66f886eb7e4b6d809",
+      "source": "oga.bleed-trees",
+      "sourceSha256": "d00d87f35d85c263b91e4f23b2d9295ac11eec3531d5cf4a3bcb10eefb1546d9",
+      "topInset": 3
+    },
+    "resource.tree-4": {
+      "author": "Bleed",
+      "bbox": [
+        1,
+        71,
+        158,
+        220
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        160,
+        220
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.453,
+      "out": "apps/client/public/assets/resources/tree_4.png",
+      "page": "https://opengameart.org/content/tree-collection-v26-bleeds-game-art",
+      "scale": 0.2257,
+      "sha256": "689c269a2f51111eebfeb767d3654e723db728f253d9c9d15c20286fc9e0ba5a",
+      "source": "oga.bleed-trees",
+      "sourceSha256": "9626439656c696df072a426ace05d75ea7508b6bf8fc926e8c4cdb896a8cde37",
+      "topInset": 71
+    }
+  },
+  "version": 1
+}

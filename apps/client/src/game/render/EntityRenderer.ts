@@ -13,6 +13,7 @@ import {
 import { UNIT_ART, hasDirectionalArt, unitArt, unitClips } from './unitArt.js';
 import type { UnitAction } from './unitDirections.js';
 import { UnitMotion, walkTimeScale } from './unitMotion.js';
+import { treeVariant } from './treeVariants.js';
 
 /**
  * Builds and maintains the visual object for every server entity: the container,
@@ -149,6 +150,15 @@ export class EntityRenderer {
         offsetY = -28;
       } else if (node.type === 'BERRY_BUSH') {
         offsetY = -28;
+      }
+      // Trees ship four silhouettes. The pick is derived from the tile, so two
+      // clients see the same forest without the server replicating a variant.
+      if (node.type === 'TREE') {
+        const variant = treeVariant(node.gridX, node.gridY);
+        const variantKey = `res_node_TREE_${variant}`;
+        if (variant > 1 && this.scene.textures.exists(variantKey)) {
+          textureKey = variantKey;
+        }
       }
     } else {
       if (node.type === 'GOLD_MINE') {

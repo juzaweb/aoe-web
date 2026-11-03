@@ -360,7 +360,9 @@ export class WorldScene extends Phaser.Scene {
     }
 
     // Preload generated building assets with cache-busting version (2x resolution)
-    const v = 'v=3';
+    // v=4: OpenGameArt pass (barracks, house, town centre, lumber camp). Bump the
+    // key whenever a PNG under public/assets/buildings or /resources changes.
+    const v = 'v=4';
     this.load.image('building_TOWN_CENTER', `/assets/buildings/town_center.png?${v}`);
     this.load.image('building_BARRACKS', `/assets/buildings/barracks.png?${v}`);
     this.load.image('building_HOUSE', `/assets/buildings/house.png?${v}`);
@@ -372,6 +374,12 @@ export class WorldScene extends Phaser.Scene {
 
     // Preload generated resource node assets with cache-busting version
     this.load.image('res_node_TREE', `/assets/resources/tree.png?${v}`);
+    // OGA tree collection: three extra silhouettes, picked per node in
+    // `EntityRenderer.createResourceNodeSprite` so a forest is not one tree
+    // stamped over and over.
+    this.load.image('res_node_TREE_2', `/assets/resources/tree_2.png?${v}`);
+    this.load.image('res_node_TREE_3', `/assets/resources/tree_3.png?${v}`);
+    this.load.image('res_node_TREE_4', `/assets/resources/tree_4.png?${v}`);
     this.load.image('res_node_GOLD_MINE', `/assets/resources/gold.png?${v}`);
     this.load.image('res_node_STONE_MINE', `/assets/resources/stone.png?${v}`);
     this.load.image('res_node_BERRY_BUSH', `/assets/resources/berry.png?${v}`);

@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "sources": {
+    "oga.feudal-barracks": {
+      "page": "https://opengameart.org/content/medieval-barracks-isometric-25d",
+      "author": "feudalwars",
+      "license": "CC0-1.0",
+      "files": {
+        "sprite": { "url": "https://opengameart.org/sites/default/files/barracks_1.png" }
+      }
+    },
+    "oga.feudal-stable": {
+      "page": "https://opengameart.org/content/medieval-stable-isometric-25d",
+      "author": "feudalwars",
+      "license": "CC0-1.0",
+      "files": {
+        "sprite": { "url": "https://opengameart.org/sites/default/files/stable_0.png" }
+      }
+    },
+    "oga.bleed-trees": {
+      "page": "https://opengameart.org/content/tree-collection-v26-bleeds-game-art",
+      "author": "Bleed",
+      "license": "CC-BY-3.0",
+      "files": {
+        "tree02": {
+          "url": "https://opengameart.org/sites/default/files/_tree_02_1.zip",
+          "archive": "zip"
+        },
+        "tree04": {
+          "url": "https://opengameart.org/sites/default/files/_tree_04_1.zip",
+          "archive": "zip"
+        },
+        "tree06": {
+          "url": "https://opengameart.org/sites/default/files/_tree_06_1.zip",
+          "archive": "zip"
+        },
+        "tree11": {
+          "url": "https://opengameart.org/sites/default/files/_tree_11.zip",
+          "archive": "zip"
+        }
+      }
+    },
+    "oga.bleed-hovel": {
+      "page": "https://opengameart.org/content/simple-isometric-hovel",
+      "author": "Bleed",
+      "license": "CC-BY-4.0",
+      "files": {
+        "pack": {
+          "url": "https://opengameart.org/sites/default/files/Simple-Hovel_isometric.zip",
+          "archive": "zip"
+        }
+      }
+    },
+    "oga.bleed-building06": {
+      "page": "https://opengameart.org/content/medieval-building-06",
+      "author": "Bleed",
+      "license": "CC-BY-3.0",
+      "files": {
+        "pack": {
+          "url": "https://opengameart.org/sites/default/files/Medieval_Building_06.zip",
+          "archive": "zip"
+        }
+      }
+    }
+  },
+  "targets": {
+    "resource.tree": {
+      "source": "oga.bleed-trees",
+      "file": "tree02",
+      "entry": "_tree_02/_tree_02_00000.png",
+      "op": { "crop": "alpha", "fit": true, "matchLum": 84.4, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/resources/tree.png",
+      "canvas": [160, 220]
+    },
+    "resource.tree-2": {
+      "source": "oga.bleed-trees",
+      "file": "tree04",
+      "entry": "_tree_04/_tree_04_00000.png",
+      "op": { "crop": "alpha", "fit": true, "matchLum": 84.4, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/resources/tree_2.png",
+      "canvas": [160, 220]
+    },
+    "resource.tree-3": {
+      "source": "oga.bleed-trees",
+      "file": "tree06",
+      "entry": "_tree_06/_tree_06_00000.png",
+      "op": { "crop": "alpha", "fit": true, "matchLum": 84.4, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/resources/tree_3.png",
+      "canvas": [160, 220]
+    },
+    "resource.tree-4": {
+      "source": "oga.bleed-trees",
+      "file": "tree11",
+      "entry": "_tree_11/_tree_11_00000.png",
+      "op": { "crop": "alpha", "fit": true, "matchLum": 84.4, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/resources/tree_4.png",
+      "canvas": [160, 220]
+    },
+    "building.barracks": {
+      "source": "oga.feudal-barracks",
+      "file": "sprite",
+      "op": { "crop": "alpha", "fit": true, "matchLum": 90.9, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/buildings/barracks.png",
+      "canvas": [400, 320]
+    },
+    "building.lumber-camp": {
+      "source": "oga.feudal-stable",
+      "file": "sprite",
+      "op": { "crop": "alpha", "fit": true, "matchLum": 103.8, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/buildings/lumber_camp.png",
+      "canvas": [256, 220]
+    },
+    "building.house": {
+      "source": "oga.bleed-hovel",
+      "file": "pack",
+      "entry": "hovel_00000.png",
+      "op": { "crop": "alpha", "fit": true, "matchLum": 107.3, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/buildings/house.png",
+      "canvas": [256, 220]
+    },
+    "building.town-center": {
+      "source": "oga.bleed-building06",
+      "file": "pack",
+      "entry": "Medieval_Building_06.png",
+      "op": { "crop": "alpha", "fit": true, "matchLum": 74.8, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/buildings/town_center.png",
+      "canvas": [576, 440]
+    }
+  }
+}

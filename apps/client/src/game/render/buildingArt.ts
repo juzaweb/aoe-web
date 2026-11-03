@@ -10,10 +10,14 @@ export interface BuildingArt {
 /**
  * Lift of the generated `building_<TYPE>` sheet above the tile centre.
  *
- * Every building sheet is 256x220 and bottom-anchored, so the lift is what puts
- * the base of the art on the footprint rather than its centre.
+ * Every sheet is bottom-anchored (art touches the last row), so the lift is what
+ * puts the base of the art on the footprint rather than its centre. Canvas sizes
+ * differ per type, which is why the lift is a table rather than a constant.
+ *
+ * Exported for the asset test, which recomputes the health-bar height from the
+ * measured artwork top in `scripts/assets/assets.lock.json`.
  */
-const SHEET_OFFSET_Y: Partial<Record<BuildingType, number>> = {
+export const SHEET_OFFSET_Y: Partial<Record<BuildingType, number>> = {
   TOWN_CENTER: -130,
   BARRACKS: -96,
   HOUSE: -70,
@@ -45,15 +49,17 @@ const DEFAULT_ART = { textureKey: 'b_town_center', offsetY: -130 };
  *
  * The numbers track the top of the artwork inside each shipped sheet, not the
  * sheet rectangle: a sprite whose art does not reach the top row leaves a gap
- * that the bar has to absorb.
+ * that the bar has to absorb. The OpenGameArt pass recomputed the four rows it
+ * replaced from the measured top inset in `scripts/assets/assets.lock.json`;
+ * the rest still describe the older AI sheets.
  */
 const HP_BAR_Y: Partial<Record<BuildingType, number>> = {
-  TOWN_CENTER: -357,
+  TOWN_CENTER: -348,
   TOWER: -350,
-  BARRACKS: -231,
-  HOUSE: -186,
+  BARRACKS: -260,
+  HOUSE: -188,
   FARM: -100,
-  LUMBER_CAMP: -190,
+  LUMBER_CAMP: -171,
   MILL: -190,
   MINING_CAMP: -190,
   PORTAL: -350
