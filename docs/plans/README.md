@@ -56,9 +56,8 @@ Phase 08 (progression curve) thay **đường cong thời gian/giá** của phas
 1-10 tính bằng phút, từ cấp 11 tính bằng giờ và nhân **1,05** mỗi cấp, cộng thêm gate cấp TC ↔ 4
 công trình trụ cột (House/Barracks/Farm/Tower) mỗi 5 cấp và giới hạn 2 slot nâng cùng lúc. Đường đi
 tối thiểu tới TC 100 là **4.129h** (≈3,8 năm ở 3h/ngày); nhà phụ vẫn cap 10 và không thuộc gate.
-Phase này **chưa có dòng code nào**, và còn một quyết định treo: timer có cộng dồn theo giờ thực khi
-offline hay không (D7) — nếu giữ online-only thì hệ số phải hạ xuống 1,045. Xem
-`08-progression-curve.md` §2 và §4.
+Timer **chỉ chạy khi online** và cộng dồn qua các phiên (D7), nên "giờ" trong doc là giờ chơi thật,
+không phải lịch. Phase này **chưa có dòng code nào**. Xem `08-progression-curve.md` §2 và §4.
 
 ## Quy ước
 

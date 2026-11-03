@@ -54,7 +54,7 @@ const DEFAULT_ART = { textureKey: 'b_town_center', offsetY: -130 };
  * the rest still describe the older AI sheets.
  */
 const HP_BAR_Y: Partial<Record<BuildingType, number>> = {
-  TOWN_CENTER: -348,
+  TOWN_CENTER: -358,
   TOWER: -350,
   BARRACKS: -260,
   HOUSE: -188,

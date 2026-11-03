@@ -488,12 +488,19 @@ cùng lock hash.
 | `resource.tree-4` | `resources/tree_4.png` | 160×220 | `_tree_11` | CC-BY 3.0 | 0.226 |
 | `building.barracks` | `buildings/barracks.png` | 400×320 | Feudal Wars Barracks | CC0 1.0 | 1.270 |
 | `building.house` | `buildings/house.png` | 256×220 | Simple Isometric Hovel `00000` | CC-BY 4.0 | 0.630 |
-| `building.town-center` | `buildings/town_center.png` | 576×440 | Medieval Building 06 | CC-BY 3.0 | 0.526 |
+| `building.town-center` | `buildings/town_center.png` | 576×440 | Feudal Wars Castle | CC0 1.0 | 1.043 |
 | `building.lumber-camp` | `buildings/lumber_camp.png` | 256×220 | Feudal Wars Stable | CC0 1.0 | 0.805 |
 
 Mọi sprite được crop theo alpha, scale vừa canvas, neo bottom-centre, và **cân bằng luminance**
 theo sprite cũ (cùng hue, chỉ đổi độ sáng) để map không tối đi. Art bottom luôn chạm hàng cuối
 canvas, nên `SHEET_OFFSET_Y` và offset tài nguyên không phải sửa.
+
+Town centre ban đầu lấy *Medieval Building 06* (CC-BY 3.0) và đọc ra như nhà ở; collection không có
+asset town hall, nên đổi sang *Western-European Castle* của feudalwars — cùng bộ render với barracks
+và stable, CC0, và có alpha sạch. Castle bị lật ngang (`op.flip: "x"`, xử lý trong `apply_op`) vì bản
+gốc quay cổng sang phía ngược với camera; gương của một render 2:1 vẫn là góc nhìn hợp lệ của cùng
+toà nhà nên không phá projection. Đây là lý do manifest có thêm khoá `flip`. Ảnh so sánh: `scripts/out/assets/tc_swap/preview.html`; các ứng viên
+đã cân nhắc (Bleed 01–06, castle) nằm ở `scripts/out/assets/tc_candidates/`.
 
 ### 16.2 Thay đổi client
 
@@ -501,7 +508,7 @@ canvas, nên `SHEET_OFFSET_Y` và offset tài nguyên không phải sửa.
 - `render/treeVariants.ts` (mới): `treeVariant(gx, gy)` chọn 1 trong 4 silhouette theo toạ độ tile;
   tách khỏi `EntityRenderer` để test được dưới Node (import Phaser trong vitest fail vì `window`).
 - `EntityRenderer.createResourceNodeSprite`: dùng variant khi texture tồn tại, fallback `res_node_TREE`.
-- `buildingArt.ts` `HP_BAR_Y` tính lại từ `topInset` đo được: TC `-348`, barracks `-260`,
+- `buildingArt.ts` `HP_BAR_Y` tính lại từ `topInset` đo được: TC `-358`, barracks `-260`,
   house `-188`, lumber camp `-171`.
 - `assetManifest.test.ts` (mới): 47 test, kiểm tra hash/canvas/anchor/license của cả 8 file,
   `treeVariant`, và độ lệch `HP_BAR_Y` so với `topInset` trong lock.
@@ -520,8 +527,9 @@ Kết quả: `tsc --noEmit` sạch; `vitest run` 8 file / 142 test xanh;
   grass hiện tại `(102,123,44)` — phải tăng sáng ~2× mà không có cách kiểm chứng thị giác trong repo.
   Muốn làm terrain cần một bước chọn tile bằng mắt (hoặc tile map gốc), tức là task riêng.
 - **ART-08 berry/stone — bỏ**, cùng atlas và cùng lý do.
-- **ART-07 tower — bỏ.** `castle.png` (1024×192) có alpha đục 100%; không key/segment được nếu
-  không có bản gốc. Town centre vẫn thay được bằng Medieval Building 06.
+- **ART-07 tower — bỏ.** File `castle.png` tải từ trang OGA là `castle_7.png` (500×422) và **có**
+  alpha (39.2% pixel trong suốt); ghi chú "đục 100%" ở bản plan trước là đo nhầm file preview. Castle
+  được dùng cho town centre, còn tower vẫn là art AI vì castle không phải tháp canh.
 - **ART-06 house** dùng hovel `00000` thay vì dải houses: dải `400×100` là **một** connected
   component (các nhà dính nhau), không tách bằng column runs được.
 - **ART-09** chỉ làm lumber camp (stable). Mill/mining camp không có nguồn tương ứng trong collection.
@@ -535,7 +543,7 @@ ràng buộc "chỉ CC0/CC-BY" đúng như plan của nó.
 ### 16.4 Còn cần verify tay
 
 - 4 biến thể cây trong rừng thật: tỷ lệ, chân cây, có bị lặp/không khớp tông không.
-- Barracks (upscale 1.27×) có bị mềm ở zoom 2.2× không; house/town centre có đúng hướng nhìn không
-  (hovel/ building 06 chỉ có 1 hướng đã chọn).
+- Barracks (upscale 1.27×) có bị mềm ở zoom 2.2× không; house có đúng hướng nhìn không (hovel chỉ có
+  1 hướng đã chọn); castle (upscale 1.04×) có đọc ra "nhà chính" hay chỉ ra "pháo đài".
 - Thanh máu 4 công trình mới có nằm sát mái không; badge level không đè art.
 - Lumber camp dùng sprite chuồng ngựa có đọc ra "trại gỗ" không.

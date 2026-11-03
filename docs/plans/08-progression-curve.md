@@ -28,7 +28,7 @@ Kết quả: đường đi tối thiểu tới TC 100 là **4.129 giờ** ≈ **
 | D4 | Cap: TC **100**, 4 trụ cột **100**, nhà phụ (`LUMBER_CAMP`/`MILL`/`MINING_CAMP`) giữ **10** và không nằm trong gate. |
 | D5 | Gate: nâng TC từ `L` lên `L+1` cần **House, Barracks, Farm, Tower** đều ≥ `floor(L/5) × 5`. Dưới cấp 5 chưa có yêu cầu. |
 | D6 | Mỗi người chơi nâng tối đa **2 công trình** cùng lúc. |
-| D7 | **Chưa chốt — cần xác nhận:** timer cộng dồn theo giờ thực khi offline. Nếu giữ online-only thì phải hạ D3 xuống **1,045** (tổng còn 3.023h ≈ 2,8 năm) vì cấp cuối 73h online là 3 ngày không thoát game. |
+| D7 | Timer **chỉ chạy khi online**, và tiến trình **cộng dồn qua các phiên**: `upgradeProgressMs` được lưu xuống DB khi autosave/leave và nạp lại khi vào, nên một lần nâng 73h nằm rải qua nhiều session. Hành vi này đã có sẵn từ phase 03, không cần cột mới. |
 
 ## 3. Công thức
 
@@ -100,11 +100,10 @@ Nhà chính (bậc thang):
 
 ## 6. Dữ liệu & protocol
 
-- Không thêm message, không đổi schema nếu D7 = online-only: `level`, `upgradeProgressMs`,
-  `upgradeTimeMs` đã đủ.
-- Nếu D7 = cộng dồn offline: thêm một cột mốc thời gian (`buildings.upgrade_started_at` hoặc
-  `players.upgrade_started_at`) + migration `ALTER TABLE` kiểu `ensureUpgradeColumns()`, và tính
-  `progress = min(now − started_at, upgradeTimeMs)` lúc load room.
+- **Không đổi gì**: `level`, `upgradeProgressMs`, `upgradeTimeMs` đã đủ cho cả gate, slot và cộng dồn
+  qua phiên. Không thêm message, không thêm cột, không cần reset DB.
+- Điều kiện duy nhất phải giữ: `savePlayerEmpire`/`loadZonePlayer` tiếp tục ghi và đọc hai cột
+  `upgrade_progress_ms` / `upgrade_time_ms` (đã có từ `ensureUpgradeColumns()`).
 
 ## 7. Client
 
@@ -122,13 +121,16 @@ Nhà chính (bậc thang):
 | LVL2-03 | `CommandSystem`: gate + slot, message lỗi | TODO |
 | LVL2-04 | Client: khối yêu cầu, slot, format thời gian | TODO |
 | LVL2-05 | Test: công thức, gate, slot, clamp cấp 100 | TODO |
-| LVL2-06 | (Nếu D7 = có) cột mốc offline + migration | TODO |
+| LVL2-06 | Xác nhận cộng dồn qua phiên: nạp lại `upgradeProgressMs` sau khi thoát giữa chừng (hành vi có sẵn, chỉ thêm test) | TODO |
 | LVL2-07 | Cập nhật `03-level-upgrades.md` §3 và số ví dụ | TODO |
 
 ## 9. Rủi ro
 
-- **Một lần nâng 73h**: nếu giữ online-only, người chơi phải giữ kết nối 3 ngày cho cấp cuối; đây
-  là lý do D7 phải chốt trước khi code.
+- **Một lần nâng 73h là 73 giờ chơi thật**: cộng dồn qua phiên (D7) nên không mất tiến trình, nhưng
+  ở nhịp 3h/ngày thì cấp cuối mất ~24 ngày. Đây là hệ quả trực tiếp của ×1,05 + online-only, không
+  phải lỗi; nếu thấy quá dài thì hạ D3 xuống 1,045 (tổng còn 3.023h).
+- **Timer dừng khi offline là chủ ý**: không có accrual theo giờ thực, nên "3,8 năm" ở §4 đã tính
+  đúng theo giờ chơi chứ không phải lịch.
 - **Công trình nhẹ chưa đạt "tính bằng giờ"**: vì nhân theo `buildTimeMs`, ở cấp 11 House chỉ 20
   phút, Farm 24 phút, Barracks 40 phút — chỉ TC (1h) và Tower (48 phút) là sát ngưỡng giờ. Nếu muốn
   **mọi** công trình đều ≥1h từ cấp 11 thì phải bỏ hệ số base time, và tổng thời gian tăng từ 4.129h
@@ -155,4 +157,5 @@ Kiểm tra tay:
 2. Nâng TC khi House/Barracks/Farm/Tower chưa đủ mốc → bị chặn kèm tên công trình thiếu.
 3. Đang nâng 2 công trình → công trình thứ ba bị chặn; huỷ một cái thì nâng được tiếp.
 4. Trụ cột hiện `Lv x/100`, nhà phụ vẫn `Lv x/10`.
-5. (Nếu D7 = có) Thoát game giữa lúc nâng, chờ 10 phút, vào lại → tiến trình đã nhảy thêm 10 phút.
+5. Nâng TC rồi thoát giữa chừng, vào lại → tiến trình giữ nguyên (không nhảy thêm, không reset) và
+   timer chạy tiếp từ chỗ đã dừng.

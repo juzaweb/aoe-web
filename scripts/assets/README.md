@@ -31,7 +31,7 @@ or is missing from `CREDITS.md`.
    `https://opengameart.org/sites/default/files/<name>` links.
 2. Add a target with:
    - `source` + `file` (and `entry` for a member of an archive),
-   - `op`: `crop` (`alpha`/`none`), `fit`, `matchLum`, `anchor`,
+   - `op`: `crop` (`alpha`/`none`), `flip` (`x`), `fit`, `matchLum`, `anchor`,
    - `out` and `canvas`; the license is inherited from the source.
 3. `--fetch`, then `--all`.
 4. Check `--report`: an upscale factor above ~1.6 means the source is too small
@@ -48,6 +48,9 @@ or is missing from `CREDITS.md`.
 - `matchLum` keeps the map's brightness stable when a pack was lit for another
   engine. The gain is clamped in `ops.py`, recorded as `lumGain`, and hue is
   preserved.
+- `flip: "x"` mirrors the source before scaling. A mirrored 2:1 iso render is
+  still a valid view of the same building (the opposite ground corner), so this
+  is how a single-direction source is turned to face the client's camera.
 - Resampling is done in premultiplied alpha to avoid dark fringes.
 - The lock records `bbox`, `topInset`, `bottomInset`, `scale`, `lumGain`,
   `sourceSha256` and the license/author for every file. Hashes are of the PNG

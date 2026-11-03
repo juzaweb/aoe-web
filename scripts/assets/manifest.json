@@ -51,15 +51,12 @@
         }
       }
     },
-    "oga.bleed-building06": {
-      "page": "https://opengameart.org/content/medieval-building-06",
-      "author": "Bleed",
-      "license": "CC-BY-3.0",
+    "oga.feudal-castle": {
+      "page": "https://opengameart.org/content/western-european-castle-isometric-25d",
+      "author": "feudalwars",
+      "license": "CC0-1.0",
       "files": {
-        "pack": {
-          "url": "https://opengameart.org/sites/default/files/Medieval_Building_06.zip",
-          "archive": "zip"
-        }
+        "sprite": { "url": "https://opengameart.org/sites/default/files/castle_7.png" }
       }
     }
   },
@@ -119,10 +116,9 @@
       "canvas": [256, 220]
     },
     "building.town-center": {
-      "source": "oga.bleed-building06",
-      "file": "pack",
-      "entry": "Medieval_Building_06.png",
-      "op": { "crop": "alpha", "fit": true, "matchLum": 74.8, "anchor": "bottom-center" },
+      "source": "oga.feudal-castle",
+      "file": "sprite",
+      "op": { "crop": "alpha", "flip": "x", "fit": true, "matchLum": 74.8, "anchor": "bottom-center" },
       "out": "apps/client/public/assets/buildings/town_center.png",
       "canvas": [576, 440]
     }

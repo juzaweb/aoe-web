@@ -13,7 +13,8 @@ những cụm blob rải rác, rìa map cắt phựt, minimap là các chấm vu
 - Nền cỏ hết chu kỳ 3 tile, có vạt sáng/tối và lớp cỏ hoa trang trí.
 - Đường đất có mép gợn, tông và hướng stamp biến thiên.
 - Rìa map có vành cỏ + rừng bao quanh thay vì cắt thẳng.
-- Minimap dùng icon PNG thu nhỏ cho tài nguyên/lính, nền là địa hình thật, đường khớp world.
+- Minimap: nền địa hình thật, đường khớp world, rừng tô theo cụm và tài nguyên/lính là glyph
+  (không dùng thumbnail PNG — lý do đo được ở §3.1).
 - Cây tài nguyên khác scale/tông/hướng; cỏ cây trang trí đung đưa nhẹ.
 
 Ngoài phạm vi: sông/hồ, địa hình chặn đường, đổi vị trí tài nguyên/spawn, đổi art unit/building.
@@ -26,7 +27,7 @@ Những thứ đó cần server + reset map/DB và sẽ là phase khác.
 | D1 | **Visual-only**: không sửa `packages/shared/src/utils/terrainMath.ts`, không sửa `apps/server`, không đổi schema/DB/protocol. |
 | D2 | Dùng pack free trên OpenGameArt (CC0/CC-BY); **không** dùng local ComfyUI vì host `192.168.1.14:8090` timeout và repo không có `.env`/`LOCAL_API_KEY`. |
 | D3 | Có decor PNG trong map (hoa/cỏ/bụi/đá) **và** rừng viền ngoài rìa map. |
-| D4 | Minimap dùng PNG thumbnail của tài nguyên/lính; vector chỉ là fallback khi ảnh chưa load. |
+| D4 | Minimap **không** dùng PNG thumbnail: battlefield chỉ 0.64 px/tile nên thumbnail 5–6px phủ 8–9 tile, nuốt cụm rừng và đè đường. Thay bằng rừng tô theo cụm + glyph 3px có viền tối, palette lấy từ sprite world (§3.1). |
 | D5 | Decor là object không tương tác: không collision, không pathfinding, không xuất hiện trong state. |
 | D6 | Giữ nguyên `isDirtRoadTile` và toàn bộ geometry đường; chỉ đổi cách render. |
 | D7 | Không thêm nước/núi/địa hình chặn đường. |
@@ -40,14 +41,53 @@ Những thứ đó cần server + reset map/DB và sẽ là phase khác.
 | Đường lặp motif | `TerrainLayer.ts:142-161` | 4 file `road_stamp*.png` giống hệt nhau (cùng MD5); stamp đặt cùng scale/rotation, mỗi 0.35 tile. |
 | Variant cỏ trùng file | `apps/client/public/assets/terrain/` | `grass.png` và `grass_1.png` cùng MD5; chỉ có 3 texture thật. |
 | Cây tài nguyên đồng nhất | `apps/client/src/game/render/EntityRenderer.ts:140-180` | Mọi node dùng cùng scale/flip/tint. |
-| Minimap không đọc được | `apps/client/src/components/Minimap.tsx:36-44` | Nền vẽ gạch chéo thủ công. |
+| Nền minimap kẻ sọc 45° | `Minimap.tsx:101-107` | Vòng `i += 16` vẽ line chéo — cùng lỗi "vân chéo" với cỏ world, nên sửa `TerrainLayer` thôi là chưa đủ. |
+| Rừng gần như vô hình | `Minimap.tsx:141-142` | `#166534` trên nền `#1e3f16` = **1.66:1**; vàng/đá 7.7–8.0:1 nên mắt chỉ thấy vàng/đá. |
+| Tài nguyên/lính là chấm vuông | `Minimap.tsx:141-152`, `:189-190` | `fillRect` 2px = **3.1 tile** (battlefield); 892 TREE chỉ có 77 cụm nên chấm từng node luôn nhoè. |
 | Đường minimap trùng lặp | `Minimap.tsx:55-98` | Vẽ lại 4 công thức sin thay vì đọc dữ liệu đường thật. |
-| Tài nguyên/lính là chấm vuông | `Minimap.tsx:100-116`, `:148-154` | `fillRect` 2–3px cho mọi loại. |
 | Rìa map cắt phựt | `TerrainLayer.ts:86-89` | Vùng vẽ clamp đúng `[0, MAP-1]`; ngoài map là màu nền phẳng. |
 
 Số liệu mô phỏng theo đúng tham số generator hiện tại (`WorldRoom.generateWorldResources`):
 ~1.311 node tài nguyên, ~4.3% rơi trên tile đường. Đây là lý do D8: phase này không sửa được
 resource đã lưu mà không đụng server/DB.
+
+### 3.1. Audit asset đang ship (2026-11-03)
+
+Đo trực tiếp trên file trong repo: mean RGB trên pixel `alpha ≥ 200`, hue median trên pixel
+`sat > 0.15`, luminance Rec.709. Tồn kho: **62 PNG**, chỉ **8** nằm trong
+`scripts/assets/assets.lock.json` (4 cây + 4 công trình).
+
+| Nhóm | File | Nguồn | Gate |
+| --- | --- | --- | --- |
+| `resources/tree*.png` | 4 | Bleed Tree Collection v2.6 | có |
+| `buildings/{barracks,house,town_center,lumber_camp}.png` | 4 | feudalwars, Bleed | có |
+| `resources/{gold,stone,berry}.png` | 3 | legacy | không |
+| `buildings/{farm,mill,mining_camp,tower}.png` | 4 | legacy | không |
+| `terrain/*` | 12 | legacy | không |
+| `units/**` | 24 | legacy | không |
+| `cursors/*` | 6 | legacy | không |
+| `icons/*` | 5 | legacy | không |
+
+Sáu phát hiện ảnh hưởng trực tiếp tới phase này:
+
+1. **Rừng trên minimap vô hình.** `#166534` trên nền `#1e3f16` = **1.66:1** (WCAG non-text cần
+   3:1); vàng `#facc15` 7.71:1, đá `#cbd5e1` 7.96:1. Mắt chỉ thấy vàng/đá, còn rừng thành mảng tối
+   không đọc được.
+2. **Không thể dùng thumbnail.** Battlefield 220 tile → 140 CSS px = **0.64 px/tile**; blip 2px phủ
+   3.1 tile. 892 TREE gom lại chỉ còn **77 cụm** (lớn nhất 25 node), nên chấm từng node luôn nhoè;
+   thumbnail 5–6px sẽ phủ 8–9 tile và đè lên đường. Vì vậy D4 đổi sang cụm + glyph.
+3. **`tree_3.png` lệch tông.** Hue 45° (cây thu lá vàng) so với 66–81° của ba cây còn lại, tức 25%
+   rừng là cây thu. Quét đủ 14 pack Bleed: 01/02/04/05/08/09/11/12/13 = 66–81°, 06/07 = 45°,
+   10/14 = 23–27°, `_tree_03` lum 137 (quá sáng) → thay bằng `_tree_05`, `_tree_08`, `_tree_09`,
+   `_tree_12` hoặc `_tree_13`.
+4. **Forbs lệch chroma, không lệch hue.** Mean `(81,85,76)`, sat **0.36**, lum **84**; cỏ mean
+   `(102,124,45)`, sat **0.62**, lum **113**. Đỉnh hue forbs 75° khớp cỏ 77°, nên `matchLum` một
+   mình sẽ ra đám xám bẩn — phải `gain` màu trước rồi mới cân sáng (§5.1).
+5. **Icon HUD không cần vẽ lại.** Cả 5 icon đều ấm (22–36°) nhưng mỗi icon nằm trong một tile màu
+   riêng (`amber / red / yellow / slate / sky`), thứ tự cố định và có tooltip, nên vẫn phân biệt
+   được ở 24px. Chỉ cần ghi nguồn + hash (legacy gate), không đụng art.
+6. `units/raw/*_cutout_raw.png` (3 file, ảnh trung gian) nằm trong `public/` nhưng không code nào
+   tham chiếu — nên dọn ở task riêng, không thuộc phase này.
 
 ## 4. Nguồn asset & license
 
@@ -55,36 +95,45 @@ resource đã lưu mà không đụng server/DB.
 | --- | --- | --- | --- |
 | `hjm-randomized_forbs_01..03-alpha.png` | [100+ isometric forbs](https://opengameart.org/content/100-isometric-forbs) — Hansjörg Malthaner (Varkalandar) | CC-BY 3.0 | hoa, cỏ, bụi nhỏ |
 | `hjm-assorted_rocks_1.png` | [Assorted Isometric Rocks](https://opengameart.org/content/assorted-isometric-rocks) — Hansjörg Malthaner | CC-BY 4.0 | đá trang trí |
-| `_tree_06.zip`, `_tree_10.zip` | [Tree Collection v2.6](https://opengameart.org/content/tree-collection-v26-bleeds-game-art) — Bleed | CC-BY 3.0 | rừng viền ngoài map |
+| `_tree_09.zip`, `_tree_12.zip`, `_tree_13.zip` | [Tree Collection v2.6](https://opengameart.org/content/tree-collection-v26-bleeds-game-art) — Bleed | CC-BY 3.0 | rừng viền ngoài map |
 
+- Rừng viền **không** dùng `_tree_06` (đã là `resource.tree-3`), `_tree_07` (thu lá vàng), `_tree_10`
+  hay `_tree_14` (nâu, hue 23–27°). Ba pack 09/12/13 đều 77–78°, silhouette khác hẳn 4 cây tài
+  nguyên nên rừng rìa không bị trùng dáng.
 - Chọn CC-BY (không chọn CC-BY-SA) để tránh nghĩa vụ share-alike.
 - Attribution bắt buộc: thêm mục vào `CREDITS.md` (tiếng Anh) với tên tác giả, URL, license và mô
   tả chỉnh sửa: *cropped, segmented, scaled, brightness/gamma adjusted, alpha softened*.
-- Chỉ PNG đã cắt nằm trong repo. Raw zip/sheet nằm ở `scripts/raw_downloads/decor/` và được
-  `.gitignore` (giống cách `scripts/raw_downloads/oga/` đang bị ignore).
+- Chỉ PNG đã cắt nằm trong repo. Raw zip/sheet nằm ở `scripts/.cache/assets/` (gitignored) — cùng
+  chỗ phase 06 đang cache nguồn OGA.
 
 ## 5. Pipeline asset
 
-### 5.1. `scripts/build_decor_assets.py`
+### 5.1. Mở rộng `scripts/assets` (không thêm script thứ hai)
 
-1. Tải pack nếu chưa có vào `scripts/raw_downloads/decor/`.
-2. Tách sheet forbs/rocks thành từng sprite bằng connected-components trên alpha (numpy + flood
-   fill), lọc area ≥ 300px, bỏ mảnh dính cạnh.
-3. Phân loại forb theo tỉ lệ crop: cao/hẹp → `grass`, thấp/rộng → `flower`, còn lại → `bush`.
-   Có bảng override nhỏ sau khi xem preview để sửa các ca sai.
-4. Chuẩn hoá sáng: đo luminance trung bình vùng alpha>128, áp gamma/scale (clamp 0.8–2.0) về
-   khoảng 115–135 để render tối của pack khớp art hiện tại.
-5. Resize giữ tỉ lệ, bottom-align vào canvas trong suốt: forb ≤ 96px cao, rock ≤ 80×64,
-   border tree cao 300–340px.
-6. Xuất:
-   - `apps/client/public/assets/decor/{forb,rock,border_tree}_NN.png`
-   - `apps/client/src/game/render/decorArt.generated.ts` (pattern giống
-     `apps/client/src/game/input/cursorArt.generated.ts`): `key`, `url`, `kind`, `height`.
-   - `scripts/out/decor_preview.html` (đã gitignore) để duyệt art trước khi vào game.
+Phase 06 đã có pipeline khai báo `manifest.json` + `build.py` + `ops.py` + `assets.lock.json`, với
+`--check` chạy trong `assetManifest.test.ts`. Decor đi cùng pipeline để có hash + license gate:
+
+1. Thêm source `oga.hjm-forbs` (CC-BY 3.0), `oga.hjm-rocks` (CC-BY 4.0); thêm file `_tree_09`,
+   `_tree_12`, `_tree_13` vào `oga.bleed-trees`.
+2. Thêm op `split: { minArea: 300, maxCount: 16 }` vào `ops.py` cho sheet forbs/rocks: flood-fill
+   alpha, bỏ mảnh dính cạnh, sort diện tích giảm dần, lấy tối đa `maxCount`. `build.py` cho một
+   target sinh nhiều output (`out` là pattern `decor/forb_{i:02d}.png`) và ghi từng file vào lock.
+3. Thêm op `gain: [r, g, b]` (nhân kênh, clamp 0–255) chạy **trước** `matchLum`. Số đo ở §3.1:
+   forbs cần `gain: [1.20, 1.30, 1.05]` + `matchLum: 113`; rocks cần `matchLum: 112` +
+   `gain: [1.0, 1.0, 1.02]`. Đây là điểm khởi đầu, duyệt preview rồi chỉnh.
+4. Resize giữ tỉ lệ, bottom-align canvas trong suốt: forb ≤ 96px cao, rock ≤ 80×64, border tree
+   300–340px.
+5. Xuất `apps/client/public/assets/decor/{forb,rock,border_tree}_NN.png`; khai báo key/url/kind/
+   height trong `apps/client/src/game/render/decorArt.ts` (viết tay, không sinh code).
+6. `scripts/out/decor_preview.html` (gitignore) để duyệt art trước khi vào game.
+7. `build.py --check` phủ luôn decor nên decor không thể bị sửa tay mà không lộ.
+8. Thêm mảng `legacy` vào `manifest.json` cho 54 PNG còn lại (VIS-09): `sha256` tại thời điểm chốt,
+   `license` ghi đúng nếu biết (5 icon hiện không rõ nguồn → ghi `legacy/unknown`). `--check` chỉ so
+   hash, không rebuild, nên không đụng art đang chạy.
 
 ### 5.2. Số lượng mục tiêu
 
-- ~12 forb (hoa/cỏ/bụi), ~6 rock, ~6 border tree → ~24 PNG.
+- ~12 forb (hoa/cỏ/bụi), ~6 rock, 3 border tree → ~21 PNG.
 - Tổng dung lượng mục tiêu < 6 MB.
 
 ## 6. Thay đổi runtime
@@ -157,18 +206,24 @@ export function resourceLook(id: string, type: string): {
 
 ### 6.7. Minimap: `minimapArt.ts` (mới) + `Minimap.tsx`
 
-- Canvas backing **280×280**, CSS 140×140; click math vẫn dựa trên `rect` nên không đổi.
-- Nền: `ImageData` 220×220 tạo một lần (cache module-level) từ `minimapGroundColor(gx, gy)`:
-  cỏ palette + fbm; đường lấy từ `isDirtRoadTile` — bỏ 4 đoạn vẽ đường hard-code và nền gạch chéo.
-- Icon PNG:
-  - Tài nguyên: preload `Image` từ `/assets/resources/{tree,gold,stone,berry}.png`, vẽ thu nhỏ
-    5–6px hiển thị; fallback vector khi ảnh chưa load.
-  - Lính: preload `/assets/units/{type}_idle.png`, crop alpha, scale còn ~6px hiển thị, tint theo
-    màu chủ bằng offscreen canvas `source-in`, cache theo `type|color|own`; lính mình viền trắng,
-    địch viền tối.
-  - Nhà: rect màu chủ + viền tối; portal giữ kim cương cyan.
-- Thứ tự: terrain → vignette nhẹ → resources → buildings → units → viewport (trắng + nền mờ 8%)
-  → viền hổ phách.
+Số đo quyết định thiết kế: battlefield 220 tile → 140 CSS px = **0.64 px/tile** (kingdom 110 tile =
+1.27). Vì vậy mọi thứ vẽ theo tile phải là *đại diện*, không phải ảnh thu nhỏ.
+
+- Canvas backing **280×280**, CSS `w-[140px] h-[140px]`; toạ độ nhân `S = 280 / mapWidth`.
+  Click math vẫn dựa trên `rect` nên không đổi.
+- Nền: `ImageData` 280×280 dựng một lần (cache module-level) từ `minimapGroundColor(gx, gy)`:
+  cỏ `#3a4a1f` (grass mean ×0.55) + fbm ±6%; đường `#b09161` lấy từ `isDirtRoadTile`. Bỏ hẳn nền
+  `#1e3f16` và vòng line 45°.
+- Rừng: gom TREE bằng connected components bán kính 2 tile (892 node → **77 cụm**, lớn nhất 25),
+  cache theo `zoneId`. Mỗi cụm: fill `#1d2c0e`, viền 1px `#8aab52` — viền đạt **3.68:1** với nền
+  nên cụm đọc được dù ruột tối.
+- Tài nguyên khác: glyph 3px tại tâm node, viền tối 0.5px:
+  vàng = diamond `#e0ad42` (4.69:1), đá = triangle `#b0b7bb` (4.74:1), berry = dot `#e26a80`
+  (3.03:1). Không dùng `/assets/resources/*.png` trên minimap: 5–6px sẽ phủ 8–9 tile.
+- Lính: circle bán kính 1.5px (mình 2px + ring trắng 1px), màu chủ, viền `#0b1206` 0.75px.
+- Nhà: rect màu chủ + viền `#0b1206`, tối thiểu 3px; portal giữ diamond cyan.
+- Thứ tự: terrain → đường → cụm rừng → tài nguyên → nhà → lính → viewport (trắng 1px + nền
+  `rgba(255,255,255,0.08)`) → viền hổ phách.
 - Bỏ qua node `remainingAmount <= 0`; giữ click pan và right-click command.
 
 ## 7. Task / commit
@@ -178,13 +233,15 @@ Mỗi dòng là một commit độc lập (convention của repo). **Chưa commi
 | Mã | Task | Commit message |
 | --- | --- | --- |
 | VIS-01 | `visualVariation.ts` + test | `feat(client): add deterministic visual variation helpers` |
-| VIS-02 | Script build decor + PNG + `CREDITS.md` + `.gitignore` | `feat(assets): build decorative sprites from CC-BY packs` |
+| VIS-02 | Mở rộng `scripts/assets` (`split`/`gain`/multi-output) + decor PNG + `CREDITS.md` | `feat(assets): extend the asset pipeline for decorative sprites` |
 | VIS-03 | `TerrainLayer` cỏ/tint/stamp | `feat(client): vary grass, terrain tint and road stamps` |
 | VIS-04 | `TerrainLayer` apron + `DecorLayer` border forest + `WorldScene` preload | `feat(client): draw a grass apron and border forest` |
 | VIS-05 | `decorScatter` + scatter trong map + test | `feat(client): scatter decorative ground cover` |
 | VIS-06 | `EntityRenderer` resource variation | `feat(client): vary resource sprite scale and tint` |
-| VIS-07 | `minimapArt` + `Minimap.tsx` + test | `feat(client): rebuild the minimap with terrain and sprite icons` |
+| VIS-07 | `minimapArt` + `Minimap.tsx` + test | `feat(client): rebuild the minimap with terrain, clusters and glyphs` |
 | VIS-08 | Tài liệu phase | `docs: add the map realism phase plan` |
+| VIS-09 | Legacy hash gate cho 54 PNG còn lại | `chore(assets): record hashes for legacy sprites` |
+| VIS-10 | Đổi `resource.tree-3` sang variant xanh + lock/`CREDITS.md` | `fix(assets): replace the autumn resource tree with a green variant` |
 
 ## 8. Test & verify
 
@@ -197,8 +254,9 @@ Mỗi dòng là một commit độc lập (convention của repo). **Chưa commi
   - tint/scale/góc trong biên.
 - `decorScatter.test.ts`: deterministic; không trả decor trên tile đường; mật độ trong ngưỡng;
   border chỉ ngoài biên; `underCanopyDecor` đúng quanh TREE.
-- `minimapArt.test.ts`: `minimapGroundColor` deterministic, road ≠ grass; map resource type → icon;
-  `gridToMinimap` tỉ lệ 280/220; viewport clamp.
+- `minimapArt.test.ts`: `minimapGroundColor` deterministic, road ≠ grass; `minimapClusters` gom đúng
+  (4 node liền kề → 1 cụm, node cách 3 tile → 2 cụm); `gridToMinimap` đúng tỉ lệ 280/220 và
+  280/110; `markerColor(type)` trả đúng palette; viewport clamp.
 - `cd apps/client && ../../node_modules/.bin/tsc --noEmit`
 - `pnpm --filter @chien-quoc/client test`
 - `pnpm --filter @chien-quoc/client build`
@@ -223,7 +281,8 @@ Mỗi dòng là một commit độc lập (convention của repo). **Chưa commi
 - Pool decor cạn → mở rộng động; viewport đứng yên → no-op.
 - Decor bị bỏ trên tile resource/building để không đè chân công trình.
 - Ngoài map chỉ có cỏ + rừng viền; không pathfinding/collision.
-- Minimap ~1.3k icon/frame: `drawImage` icon nhỏ, cache tint; giữ 60fps.
+- Minimap: 77 cụm rừng + ~450 glyph/frame (129 vàng, 87 đá, 150 berry, ~180 lính) thay vì 1.3k
+  `fillRect`; không `drawImage` per frame, cache cụm theo `zoneId`; giữ 60fps.
 - Không đổi `isDirtRoadTile`, spawn/portal, schema, DB, protocol.
 
 ## 10. Definition of Done
@@ -232,7 +291,8 @@ Mỗi dòng là một commit độc lập (convention của repo). **Chưa commi
 - [ ] Đường không còn motif lặp; mép gợn; tông biến thiên.
 - [ ] Có hoa/cỏ/bụi/đá rải thành vạt; cây khác scale/tông; cỏ đung đưa nhẹ.
 - [ ] Rìa map có vành cỏ + rừng bao quanh.
-- [ ] Minimap: nền địa hình thật, đường khớp world; icon PNG phân biệt tài nguyên/lính/nhà.
+- [ ] Minimap: nền địa hình thật, đường khớp world, không còn sọc chéo; rừng vẽ theo cụm;
+  vàng/đá/berry/lính/nhà phân biệt được ở cả 220×220 lẫn 110×110; mọi marker ≥ 3:1 với nền.
 - [ ] `CREDITS.md` có đủ 3 nguồn CC-BY + mô tả chỉnh sửa; `.gitignore` chặn raw pack.
 - [ ] `tsc --noEmit` sạch, test client xanh, build thành công, không 404/console error, 60fps.
 - [ ] Không file server/shared/schema/DB nào bị sửa.
@@ -243,5 +303,5 @@ Mỗi dòng là một commit độc lập (convention của repo). **Chưa commi
 - Resource đã sinh trên đường (D8) vẫn giữ nguyên vị trí; muốn dọn phải sửa `generateWorldResources`
   + reset resource DB, tức là một task server riêng.
 - Pack CC-BY có thể lệch style nhẹ so với art AI hiện tại; preview + override list là cửa chặn.
-- Minimap 140px là giới hạn phần cứng của panel; icon 5–6px chỉ đủ phân biệt loại, không đọc được
-  chi tiết.
+- Minimap 140px (backing 280) là giới hạn của panel: 1 tile = 1.27px ở battlefield, nên chỉ phân
+  biệt được *loại* và *vị trí*, không đọc được số node trong một cụm.

@@ -90,28 +90,22 @@ scaled to 256x220 and luminance-matched. The separate shadow layer in the pack
 is not shipped as a second sprite; the game has no dynamic shadow system, so the
 building stands on its own footprint.
 
-### Medieval Building 06 — Bleed
-
-- **Author:** Bleed
-- **Source:** https://opengameart.org/content/medieval-building-06
-- **License:** [CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/)
-- **Used for:** `assets/buildings/town_center.png`.
-
-**Changes made.** Cropped to alpha, scaled to 576x440 and luminance-matched. The
-source is a single-direction render, which is what the client draws for a
-building.
-
-### Medieval Barracks and Medieval Stable — feudalwars
+### Medieval Barracks, Medieval Stable and Castle — feudalwars
 
 - **Author:** feudalwars (made for [Feudal Wars](https://feudalwars.net/))
 - **Source:** https://opengameart.org/content/medieval-barracks-isometric-25d,
-  https://opengameart.org/content/medieval-stable-isometric-25d
+  https://opengameart.org/content/medieval-stable-isometric-25d,
+  https://opengameart.org/content/western-european-castle-isometric-25d
 - **License:** CC0 1.0 (public domain dedication — attribution not required,
   kept here for provenance)
-- **Used for:** `assets/buildings/barracks.png` (barracks) and
-  `assets/buildings/lumber_camp.png` (stable, reused as the wood drop-off).
+- **Used for:** `assets/buildings/barracks.png` (barracks),
+  `assets/buildings/lumber_camp.png` (stable, reused as the wood drop-off) and
+  `assets/buildings/town_center.png` (castle).
 
-**Changes made.** Both are cropped to alpha, scaled to the client's canvas and
-luminance-matched; the stable is reused as the lumber camp because the pack has
-no dedicated drop-off building.
+**Changes made.** All three are cropped to alpha, scaled to the client's canvas
+and luminance-matched; the stable is reused as the lumber camp because the pack
+has no dedicated drop-off building, and the castle stands in for the town centre
+because the set has no town-hall building. The castle is also mirrored
+horizontally so its gate faces the direction the client's isometric camera
+looks from; the barracks and stable are unmodified apart from crop/scale.
 

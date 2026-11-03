@@ -115,6 +115,11 @@ def extract_zip(archive: Path) -> None:
 def apply_op(im: Image.Image, op: dict, canvas: tuple[int, int]) -> tuple[Image.Image, float, float]:
     if op.get("crop", "alpha") == "alpha":
         im = ops.crop_to_alpha(im)
+    # Mirroring keeps a 2:1 iso render valid (it becomes the opposite visible
+    # corner), which is how a single-direction source is turned to face the
+    # camera the client's projection uses.
+    if op.get("flip") == "x":
+        im = im.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
     gain = 1.0
     if op.get("matchLum") is not None:
         im, gain = ops.match_luminance(im, float(op["matchLum"]))

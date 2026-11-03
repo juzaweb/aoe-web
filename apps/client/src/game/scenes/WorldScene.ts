@@ -372,9 +372,10 @@ export class WorldScene extends Phaser.Scene {
     }
 
     // Preload generated building assets with cache-busting version (2x resolution)
-    // v=4: OpenGameArt pass (barracks, house, town centre, lumber camp). Bump the
-    // key whenever a PNG under public/assets/buildings or /resources changes.
-    const v = 'v=4';
+    // v=6: town centre swapped to the feudalwars castle, mirrored to face the
+    // camera. Bump the key whenever a PNG under public/assets/buildings or
+    // /resources changes.
+    const v = 'v=6';
     this.load.image('building_TOWN_CENTER', `/assets/buildings/town_center.png?${v}`);
     this.load.image('building_BARRACKS', `/assets/buildings/barracks.png?${v}`);
     this.load.image('building_HOUSE', `/assets/buildings/house.png?${v}`);

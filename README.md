@@ -108,10 +108,9 @@ Third-party art is used under its own license.
 - Unit sprites: OpenGameArt pack *400+ Items - BaseHumanMale / Orc / Skeleton* by
   **SKYZ0R**, **CC-BY 4.0**.
 - Tree sprites: *Tree Collection v2.6* by **Bleed**, **CC-BY 3.0**.
-- House and town centre: *Simple Isometric Hovel* (**CC-BY 4.0**) and
-  *Medieval Building 06* (**CC-BY 3.0**) by **Bleed**.
-- Barracks and lumber camp: *Medieval Barracks* / *Medieval Stable* by
-  **feudalwars**, **CC0 1.0**.
+- House: *Simple Isometric Hovel* by **Bleed**, **CC-BY 4.0**.
+- Barracks, lumber camp and town centre: *Medieval Barracks* / *Medieval Stable* /
+  *Western-European Castle* by **feudalwars**, **CC0 1.0**.
 
 The CC-BY assets are modified (cropped, scaled, luminance-matched) as described in
 [CREDITS.md](CREDITS.md). All of them are rebuilt by `scripts/assets/build.py`

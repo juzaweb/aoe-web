@@ -1,16 +1,5 @@
 {
   "sources": {
-    "oga.bleed-building06": {
-      "author": "Bleed",
-      "files": {
-        "pack": {
-          "sha256": "a469871dbeebfcaa11a416efeadfa81db5f0bad8b5f9063e991d385c755458ed",
-          "url": "https://opengameart.org/sites/default/files/Medieval_Building_06.zip"
-        }
-      },
-      "license": "CC-BY-3.0",
-      "page": "https://opengameart.org/content/medieval-building-06"
-    },
     "oga.bleed-hovel": {
       "author": "Bleed",
       "files": {
@@ -55,6 +44,17 @@
       },
       "license": "CC0-1.0",
       "page": "https://opengameart.org/content/medieval-barracks-isometric-25d"
+    },
+    "oga.feudal-castle": {
+      "author": "feudalwars",
+      "files": {
+        "sprite": {
+          "sha256": "09da8841806e1920b60e6e2c604aa750efe6d4482beab65160240c0c0555627e",
+          "url": "https://opengameart.org/sites/default/files/castle_7.png"
+        }
+      },
+      "license": "CC0-1.0",
+      "page": "https://opengameart.org/content/western-european-castle-isometric-25d"
     },
     "oga.feudal-stable": {
       "author": "feudalwars",
@@ -139,11 +139,11 @@
       "topInset": 17
     },
     "building.town-center": {
-      "author": "Bleed",
+      "author": "feudalwars",
       "bbox": [
-        2,
-        10,
-        576,
+        27,
+        0,
+        548,
         440
       ],
       "bottomInset": 0,
@@ -151,15 +151,15 @@
         576,
         440
       ],
-      "license": "CC-BY-3.0",
-      "lumGain": 0.7867,
+      "license": "CC0-1.0",
+      "lumGain": 0.9881,
       "out": "apps/client/public/assets/buildings/town_center.png",
-      "page": "https://opengameart.org/content/medieval-building-06",
-      "scale": 0.5255,
-      "sha256": "33aabcc796def2e284d5bb2ba07f7c2cf7c8cf48e69d934e7379b8e776714910",
-      "source": "oga.bleed-building06",
-      "sourceSha256": "d68dd009f1933aa85df24bdb9c57dc990ab4994a070161e1f6e620136d5239e0",
-      "topInset": 10
+      "page": "https://opengameart.org/content/western-european-castle-isometric-25d",
+      "scale": 1.0427,
+      "sha256": "82f5a24dc2f8dd1712eeee7906f1d1f2ed423c740a864edd52c85f591de02a59",
+      "source": "oga.feudal-castle",
+      "sourceSha256": "09da8841806e1920b60e6e2c604aa750efe6d4482beab65160240c0c0555627e",
+      "topInset": 0
     },
     "resource.tree": {
       "author": "Bleed",
