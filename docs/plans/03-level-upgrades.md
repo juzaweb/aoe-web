@@ -3,6 +3,10 @@
 Status: **IMPLEMENTED — chờ verify tay trong game**
 Ngày chốt quyết định: 2026-11-02
 
+> Đường cong giá/thời gian ở §3 đã bị **phase 08** thay thế (cấp 1-10 tính bằng phút, từ cấp 11
+> tính bằng giờ, ×1,05/cấp, cộng gate cấp và 2 slot). Phần còn hiệu lực của phase này là mô hình
+> level, protocol, persistence và hành vi server. Xem `08-progression-curve.md`.
+
 ## 1. Mục tiêu
 
 Thêm vòng tiến trình nâng cấp để người chơi đầu tư tài nguyên vào công trình và vào từng loại lính.

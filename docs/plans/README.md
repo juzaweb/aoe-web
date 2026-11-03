@@ -14,6 +14,7 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | [`05-map-realism.md`](./05-map-realism.md) | Map tự nhiên hơn: nền cỏ/tint, đường đất, decor PNG + rừng viền, minimap icon PNG (`VIS-01..VIS-08`) | DRAFT — chờ duyệt |
 | [`06-aoe-asset-rebuild.md`](./06-aoe-asset-rebuild.md) | Tạo lại art công trình/cây/tài nguyên/terrain từ collection "AoE like Assets" (`ART-01..ART-12`) | IMPLEMENTED (một phần) — 8 sprite đã thay; terrain bỏ vì atlas không cắt được; chờ verify tay |
 | [`07-smaller-kingdom-map.md`](./07-smaller-kingdom-map.md) | Kingdom riêng nhỏ lại 110×110, TC ở giữa map, map size theo zone (`D1–D8`) | IMPLEMENTED — chờ verify tay UI |
+| [`08-progression-curve.md`](./08-progression-curve.md) | Đường cong nâng cấp dài hạn: 1-10 tính bằng phút, từ 11 tính bằng giờ (×1,05/cấp), gate TC ↔ 4 trụ cột, 2 slot (`LVL2-00..LVL2-07`) | APPROVED — chờ code |
 
 Status: `DRAFT` (chưa chốt quyết định) → `APPROVED` (bắt đầu code) → `DONE`.
 
@@ -50,6 +51,14 @@ và §5. Không đổi schema bảng, không cần reset DB, nhưng nên backup 
 trước lần boot đầu tiên. Đã code xong ngày 2026-11-03 (chưa commit): migration đã chạy trên
 `apps/server/database/dev.db`, probe SDK thật xác nhận kingdom 110×110 với TC `(53,53)`/portal
 `(103,54)` và battlefield vẫn 220×220.
+
+Phase 08 (progression curve) thay **đường cong thời gian/giá** của phase 03 bằng hai giai đoạn: cấp
+1-10 tính bằng phút, từ cấp 11 tính bằng giờ và nhân **1,05** mỗi cấp, cộng thêm gate cấp TC ↔ 4
+công trình trụ cột (House/Barracks/Farm/Tower) mỗi 5 cấp và giới hạn 2 slot nâng cùng lúc. Đường đi
+tối thiểu tới TC 100 là **4.129h** (≈3,8 năm ở 3h/ngày); nhà phụ vẫn cap 10 và không thuộc gate.
+Phase này **chưa có dòng code nào**, và còn một quyết định treo: timer có cộng dồn theo giờ thực khi
+offline hay không (D7) — nếu giữ online-only thì hệ số phải hạ xuống 1,045. Xem
+`08-progression-curve.md` §2 và §4.
 
 ## Quy ước
 
