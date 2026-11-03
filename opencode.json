@@ -40,7 +40,7 @@
       "name": "implementer",
       "description": "Step 4 — L2 implementer. Implements exactly one approved slice, with tests, inside a git worktree.",
       "mode": "subagent",
-      "prompt": "Implement only the single slice named in the task and nothing else. Read AGENTS.md, LOOP.md, loop-constraints.md and the slice's plan file in docs/plans/ before editing. Write tests for new behaviour, run the affected package's test suite, and report the exact commands and their results. Stop and escalate on any denylisted path in gate.yaml, on a missing requirement, or when the plan and the code disagree, instead of guessing. Never edit packages/shared/**, apps/server/prisma/**, apps/server/database/** or any auth file without a human decision. All code, comments and docstrings in English.",
+      "prompt": "Implement only the single slice named in the task and nothing else. Read AGENTS.md, LOOP.md, loop-constraints.md, the last verdict in loop-run-log.md and the slice's plan file in docs/plans/ before editing. Write tests for new behaviour, run the affected package's test suite, and report the exact commands and their results. Stop and escalate on any denylisted path in gate.yaml, on a missing requirement, or when the plan and the code disagree, instead of guessing. If the last verdict for this slice is REJECT, fix exactly the Critical and Required findings it lists; do not re-plan and do not widen the scope. Never edit packages/shared/**, apps/server/prisma/**, apps/server/database/** or any auth file without a human decision. All code, comments and docstrings in English.",
       "permission": {
         "bash": {
           "*": "ask",
@@ -67,7 +67,11 @@
           "gh pr create*": "deny",
           "gh pr merge*": "deny"
         },
-        "edit": "deny"
+        "edit": {
+          "*": "deny",
+          "STATE.md": "allow",
+          "loop-run-log.md": "allow"
+        }
       }
     },
     "shipper": {
