@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SHEET_OFFSET_Y, buildingHpBarY } from './buildingArt.js';
+import { decorPreloadList } from './decorArt.js';
 import { treeVariant } from './treeVariants.js';
 
 /**
@@ -129,5 +130,27 @@ describe('tree variants', () => {
       for (let y = 0; y < 12; y++) seen.add(treeVariant(x, y));
     }
     expect(seen.size).toBe(4);
+  });
+});
+
+describe('decor texture table', () => {
+  const lock = readLock();
+  const listed = decorPreloadList('v=1');
+  const files = listed.map((entry) => entry.url.split('?')[0].replace('/assets/decor/', ''));
+  const targets = Object.values(lock.targets)
+    .filter((entry) => entry.out.includes('/assets/decor/'))
+    .map((entry) => entry.out.split('/assets/decor/')[1]);
+
+  // `decorArt.ts` is hand-written while the manifest owns the files: if the two
+  // drift, the renderer asks Phaser for a texture that was never built.
+  it('lists exactly the decor sprites the pipeline ships', () => {
+    expect(new Set(files)).toEqual(new Set(targets));
+  });
+
+  it('points every key at a file that exists', () => {
+    for (const entry of listed) {
+      const path = join(REPO_ROOT, 'apps/client/public', entry.url.split('?')[0].replace(/^\//, ''));
+      expect(existsSync(path), `missing ${entry.url}`).toBe(true);
+    }
   });
 });

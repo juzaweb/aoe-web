@@ -21,13 +21,9 @@ function sweep(size: number, blocked: ReadonlySet<string> = EMPTY) {
   let forbs = 0;
   let flowers = 0;
   let rocks = 0;
-  let roads = 0;
-  let blockedHits = 0;
   for (let gx = 0; gx < size; gx++) {
     for (let gy = 0; gy < size; gy++) {
       const choice = decorAt(gx, gy, terrain, blocked);
-      if (isDirtRoadTile(gx, gy, terrain)) roads++;
-      if (blocked.has(tileKey(gx, gy))) blockedHits++;
       if (!choice) continue;
       if (choice.category === 'rock') rocks++;
       else if (choice.category === 'forb') {
@@ -36,7 +32,7 @@ function sweep(size: number, blocked: ReadonlySet<string> = EMPTY) {
       }
     }
   }
-  return { forbs, flowers, rocks, roads, blockedHits, total: size * size };
+  return { forbs, flowers, rocks, total: size * size };
 }
 
 describe('decorAt', () => {

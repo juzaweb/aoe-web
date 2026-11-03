@@ -135,14 +135,24 @@ def apply_op(im: Image.Image, op: dict, canvas: tuple[int, int]) -> tuple[Image.
     return ops.place(im, canvas, op.get("anchor", "bottom-center")), scale, gain
 
 
-def select_part(image: Image.Image, target_id: str, op: dict) -> Image.Image:
-    """Cut one sprite out of a sheet target before the normal op chain runs."""
+SPLIT_CACHE: dict[str, list[Image.Image]] = {}
+
+
+def select_part(image: Image.Image, target_id: str, op: dict, cache_key: str) -> Image.Image:
+    """Cut one sprite out of a sheet target before the normal op chain runs.
+
+    Several targets share one sheet (12 forbs out of 3 uploads), so the split is
+    cached per source file: without it each target re-walks the whole sheet.
+    """
     config = op["split"]
-    parts = ops.split_sheet(
-        image,
-        min_area=int(config.get("minArea", 300)),
-        drop_edge=bool(config.get("dropEdge", True))
-    )
+    parts = SPLIT_CACHE.get(cache_key)
+    if parts is None:
+        parts = ops.split_sheet(
+            image,
+            min_area=int(config.get("minArea", 300)),
+            drop_edge=bool(config.get("dropEdge", True))
+        )
+        SPLIT_CACHE[cache_key] = parts
     index = int(config.get("index", 0))
     if not parts:
         raise SystemExit(f"{target_id}: split found no sprite above minArea")
@@ -160,7 +170,7 @@ def build_target(target_id: str, target: dict, manifest: dict) -> dict:
     image = ops.load_rgba(path)
     op = target.get("op", {})
     if "split" in op:
-        image = select_part(image, target_id, op)
+        image = select_part(image, target_id, op, f"{target['source']}/{target['file']}")
     sheet, scale, gain = apply_op(image, op, canvas)
     out = ROOT / target["out"]
     out.parent.mkdir(parents=True, exist_ok=True)

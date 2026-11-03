@@ -78,13 +78,13 @@ export class DecorLayer {
         if (!choice) continue;
         if (choice.category === 'border-tree') {
           const image = this.poolImage('border-tree', borderIdx++);
-          this.place(image, choice, gx, gy, 1);
+          this.place(image, choice, gx, gy);
         } else if (choice.category === 'rock') {
           const image = this.poolImage('rock', rockIdx++);
-          this.place(image, choice, gx, gy, 1);
+          this.place(image, choice, gx, gy);
         } else if (showForbs) {
           const image = this.poolImage('forb', forbIdx++);
-          this.place(image, choice, gx, gy, 1);
+          this.place(image, choice, gx, gy);
         }
       }
     }
@@ -101,7 +101,7 @@ export class DecorLayer {
         if (gx < bounds.minGx || gx > bounds.maxGx || gy < bounds.minGy || gy > bounds.maxGy) continue;
         for (const choice of canopyDecor(id, gx, gy)) {
           const image = this.poolImage('forb', forbIdx++);
-          this.place(image, choice, gx, gy, 1);
+          this.place(image, choice, gx, gy);
         }
       }
     }
@@ -142,17 +142,23 @@ export class DecorLayer {
     image: Phaser.GameObjects.Image,
     choice: DecorChoice,
     gx: number,
-    gy: number,
-    depthOffset: number
+    gy: number
   ) {
-    image.setTexture(decorTextureKey(choice.category, choice.variant));
+    const key = decorTextureKey(choice.category, choice.variant);
+    // A missing file (bad manifest sync) must drop the decoration, not render
+    // Phaser's green "missing texture" box over the map.
+    if (!this.scene.textures.exists(key)) {
+      image.setVisible(false);
+      return;
+    }
+    image.setTexture(key);
     const screen = gridToScreen(gx, gy);
     const jitterX = (hash2(gx, gy, 0xdead) - 0.5) * 34;
     const jitterY = (hash2(gx, gy, 0xbeef) - 0.5) * 14;
     image.setPosition(screen.x + jitterX, screen.y + jitterY);
     image.setScale(choice.scale);
     image.setFlipX(choice.flipX);
-    image.setDepth(getIsoDepth(gx, gy, depthOffset));
+    image.setDepth(getIsoDepth(gx, gy, 5));
     image.setData('phase', choice.phase);
     image.setVisible(true);
   }

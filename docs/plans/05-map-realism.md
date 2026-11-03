@@ -343,10 +343,15 @@ trước khi coi là chốt.
 ### 12.3 Kiểm tra
 
 - `apps/client && tsc --noEmit` → sạch.
-- `vitest run` → **287 test / 11 file xanh** (thêm 40 test: `visualVariation` 15, `decorScatter` 12,
-  `minimapArt` 13; `assetManifest` tự phủ 29 target).
+- `vitest run` → **294 test / 11 file xanh** (thêm 47 test: `visualVariation` 15, `decorScatter` 12,
+  `minimapArt` 18, `assetManifest` 2 test hợp đồng giữa `decorArt.ts` và lock/decor files).
 - `pnpm --filter @chien-quoc/client build` → OK (1.97 MB JS, cảnh báo chunk cũ).
 - `python3 scripts/assets/build.py --check` → OK (29 target, 7 source, 54 legacy).
+
+- Review hậu implement đã sửa: nền minimap lấy `width/height` từ room thay vì hằng số zone; decor
+  thiếu texture thì ẩn thay vì vẽ ô xanh; `split` cache theo file nguồn (21 target không còn cắt lại
+  sheet); `decorArt` khai báo `dir` thay vì if đặc biệt cho `border-tree`; cache cụm rừng dùng
+  signature thay vì chỉ đếm cây.
 
 ### 12.4 Còn phải verify tay
 

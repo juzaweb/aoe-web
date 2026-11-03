@@ -90,6 +90,34 @@ export function buildGroundPixels(terrain: MapTerrain): Uint8ClampedArray<ArrayB
   return pixels;
 }
 
+/**
+ * Pointer position to fractional grid, measured against the canvas *content*
+ * box.
+ *
+ * The canvas backs 280 pixels into 140 CSS pixels and is drawn with a 1px
+ * border, so the border box is 142: dividing by it stretches the mapping by
+ * 1.4%, which is a tile and a half at kingdom scale. `contentSize` excludes the
+ * border, and the inset is subtracted from the pointer. Results are clamped so
+ * a click on the border cannot order a unit off the map.
+ */
+export function pointerToGrid(
+  pointer: { clientX: number; clientY: number },
+  rect: { left: number; top: number; width: number; height: number },
+  contentSize: { width: number; height: number },
+  mapWidth: number,
+  mapHeight: number
+): { gx: number; gy: number } {
+  const contentWidth = contentSize.width || rect.width;
+  const contentHeight = contentSize.height || rect.height;
+  const borderX = (rect.width - contentWidth) / 2;
+  const borderY = (rect.height - contentHeight) / 2;
+  const clamp = (value: number, max: number) => Math.min(max - 1, Math.max(0, value));
+  return {
+    gx: clamp(((pointer.clientX - rect.left - borderX) / contentWidth) * mapWidth, mapWidth),
+    gy: clamp(((pointer.clientY - rect.top - borderY) / contentHeight) * mapHeight, mapHeight)
+  };
+}
+
 export interface MinimapCluster {
   minX: number;
   minY: number;

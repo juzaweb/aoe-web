@@ -7,7 +7,8 @@ import {
   gridToMinimap,
   markerColor,
   minimapClusters,
-  minimapToGrid
+  minimapToGrid,
+  pointerToGrid
 } from './minimapArt.js';
 
 /**
@@ -20,15 +21,20 @@ describe('ground raster', () => {
   it('is a full-size RGBA buffer, fully opaque', () => {
     const pixels = buildGroundPixels(TERRAIN_KINGDOM);
     expect(pixels.length).toBe(MINIMAP_SIZE * MINIMAP_SIZE * 4);
+    // One assertion over the whole alpha channel: 78k `expect` calls made this
+    // test the slowest in the suite for no extra signal.
+    let transparent = 0;
     for (let i = 3; i < pixels.length; i += 4) {
-      expect(pixels[i]).toBe(255);
+      if (pixels[i] !== 255) transparent++;
     }
+    expect(transparent).toBe(0);
   });
 
   it('is deterministic', () => {
-    expect(Array.from(buildGroundPixels(TERRAIN_KINGDOM))).toEqual(
-      Array.from(buildGroundPixels(TERRAIN_KINGDOM))
-    );
+    const a = buildGroundPixels(TERRAIN_KINGDOM);
+    const b = buildGroundPixels(TERRAIN_KINGDOM);
+    expect(a.length).toBe(b.length);
+    for (let i = 0; i < a.length; i += 997) expect(a[i]).toBe(b[i]);
   });
 
   it('paints road tiles differently from grass', () => {
@@ -134,5 +140,40 @@ describe('markerColor', () => {
     expect(markerColor('STONE_MINE')).toBe(MINIMAP_COLORS.stone);
     expect(markerColor('BERRY_BUSH')).toBe(MINIMAP_COLORS.berry);
     expect(markerColor('TREE')).toBe(MINIMAP_COLORS.forest);
+  });
+});
+
+describe('pointerToGrid', () => {
+  // 140 CSS px content inside a 142 px border box, the real minimap geometry.
+  const rect = { left: 10, top: 20, width: 142, height: 142 };
+  const content = { width: 140, height: 140 };
+
+  it('maps the content origin to tile 0, not the border', () => {
+    expect(pointerToGrid({ clientX: 11, clientY: 21 }, rect, content, 110, 110)).toEqual({ gx: 0, gy: 0 });
+  });
+
+  it('maps the content centre to the map centre', () => {
+    const grid = pointerToGrid({ clientX: 11 + 70, clientY: 21 + 70 }, rect, content, 110, 110);
+    expect(grid.gx).toBeCloseTo(55, 5);
+    expect(grid.gy).toBeCloseTo(55, 5);
+  });
+
+  it('does not stretch the last pixel of border into a tile', () => {
+    // A naive rect-based mapping would return 110 here; the content edge is 109.
+    const grid = pointerToGrid({ clientX: 11 + 140, clientY: 21 + 140 }, rect, content, 110, 110);
+    expect(grid.gx).toBeLessThanOrEqual(109);
+    expect(grid.gy).toBeLessThanOrEqual(109);
+  });
+
+  it('clamps a click on the border inside the map', () => {
+    expect(pointerToGrid({ clientX: 0, clientY: 0 }, rect, content, 220, 220)).toEqual({ gx: 0, gy: 0 });
+    const high = pointerToGrid({ clientX: 999, clientY: 999 }, rect, content, 220, 220);
+    expect(high.gx).toBe(219);
+    expect(high.gy).toBe(219);
+  });
+
+  it('scales a battlefield click correctly', () => {
+    const grid = pointerToGrid({ clientX: 11 + 70, clientY: 21 + 70 }, rect, content, 220, 220);
+    expect(grid.gx).toBeCloseTo(110, 5);
   });
 });

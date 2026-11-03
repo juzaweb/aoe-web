@@ -11,6 +11,7 @@ import {
   gridToMinimap,
   markerColor,
   minimapClusters,
+  pointerToGrid,
   renderForestLayer,
   type MinimapCluster
 } from './minimapArt.js';
@@ -58,7 +59,10 @@ function groundFor(zoneId: string, width: number, height: number): ImageData {
   const key = `${zoneId}:${width}x${height}`;
   let entry = groundCache.get(key);
   if (!entry) {
-    const pixels = buildGroundPixels(terrainForZone(zoneId));
+    // Width/height come from the room, not only from the zone constant: the
+    // server owns the map size, and the raster must cover exactly what the
+    // minimap scales against.
+    const pixels = buildGroundPixels({ ...terrainForZone(zoneId), width, height });
     entry = { pixels, image: new ImageData(pixels, MINIMAP_SIZE, MINIMAP_SIZE) };
     groundCache.set(key, entry);
   }
@@ -116,11 +120,17 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
       // 2. Forest as clusters: 892 battlefield trees are ~77 clumps, so drawing
       // one blip per tree only produced a smear. A light rim carries the
       // contrast (3.68:1) that a dark fill cannot.
+      // Signature, not just a count: a felled tree and a respawn in the same
+      // frame would otherwise keep the stale cluster layer on screen.
       let standingTrees = 0;
+      let treeSignature = 0;
       room.state.resourceNodes?.forEach((res: any) => {
-        if (res.remainingAmount > 0 && res.type === 'TREE') standingTrees++;
+        if (res.remainingAmount > 0 && res.type === 'TREE') {
+          standingTrees++;
+          treeSignature = (treeSignature + res.gridX * 73856093 + res.gridY * 19349663) | 0;
+        }
       });
-      const clusterKey = `${zoneId}:${width}x${height}:${standingTrees}`;
+      const clusterKey = `${zoneId}:${width}x${height}:${standingTrees}:${treeSignature}`;
       if (clusterKey !== clusterCache.key) {
         // Only walk the nodes into an array when the cluster set is stale: this
         // used to allocate ~900 objects every frame just to compute a key.
@@ -227,9 +237,12 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
   /**
    * Maps a minimap pointer event to fractional grid coordinates.
    *
-   * Divides by the rendered rect, not the backing store: the canvas has a 1px
-   * border, so `rect.width` (142) is the real pointer area while `canvas.width`
-   * is 280. Using the backing store would shift every click by more than a tile.
+   * Divides by the *content* box, not the backing store and not the border box:
+   * the canvas draws 280 backing pixels into 140 CSS pixels and carries a 1px
+   * border, so `rect.width` is 142. Dividing by that stretches the mapping by
+   * 1.4% - at 110 tiles a full tile and a half, which is a visible miss on a
+   * right-click order. `clientWidth` excludes the border, and its inset is
+   * removed from the pointer position.
    */
   const gridFromEvent = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -237,10 +250,7 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
     const rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
     const { width, height } = sizeOf(room);
-    return {
-      gx: ((e.clientX - rect.left) / rect.width) * width,
-      gy: ((e.clientY - rect.top) / rect.height) * height
-    };
+    return pointerToGrid(e, rect, { width: canvas.clientWidth, height: canvas.clientHeight }, width, height);
   };
 
   const handleMinimapClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
