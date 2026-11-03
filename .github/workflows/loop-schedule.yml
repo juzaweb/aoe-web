@@ -1,0 +1,100 @@
+name: Loop schedule
+
+# Dispatches `loop.yml` every five hours. A separate file, not an `on.schedule`
+# on the loop itself, for two reasons:
+#
+#   1. The loop is expensive and repair-risky. Keeping it manual-only means a
+#      broken schedule can be deleted without touching the pipeline it drives.
+#   2. A schedule event carries no inputs, so every `inputs.step` in loop.yml
+#      would need a fallback. Dispatching passes real inputs instead, and the
+#      loop stays exactly as it runs by hand.
+#
+# Cron is UTC. `0 */5 * * *` fires at 00:00, 05:00, 10:00, 15:00 and 20:00 UTC,
+# which is 07:00, 12:00, 17:00, 22:00 and 03:00 in Asia/Ho_Chi_Minh. GitHub runs
+# scheduled workflows on a best-effort basis; a busy queue can delay a slot.
+on:
+  schedule:
+    - cron: '0 */5 * * *'
+  workflow_dispatch:
+    inputs:
+      step:
+        description: What to dispatch. `auto` proposes when the queue is empty and builds when it is not.
+        type: choice
+        required: true
+        default: auto
+        options:
+          - auto
+          - full
+          - triage
+
+# Two schedulers overlapping would dispatch twice; the loop's own `group: loop`
+# would then queue the second run hours behind the first.
+concurrency:
+  group: loop-schedule
+  cancel-in-progress: false
+
+permissions:
+  # `gh workflow run` needs this. `workflow_dispatch` is one of the few things a
+  # GITHUB_TOKEN may trigger (unlike `push`, which it suppresses).
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    name: dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          # Nothing else is read here, and the repo carries large assets.
+          sparse-checkout: STATE.md
+
+      # One slot either builds or proposes, never both: `full` already spends ten
+      # minutes on agents, and running triage in the same slot would double the
+      # cost. An idle queue therefore triggers triage, which is what refills it —
+      # without this the schedule would idle forever once every candidate shipped.
+      - name: Decide the step
+        id: pick
+        env:
+          REQUESTED: ${{ inputs.step || 'auto' }}
+        run: |
+          set -euo pipefail
+          if [ ! -f STATE.md ]; then
+            echo "::error::STATE.md is missing on develop."
+            exit 1
+          fi
+
+          candidates=$(grep -E '^\| `[A-Z0-9-]+`' STATE.md | grep -cF '`candidate`' || true)
+          echo "::notice::${candidates:-0} candidate slice(s) in STATE.md."
+
+          case "$REQUESTED" in
+            full|triage) step="$REQUESTED" ;;
+            *)
+              if [ "${candidates:-0}" -gt 0 ]; then step=full; else step=triage; fi
+              ;;
+          esac
+
+          echo "step=$step" >> "$GITHUB_OUTPUT"
+          echo "::notice::Dispatching loop.yml with step=$step"
+          if [ "$step" = "full" ]; then
+            grep -E '^\| `[A-Z0-9-]+`' STATE.md | grep -F '`candidate`' | head -3 || true
+          fi
+
+      - name: Dispatch the loop
+        env:
+          GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
+          STEP: ${{ steps.pick.outputs.step }}
+        run: |
+          set -euo pipefail
+          # merge stays on: the loop's gate, test and browser checks stand between
+          # an agent and develop, so the dispatch does not add a human step that a
+          # schedule cannot provide anyway.
+          gh workflow run loop.yml \
+            --ref develop \
+            -f step="$STEP" \
+            -f merge=true
+          echo "::notice::Dispatched loop.yml with step=$STEP."

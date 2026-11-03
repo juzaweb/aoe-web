@@ -48,8 +48,9 @@ which cannot write source code. Steps 4-6 must stay interactive so you see every
 
 ## Run it in GitHub Actions
 
-`.github/workflows/loop.yml`, started by hand from the Actions tab (`workflow_dispatch`).
-Nothing runs on a schedule or on push.
+`.github/workflows/loop.yml`, started by hand from the Actions tab (`workflow_dispatch`) or
+dispatched by `.github/workflows/loop-schedule.yml`. Never on push: a push-triggered agent
+would react to its own commits.
 
 | Input | Meaning |
 |-------|---------|
@@ -60,6 +61,28 @@ Nothing runs on a schedule or on push.
 
 Required repository secret: `OPENCODE_API_KEY`. Optional `OPENCODE_PROVIDER` (defaults to
 `opencode-go`, and must match the `provider/` prefix in `opencode.json`).
+
+### The five-hour schedule
+
+`.github/workflows/loop-schedule.yml` runs on `cron: '0 */5 * * *'` (UTC: 00, 05, 10, 15, 20 →
+07:00, 12:00, 17:00, 22:00, 03:00 in Asia/Ho_Chi_Minh) and dispatches `loop.yml`. It is a
+separate file on purpose: a schedule event carries no inputs, so `loop.yml` keeps real
+`workflow_dispatch` inputs and stays identical whether a person or the cron starts it.
+
+Each slot does exactly one thing, decided by `STATE.md`:
+
+| Queue state | Dispatched step | Why |
+|-------------|-----------------|-----|
+| has a `candidate` row | `full` | build, verify, browser-check and merge the first candidate |
+| no `candidate` row | `triage` | propose the next batch; nothing else to build |
+
+That is what stops the schedule from idling forever once every candidate shipped — triage
+refills the queue, and the next slot builds. Override it by dispatching the scheduler by hand
+with `step = full` or `step = triage`.
+
+Turn it off with `gh workflow disable loop-schedule`. GitHub treats cron as best-effort: a busy
+queue can delay a slot, and a repository without pushes for 60 days has its schedules paused by
+GitHub itself.
 
 ### What each step does to the repository
 

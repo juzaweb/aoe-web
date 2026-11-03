@@ -1,7 +1,10 @@
 name: Loop
 
-# Manual only. Nothing runs on a schedule or on push: every run costs tokens and
-# can write to the repository, so a human presses the button.
+# Runs when a human presses the button, and when `loop-schedule.yml` dispatches
+# it every five hours. Never on push: a push-triggered agent would react to its
+# own commits. Every run costs tokens and can write to the repository, so the
+# dispatch path goes through a separate file whose idle check skips a slot when
+# STATE.md holds no `candidate` row.
 on:
   workflow_dispatch:
     inputs:
