@@ -188,3 +188,34 @@ def top_inset(im: Image.Image, floor: int = ALPHA_FLOOR) -> int:
 def bottom_inset(im: Image.Image, floor: int = ALPHA_FLOOR) -> int:
     """Rows between the last visible sprite pixel and the canvas bottom."""
     return im.height - alpha_bbox(im, floor)[3]
+
+
+# Bounds for `iso_base`, expressed as a fraction of the artwork width. A correct
+# 2:1 iso building measures at most 3.5% span and 5.6% offset over the shipped
+# feudalwars/Bleed sprites, so 10% leaves room for a lopsided hut while still
+# catching a straight-on source, which measures 97% span.
+ISO_BASE_MAX_SPAN = 0.10
+ISO_BASE_MAX_OFFSET = 0.10
+
+
+def iso_base(im: Image.Image, floor: int = ALPHA_FLOOR) -> tuple[float, float]:
+    """Width and centre offset of the lowest opaque row, as a fraction of the art.
+
+    A 2:1 isometric building stands on a diamond footprint, so its bottom row is
+    the front corner of that diamond: a few pixels, near the middle of the
+    artwork, which is why bottom-centre anchoring puts the base on the tile. A
+    source rendered straight-on instead ends in a flat wall line as wide as the
+    building. It still fits the canvas and still touches the bottom row, so every
+    other check passes while the sprite reads as a billboard standing on the grid.
+    """
+    mask = np.asarray(im.convert("RGBA"))[:, :, 3] >= floor
+    rows = np.flatnonzero(mask.any(axis=1))
+    columns = np.flatnonzero(mask.any(axis=0))
+    if rows.size == 0 or columns.size == 0:
+        raise ValueError("image has no pixels above the alpha floor")
+    base = np.flatnonzero(mask[rows[-1]])
+    width = columns[-1] - columns[0] + 1
+    centre = (columns[0] + columns[-1]) / 2
+    span = (base[-1] - base[0] + 1) / width
+    offset = abs((base[0] + base[-1]) / 2 - centre) / width
+    return float(span), float(offset)

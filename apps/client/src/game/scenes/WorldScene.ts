@@ -375,11 +375,11 @@ export class WorldScene extends Phaser.Scene {
     }
 
     // Preload generated building assets with cache-busting version (2x resolution)
-    // v=8: the house moved from hovel frame 00000 (a straight-on elevation
-    // whose base was a flat 243 px line) to the 45-degree frame 20000, so its
-    // base now converges on the tile's front corner. Bump the key whenever a
-    // PNG under public/assets/buildings or /resources changes.
-    const v = 'v=8';
+    // v=9: the house moved from hovel frame 00000 (a straight-on elevation
+    // whose base was a flat line as wide as the plot) to the 45-degree frame
+    // 60000, so its base converges on the tile's front corner. Bump the key
+    // whenever a PNG under public/assets/buildings or /resources changes.
+    const v = 'v=9';
     this.load.image('building_TOWN_CENTER', `/assets/buildings/town_center.png?${v}`);
     this.load.image('building_BARRACKS', `/assets/buildings/barracks.png?${v}`);
     this.load.image('building_HOUSE', `/assets/buildings/house.png?${v}`);

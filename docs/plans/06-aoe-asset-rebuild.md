@@ -487,7 +487,7 @@ cùng lock hash.
 | `resource.tree-3` | `resources/tree_3.png` | 160×220 | `_tree_06` | CC-BY 3.0 | 0.305 |
 | `resource.tree-4` | `resources/tree_4.png` | 160×220 | `_tree_11` | CC-BY 3.0 | 0.226 |
 | `building.barracks` | `buildings/barracks.png` | 400×320 | Feudal Wars Barracks | CC0 1.0 | 1.270 |
-| `building.house` | `buildings/house.png` | 256×220 | Simple Isometric Hovel `20000` | CC-BY 4.0 | 0.496 |
+| `building.house` | `buildings/house.png` | 256×220 | Simple Isometric Hovel `60000` | CC-BY 4.0 | 0.493 |
 | `building.town-center` | `buildings/town_center.png` | 576×440 | Feudal Wars Castle | CC0 1.0 | 1.043 |
 | `building.lumber-camp` | `buildings/lumber_camp.png` | 256×220 | Feudal Wars Stable | CC0 1.0 | 0.805 |
 
@@ -534,14 +534,27 @@ Kết quả: `tsc --noEmit` sạch; `vitest run` 8 file / 142 test xanh;
   component (các nhà dính nhau), không tách bằng column runs được.
 
   Bản đầu chọn frame `00000`; đo lại thì đó là **hình chiếu thẳng 0°**, không phải góc 45°: hàng alpha
-  cuối của `house.png` trải phẳng 243 px (≈ trọn bề ngang footprint 2×2 = 256 px) và hai sườn đáy có
-  dx/dy = 0.00 / -0.00, trong khi lưới 128×64 cần hai sườn dốc ±2 hội tụ về **một** góc trước. Hệ quả
-  là nhà đọc như tấm bìa dựng đứng trên lưới iso. Frame `20000` là hướng 45° kề đó: art 232×220, hàng
-  cuối chỉ còn 4 px, sườn 1.93 / -1.83 — khớp projection. Chọn `20000` (góc trước lệch trái) vì tâm
-  vùng tối nhất của nó (+3.2% bề ngang) gần barracks (+4.2%) và castle (+6.5%) đang ship, tức cùng
-  phía cửa với bộ feudalwars. `00000`/`60000` còn lại vẫn dùng được: đổi `manifest.json` `entry` rồi
-  build lại, không phải sửa code. Art cũ trước đợt OGA vốn đúng iso (sườn 1.90 / -2.84, hàng cuối
-  2 px), nên đây là regression của lần swap, không phải lỗi có từ đầu.
+  cuối của `house.png` trải phẳng **97%** bề ngang art, trong khi lưới 128×64 cần hàng cuối là **một**
+  góc trước (vài pixel quanh tâm) để bottom-centre neo đúng lên đỉnh dưới của diamond footprint. Hệ quả
+  là nhà đọc như tấm bìa dựng đứng trên lưới iso, dù nó vẫn vừa canvas và vẫn chạm hàng cuối — đúng
+  những gì `--check` kiểm tra trước đây, nên lọt.
+
+  Hai frame 45° là `20000` và `60000`. Chốt `60000`: art 228×220, hàng cuối 2.2% bề ngang, sườn đáy
+  1.80 / -2.22 (trung bình ≈ 2, đúng 2:1), và **góc trước lệch tâm canvas 13 px** so với 22 px của
+  `20000`. Tiêu chí chọn là góc trước gần tâm nhất, vì `EntityRenderer` neo bottom-centre: trong một
+  turnaround 16 hướng, camera xoay quanh **vật** chứ không quanh **điểm chạm đất**, nên mỗi frame có
+  điểm chạm đất lệch một lượng khác nhau và frame lệch ít nhất là frame đứng đúng chỗ nhất. Đo trên
+  bốn building do manifest dựng: barracks 1.0%/2.4%, house 2.2%/5.9%, lumber camp 0.8%/3.7%, castle
+  4.0%/3.6% (span/lệch tâm).
+
+  Vì lỗi này lọt qua mọi check cũ, `--check` có thêm luật `iso_base` (`ops.py`): với mọi target
+  `building.*`, hàng cuối phải ≤ 10% bề ngang art và góc trước ≤ 10% lệch tâm. Đã thử đặt lại
+  `entry = hovel_00000.png` → check fail đúng thông báo "straight-on view instead of a 45-degree one",
+  rồi trả về `60000`.
+
+  Còn lại: góc trước vẫn lệch 13 px (0.10 tile) về phải — chấp nhận được ở mức hiển thị này; nếu cần
+  chỉnh tuyệt đối thì thêm op `offsetX` vào manifest chứ không sửa tay PNG. Art cũ trước đợt OGA vốn
+  đúng iso (sườn 1.90 / -2.84, hàng cuối 2 px), nên đây là regression của lần swap.
 - **ART-09** chỉ làm lumber camp (stable). Mill/mining camp không có nguồn tương ứng trong collection.
 - **ART-10** danh sách legacy hiện ghi ở `scripts/assets/README.md` §Not migrated; manifest chỉ chứa
   target đã migrate. Nếu muốn `--check` cảnh báo asset legacy thì thêm mảng `legacy` vào manifest ở

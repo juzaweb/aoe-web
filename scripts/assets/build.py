@@ -324,6 +324,19 @@ def cmd_check() -> None:
             last_row = sheet.getchannel("A").crop((0, im.height - 1, im.width, im.height))
             if last_row.getbbox() is None:
                 problems.append(f"{target_id}: bottom row is empty (art is not bottom-anchored)")
+            # A building has to stand on a tile, so its bottom row must be the
+            # front corner of the footprint diamond rather than a flat wall line.
+            # The art still fits the canvas and still touches the bottom row
+            # either way, which is how a straight-on frame shipped before.
+            elif target_id.startswith("building."):
+                span, offset = ops.iso_base(sheet)
+                if span > ops.ISO_BASE_MAX_SPAN or offset > ops.ISO_BASE_MAX_OFFSET:
+                    problems.append(
+                        f"{target_id}: base does not converge on a front corner "
+                        f"(bottom row spans {span:.0%} of the art width, corner sits "
+                        f"{offset:.0%} off centre); the source frame is probably a "
+                        "straight-on view instead of a 45-degree one"
+                    )
             # The recorded box and insets feed `HP_BAR_Y`; a mismatch means the
             # lock is stale even though the file hash matched (for example after
             # a manual lock edit).

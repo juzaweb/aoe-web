@@ -22,9 +22,10 @@ inspected, not silently absorbed.
 
 `--check` is the CI gate. It fails when a shipped PNG no longer matches its lock
 hash, when the canvas or the recorded artwork box/insets drifted, when the bottom
-row is empty (art not bottom-anchored), when a source lost its author/license or
-is missing from `CREDITS.md`, or when a legacy sprite was edited or is new
-(`--legacy` re-pins them).
+row is empty (art not bottom-anchored), when a `building.*` sprite does not stand
+on a front corner (`iso_base`), when a source lost its author/license or is
+missing from `CREDITS.md`, or when a legacy sprite was edited or is new (`--legacy`
+re-pins them).
 
 ## Adding a sprite
 
@@ -61,6 +62,14 @@ is missing from `CREDITS.md`, or when a legacy sprite was edited or is new
 - `flip: "x"` mirrors the source before scaling. A mirrored 2:1 iso render is
   still a valid view of the same building (the opposite ground corner), so this
   is how a single-direction source is turned to face the client's camera.
+- A `building.*` source must be a 45-degree view, not a straight-on one: its
+  bottom row has to be the front corner of the footprint diamond, which is what
+  `iso_base` measures and what bottom-centre anchoring assumes. In a 16-direction
+  turnaround the camera orbits the object, not its ground point, so the frames
+  differ in how far the contact point sits from the artwork centre; pick the
+  45-degree frame with the smallest offset. `hovel_00000` was 97% wide at the
+  bottom (a wall line, not a corner) and shipped for a while because every other
+  check accepts it.
 - Resampling is done in premultiplied alpha to avoid dark fringes.
 - The lock records `bbox`, `topInset`, `bottomInset`, `scale`, `lumGain`,
   `sourceSha256` and the license/author for every file. Hashes are of the PNG
