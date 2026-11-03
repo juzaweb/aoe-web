@@ -26,7 +26,7 @@ Then, in order:
 
 ```
 /loop-triage          # produces the ranked table, then stops
-/loop-pick ALERT-01   # you choose; the rest are marked "not this run"
+/loop-pick ALERT-01   # you choose; the other candidates are left alone
 /loop-plan ALERT-01   # writes docs/plans/12-....md, then stops
 /loop-build ALERT-01  # code + tests, then stops
 /loop-verify ALERT-01 # independent run, PASS or FAIL

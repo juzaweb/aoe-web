@@ -131,7 +131,7 @@
       "description": "Step 2/6 — human approval: promote one slice ID from STATE.md",
       "agent": "build",
       "subtask": false,
-      "template": "The human has approved slice $ARGUMENTS for implementation. Do not write any code. Instead: 1) verify the ID exists in STATE.md High Priority, 2) set its Next action to 'APPROVED <date> — awaiting plan', 3) change every other High Priority row's Next action to 'not this run', 4) append a line to loop-run-log.md recording the approval, 5) tell the human the exact next command to run: /loop-plan $ARGUMENTS. If the ID is ambiguous or missing, stop and list the real IDs."
+      "template": "The human has approved slice $ARGUMENTS for implementation. Do not write any code. Instead: 1) verify the ID exists in STATE.md High Priority, 2) set only its Next action cell to 'APPROVED <date> — awaiting plan', 3) leave every other row and every other column byte-for-byte unchanged — never overwrite a candidate with 'not this run', 4) append a line to loop-run-log.md recording the approval, 5) tell the human the exact next command to run: /loop-plan $ARGUMENTS. If the ID is ambiguous or missing, stop and list the real IDs."
     },
     "loop-plan": {
       "description": "Step 3/6 — write docs/plans phase file for an approved slice",
