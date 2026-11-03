@@ -1,9 +1,11 @@
 # Loop State — Chien Quoc (2D MMO RTS)
 
-Last run: 2026-11-03 (triage L1 only — report-only; evidence refreshed, no slice promoted, no source touched)
-Loop mode: **L1 report-only** by default. The full pipeline is `/loop-triage` → `/loop-pick` →
-`/loop-plan` → `/loop-build` → `/loop-verify` → `/loop-ship`. One slice moves at a time, and a
-human decides at step 2. See `LOOP.md` for the status vocabulary each command enforces.
+Last run: 2026-11-03 (triage L1 only — no slice promoted, nothing implemented)
+
+Pipeline: `/loop-triage` → `/loop-pick` → `/loop-plan` → `/loop-build` → `/loop-verify` →
+`/loop-ship`. One slice at a time. `pick` is the only step that needs a human; every other
+step runs unattended in `.github/workflows/loop.yml`, which merges verified slices into
+`develop` without waiting for a reviewer. See `LOOP.md`.
 
 Baseline at last run: `apps/client` 355 tests passed, `apps/server` 167 tests passed.
 

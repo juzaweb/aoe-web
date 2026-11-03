@@ -19,7 +19,7 @@ on:
           - ship
           - full
       slice:
-        description: Slice ID from STATE.md (required for every step except triage)
+        description: Slice ID from STATE.md. Blank picks the first candidate.
         type: string
         required: false
         default: ''
@@ -57,15 +57,39 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Validate inputs
+      # A blank slice is not an error: triage needs none, and every other step
+      # falls back to the first `candidate` row in STATE.md. Forcing the operator
+      # to retype an ID that is already in the state file only produced failed
+      # runs, which is why this resolves the slice rather than rejecting it.
+      - name: Resolve slice
+        id: slice
         env:
           STEP: ${{ inputs.step }}
-          SLICE: ${{ inputs.slice }}
+          # The raw input, not this step's own output.
+          REQUESTED: ${{ inputs.slice }}
         run: |
           set -euo pipefail
-          if [ "$STEP" != "triage" ] && [ -z "$SLICE" ]; then
-            echo "::error::Slice ID is required for step '$STEP'."
+          slice="$REQUESTED"
+
+          if [ -z "$slice" ] && [ "$STEP" != "triage" ]; then
+            # First table row whose Next action starts with `candidate`, read from
+            # the backticked ID in the first column.
+            slice=$(grep -E '^\| `[A-Z0-9-]+`' STATE.md \
+              | grep -F '`candidate`' \
+              | head -1 \
+              | sed -E 's/^\| `([^`]+)`.*/\1/')
+          fi
+
+          if [ -z "$slice" ] && [ "$STEP" != "triage" ]; then
+            echo "::error::No slice given and STATE.md has no 'candidate' row."
+            grep -E '^\| `[A-Z0-9-]+`' STATE.md || true
             exit 1
+          fi
+
+          echo "slice=$slice" >> "$GITHUB_OUTPUT"
+          if [ -n "$slice" ]; then
+            echo "::notice::Slice: $slice"
+            grep -F "\`$slice\`" STATE.md | head -1 || true
           fi
 
       - name: Checkout
@@ -137,7 +161,7 @@ jobs:
       - name: Run step
         env:
           STEP: ${{ inputs.step }}
-          SLICE: ${{ inputs.slice }}
+          SLICE: ${{ steps.slice.outputs.slice }}
           MODEL: ${{ inputs.model }}
         run: |
           set -euo pipefail
@@ -240,13 +264,13 @@ jobs:
         if: steps.gate.outputs.allowed != 'true'
         run: |
           set -euo pipefail
-          echo "::error::Slice '${{ inputs.slice }}' touched a path in gate.yaml."
+          echo "::error::Slice '${{ steps.slice.outputs.slice }}' touched a path in gate.yaml."
           git checkout -- .
           git clean -fd
           {
             echo "### Slice refused"
             echo ""
-            echo "\`${{ inputs.slice }}\` needs a file that \`gate.yaml\` denies to"
+            echo "\`${{ steps.slice.outputs.slice }}\` needs a file that \`gate.yaml\` denies to"
             echo "unattended agents. The working tree was reverted; no PR was opened."
             echo ""
             echo "Either split the slice so the denylisted part is a separate,"
@@ -263,7 +287,7 @@ jobs:
         if: steps.gate.outputs.allowed == 'true'
         env:
           STEP: ${{ inputs.step }}
-          SLICE: ${{ inputs.slice }}
+          SLICE: ${{ steps.slice.outputs.slice }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
@@ -288,7 +312,7 @@ jobs:
         id: ship
         if: (inputs.step == 'ship' || inputs.step == 'full') && steps.gate.outputs.allowed == 'true'
         env:
-          SLICE: ${{ inputs.slice }}
+          SLICE: ${{ steps.slice.outputs.slice }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
@@ -345,7 +369,7 @@ jobs:
           {
             echo "### Loop — ${{ inputs.step }}"
             echo ""
-            echo "- Slice: \`${{ inputs.slice }}\`"
+            echo "- Slice: \`${{ steps.slice.outputs.slice }}\`"
             echo "- PR: ${{ steps.ship.outputs.url || 'none' }}"
             echo "- Merged: ${{ inputs.merge && steps.ship.outputs.url != '' && 'yes' || 'no' }}"
             echo ""
