@@ -61,8 +61,9 @@ geometry had to change.
 
 All sprites are cropped to their alpha bounds, scaled to the existing canvas,
 anchored bottom-centre, and their luminance is matched to the sprite they
-replace so the map keeps its current brightness. No sprite is redrawn or
-recoloured by hand.
+replace so the map keeps its current brightness. No sprite is redrawn;
+the ground cover also gets a per-channel gain so its saturation reaches the
+client's grass, and the border forest reuses three trees of the same pack.
 
 ### Tree Collection v2.6 — Bleed
 
@@ -71,12 +72,34 @@ recoloured by hand.
 - **License:** [CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/)
 - **Used for:** `assets/resources/tree.png`, `tree_2.png`, `tree_3.png`,
   `tree_4.png` — the four silhouettes a resource node picks from
-  (`scripts/assets/manifest.json`, targets `resource.tree*`).
+  (`scripts/assets/manifest.json`, targets `resource.tree*`) — and
+  `assets/decor/border_tree_01..03.png` for the forest ring outside the map.
 
-**Changes made.** Four trees (`_tree_02`, `_tree_04`, `_tree_06`, `_tree_11`)
-were taken from the pack, one camera each (`00000`), cropped to alpha, fitted
-into the client's 160x220 canvas and luminance-matched to the sprite they
-replace. No frame is recoloured; the four files differ only in the source tree.
+**Changes made.** Seven trees (`_tree_02`, `_tree_04`, `_tree_05`, `_tree_11` for
+resource nodes; `_tree_09`, `_tree_12`, `_tree_13` for the border) were taken from
+the pack, one camera each (`00000`), cropped to alpha, fitted into the client's
+canvas (160x220 for resource nodes, 400x340 for border trees) and
+luminance-matched. No frame is recoloured; the files differ only in the source
+tree. Variants were chosen by measured hue so the forest stays one palette:
+`_tree_06`/`_tree_07` (45 deg, autumn) and `_tree_10`/`_tree_14` (23-27 deg,
+bare) are deliberately unused.
+
+### 100+ isometric forbs and Assorted isometric rocks — Hansjörg Malthaner
+
+- **Author:** Hansjörg Malthaner (Varkalandar)
+- **Source:** https://opengameart.org/content/100-isometric-forbs (forbs),
+  https://opengameart.org/content/assorted-isometric-rocks (rocks)
+- **License:** [CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/) for the
+  forbs, [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/) for the rocks
+- **Used for:** `assets/decor/forb_01..12.png` (flowers, grass tufts, bushes) and
+  `assets/decor/rock_01..06.png` (scattered stones).
+
+**Changes made.** Each upload is a sheet of separate plants/rocks; the build cuts
+the sheet into sprites by connected alpha regions, picks one sprite per target,
+crops it to alpha, applies a per-channel gain (forbs only, to lift the pack's
+duller saturation to the client's grass), luminance-matches it, and fits it into
+a 160x96 (forbs) or 80x64 (rocks) canvas, anchored bottom-centre. Rocks are not
+gain-corrected. No sprite is redrawn.
 
 ### Simple Isometric Hovel — Bleed
 

@@ -1,4 +1,60 @@
 {
+  "legacy": {
+    "apps/client/public/assets/buildings/farm.png": "1b5612c859cf890c43f15a2ad2631a3c3b3eacf35418a31216477c49657d0c58",
+    "apps/client/public/assets/buildings/mill.png": "b32adc29f88a739702706b9bfcbc1ab0a12be45a1624ffbea910ae199f5e393e",
+    "apps/client/public/assets/buildings/mining_camp.png": "3ed077b00b2b44420a4a4e169f093e34f5ff6a8b6cbbf6f1c4c393fecb51e801",
+    "apps/client/public/assets/buildings/tower.png": "d4e4fef1954c49f0ac03a72118d87d36fd6265790bc664794d7e3dad3040ed0a",
+    "apps/client/public/assets/cursors/attack.png": "6a4969515fe20e59c79e2fc37d603ac3f5aa9f476bccbd66e93c67d0ebac325c",
+    "apps/client/public/assets/cursors/build-blocked.png": "91cf73a85574ab0736ec89764b47930aa4a22ad3989d5f0281b42de4e1e7ce92",
+    "apps/client/public/assets/cursors/build.png": "d528ff72109c8c6408d1168773fa3ea81debbfc1c75fd7dc2f382c70610b5d1d",
+    "apps/client/public/assets/cursors/default.png": "936938852b1687f42950250b956acff9004fbf0d8c3090935fc61d0df54dab5b",
+    "apps/client/public/assets/cursors/harvest.png": "1a666e9bea680b6d83f1a9bf375146a88aee77f9ad55aa5a10fa97138750a845",
+    "apps/client/public/assets/cursors/order.png": "45bd1340b65e6fc057c11f72204d7f1a797488923a83c77f29b1104f0be7850e",
+    "apps/client/public/assets/icons/food.png": "afea2fa52490804d12e49a96255e8cf6d1f98a4e405d0829ebf6462dce9354a8",
+    "apps/client/public/assets/icons/gold.png": "1eb9eb683a6d0fd20391041d60bb1b3419b3edbbd90b280fd67a9abe5eed3105",
+    "apps/client/public/assets/icons/population.png": "180769ff35fce1caed1742bf2b9a34ec12d4c9d6119931f0853efa1a143d239c",
+    "apps/client/public/assets/icons/stone.png": "c1680e489943ba56b0b61bc81409fc9b7cc5f9a42c4c9bf54ae5ca66b82868b0",
+    "apps/client/public/assets/icons/wood.png": "30818d5a18b8a66d902b0b6ac5cfd640945a82cfe3bd21f0ec5082012ad38cf4",
+    "apps/client/public/assets/resources/berry.png": "ce748128384c966e6b5a5b00c31a8b3d1e713a9b5e55fe7d162d4ffaf78a4e04",
+    "apps/client/public/assets/resources/gold.png": "57b287e3ea21d8d895051f4e091b8bdebef02e15002d037393e3142d10bf19b0",
+    "apps/client/public/assets/resources/stone.png": "4835afa771115c2e35db48c6da144e0257c83b7a4d1c5345c93965c47e012a82",
+    "apps/client/public/assets/terrain/dirt.png": "2d6f43b34c5efdbd013b81031cf47d5f555481ecfe22ec995e1366afe8bf5b7f",
+    "apps/client/public/assets/terrain/dirt_1.png": "65fe7da27f04ba1a5bd0b6e5c5b663ccdc689b396552a15606608ee872f16109",
+    "apps/client/public/assets/terrain/dirt_2.png": "d120565a3351f9620a3adfa1495ae4b784479f1e0deb5024dcaeefc67d53f60d",
+    "apps/client/public/assets/terrain/dirt_3.png": "fab204c8afefdfb89c888600d5d1b61d840683eec09d88d0676bdb447682ffe9",
+    "apps/client/public/assets/terrain/grass.png": "9f4ef99ac108d18e69d4877dcafb22167820ff1d67c56c684675b1e5aaa4ed30",
+    "apps/client/public/assets/terrain/grass_1.png": "9f4ef99ac108d18e69d4877dcafb22167820ff1d67c56c684675b1e5aaa4ed30",
+    "apps/client/public/assets/terrain/grass_2.png": "2dda41391d95b48032c166ed28aba5d651d03315304e02ed0e47c9932ce2120c",
+    "apps/client/public/assets/terrain/grass_3.png": "a13760ccd0d582e26df9ed9ba873bd464288b11960168382f6c26a3be0208d6b",
+    "apps/client/public/assets/terrain/road_stamp.png": "29c9053052d04185009ebde38609b630b7141492a396528711bcbae66299dbf5",
+    "apps/client/public/assets/terrain/road_stamp_1.png": "29c9053052d04185009ebde38609b630b7141492a396528711bcbae66299dbf5",
+    "apps/client/public/assets/terrain/road_stamp_2.png": "4bef46dc40c089df5294aedfc4488267ec4c67307961512c24f4be119d022d3d",
+    "apps/client/public/assets/terrain/road_stamp_3.png": "d286bdbe12e65cf81bcc5af8c27fbe95436461e8a179597331aa6ee0ddf79a79",
+    "apps/client/public/assets/units/actions/archer_attack.png": "8f35985b157674b215c4aeb790d750aaed0cfd8a6b9582a474eeafd0abbe95c0",
+    "apps/client/public/assets/units/actions/archer_death.png": "a09e9516cb66b73a5721609796996afebb9f12417690702e895c594fc7e86d76",
+    "apps/client/public/assets/units/actions/archer_idle.png": "af31803572bec5fb1e719cae7e37bdc50936fb458fe5ac97a3e355fa8bc9aaef",
+    "apps/client/public/assets/units/actions/archer_walk.png": "d90cc17f05410fa2512d92ed36ebdca5cd860a5c09187cb642e4c2468c8668b5",
+    "apps/client/public/assets/units/actions/spearman_attack.png": "6fe650a8bfbc1117de0bd8e450acca5cda5df1805a99510c9b721bbeb6dfa57b",
+    "apps/client/public/assets/units/actions/spearman_death.png": "75897e6bb6a9c6143d63bdedcb5f980c6ada193d7c74177cfe7776208c9badd2",
+    "apps/client/public/assets/units/actions/spearman_idle.png": "94daab1fc75e12a3c56d5045956607e06c6066178e13a4f1fc052b41bcf5c136",
+    "apps/client/public/assets/units/actions/spearman_walk.png": "f0842e0bde5fe785c584c469b06ecc2af05b474990ffcb42e39ea9ba4bb362c2",
+    "apps/client/public/assets/units/actions/villager_attack.png": "aabe8091223af2dfc9ef9ca499d0af51c07a15954895e2ed1492000455650587",
+    "apps/client/public/assets/units/actions/villager_carry.png": "5c1fdc73575d8cd96d3e7593a3bdf267967ced817cb620098652f271e2ccc129",
+    "apps/client/public/assets/units/actions/villager_death.png": "d8ee1ed469e5a3ae362b0531d1842928b37293b83b03cdaab37737ff171b1221",
+    "apps/client/public/assets/units/actions/villager_idle.png": "c0d879cee24f13b80a50f32c6a0ca71b8701b5296f8ab543c9f95481907ea699",
+    "apps/client/public/assets/units/actions/villager_walk.png": "6cf72d2ae6cb1ccb1180fe9c41841cf9d62cc49e5441b3021c7564208b759414",
+    "apps/client/public/assets/units/archer_idle.png": "80a4df66064e5bcf7a4679c67cb6fad5eccf3b15c9c1314b241270eecff2205e",
+    "apps/client/public/assets/units/archer_sheet.png": "ec5592d63cbe9beccb299104a02c2c734b6d1f132f65ee5c9f4b034422c75c58",
+    "apps/client/public/assets/units/cavalry_idle.png": "99948bd1c7cf560eba44d8f4430391c12d2cd3b52a36575eb8b8546a22ac2489",
+    "apps/client/public/assets/units/cavalry_sheet.png": "da4faf3dbf3096a01bbbe6f9d452eae1a7645be73e5d01dd2a8fa67c202901aa",
+    "apps/client/public/assets/units/raw/archer_cutout_raw.png": "5888c97334f3840d23fa14f99cf974ef258662062c511116c8199ae23059b14a",
+    "apps/client/public/assets/units/raw/cavalry_cutout_raw.png": "2be0e5df02e4f2e204987d4ca6fea2b7c6112c64666d1c148052a1236946af46",
+    "apps/client/public/assets/units/raw/spearman_cutout_raw.png": "c4185ab37c1b890995f3fb9e69992b259c3661ea499873f2791a2447bb326589",
+    "apps/client/public/assets/units/spearman_idle.png": "f1ad151727972670b66b28c40065bc0d357b234fd5383acbe1e85385c4546311",
+    "apps/client/public/assets/units/spearman_sheet.png": "2c55e34221e23942911df3e15440ddf88807c0ce23a5b88fdbaf5410159616b5",
+    "apps/client/public/assets/units/villager_idle.png": "697b151fd4cc154acbc1d83647e6a46bc4a0f57f2c3125c4ad8437b66559d7ec",
+    "apps/client/public/assets/units/villager_sheet.png": "c54f16566cc731e9b84cf64e45c4e031d0ff7da70bf035784548218257435877"
+  },
   "sources": {
     "oga.bleed-hovel": {
       "author": "Bleed",
@@ -22,13 +78,25 @@
           "sha256": "7168417f64391af6f711107bea49a04162e01c1e07bea6b76b4c923916981a7b",
           "url": "https://opengameart.org/sites/default/files/_tree_04_1.zip"
         },
-        "tree06": {
-          "sha256": "c62ae2d8a617c60ac9492d624b7367c14cd7905ff47d19719cc8cbb091a65996",
-          "url": "https://opengameart.org/sites/default/files/_tree_06_1.zip"
+        "tree05": {
+          "sha256": "e53f0d66f101905774d1cde44381c3f1aed250adba0f718c9c2f4ebcfab35864",
+          "url": "https://opengameart.org/sites/default/files/_tree_05_1.zip"
+        },
+        "tree09": {
+          "sha256": "841307f4e5038fca10d30b6f5b339a0635eea560abcac074fd085752b78e5e52",
+          "url": "https://opengameart.org/sites/default/files/_tree_09.zip"
         },
         "tree11": {
           "sha256": "744231ade49f2957d31bee6616c596a4dd2972e36a9391c8b66801932d895cde",
           "url": "https://opengameart.org/sites/default/files/_tree_11.zip"
+        },
+        "tree12": {
+          "sha256": "bd9f9e2c3a1c16d526fbdac77009a700f6556ff878d416095786d25423ddcbbb",
+          "url": "https://opengameart.org/sites/default/files/_tree_12.zip"
+        },
+        "tree13": {
+          "sha256": "fb5f476c032f9bdaf524c23c00a57cfcecee0defd83f7d71807df938e53dd7d5",
+          "url": "https://opengameart.org/sites/default/files/_tree_13.zip"
         }
       },
       "license": "CC-BY-3.0",
@@ -66,6 +134,36 @@
       },
       "license": "CC0-1.0",
       "page": "https://opengameart.org/content/medieval-stable-isometric-25d"
+    },
+    "oga.hjm-forbs": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "files": {
+        "forb01": {
+          "sha256": "b105345626f955ea1dd333438245beb516f8b129c6514fedae3cc29f9771e911",
+          "url": "https://opengameart.org/sites/default/files/hjm-randomized_forbs_01-alpha_0.png"
+        },
+        "forb02": {
+          "sha256": "8f7891656a489df0bf26d81505016c3c59a19b93f8381040aca55d6ea04b14e9",
+          "url": "https://opengameart.org/sites/default/files/hjm-randomized_forbs_02-alpha_0.png"
+        },
+        "forb03": {
+          "sha256": "adab5808cb352685cec61d7506f3732b765410c697edec545952a21729fd662f",
+          "url": "https://opengameart.org/sites/default/files/hjm-randomized_forbs_03-alpha_0.png"
+        }
+      },
+      "license": "CC-BY-3.0",
+      "page": "https://opengameart.org/content/100-isometric-forbs"
+    },
+    "oga.hjm-rocks": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "files": {
+        "rocks": {
+          "sha256": "5b115c064f45f2bf105ae4490b51e9351d8cb19bb4dd1316e508fa4377c10764",
+          "url": "https://opengameart.org/sites/default/files/hjm-assorted_rocks_1.png"
+        }
+      },
+      "license": "CC-BY-4.0",
+      "page": "https://opengameart.org/content/assorted-isometric-rocks"
     }
   },
   "targets": {
@@ -161,6 +259,489 @@
       "sourceSha256": "09da8841806e1920b60e6e2c604aa750efe6d4482beab65160240c0c0555627e",
       "topInset": 0
     },
+    "decor.border-tree-01": {
+      "author": "Bleed",
+      "bbox": [
+        80,
+        0,
+        318,
+        340
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        400,
+        340
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.6302,
+      "out": "apps/client/public/assets/decor/border_tree_01.png",
+      "page": "https://opengameart.org/content/tree-collection-v26-bleeds-game-art",
+      "scale": 0.5015,
+      "sha256": "ae3c507951e2e1e8facf0ddc9558096e5dad87ab1fe677da3d200f9b9baa7546",
+      "source": "oga.bleed-trees",
+      "sourceSha256": "87a640703e18b45990f90a21bf3a817c2ce3d544449c9ea3c0431a3623e8d8e5",
+      "topInset": 0
+    },
+    "decor.border-tree-02": {
+      "author": "Bleed",
+      "bbox": [
+        15,
+        0,
+        385,
+        340
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        400,
+        340
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.3958,
+      "out": "apps/client/public/assets/decor/border_tree_02.png",
+      "page": "https://opengameart.org/content/tree-collection-v26-bleeds-game-art",
+      "scale": 0.5346,
+      "sha256": "e1203642a4a861a488fa6ea9795dd125a118495359878eac5b4782b10e918e2e",
+      "source": "oga.bleed-trees",
+      "sourceSha256": "ba0a2bc9e1d183e32f6b0bfe543b05b567f23830b5c7aed6a4dc5ad7207d6c17",
+      "topInset": 0
+    },
+    "decor.border-tree-03": {
+      "author": "Bleed",
+      "bbox": [
+        119,
+        2,
+        281,
+        339
+      ],
+      "bottomInset": 1,
+      "canvas": [
+        400,
+        340
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.4727,
+      "out": "apps/client/public/assets/decor/border_tree_03.png",
+      "page": "https://opengameart.org/content/tree-collection-v26-bleeds-game-art",
+      "scale": 0.4539,
+      "sha256": "eef661507d7cef28ad8ae633a12624e80492d8a0487fa9f5d49c8b705af89905",
+      "source": "oga.bleed-trees",
+      "sourceSha256": "811bb296846861c62f47e6e92e368b0dfba559a55f5aa3145c7b0b717c23439c",
+      "topInset": 2
+    },
+    "decor.forb-01": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        1,
+        0,
+        159,
+        96
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        160,
+        96
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.3375,
+      "out": "apps/client/public/assets/decor/forb_01.png",
+      "page": "https://opengameart.org/content/100-isometric-forbs",
+      "scale": 1.2468,
+      "sha256": "b71c93d1548e3e7f8b0445bc8d05cfb6ab34fcc828fece7e031f413ceb9169cf",
+      "source": "oga.hjm-forbs",
+      "sourceSha256": "b105345626f955ea1dd333438245beb516f8b129c6514fedae3cc29f9771e911",
+      "topInset": 0
+    },
+    "decor.forb-02": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        30,
+        0,
+        129,
+        95
+      ],
+      "bottomInset": 1,
+      "canvas": [
+        160,
+        96
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 0.9929,
+      "out": "apps/client/public/assets/decor/forb_02.png",
+      "page": "https://opengameart.org/content/100-isometric-forbs",
+      "scale": 0.8727,
+      "sha256": "094d171db48901a2ed0684bfe5c7136f77456c9f23fcc9f9b670f7c0bbc03a71",
+      "source": "oga.hjm-forbs",
+      "sourceSha256": "b105345626f955ea1dd333438245beb516f8b129c6514fedae3cc29f9771e911",
+      "topInset": 0
+    },
+    "decor.forb-03": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        0,
+        7,
+        160,
+        95
+      ],
+      "bottomInset": 1,
+      "canvas": [
+        160,
+        96
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 0.873,
+      "out": "apps/client/public/assets/decor/forb_03.png",
+      "page": "https://opengameart.org/content/100-isometric-forbs",
+      "scale": 1.28,
+      "sha256": "708aa6f3f79bf7647774ec3b178fe04f91aff0d94cbd3d63936b58106d0601ae",
+      "source": "oga.hjm-forbs",
+      "sourceSha256": "b105345626f955ea1dd333438245beb516f8b129c6514fedae3cc29f9771e911",
+      "topInset": 7
+    },
+    "decor.forb-04": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        20,
+        0,
+        139,
+        95
+      ],
+      "bottomInset": 1,
+      "canvas": [
+        160,
+        96
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.0687,
+      "out": "apps/client/public/assets/decor/forb_04.png",
+      "page": "https://opengameart.org/content/100-isometric-forbs",
+      "scale": 1.5484,
+      "sha256": "e02abef43dd7d76d4d4c951d35069aa22a0008fe303564886855ae5fd34c1829",
+      "source": "oga.hjm-forbs",
+      "sourceSha256": "b105345626f955ea1dd333438245beb516f8b129c6514fedae3cc29f9771e911",
+      "topInset": 0
+    },
+    "decor.forb-05": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        12,
+        0,
+        147,
+        96
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        160,
+        96
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.1352,
+      "out": "apps/client/public/assets/decor/forb_05.png",
+      "page": "https://opengameart.org/content/100-isometric-forbs",
+      "scale": 0.7559,
+      "sha256": "317fa6ca7164b6f2f7eae9bba08c9b7ac74dc994f0fdec66f8112d8b297abf66",
+      "source": "oga.hjm-forbs",
+      "sourceSha256": "8f7891656a489df0bf26d81505016c3c59a19b93f8381040aca55d6ea04b14e9",
+      "topInset": 0
+    },
+    "decor.forb-06": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        12,
+        0,
+        148,
+        96
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        160,
+        96
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.0286,
+      "out": "apps/client/public/assets/decor/forb_06.png",
+      "page": "https://opengameart.org/content/100-isometric-forbs",
+      "scale": 1.2468,
+      "sha256": "a77e0c4fc2d1571200c80d58d4e357d3c33774b0d314e5629ac45122c14d2d63",
+      "source": "oga.hjm-forbs",
+      "sourceSha256": "8f7891656a489df0bf26d81505016c3c59a19b93f8381040aca55d6ea04b14e9",
+      "topInset": 0
+    },
+    "decor.forb-07": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        14,
+        3,
+        146,
+        95
+      ],
+      "bottomInset": 1,
+      "canvas": [
+        160,
+        96
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.0127,
+      "out": "apps/client/public/assets/decor/forb_07.png",
+      "page": "https://opengameart.org/content/100-isometric-forbs",
+      "scale": 1.3714,
+      "sha256": "ed1ecfb7c3a1aae677207b0e7adc36c296ca9403d230757ac6489c338fd4d47f",
+      "source": "oga.hjm-forbs",
+      "sourceSha256": "8f7891656a489df0bf26d81505016c3c59a19b93f8381040aca55d6ea04b14e9",
+      "topInset": 3
+    },
+    "decor.forb-08": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        38,
+        0,
+        121,
+        96
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        160,
+        96
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.2296,
+      "out": "apps/client/public/assets/decor/forb_08.png",
+      "page": "https://opengameart.org/content/100-isometric-forbs",
+      "scale": 1.1566,
+      "sha256": "a62e817f77ec02261134fbaac5191db639eccdad83f95b3080f7b2ad40053b0d",
+      "source": "oga.hjm-forbs",
+      "sourceSha256": "8f7891656a489df0bf26d81505016c3c59a19b93f8381040aca55d6ea04b14e9",
+      "topInset": 0
+    },
+    "decor.forb-09": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        32,
+        0,
+        127,
+        96
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        160,
+        96
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.0794,
+      "out": "apps/client/public/assets/decor/forb_09.png",
+      "page": "https://opengameart.org/content/100-isometric-forbs",
+      "scale": 0.7328,
+      "sha256": "15d69cbb0e4348ea9f56f1ba9fadd98396b36ef8ea5cd63ebef8ca0bdd468f46",
+      "source": "oga.hjm-forbs",
+      "sourceSha256": "adab5808cb352685cec61d7506f3732b765410c697edec545952a21729fd662f",
+      "topInset": 0
+    },
+    "decor.forb-10": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        0,
+        3,
+        159,
+        96
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        160,
+        96
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.1042,
+      "out": "apps/client/public/assets/decor/forb_10.png",
+      "page": "https://opengameart.org/content/100-isometric-forbs",
+      "scale": 1.4159,
+      "sha256": "e2ed32945521f8b84d245a10ec5cb81ef63f4f3673e9d4bcd9af1508ee9e4181",
+      "source": "oga.hjm-forbs",
+      "sourceSha256": "adab5808cb352685cec61d7506f3732b765410c697edec545952a21729fd662f",
+      "topInset": 3
+    },
+    "decor.forb-11": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        9,
+        0,
+        152,
+        95
+      ],
+      "bottomInset": 1,
+      "canvas": [
+        160,
+        96
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.1519,
+      "out": "apps/client/public/assets/decor/forb_11.png",
+      "page": "https://opengameart.org/content/100-isometric-forbs",
+      "scale": 1.3333,
+      "sha256": "f1bb7c98abc790db8aabf38de4370a746851607d95d906d6a28de68c1458596a",
+      "source": "oga.hjm-forbs",
+      "sourceSha256": "adab5808cb352685cec61d7506f3732b765410c697edec545952a21729fd662f",
+      "topInset": 0
+    },
+    "decor.forb-12": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        47,
+        0,
+        112,
+        96
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        160,
+        96
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.3446,
+      "out": "apps/client/public/assets/decor/forb_12.png",
+      "page": "https://opengameart.org/content/100-isometric-forbs",
+      "scale": 0.9231,
+      "sha256": "c052a6efe22da3481b3528f5ba126e5c8d612981b0c86ff96b2f6efe0c468f45",
+      "source": "oga.hjm-forbs",
+      "sourceSha256": "adab5808cb352685cec61d7506f3732b765410c697edec545952a21729fd662f",
+      "topInset": 0
+    },
+    "decor.rock-01": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        0,
+        15,
+        80,
+        64
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        80,
+        64
+      ],
+      "license": "CC-BY-4.0",
+      "lumGain": 1.326,
+      "out": "apps/client/public/assets/decor/rock_01.png",
+      "page": "https://opengameart.org/content/assorted-isometric-rocks",
+      "scale": 0.8333,
+      "sha256": "08b6dbf580a53f2e82238d95a85b23952f4c5c92d374531807fd52c4a421ec4d",
+      "source": "oga.hjm-rocks",
+      "sourceSha256": "5b115c064f45f2bf105ae4490b51e9351d8cb19bb4dd1316e508fa4377c10764",
+      "topInset": 15
+    },
+    "decor.rock-02": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        3,
+        0,
+        77,
+        64
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        80,
+        64
+      ],
+      "license": "CC-BY-4.0",
+      "lumGain": 1.3273,
+      "out": "apps/client/public/assets/decor/rock_02.png",
+      "page": "https://opengameart.org/content/assorted-isometric-rocks",
+      "scale": 1.2075,
+      "sha256": "038947534eb737702d023949c24c9795a8b858b9dc18087d63e377a2bb2d5d8e",
+      "source": "oga.hjm-rocks",
+      "sourceSha256": "5b115c064f45f2bf105ae4490b51e9351d8cb19bb4dd1316e508fa4377c10764",
+      "topInset": 0
+    },
+    "decor.rock-03": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        7,
+        0,
+        73,
+        64
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        80,
+        64
+      ],
+      "license": "CC-BY-4.0",
+      "lumGain": 1.228,
+      "out": "apps/client/public/assets/decor/rock_03.png",
+      "page": "https://opengameart.org/content/assorted-isometric-rocks",
+      "scale": 1.1228,
+      "sha256": "788279eb86a17db1ee4f0e0326cd749051e0b8c0735be558e86962fb855eb4ee",
+      "source": "oga.hjm-rocks",
+      "sourceSha256": "5b115c064f45f2bf105ae4490b51e9351d8cb19bb4dd1316e508fa4377c10764",
+      "topInset": 0
+    },
+    "decor.rock-04": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        0,
+        15,
+        80,
+        64
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        80,
+        64
+      ],
+      "license": "CC-BY-4.0",
+      "lumGain": 0.8066,
+      "out": "apps/client/public/assets/decor/rock_04.png",
+      "page": "https://opengameart.org/content/assorted-isometric-rocks",
+      "scale": 1.25,
+      "sha256": "8f1ffe2b66dadfc0e424c0c59ba1c484edcbf5a7ee3ef146aec2b4ea85032e5a",
+      "source": "oga.hjm-rocks",
+      "sourceSha256": "5b115c064f45f2bf105ae4490b51e9351d8cb19bb4dd1316e508fa4377c10764",
+      "topInset": 15
+    },
+    "decor.rock-05": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        0,
+        13,
+        80,
+        64
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        80,
+        64
+      ],
+      "license": "CC-BY-4.0",
+      "lumGain": 1.1781,
+      "out": "apps/client/public/assets/decor/rock_05.png",
+      "page": "https://opengameart.org/content/assorted-isometric-rocks",
+      "scale": 1.2121,
+      "sha256": "6851f5ceba2bb7da94c931a9323ad80e0ffb4738c9d60e67cfb9c539d855a083",
+      "source": "oga.hjm-rocks",
+      "sourceSha256": "5b115c064f45f2bf105ae4490b51e9351d8cb19bb4dd1316e508fa4377c10764",
+      "topInset": 13
+    },
+    "decor.rock-06": {
+      "author": "Hansj\u00f6rg Malthaner",
+      "bbox": [
+        0,
+        27,
+        80,
+        64
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        80,
+        64
+      ],
+      "license": "CC-BY-4.0",
+      "lumGain": 1.2011,
+      "out": "apps/client/public/assets/decor/rock_06.png",
+      "page": "https://opengameart.org/content/assorted-isometric-rocks",
+      "scale": 1.1594,
+      "sha256": "4176e5001cf538d96c03013a164cbd1cebeb179ca3e8c55fcdd41bad41705378",
+      "source": "oga.hjm-rocks",
+      "sourceSha256": "5b115c064f45f2bf105ae4490b51e9351d8cb19bb4dd1316e508fa4377c10764",
+      "topInset": 27
+    },
     "resource.tree": {
       "author": "Bleed",
       "bbox": [
@@ -210,9 +791,9 @@
     "resource.tree-3": {
       "author": "Bleed",
       "bbox": [
-        2,
-        3,
-        156,
+        1,
+        60,
+        158,
         217
       ],
       "bottomInset": 3,
@@ -221,14 +802,14 @@
         220
       ],
       "license": "CC-BY-3.0",
-      "lumGain": 1.2784,
+      "lumGain": 1.1986,
       "out": "apps/client/public/assets/resources/tree_3.png",
       "page": "https://opengameart.org/content/tree-collection-v26-bleeds-game-art",
-      "scale": 0.3053,
-      "sha256": "869ed2c13501d724dff40b938d0c72d1d98dae243f0c7cb66f886eb7e4b6d809",
+      "scale": 0.2572,
+      "sha256": "d3d2eabd8a87f4430d22843454d6da013bb77e9b413c77550142b6a354bf5455",
       "source": "oga.bleed-trees",
-      "sourceSha256": "d00d87f35d85c263b91e4f23b2d9295ac11eec3531d5cf4a3bcb10eefb1546d9",
-      "topInset": 3
+      "sourceSha256": "91a0724853217880668e89396f1cdd7848124b49226906cc980978aa8eea015e",
+      "topInset": 60
     },
     "resource.tree-4": {
       "author": "Bleed",

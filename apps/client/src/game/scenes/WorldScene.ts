@@ -28,6 +28,8 @@ import { CameraController, ZOOM_MIN } from '../input/CameraController.js';
 import { installHudPointerGuard } from '../input/hudPointerGuard.js';
 import { EntityRenderer } from '../render/EntityRenderer.js';
 import { FocusIndicator } from '../render/FocusIndicator.js';
+import { DecorLayer } from '../render/DecorLayer.js';
+import { decorPreloadList } from '../render/decorArt.js';
 import { TerrainLayer } from '../render/TerrainLayer.js';
 import { OwnerColorRegistry, colorToCss } from '../render/ownerColor.js';
 import { unitActionTexture } from '../render/unitDirections.js';
@@ -306,6 +308,7 @@ export class WorldScene extends Phaser.Scene {
   public commands!: CommandController;
   public entityRenderer!: EntityRenderer;
   public terrain!: TerrainLayer;
+  public decor!: DecorLayer;
   /**
    * Size of the map currently joined. A kingdom is 110x110, the battlefield
    * 220x220; the room replicates both numbers so camera, terrain culling,
@@ -314,7 +317,7 @@ export class WorldScene extends Phaser.Scene {
   public mapWidth: number = MAP_GRID_WIDTH;
   public mapHeight: number = MAP_GRID_HEIGHT;
   /** Road/plaza layout of the current map, derived from its zone id. */
-  private terrainLayout: MapTerrain = TERRAIN_BATTLEFIELD;
+  public terrainLayout: MapTerrain = TERRAIN_BATTLEFIELD;
   /** CMB-03: red marker on the enemy the selection is hitting. */
   public focus!: FocusIndicator;
 
@@ -413,6 +416,12 @@ export class WorldScene extends Phaser.Scene {
     this.load.image('road_stamp_1', `/assets/terrain/road_stamp_1.png?${tv}`);
     this.load.image('road_stamp_2', `/assets/terrain/road_stamp_2.png?${tv}`);
     this.load.image('road_stamp_3', `/assets/terrain/road_stamp_3.png?${tv}`);
+
+    // Decorative ground cover and the border forest. Single images built by
+    // `scripts/assets/build.py` (targets `decor.*`), listed in `decorArt.ts`.
+    for (const { key, url } of decorPreloadList('v=1')) {
+      this.load.image(key, url);
+    }
   }
 
   create() {
@@ -430,6 +439,11 @@ export class WorldScene extends Phaser.Scene {
     // across a 220x220 map.
     this.terrain = new TerrainLayer(this);
     this.terrain.create();
+
+    // 1b. Ground cover and border forest, above the grass but below every
+    // entity (the layer draws at depth 5, resources sit at 10).
+    this.decor = new DecorLayer(this);
+    this.decor.create();
 
     // 2. Building placement ghost
     this.placement = new PlacementController(this);
@@ -543,6 +557,7 @@ export class WorldScene extends Phaser.Scene {
 
     // Initial viewport terrain render
     this.terrain.render();
+    this.decor.render();
   }
 
   /**
@@ -647,6 +662,9 @@ export class WorldScene extends Phaser.Scene {
     this.mapHeight = height;
     this.terrainLayout = layout;
     this.terrain?.setTerrain(layout);
+    // Decor depends on the terrain (roads, map edge), so it has to re-lay out
+    // when the layout changes even if the camera never moved.
+    this.decor?.invalidateViewport();
   }
 
   /** Default view for a map with no known anchor yet: the whole terrain. */
@@ -691,6 +709,7 @@ export class WorldScene extends Phaser.Scene {
     // The pool is repositioned only when the viewport moves; a new map can start
     // at a very different corner, so force the next frame to repaint it.
     this.terrain?.invalidateViewport();
+    this.decor?.invalidateViewport();
 
     this.hasCenteredOnSpawn = false;
     this.centerAttempts = 0;
@@ -1287,6 +1306,8 @@ export class WorldScene extends Phaser.Scene {
     this.flushResourceSpawns();
 
     this.terrain.render();
+    this.decor.render();
+    this.decor.update(time);
 
     // Fallback: keep trying to focus this player's Town Center until the snapshot
     // (or a delayed ownership sync) exposes it. Bounded so it stops after ~5s.

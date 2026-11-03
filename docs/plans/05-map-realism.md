@@ -1,6 +1,6 @@
 # Phase 05 — Map realism (visual-only)
 
-Status: **DRAFT — chờ duyệt**
+Status: **IMPLEMENTED — chờ verify tay** (code + test xong 2026-11-03; xem §12)
 Ngày ghi plan: 2026-11-03
 Phạm vi: client only. **Không** đổi server, `packages/shared`, schema, protocol hay DB.
 
@@ -215,8 +215,10 @@ Số đo quyết định thiết kế: battlefield 220 tile → 140 CSS px = **0
   cỏ `#3a4a1f` (grass mean ×0.55) + fbm ±6%; đường `#b09161` lấy từ `isDirtRoadTile`. Bỏ hẳn nền
   `#1e3f16` và vòng line 45°.
 - Rừng: gom TREE bằng connected components bán kính 2 tile (892 node → **77 cụm**, lớn nhất 25),
-  cache theo `zoneId`. Mỗi cụm: fill `#1d2c0e`, viền 1px `#8aab52` — viền đạt **3.68:1** với nền
-  nên cụm đọc được dù ruột tối.
+  cache theo `zoneId`. Mỗi cụm vẽ bằng chùm tròn quanh từng cây (bán kính ~1.7 tile): pass viền
+  `#8aab52` trước, pass ruột `#1d2c0e` sau, nên ranh giới là đường cong tự nhiên chứ không phải
+  hình chữ nhật; viền đạt **3.68:1** với nền. Layer render một lần vào canvas offscreen, mỗi frame
+  chỉ `drawImage`.
 - Tài nguyên khác: glyph 3px tại tâm node, viền tối 0.5px:
   vàng = diamond `#e0ad42` (4.69:1), đá = triangle `#b0b7bb` (4.74:1), berry = dot `#e26a80`
   (3.03:1). Không dùng `/assets/resources/*.png` trên minimap: 5–6px sẽ phủ 8–9 tile.
@@ -305,3 +307,53 @@ Mỗi dòng là một commit độc lập (convention của repo). **Chưa commi
 - Pack CC-BY có thể lệch style nhẹ so với art AI hiện tại; preview + override list là cửa chặn.
 - Minimap 140px (backing 280) là giới hạn của panel: 1 tile = 1.27px ở battlefield, nên chỉ phân
   biệt được *loại* và *vị trí*, không đọc được số node trong một cụm.
+
+## 12. Kết quả implement (2026-11-03)
+
+Toàn bộ `VIS-01..VIS-10` đã code, không đụng `apps/server`, `packages/shared`, schema hay DB.
+Chưa commit (chờ duyệt).
+
+### 12.1 Asset (VIS-02, VIS-09, VIS-10)
+
+| Hạng mục | Kết quả |
+| --- | --- |
+| `resource.tree-3` | Đổi `_tree_06` (45°) → `_tree_05` (74.8°); `_tree_06` bỏ khỏi manifest. Bốn cây giờ 65.8–80°, cùng tông. |
+| Decor | 12 forb (3 sheet `hjm-randomized_forbs_01..03`), 6 rock (sheet `hjm-assorted_rocks_1`, 102 mảnh), 3 border tree (`_tree_09/12/13`, canvas 400×340). 21 PNG, ~500 KB. |
+| Op mới | `split` (connected alpha, `minArea` 300, bỏ mảnh dính cạnh, sort diện tích rồi vị trí) và `gain` (nhân kênh, chạy trước `matchLum`). |
+| Forbs | `gain [1.20, 1.30, 1.05]` + `matchLum 113`: sat 0.36 → 0.40–0.75, lum 110–115, mean `(101,122,57)` khớp cỏ `(102,124,45)`. |
+| Rocks | `matchLum 112` + `gain [1.0, 1.0, 1.02]`: lum 114, mean `(107–126, 111–116, 87–125)`; không dùng component đen (mean 34–39) vì đó là bóng. |
+| Legacy gate | `build.py --legacy` ghi `legacy` (54 PNG) vào lock; `--check` fail khi file bị sửa hoặc có PNG mới chưa pin. |
+| Gate hiện tại | `asset check OK: 29 targets, 7 sources, 54 legacy`. |
+
+Chọn sprite decor bằng số đo (diện tích, tỉ lệ, saturation), không xem ảnh — cần mắt người duyệt lại
+trước khi coi là chốt.
+
+### 12.2 Client
+
+| Task | File / thay đổi |
+| --- | --- |
+| VIS-01 | `visualVariation.ts`: `hash2`, `hashString`, `fbm`, `grassTextureIndex`, `grassTint`, `roadStampLook`, `resourceLook` (thuần, test dưới Node). |
+| VIS-03 | `TerrainLayer`: variant theo hash (hết `(gx+gy)%3`), tint 2 trường fbm chu kỳ ~40 tile (mọi kênh ≥ 0.88), stamp xoay theo tangent + scale 0.92–1.12 + tint + lệch vuông góc ±5px, 25% có stamp vai (pool 260, alpha 0.55). |
+| VIS-04 | `TerrainLayer` vẽ cỏ ra ngoài biên `MAP_APRON_TILES = 4`; `DecorLayer` (pool theo loại, depth 5, LOD forb khi zoom < 0.55, đung đưa ±1.5°, tắt dưới zoom 0.55) + `decorArt.ts` + preload trong `WorldScene`. |
+| VIS-05 | `decorScatter.ts`: `decorAt` (hoa/cỏ theo fbm thành vạt, đá 0.8%, bụi 1.2%, bỏ tile đường/blocked), `borderDecorAt` (ring 4 mức), `canopyDecor` (1–2 cỏ quanh gốc cây). |
+| VIS-06 | `EntityRenderer.createResourceNodeSprite`: scale 0.90–1.15, flip ~50%, tint ≥ `0xdfe8cf`, bù `y` để đáy vẫn bám tile; ghi `gridX/gridY` (và `sizeX/sizeY` cho nhà) làm dữ liệu cho decor. |
+| VIS-07 | `minimapArt.ts` + `Minimap.tsx`: backing 280×280 (CSS 140), nền raster từ `isDirtRoadTile` + fbm, rừng gom cụm (bán kính 2, cache theo số cây sống) rồi vẽ thành blob tròn có viền, vàng = diamond, đá = triangle, berry = dot, lính = circle (mình có ring trắng), viewport nền mờ 8%. Bỏ hẳn nền `#1e3f16` và vòng line 45°. |
+| VIS-08 | Phase này. |
+
+### 12.3 Kiểm tra
+
+- `apps/client && tsc --noEmit` → sạch.
+- `vitest run` → **287 test / 11 file xanh** (thêm 40 test: `visualVariation` 15, `decorScatter` 12,
+  `minimapArt` 13; `assetManifest` tự phủ 29 target).
+- `pnpm --filter @chien-quoc/client build` → OK (1.97 MB JS, cảnh báo chunk cũ).
+- `python3 scripts/assets/build.py --check` → OK (29 target, 7 source, 54 legacy).
+
+### 12.4 Còn phải verify tay
+
+- Rừng: `tree_3` mới có còn lẫn tông không; mật độ/thân cây 4 biến thể ở zoom 0.4× và 2.2×.
+- Decor: hoa/cỏ/đá có đúng chỗ (không đè chân nhà, không trên đường), mật độ có quá dày ở vạt fbm
+  không; cỏ lay có tự nhiên không; rừng viền có che hết đường cắt map không.
+- Minimap: cụm rừng đọc được ở cả 110×110 và 220×220; vàng/đá/berry/lính/nhà phân biệt được;
+  khung camera và click/right-click vẫn đúng.
+- Đường: xoay stamp có làm lộ mép cứng của `road_stamp` không; vai đường có bị lốm đốm.
+- FPS: đếm sprite decor ở zoom min (kỳ vọng < 3k ảnh) và minimap 60fps.

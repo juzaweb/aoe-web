@@ -86,7 +86,7 @@ Với đường, bỏ các mục `multiple buildings`…`duplicate object` và t
 ```text
 rocks, boulders, grass tufts, leaves, footprints, hoofprints, puddles, cracks wider than 4 px,
 straight seam, tiling seam, tile border, frame, vignette, directional light, specular highlight,
-high contrast, objects, debris
+flat uniform color, washed out, muddy, monochrome, soft blur, objects, debris
 ```
 
 ---
@@ -110,13 +110,20 @@ liền mạch, không cần khớp mép elip.
 ### 5.2 Positive prompt chính
 
 ```text
-Seamless tileable texture of a packed dirt road, top-down orthographic view, fine dry earth and
-grit, scattered 1 to 3 pixel pebbles, shallow wheel ruts running horizontally with a slight
-meander, subtle tonal variation between warm ochre and muted umber, hand-painted RTS terrain art
-in the style of Age of Empires II Definitive Edition, matte surface, evenly lit with no directional
-light, no shadows, no perspective, no vignette, no border, no objects, fills the frame edge to edge,
-2:1 aspect ratio
+Seamless tileable texture of a sun-bleached packed dirt road, top-down orthographic view, light warm
+tan overall around #b09160, strong value range from pale dry dust to dark shadowed ruts, pebbles and
+small stones 6 to 14 pixels across at 1024 width so they survive downscaling, coarse grit clusters,
+shallow wheel ruts running horizontally with a slight meander, hairline cracks 8 to 20 pixels wide,
+hand-painted RTS terrain art in the style of Age of Empires II Definitive Edition, matte surface,
+evenly lit with no directional light, no shadows, no perspective, no vignette, no border, no
+objects, fills the frame edge to edge, 2:1 aspect ratio, sharp detail that survives downscaling to
+120x60
 ```
+
+Bản `duong.png` trước đó ra `#8a6d4d`, lum 113, p5–p95 chỉ 30 — model hiểu `subtle tonal
+variation` và `muted umber` thành mặt phẳng tối, một màu. Prompt trên thay bằng `light warm tan`,
+`strong value range`, `clearly visible pebbles`; nếu vẫn ra phẳng thì tăng weight
+`(strong value range:1.2)` và bỏ `muted`.
 
 ### 5.3 Bốn biến thể
 
@@ -150,7 +157,7 @@ Chọn 1 ảnh/seed, lưu bản gốc vào `scripts/out/road/` trước khi hạ
 ```
 
 - [ ] Đúng 120×60, RGBA, corner alpha = 0, tâm alpha ≥ 250.
-- [ ] Mean RGB trong `#a88a5c`–`#b89a6a` (luminance 140–158).
+- [ ] Mean RGB trong `#a88a5c`–`#b89a6a` (luminance 140–158), p5–p95 ≥ 60 (bản `duong.png` chỉ đạt 30).
 - [ ] 4 file có 4 MD5 khác nhau; không file nào > 60 KB.
 - [ ] Ghép thử 3 stamp lệch nhau 22/11 px: không thấy seam, không thấy viền elip.
 - [ ] Đặt trên `grass.png`: không có halo trắng hoặc viền đen.
@@ -178,20 +185,32 @@ Ba sửa đổi bắt buộc:
 ```text
 (free-standing stone archway:1.3), a single monumental stone gate standing alone, two thick square
 stone piers joined by one tall pointed arch, (open passage you can see straight through:1.3),
-empty see-through opening with the white background visible through it, no building behind the
-arch, no walls attached to the piers, no roof, no enclosed room, no windows, dark walnut timber
-portcullis half raised inside the arch, worn cobblestone threshold under the arch, two iron
-braziers with small flames at the base of the piers, faint violet runes carved into the arch stones,
-the opening itself empty, the gate is taller than it is wide, about 1.4 times the base width,
-readable silhouette at 25 percent scale, late-medieval European frontier architecture, weathered
-grey limestone and dark walnut timber, stone coping on the piers, one faded indigo banner on each
-pier, hand-painted 2.5D isometric RTS game asset in the style of Age of Empires II Definitive
-Edition, muted desaturated natural palette, painterly texture with fine brush detail, clean
-readable silhouette, crisp edges, soft overcast daylight from the upper left, gentle ambient
-occlusion only at the base, no dramatic lighting, no photorealistic rendering, no 3D render look,
-isolated on a flat pure white background, full object centered with 6 percent margin, no ground
-plane, no cast shadow outside the footprint, no text, no watermark, no UI
+(passage open from the arch all the way down to the ground line:1.3), empty see-through opening
+with the white background visible through it down to the ground, piers standing directly on the
+ground line, no platform, no steps, no plinth below the opening, no building behind the arch, no
+walls attached to the piers, no roof, no enclosed room, no windows, iron portcullis fully raised
+into the arch above the opening, no bars across the opening, two iron braziers with small flames at
+the base of the piers, faint violet runes carved into the arch stones, the opening itself empty,
+height about 1.15 times the base width, readable silhouette at 25 percent scale, late-medieval
+European frontier stonework, mid-tone weathered grey limestone around #5a564e, slightly dark and
+desaturated, dark walnut timber, stone coping on the piers, one faded indigo banner on each pier,
+hand-painted 2.5D isometric RTS game asset in the style of Age of Empires II Definitive Edition,
+muted natural
+palette, painterly texture with fine brush detail, clean readable silhouette, crisp edges, soft
+overcast daylight from the upper left, gentle ambient occlusion only at the base, no dramatic
+lighting, no bright white stone, no overexposed highlights, no photorealistic rendering, no 3D
+render look, isolated on a flat pure white background, full object centered with 6 percent margin,
+no ground plane, no cast shadow outside the footprint, no text, no watermark, no UI
 ```
+
+Hai số đã sửa so với bản trước, lấy từ ảnh `cong.png` vừa gen:
+
+- `1.4` → **`1.15`** lần bề ngang chân: bản cũ ra 1127×1461 (w/h 0.77), lệch canvas 320×360
+  (0.889); 1.15 cho đúng tỉ lệ canvas.
+- Thêm **`passage ... down to the ground line`** + **`no solid wall or plinth below the opening`**:
+  bản cũ có lỗ vòm nhưng đáy lỗ cách mặt đất 318 px, sau scale còn ~77 px đặc, đọc thành bệ cổng.
+- Thêm **`mid-tone ... #5a564e`** (lum 86) và negative `bright white stone`: bản cũ lum 102, cao hơn
+  tower (71) và town centre (70) khoảng 1.45×.
 
 ### 6.3 Negative riêng cho cổng
 
@@ -200,7 +219,9 @@ Thêm khối này vào negative chung ở §4 khi generate cổng:
 ```text
 house, cottage, hut, cabin, tavern, mansion, townhouse, gatehouse with living quarters, roofed
 building, tiled roof, gable roof, chimney, windows, storefront, enclosed room, solid wall, wall
-attached to the gate, castle, fort, keep, tower only, house doorway, white fill inside the arch
+attached to the gate, castle, fort, keep, tower only, house doorway, white fill inside the arch,
+solid plinth under the arch, wall below the arch, raised platform under the gate, bright white
+stone, overexposed, high-key lighting
 ```
 
 ### 6.4 Biến thể
@@ -254,7 +275,9 @@ Mẹo theo thứ tự:
 - [ ] Chân art rộng 250–280 px, không tràn quá diamond 256×128 của footprint 2×2.
 - [ ] **Lòng vòm trong suốt**: alpha ≈ 0 ở giữa cổng, nhìn xuyên qua thấy cỏ; không có mảng trắng
       hoặc mảng tối đặc bịt kín lối đi.
-- [ ] Mean luminance 70–90, lệch không quá 15% so với `tower.png` (71).
+- [ ] **Lỗ vòm chạm đất**: đáy lỗ nằm trong 10% chiều cao cuối của art sau crop; không còn bệ đá
+      đặc dưới lối đi (bản `cong.png` còn ~22% chiều cao).
+- [ ] Mean luminance 80–92, gần `barracks.png` (87); `cong.png` đạt 102, quá sáng.
 - [ ] Không hào quang trắng quanh mái/đá khi đặt trên cỏ.
 - [ ] Đọc được ở 25%: nhận ra cổng, không thành "tháp có lỗ" hay "nhà có cửa".
 - [ ] Không có người/lính/ngựa trong ảnh.

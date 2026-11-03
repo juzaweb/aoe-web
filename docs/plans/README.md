@@ -11,7 +11,7 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | [`02-single-session.md`](./02-single-session.md) | Một tài khoản một phiên: chặn tab/thiết bị thứ hai, cưỡng chiếm phiên có xác nhận (`SESS-01..SESS-07`) | DONE — code + test |
 | [`03-level-upgrades.md`](./03-level-upgrades.md) | Nâng cấp công trình (TC 100 cấp, còn lại 10) và nghiên cứu lính toàn cục (10 cấp) (`LVL-00..LVL-07`) | IMPLEMENTED — chờ verify tay |
 | [`04-kingdoms-battlefield.md`](./04-kingdoms-battlefield.md) | Kinh thành riêng mỗi tài khoản + cổng ra chiến trường chung, travel mang quân, persistence theo zone (`MAPS-01..MAPS-10`) | IMPLEMENTED — chờ verify tay UI |
-| [`05-map-realism.md`](./05-map-realism.md) | Map tự nhiên hơn: nền cỏ/tint, đường đất, decor PNG + rừng viền, minimap icon PNG (`VIS-01..VIS-08`) | DRAFT — chờ duyệt |
+| [`05-map-realism.md`](./05-map-realism.md) | Map tự nhiên hơn: nền cỏ/tint, đường đất, decor PNG + rừng viền, minimap cụm rừng + glyph (`VIS-01..VIS-10`) | IMPLEMENTED — chờ verify tay |
 | [`06-aoe-asset-rebuild.md`](./06-aoe-asset-rebuild.md) | Tạo lại art công trình/cây/tài nguyên/terrain từ collection "AoE like Assets" (`ART-01..ART-12`) | IMPLEMENTED (một phần) — 8 sprite đã thay; terrain bỏ vì atlas không cắt được; chờ verify tay |
 | [`07-smaller-kingdom-map.md`](./07-smaller-kingdom-map.md) | Kingdom riêng nhỏ lại 110×110, TC ở giữa map, map size theo zone (`D1–D8`) | IMPLEMENTED — chờ verify tay UI |
 | [`08-progression-curve.md`](./08-progression-curve.md) | Đường cong nâng cấp dài hạn: 1-10 tính bằng phút, từ 11 tính bằng giờ (×1,05/cấp), gate TC ↔ 4 trụ cột, 2 slot (`LVL2-00..LVL2-07`) | APPROVED — chờ code |

@@ -14,6 +14,7 @@ import { UNIT_ART, hasDirectionalArt, unitArt, unitClips } from './unitArt.js';
 import type { UnitAction } from './unitDirections.js';
 import { UnitMotion, walkTimeScale } from './unitMotion.js';
 import { treeVariant } from './treeVariants.js';
+import { resourceLook } from './visualVariation.js';
 
 /**
  * Builds and maintains the visual object for every server entity: the container,
@@ -174,7 +175,18 @@ export class EntityRenderer {
     }
 
     const container = this.scene.add.container(screenPos.x, screenPos.y);
+    // A forest of identical sprites was the other half of the "test grid" look:
+    // per-node scale, mirror and a slight tint break up the four silhouettes
+    // without changing the footprint or the hit area.
+    const look = resourceLook(id, node.type);
     const img = this.scene.add.image(0, offsetY, textureKey);
+    img.setScale(look.scale);
+    img.setFlipX(look.flipX);
+    img.setTint(look.tint);
+    // Scaling happens around the image centre, so lift the sprite by half the
+    // height it lost; otherwise a shrunken tree floats above its tile.
+    img.y = offsetY + (img.height * (1 - look.scale)) / 2 + look.offsetY;
+    img.x = look.offsetX;
     container.add(img);
 
     container.setDepth(getIsoDepth(node.gridX, node.gridY, 10));
@@ -182,6 +194,8 @@ export class EntityRenderer {
     container.setData('entityType', 'resource');
     container.setData('resourceType', node.type);
     container.setData('visualCenterY', offsetY);
+    container.setData('gridX', node.gridX);
+    container.setData('gridY', node.gridY);
 
     // A depleted node stays in the snapshot (so it can respawn) but must not be
     // drawn or hit-tested while it is empty.
@@ -271,6 +285,10 @@ export class EntityRenderer {
     container.setData('entityId', id);
     container.setData('entityType', 'building');
     container.setData('buildingType', building.type);
+    container.setData('gridX', building.gridX);
+    container.setData('gridY', building.gridY);
+    container.setData('sizeX', building.sizeX);
+    container.setData('sizeY', building.sizeY);
     container.setData('visualCenterY', offsetY);
 
     this.refreshOwnerBase(container, id, building.ownerId);

@@ -30,14 +30,44 @@
           "url": "https://opengameart.org/sites/default/files/_tree_04_1.zip",
           "archive": "zip"
         },
-        "tree06": {
-          "url": "https://opengameart.org/sites/default/files/_tree_06_1.zip",
+        "tree05": {
+          "url": "https://opengameart.org/sites/default/files/_tree_05_1.zip",
+          "archive": "zip"
+        },
+        "tree09": {
+          "url": "https://opengameart.org/sites/default/files/_tree_09.zip",
           "archive": "zip"
         },
         "tree11": {
           "url": "https://opengameart.org/sites/default/files/_tree_11.zip",
           "archive": "zip"
+        },
+        "tree12": {
+          "url": "https://opengameart.org/sites/default/files/_tree_12.zip",
+          "archive": "zip"
+        },
+        "tree13": {
+          "url": "https://opengameart.org/sites/default/files/_tree_13.zip",
+          "archive": "zip"
         }
+      }
+    },
+    "oga.hjm-forbs": {
+      "page": "https://opengameart.org/content/100-isometric-forbs",
+      "author": "Hansjörg Malthaner",
+      "license": "CC-BY-3.0",
+      "files": {
+        "forb01": { "url": "https://opengameart.org/sites/default/files/hjm-randomized_forbs_01-alpha_0.png" },
+        "forb02": { "url": "https://opengameart.org/sites/default/files/hjm-randomized_forbs_02-alpha_0.png" },
+        "forb03": { "url": "https://opengameart.org/sites/default/files/hjm-randomized_forbs_03-alpha_0.png" }
+      }
+    },
+    "oga.hjm-rocks": {
+      "page": "https://opengameart.org/content/assorted-isometric-rocks",
+      "author": "Hansjörg Malthaner",
+      "license": "CC-BY-4.0",
+      "files": {
+        "rocks": { "url": "https://opengameart.org/sites/default/files/hjm-assorted_rocks_1.png" }
       }
     },
     "oga.bleed-hovel": {
@@ -79,8 +109,8 @@
     },
     "resource.tree-3": {
       "source": "oga.bleed-trees",
-      "file": "tree06",
-      "entry": "_tree_06/_tree_06_00000.png",
+      "file": "tree05",
+      "entry": "_tree_05/_tree_05_00000.png",
       "op": { "crop": "alpha", "fit": true, "matchLum": 84.4, "anchor": "bottom-center" },
       "out": "apps/client/public/assets/resources/tree_3.png",
       "canvas": [160, 220]
@@ -121,6 +151,156 @@
       "op": { "crop": "alpha", "flip": "x", "fit": true, "matchLum": 74.8, "anchor": "bottom-center" },
       "out": "apps/client/public/assets/buildings/town_center.png",
       "canvas": [576, 440]
+    },
+    "decor.forb-01": {
+      "source": "oga.hjm-forbs",
+      "file": "forb01",
+      "op": { "split": { "index": 0 }, "gain": [1.2, 1.3, 1.05], "matchLum": 113, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/forb_01.png",
+      "canvas": [160, 96]
+    },
+    "decor.forb-02": {
+      "source": "oga.hjm-forbs",
+      "file": "forb01",
+      "op": { "split": { "index": 1 }, "gain": [1.2, 1.3, 1.05], "matchLum": 113, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/forb_02.png",
+      "canvas": [160, 96]
+    },
+    "decor.forb-03": {
+      "source": "oga.hjm-forbs",
+      "file": "forb01",
+      "op": { "split": { "index": 3 }, "gain": [1.2, 1.3, 1.05], "matchLum": 113, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/forb_03.png",
+      "canvas": [160, 96]
+    },
+    "decor.forb-04": {
+      "source": "oga.hjm-forbs",
+      "file": "forb01",
+      "op": { "split": { "index": 7 }, "gain": [1.2, 1.3, 1.05], "matchLum": 113, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/forb_04.png",
+      "canvas": [160, 96]
+    },
+    "decor.forb-05": {
+      "source": "oga.hjm-forbs",
+      "file": "forb02",
+      "op": { "split": { "index": 0 }, "gain": [1.2, 1.3, 1.05], "matchLum": 113, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/forb_05.png",
+      "canvas": [160, 96]
+    },
+    "decor.forb-06": {
+      "source": "oga.hjm-forbs",
+      "file": "forb02",
+      "op": { "split": { "index": 2 }, "gain": [1.2, 1.3, 1.05], "matchLum": 113, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/forb_06.png",
+      "canvas": [160, 96]
+    },
+    "decor.forb-07": {
+      "source": "oga.hjm-forbs",
+      "file": "forb02",
+      "op": { "split": { "index": 5 }, "gain": [1.2, 1.3, 1.05], "matchLum": 113, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/forb_07.png",
+      "canvas": [160, 96]
+    },
+    "decor.forb-08": {
+      "source": "oga.hjm-forbs",
+      "file": "forb02",
+      "op": { "split": { "index": 6 }, "gain": [1.2, 1.3, 1.05], "matchLum": 113, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/forb_08.png",
+      "canvas": [160, 96]
+    },
+    "decor.forb-09": {
+      "source": "oga.hjm-forbs",
+      "file": "forb03",
+      "op": { "split": { "index": 1 }, "gain": [1.2, 1.3, 1.05], "matchLum": 113, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/forb_09.png",
+      "canvas": [160, 96]
+    },
+    "decor.forb-10": {
+      "source": "oga.hjm-forbs",
+      "file": "forb03",
+      "op": { "split": { "index": 4 }, "gain": [1.2, 1.3, 1.05], "matchLum": 113, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/forb_10.png",
+      "canvas": [160, 96]
+    },
+    "decor.forb-11": {
+      "source": "oga.hjm-forbs",
+      "file": "forb03",
+      "op": { "split": { "index": 6 }, "gain": [1.2, 1.3, 1.05], "matchLum": 113, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/forb_11.png",
+      "canvas": [160, 96]
+    },
+    "decor.forb-12": {
+      "source": "oga.hjm-forbs",
+      "file": "forb03",
+      "op": { "split": { "index": 7 }, "gain": [1.2, 1.3, 1.05], "matchLum": 113, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/forb_12.png",
+      "canvas": [160, 96]
+    },
+    "decor.rock-01": {
+      "source": "oga.hjm-rocks",
+      "file": "rocks",
+      "op": { "split": { "index": 0 }, "gain": [1.0, 1.0, 1.02], "matchLum": 112, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/rock_01.png",
+      "canvas": [80, 64]
+    },
+    "decor.rock-02": {
+      "source": "oga.hjm-rocks",
+      "file": "rocks",
+      "op": { "split": { "index": 5 }, "gain": [1.0, 1.0, 1.02], "matchLum": 112, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/rock_02.png",
+      "canvas": [80, 64]
+    },
+    "decor.rock-03": {
+      "source": "oga.hjm-rocks",
+      "file": "rocks",
+      "op": { "split": { "index": 6 }, "gain": [1.0, 1.0, 1.02], "matchLum": 112, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/rock_03.png",
+      "canvas": [80, 64]
+    },
+    "decor.rock-04": {
+      "source": "oga.hjm-rocks",
+      "file": "rocks",
+      "op": { "split": { "index": 9 }, "gain": [1.0, 1.0, 1.02], "matchLum": 112, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/rock_04.png",
+      "canvas": [80, 64]
+    },
+    "decor.rock-05": {
+      "source": "oga.hjm-rocks",
+      "file": "rocks",
+      "op": { "split": { "index": 11 }, "gain": [1.0, 1.0, 1.02], "matchLum": 112, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/rock_05.png",
+      "canvas": [80, 64]
+    },
+    "decor.rock-06": {
+      "source": "oga.hjm-rocks",
+      "file": "rocks",
+      "op": { "split": { "index": 13 }, "gain": [1.0, 1.0, 1.02], "matchLum": 112, "fit": true, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/rock_06.png",
+      "canvas": [80, 64]
+    },
+    "decor.border-tree-01": {
+      "source": "oga.bleed-trees",
+      "file": "tree09",
+      "entry": "_tree_09/_tree_09_00000.png",
+      "op": { "crop": "alpha", "fit": true, "matchLum": 84.4, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/border_tree_01.png",
+      "canvas": [400, 340]
+    },
+    "decor.border-tree-02": {
+      "source": "oga.bleed-trees",
+      "file": "tree12",
+      "entry": "_tree_12/_tree_12_00000.png",
+      "op": { "crop": "alpha", "fit": true, "matchLum": 84.4, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/border_tree_02.png",
+      "canvas": [400, 340]
+    },
+    "decor.border-tree-03": {
+      "source": "oga.bleed-trees",
+      "file": "tree13",
+      "entry": "_tree_13/_tree_13_00000.png",
+      "op": { "crop": "alpha", "fit": true, "matchLum": 84.4, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/decor/border_tree_03.png",
+      "canvas": [400, 340]
     }
   }
 }

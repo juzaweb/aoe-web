@@ -1,16 +1,19 @@
 import React, { useEffect, useRef } from 'react';
 import { Room } from '@colyseus/sdk';
-import {
-  MAP_GRID_HEIGHT,
-  MAP_GRID_WIDTH,
-  TILE_HEIGHT,
-  TILE_WIDTH,
-  getRoadSplinePoints,
-  screenToGrid,
-  terrainForZone
-} from '@chien-quoc/shared';
+import { MAP_GRID_HEIGHT, MAP_GRID_WIDTH, TILE_HEIGHT, TILE_WIDTH, screenToGrid, terrainForZone } from '@chien-quoc/shared';
 import { WorldScene } from '../game/scenes/WorldScene.js';
 import { UNKNOWN_OWNER_COLOR, colorToCss } from '../game/render/ownerColor.js';
+import {
+  MINIMAP_COLORS,
+  MINIMAP_CSS_SIZE,
+  MINIMAP_SIZE,
+  buildGroundPixels,
+  gridToMinimap,
+  markerColor,
+  minimapClusters,
+  renderForestLayer,
+  type MinimapCluster
+} from './minimapArt.js';
 
 interface MinimapProps {
   room: Room | null;
@@ -41,40 +44,44 @@ function zoneOf(room: Room | null): string {
   return (room?.state as MinimapState | null | undefined)?.zoneId ?? 'battlefield';
 }
 
-/**
- * The road network as grid-space polylines, cached per layout.
- *
- * `getRoadSplinePoints` returns screen-space stamps for the world renderer; the
- * minimap needs grid coordinates, and rebuilding that conversion every frame
- * would burn through the trig cache for no reason. A jump between consecutive
- * stamps means a new route (or the kingdom's central plaza), so the line is cut
- * there instead of drawn straight across the gap.
- */
-const roadPathCache = new Map<string, Array<Array<{ x: number; y: number }>>>();
+// The ground bitmap costs 78k pixel tests, so it is built once per layout and
+// reused until the zone changes. Clusters are rebuilt only when the number of
+// standing trees changes (depletion), not every frame.
+const groundCache = new Map<string, { pixels: Uint8ClampedArray<ArrayBuffer>; image: ImageData }>();
+let clusterCache: { key: string; clusters: MinimapCluster[]; layer: HTMLCanvasElement | null } = {
+  key: '',
+  clusters: [],
+  layer: null
+};
 
-function roadPathsFor(zoneId: string): Array<Array<{ x: number; y: number }>> {
-  const terrain = terrainForZone(zoneId);
-  // Keyed by layout, not by zone id: every kingdom shares the same road plan, so
-  // a per-account key would leak one cache entry per visitor.
-  const key = `${terrain.kind}:${terrain.width}x${terrain.height}`;
-  let cached = roadPathCache.get(key);
-  if (cached) return cached;
-
-  const paths: Array<Array<{ x: number; y: number }>> = [];
-  let current: Array<{ x: number; y: number }> = [];
-  for (const point of getRoadSplinePoints(terrain)) {
-    const grid = screenToGrid(point.x, point.y);
-    const last = current[current.length - 1];
-    if (last && Math.hypot(grid.gridX - last.x, grid.gridY - last.y) > 2) {
-      paths.push(current);
-      current = [];
-    }
-    current.push({ x: grid.gridX, y: grid.gridY });
+function groundFor(zoneId: string, width: number, height: number): ImageData {
+  const key = `${zoneId}:${width}x${height}`;
+  let entry = groundCache.get(key);
+  if (!entry) {
+    const pixels = buildGroundPixels(terrainForZone(zoneId));
+    entry = { pixels, image: new ImageData(pixels, MINIMAP_SIZE, MINIMAP_SIZE) };
+    groundCache.set(key, entry);
   }
-  if (current.length > 0) paths.push(current);
+  return entry.image;
+}
 
-  roadPathCache.set(key, paths);
-  return paths;
+function drawDiamond(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number) {
+  ctx.beginPath();
+  ctx.moveTo(x, y - radius);
+  ctx.lineTo(x + radius, y);
+  ctx.lineTo(x, y + radius);
+  ctx.lineTo(x - radius, y);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawTriangle(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number) {
+  ctx.beginPath();
+  ctx.moveTo(x, y - radius);
+  ctx.lineTo(x + radius, y + radius);
+  ctx.lineTo(x - radius, y + radius);
+  ctx.closePath();
+  ctx.fill();
 }
 
 export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, onCommandAtGrid }) => {
@@ -90,123 +97,124 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
 
     const render = () => {
       // Scheduled before anything can throw: a single bad frame used to end the
-      // loop for the rest of the session, which is how the units, buildings and
-      // camera box all disappeared from the minimap while the roads stayed.
+      // loop for the rest of the session.
       animId = requestAnimationFrame(render);
 
-      // AoE Terrain Grass Background (never pitch black)
-      ctx.fillStyle = '#1e3f16';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Subtle diagonal terrain texture lines
-      ctx.strokeStyle = 'rgba(46, 99, 36, 0.4)';
-      ctx.lineWidth = 1;
-      for (let i = -canvas.height; i < canvas.width; i += 16) {
-        ctx.beginPath();
-        ctx.moveTo(i, 0);
-        ctx.lineTo(i + canvas.height, canvas.height);
-        ctx.stroke();
+      if (!room || !room.state) {
+        ctx.fillStyle = '#1b2613';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        return;
       }
 
-      // Outer border
+      const { width, height } = sizeOf(room);
+      const zoneId = zoneOf(room);
+      const scale = MINIMAP_SIZE / width;
+
+      // 1. Terrain: real grass and road tiles, no hand-drawn hatching.
+      ctx.putImageData(groundFor(zoneId, width, height), 0, 0);
+
+      // 2. Forest as clusters: 892 battlefield trees are ~77 clumps, so drawing
+      // one blip per tree only produced a smear. A light rim carries the
+      // contrast (3.68:1) that a dark fill cannot.
+      let standingTrees = 0;
+      room.state.resourceNodes?.forEach((res: any) => {
+        if (res.remainingAmount > 0 && res.type === 'TREE') standingTrees++;
+      });
+      const clusterKey = `${zoneId}:${width}x${height}:${standingTrees}`;
+      if (clusterKey !== clusterCache.key) {
+        // Only walk the nodes into an array when the cluster set is stale: this
+        // used to allocate ~900 objects every frame just to compute a key.
+        const trees: Array<{ gridX: number; gridY: number }> = [];
+        room.state.resourceNodes?.forEach((res: any) => {
+          if (res.remainingAmount > 0 && res.type === 'TREE') {
+            trees.push({ gridX: res.gridX, gridY: res.gridY });
+          }
+        });
+        const clusters = minimapClusters(trees);
+        clusterCache = { key: clusterKey, clusters, layer: renderForestLayer(clusters, scale) };
+      }
+      // One pre-rendered layer per cluster change: the blobs are circles around
+      // the trees, so a clump reads as a forest edge instead of a bounding box.
+      if (clusterCache.layer) ctx.drawImage(clusterCache.layer, 0, 0);
+
+      // 3. Ore and bushes as 3px glyphs: shape distinguishes them even when the
+      // colour does not survive the small size.
+      room.state.resourceNodes?.forEach((res: any) => {
+        if (res.remainingAmount <= 0 || res.type === 'TREE') return;
+        const point = gridToMinimap(res.gridX, res.gridY, width);
+        ctx.fillStyle = markerColor(res.type);
+        ctx.strokeStyle = MINIMAP_COLORS.outline;
+        ctx.lineWidth = 0.75;
+        if (res.type === 'GOLD_MINE') {
+          drawDiamond(ctx, point.x, point.y, 2);
+          ctx.stroke();
+        } else if (res.type === 'STONE_MINE') {
+          drawTriangle(ctx, point.x, point.y, 2);
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, 1.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+
+      // 4. Buildings. Ground truth is the state, so the icon matches the world.
+      const scene = sceneRef?.current;
+      const myOwnerId = scene?.myOwnerId ?? '';
+      const colorFor = (ownerId: string) =>
+        scene?.ownerColorCss(ownerId) ?? colorToCss(UNKNOWN_OWNER_COLOR);
+
+      room.state.buildings?.forEach((b: any) => {
+        if (b.type === 'PORTAL') {
+          const point = gridToMinimap(b.gridX + b.sizeX / 2, b.gridY + b.sizeY / 2, width);
+          ctx.fillStyle = MINIMAP_COLORS.portal;
+          drawDiamond(ctx, point.x, point.y, 3);
+          return;
+        }
+        ctx.fillStyle = colorFor(b.ownerId);
+        ctx.strokeStyle = MINIMAP_COLORS.outline;
+        ctx.lineWidth = 0.75;
+        const bw = Math.max(3.5, b.sizeX * scale);
+        const bh = Math.max(3.5, b.sizeY * scale);
+        ctx.fillRect(b.gridX * scale, b.gridY * scale, bw, bh);
+        ctx.strokeRect(b.gridX * scale, b.gridY * scale, bw, bh);
+      });
+
+      // 5. Units: dots, with a white ring on our own so it stays findable.
+      room.state.units?.forEach((u: any) => {
+        const isMe = u.ownerId === myOwnerId;
+        const point = gridToMinimap(u.x, u.y, width);
+        const radius = isMe ? 2 : 1.5;
+        ctx.fillStyle = colorFor(u.ownerId);
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = isMe ? '#ffffff' : MINIMAP_COLORS.outline;
+        ctx.lineWidth = isMe ? 1 : 0.75;
+        ctx.stroke();
+      });
+
+      // 6. Camera viewport: the white rectangle AoE draws on its minimap.
+      if (scene && scene.cameras?.main) {
+        const cam = scene.cameras.main;
+        const centerGrid = screenToGrid(cam.scrollX + cam.width / 2, cam.scrollY + cam.height / 2);
+        const viewWGrid = (cam.width / cam.zoom) / TILE_WIDTH;
+        const viewHGrid = (cam.height / cam.zoom) / TILE_HEIGHT;
+        const boxX = (centerGrid.gridX - viewWGrid / 2) * scale;
+        const boxY = (centerGrid.gridY - viewHGrid / 2) * scale;
+        const boxW = Math.max(12, viewWGrid * scale);
+        const boxH = Math.max(8, viewHGrid * scale);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.fillRect(boxX, boxY, boxW, boxH);
+        ctx.strokeStyle = MINIMAP_COLORS.viewport;
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(boxX, boxY, boxW, boxH);
+      }
+
+      // 7. Frame.
       ctx.strokeStyle = '#78350f';
       ctx.lineWidth = 2;
       ctx.strokeRect(0, 0, canvas.width, canvas.height);
-
-      if (room && room.state) {
-        const { width, height } = sizeOf(room);
-        const zoneId = zoneOf(room);
-        const scaleX = canvas.width / width;
-        const scaleY = canvas.height / height;
-
-        // 1. Draw the dirt road network of whichever map is joined
-        ctx.strokeStyle = '#c3946a';
-        ctx.lineWidth = 2.5;
-        ctx.lineCap = 'round';
-        for (const path of roadPathsFor(zoneId)) {
-          ctx.beginPath();
-          // Every fourth stamp is ~1.4 tiles at the generator's 0.35 step.
-          for (let i = 0; i < path.length; i += 4) {
-            const point = path[i];
-            if (i === 0) ctx.moveTo(point.x * scaleX, point.y * scaleY);
-            else ctx.lineTo(point.x * scaleX, point.y * scaleY);
-          }
-          ctx.stroke();
-        }
-
-        // 2. Draw Resource Nodes
-        room.state.resourceNodes?.forEach((res: any) => {
-          if (res.remainingAmount <= 0) return;
-          if (res.type === 'TREE') {
-            ctx.fillStyle = '#166534';
-            ctx.fillRect(res.gridX * scaleX, res.gridY * scaleY, 2, 2);
-          } else if (res.type === 'GOLD_MINE') {
-            ctx.fillStyle = '#facc15';
-            ctx.fillRect(res.gridX * scaleX, res.gridY * scaleY, 2.5, 2.5);
-          } else if (res.type === 'STONE_MINE') {
-            ctx.fillStyle = '#cbd5e1';
-            ctx.fillRect(res.gridX * scaleX, res.gridY * scaleY, 2.5, 2.5);
-          } else {
-            ctx.fillStyle = '#fb7185';
-            ctx.fillRect(res.gridX * scaleX, res.gridY * scaleY, 2.5, 2.5);
-          }
-        });
-
-        // 2. Draw Buildings
-        // OWN-04: blips use the owner's real colour so the minimap matches the
-        // world; only the size distinguishes our units (see below).
-        const scene = sceneRef?.current;
-        const myOwnerId = scene?.myOwnerId ?? '';
-        const colorFor = (ownerId: string) =>
-          scene?.ownerColorCss(ownerId) ?? colorToCss(UNKNOWN_OWNER_COLOR);
-        room.state.buildings?.forEach((b: any) => {
-          // MAPS: portals are travel infrastructure, drawn as a cyan diamond so
-          // they stand out from the owner-coloured building blocks.
-          if (b.type === 'PORTAL') {
-            const cx = (b.gridX + b.sizeX / 2) * scaleX;
-            const cy = (b.gridY + b.sizeY / 2) * scaleY;
-            ctx.fillStyle = '#22d3ee';
-            ctx.beginPath();
-            ctx.moveTo(cx, cy - 4);
-            ctx.lineTo(cx + 4, cy);
-            ctx.lineTo(cx, cy + 4);
-            ctx.lineTo(cx - 4, cy);
-            ctx.closePath();
-            ctx.fill();
-            return;
-          }
-
-          ctx.fillStyle = colorFor(b.ownerId);
-          const bw = Math.max(3.5, b.sizeX * scaleX);
-          const bh = Math.max(3.5, b.sizeY * scaleY);
-          ctx.fillRect(b.gridX * scaleX, b.gridY * scaleY, bw, bh);
-        });
-
-        // 3. Draw Units
-        room.state.units?.forEach((u: any) => {
-          const isMe = u.ownerId === myOwnerId;
-          ctx.fillStyle = colorFor(u.ownerId);
-          const size = isMe ? 3 : 2.5;
-          ctx.fillRect(u.x * scaleX, u.y * scaleY, size, size);
-        });
-
-        // 4. Draw Camera Viewport Box (AoE white view rectangle)
-        if (scene && scene.cameras?.main) {
-          const cam = scene.cameras.main;
-          const centerGrid = screenToGrid(cam.scrollX + cam.width / 2, cam.scrollY + cam.height / 2);
-          const viewWGrid = (cam.width / cam.zoom) / TILE_WIDTH;
-          const viewHGrid = (cam.height / cam.zoom) / TILE_HEIGHT;
-
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 1.5;
-          ctx.strokeRect(
-            (centerGrid.gridX - viewWGrid / 2) * scaleX,
-            (centerGrid.gridY - viewHGrid / 2) * scaleY,
-            Math.max(12, viewWGrid * scaleX),
-            Math.max(8, viewHGrid * scaleY)
-          );
-        }
-      }
     };
 
     render();
@@ -221,8 +229,7 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
    *
    * Divides by the rendered rect, not the backing store: the canvas has a 1px
    * border, so `rect.width` (142) is the real pointer area while `canvas.width`
-   * is 140. Using the backing store shifts every click ~1.4% toward the origin,
-   * which at 220 cells is more than two grid cells of error.
+   * is 280. Using the backing store would shift every click by more than a tile.
    */
   const gridFromEvent = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -267,11 +274,12 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
       </div>
       <canvas
         ref={canvasRef}
-        width={140}
-        height={140}
+        width={MINIMAP_SIZE}
+        height={MINIMAP_SIZE}
         onClick={handleMinimapClick}
         onContextMenu={handleMinimapContextMenu}
         className="rounded cursor-crosshair border border-amber-900/50 shadow-inner"
+        style={{ width: MINIMAP_CSS_SIZE, height: MINIMAP_CSS_SIZE }}
       />
     </div>
   );

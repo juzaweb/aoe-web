@@ -37,6 +37,7 @@ EXTRACT = CACHE / "extract"
 MANIFEST = SCRIPT_DIR / "manifest.json"
 LOCK = SCRIPT_DIR / "assets.lock.json"
 CREDITS = ROOT / "CREDITS.md"
+ASSET_ROOT = ROOT / "apps" / "client" / "public" / "assets"
 
 
 def sha256(path: Path) -> str:
@@ -120,6 +121,11 @@ def apply_op(im: Image.Image, op: dict, canvas: tuple[int, int]) -> tuple[Image.
     # camera the client's projection uses.
     if op.get("flip") == "x":
         im = im.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+    # Per-channel gain runs before the luminance match on purpose: the match
+    # rescales all channels by one factor, so chroma has to be corrected first
+    # or it is either cancelled out or ends up clipping.
+    if op.get("gain") is not None:
+        im = ops.apply_gain(im, op["gain"])
     gain = 1.0
     if op.get("matchLum") is not None:
         im, gain = ops.match_luminance(im, float(op["matchLum"]))
@@ -129,6 +135,22 @@ def apply_op(im: Image.Image, op: dict, canvas: tuple[int, int]) -> tuple[Image.
     return ops.place(im, canvas, op.get("anchor", "bottom-center")), scale, gain
 
 
+def select_part(image: Image.Image, target_id: str, op: dict) -> Image.Image:
+    """Cut one sprite out of a sheet target before the normal op chain runs."""
+    config = op["split"]
+    parts = ops.split_sheet(
+        image,
+        min_area=int(config.get("minArea", 300)),
+        drop_edge=bool(config.get("dropEdge", True))
+    )
+    index = int(config.get("index", 0))
+    if not parts:
+        raise SystemExit(f"{target_id}: split found no sprite above minArea")
+    if index >= len(parts):
+        raise SystemExit(f"{target_id}: split index {index} out of range ({len(parts)} parts)")
+    return parts[index]
+
+
 def build_target(target_id: str, target: dict, manifest: dict) -> dict:
     canvas = tuple(target["canvas"])
     path = source_path(target["source"], target["file"], target.get("entry"), manifest)
@@ -136,7 +158,10 @@ def build_target(target_id: str, target: dict, manifest: dict) -> dict:
         raise SystemExit(f"{target_id}: missing source file {path} (run --fetch)")
     source = manifest["sources"][target["source"]]
     image = ops.load_rgba(path)
-    sheet, scale, gain = apply_op(image, target.get("op", {}), canvas)
+    op = target.get("op", {})
+    if "split" in op:
+        image = select_part(image, target_id, op)
+    sheet, scale, gain = apply_op(image, op, canvas)
     out = ROOT / target["out"]
     out.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(out, "PNG", optimize=True)
@@ -159,7 +184,7 @@ def build_target(target_id: str, target: dict, manifest: dict) -> dict:
     }
 
 
-def write_lock(entries: dict, manifest: dict) -> None:
+def write_lock(entries: dict, manifest: dict, legacy: dict | None = None) -> None:
     sources = {}
     for key, source in manifest["sources"].items():
         files = {}
@@ -176,11 +201,45 @@ def write_lock(entries: dict, manifest: dict) -> None:
             "license": source["license"],
             "files": files
         }
+    # A plain `--all` rebuild must not drop the legacy hashes: they are recorded
+    # by a separate command because they pin files this pipeline never builds.
+    if legacy is None:
+        legacy = load_json(LOCK).get("legacy", {}) if LOCK.exists() else {}
+    payload: dict = {"version": 1, "sources": sources, "targets": entries}
+    if legacy:
+        payload["legacy"] = legacy
     LOCK.write_text(
-        json.dumps({"version": 1, "sources": sources, "targets": entries}, indent=2, sort_keys=True) + "\n",
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8"
     )
     print(f"\nwrote {LOCK.relative_to(ROOT)}")
+
+
+def legacy_paths(lock: dict) -> set[str]:
+    """PNGs under the client's asset root that no manifest target builds."""
+    owned = {entry["out"] for entry in lock.get("targets", {}).values()}
+    present = {
+        path.relative_to(ROOT).as_posix()
+        for path in ASSET_ROOT.rglob("*.png")
+    }
+    return present - owned
+
+
+def cmd_legacy() -> None:
+    """Pin the hashes of the sprites this pipeline does not own.
+
+    Most of the client's art predates the manifest: terrain, gold/stone/berry,
+    the four non-migrated buildings, units, cursors and icons. They have no
+    upstream source to rebuild from, but they can still be pinned so a hand edit
+    or a stray regeneration shows up in `--check` instead of shipping silently.
+    """
+    lock = load_json(LOCK) if LOCK.exists() else {"targets": {}}
+    entries = {
+        rel: sha256(ROOT / rel)
+        for rel in sorted(legacy_paths(lock))
+    }
+    write_lock(dict(lock.get("targets", {})), load_json(MANIFEST), legacy=entries)
+    print(f"recorded {len(entries)} legacy sprites")
 
 
 def cmd_build(manifest: dict, only: str | None) -> None:
@@ -250,13 +309,24 @@ def cmd_check() -> None:
         if not entry.get("license") or not entry.get("author"):
             problems.append(f"{target_id}: missing license/author")
 
+    legacy = lock.get("legacy", {})
+    for rel, digest in legacy.items():
+        path = ROOT / rel
+        if not path.exists():
+            problems.append(f"legacy {rel}: missing")
+        elif sha256(path) != digest:
+            problems.append(f"legacy {rel}: edited since --legacy recorded its hash")
+    unlisted = legacy_paths(lock) - set(legacy)
+    for rel in sorted(unlisted):
+        problems.append(f"legacy {rel}: not in the lock (run --legacy)")
+
     if problems:
         print("asset check FAILED")
         for problem in problems:
             print("  -", problem)
         raise SystemExit(1)
     print(f"asset check OK: {len(lock.get('targets', {}))} targets, "
-          f"{len(lock.get('sources', {}))} sources")
+          f"{len(lock.get('sources', {}))} sources, {len(legacy)} legacy")
 
 
 def cmd_report(only: str | None) -> None:
@@ -280,12 +350,16 @@ def main() -> None:
     parser.add_argument("--only", metavar="SUBSTRING", help="build only targets whose id contains this")
     parser.add_argument("--check", action="store_true", help="verify shipped files against the lock")
     parser.add_argument("--report", action="store_true", help="print the measured metrics of the lock")
+    parser.add_argument("--legacy", action="store_true", help="pin hashes of sprites the manifest does not build")
     parser.add_argument("--force", action="store_true", help="refetch cached sources even when the hash matches")
     args = parser.parse_args()
 
     manifest = load_json(MANIFEST)
     if args.fetch:
         fetch(manifest, force=args.force)
+    if args.legacy:
+        cmd_legacy()
+        return
     if args.check:
         cmd_check()
         return

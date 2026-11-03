@@ -74,6 +74,75 @@ def match_luminance(im: Image.Image, target: float) -> tuple[Image.Image, float]
     return Image.fromarray(a.astype(np.uint8), "RGBA"), gain
 
 
+def apply_gain(im: Image.Image, gains: list[float] | tuple[float, float, float]) -> Image.Image:
+    """Multiply each RGB channel by its own gain, then clamp.
+
+    A per-channel gain is the least invasive way to move an off-palette pack
+    towards the client's palette: it lifts saturation (or cools/warms a sprite)
+    without touching geometry, alpha or the luminance match that runs after it.
+    """
+    if len(gains) != 3:
+        raise ValueError(f"gain needs three channels, got {len(gains)}")
+    a = np.asarray(im).astype(np.float32)
+    for channel, gain in enumerate(gains):
+        a[:, :, channel] = np.clip(a[:, :, channel] * float(gain), 0, 255)
+    return Image.fromarray(a.astype(np.uint8), "RGBA")
+
+
+def split_sheet(
+    im: Image.Image,
+    min_area: int = 300,
+    floor: int = ALPHA_FLOOR,
+    drop_edge: bool = True
+) -> list[Image.Image]:
+    """Split a sprite sheet into separate sprites by connected alpha regions.
+
+    The sheet packs a whole pack of plants/rocks into one upload, so a target
+    that wants one of them has to cut it out first. Components are sorted by
+    descending area and then by position, which makes an ``index`` stable for a
+    given source: re-running the build on the same bytes always picks the same
+    sprite. Fragments touching the sheet border are dropped unless
+    ``drop_edge`` is false, because those are sprites clipped by the upload.
+
+    Four-connectivity is deliberate: diagonal-only touches are separate plants,
+    and merging them would fuse two decor sprites into one wide blob.
+    """
+    alpha = np.asarray(im.convert("RGBA"))[:, :, 3] >= floor
+    height, width = alpha.shape
+    seen = np.zeros((height, width), dtype=bool)
+    found: list[tuple[int, int, int, int, int]] = []
+
+    for start_y in range(height):
+        for start_x in range(width):
+            if not alpha[start_y, start_x] or seen[start_y, start_x]:
+                continue
+            stack = [(start_y, start_x)]
+            seen[start_y, start_x] = True
+            min_y = max_y = start_y
+            min_x = max_x = start_x
+            count = 0
+            while stack:
+                y, x = stack.pop()
+                count += 1
+                min_y = min(min_y, y)
+                max_y = max(max_y, y)
+                min_x = min(min_x, x)
+                max_x = max(max_x, x)
+                for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    ny, nx = y + dy, x + dx
+                    if 0 <= ny < height and 0 <= nx < width and alpha[ny, nx] and not seen[ny, nx]:
+                        seen[ny, nx] = True
+                        stack.append((ny, nx))
+            if count < min_area:
+                continue
+            if drop_edge and (min_y == 0 or min_x == 0 or max_y == height - 1 or max_x == width - 1):
+                continue
+            found.append((min_y, max_y + 1, min_x, max_x + 1, count))
+
+    found.sort(key=lambda box: (-box[4], box[0], box[2]))
+    return [im.crop((min_x, min_y, max_x, max_y)) for min_y, max_y, min_x, max_x, _ in found]
+
+
 def resize(im: Image.Image, size: tuple[int, int], resample: str) -> Image.Image:
     """Resample in premultiplied alpha, so edges stay clean."""
     filters = {
