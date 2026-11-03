@@ -52,26 +52,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # packages/shared is imported through its compiled output, so it has to be
-      # built before anything type-checks or imports it.
-      - name: Build shared
-        run: pnpm --filter @chien-quoc/shared run build
-
-      # @prisma/client is a generated artifact, not a committed one; without
-      # this step every server import of it fails to resolve.
-      - name: Generate Prisma client
-        run: pnpm --filter @chien-quoc/server run prisma:generate
-
-      # tsc is the only type check in this repo. vite build proves the bundle
-      # still resolves, which tsc alone does not catch.
-      - name: Type check and build
-        run: |
-          set -euo pipefail
-          pnpm --filter @chien-quoc/server run build
-          pnpm --filter @chien-quoc/client run build
-
-      - name: Test client
-        run: pnpm --filter @chien-quoc/client run test
-
-      - name: Test server
-        run: pnpm --filter @chien-quoc/server run test
+      # One definition of the gate, shared with loop.yml: shared build, prisma
+      # generate, tsc + vite build, then both test suites. `::group::` per suite
+      # keeps the log readable.
+      - name: Run test suite
+        run: bash scripts/run-tests.sh

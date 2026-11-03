@@ -146,8 +146,12 @@ to `develop`, every PR aimed at `develop`, and on demand. One job, `Tests`:
 
 ```
 pnpm install --frozen-lockfile
-build shared -> prisma generate -> tsc + vite build -> client tests -> server tests
+bash scripts/run-tests.sh
 ```
+
+`scripts/run-tests.sh` is the single definition of the gate — shared build → prisma generate →
+tsc + vite build → client tests → server tests. `ci.yml` and `loop.yml` both call it, so the
+loop's "pass" and GitHub's `Tests` check can never mean different things.
 
 `prisma generate` is not optional: `@prisma/client` is a build artifact, so a fresh runner
 cannot resolve it without that step. `dist/` is gitignored, so the builds leave the tree that

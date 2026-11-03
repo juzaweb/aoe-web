@@ -257,9 +257,14 @@ jobs:
       # that needs a denylisted file is refused while it is still reversible: the
       # step below reverts it. That is what keeps every PR this workflow opens
       # auto-mergeable — there is never a PR waiting for a human to merge it.
+      #
+      # `always()` so a crashed agent run is still reverted, but only when a
+      # slice was actually resolved: with no task in STATE.md the run is already
+      # dead, and an empty path list makes the gate refuse a slice that does not
+      # exist, which reads as "denylisted" in the log.
       - name: Check gate policy
         id: gate
-        if: always()
+        if: always() && steps.slice.outcome == 'success'
         run: |
           set -euo pipefail
           # `git status --porcelain` mangles two cases that matter here: a path
@@ -405,10 +410,9 @@ jobs:
       # committed, so "the tests passed" describes exactly the tree that would
       # land on develop — not a nearby commit and not a later one.
       #
-      # The same commands run again in .github/workflows/ci.yml, on every PR and
-      # every push to develop. Both copies are needed: this one is what stops an
-      # unattended pipeline from opening (and then merging) a red PR, and the CI
-      # one is the verdict GitHub records against the PR.
+      # The commands live in scripts/run-tests.sh, which ci.yml calls too. One
+      # definition, so the loop's "pass" and GitHub's `Tests` check can never
+      # disagree about what was run.
       - name: Run tests
         id: tests
         if: |
@@ -416,24 +420,10 @@ jobs:
           && steps.gate.outputs.allowed == 'true'
         run: |
           set -euo pipefail
-          run_suite() {
-            local label="$1"; shift
-            echo "::group::${label}"
-            if ! "$@"; then
-              echo "::endgroup::"
-              echo "::error::${label} failed. No PR was opened and nothing was merged."
-              return 1
-            fi
-            echo "::endgroup::"
-          }
-
-          # shared first: both apps import it through packages/shared/dist.
-          run_suite "Build shared" pnpm --filter @chien-quoc/shared run build
-          # @prisma/client is generated, not committed.
-          run_suite "Generate Prisma client" pnpm --filter @chien-quoc/server run prisma:generate
-          run_suite "Type check and build" bash -c 'pnpm --filter @chien-quoc/server run build && pnpm --filter @chien-quoc/client run build'
-          run_suite "Test client" pnpm --filter @chien-quoc/client run test
-          run_suite "Test server" pnpm --filter @chien-quoc/server run test
+          if ! bash "${{ github.workspace }}/scripts/run-tests.sh"; then
+            echo "::error::Tests failed. No PR was opened and nothing was merged."
+            exit 1
+          fi
           echo "verdict=pass" >> "$GITHUB_OUTPUT"
 
       # Nothing below this line runs on a red suite: the ship step requires the
@@ -475,6 +465,31 @@ jobs:
           git checkout -b "$branch"
           git add -A
           git commit -F /tmp/commit-msg.txt
+
+          # develop is not frozen while the agents work — a `full` run spends
+          # about ten minutes in opencode, and anyone can push in that window.
+          # A branch based on a stale develop is what got this push rejected:
+          # the tip carried the old side of every file develop had since
+          # changed, `.github/workflows/loop.yml` among them, and GitHub reads
+          # that as a workflow update no GITHUB_TOKEN may perform. Merging the
+          # current develop in first makes the push a plain fast-forward.
+          BASE="${{ steps.base.outputs.sha }}"
+          git fetch origin develop
+          if [ "$(git rev-parse origin/develop)" != "$BASE" ]; then
+            echo "::warning::develop moved while this run was working; merging it in."
+            if ! git merge --no-edit origin/develop; then
+              echo "::error::The slice conflicts with the current develop."
+              echo "::error::Resolve it by hand, or drop the slice and re-triage."
+              exit 1
+            fi
+            # The tree just changed under the tests that already ran, so they
+            # are re-run rather than assumed. Same script, same definition.
+            if ! bash "${{ github.workspace }}/scripts/run-tests.sh"; then
+              echo "::error::The merge with develop broke a suite. No PR was opened."
+              exit 1
+            fi
+          fi
+
           bash "${{ github.workspace }}/scripts/ci-push.sh" "$branch"
           # --auto makes the merge immediate and unattended, so the PR is never a
           # thing waiting on a person. If the branch protection rules require a
