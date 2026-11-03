@@ -145,7 +145,17 @@ if the row is not in the state it expects, which is what stops a skipped step.
 | `PLANNED <date> — awaiting build` | step 3 | plan file exists |
 | `BUILT <date> — awaiting verify` | step 4 | tests written, not independent |
 | `VERIFIED <date> — awaiting ship` | step 5 | verifier returned PASS |
-| `SHIPPED <date> — <PR url>` | step 6 | PR open, not merged |
+| `SHIPPED <date> — <PR url>` | workflow, after the merge | merged into `develop` |
+
+`SHIPPED` is written by `scripts/mark-shipped.sh` in the `Mark the slice shipped` step, not by
+an agent: the row has to record the merge whether or not a model feels like summarising. That
+script rewrites exactly one cell and refuses if the table is not the shape it expects, so a
+malformed row is a visible failure instead of a silent rewrite.
+
+`not this run` is a human annotation. No loop step writes it: `pick` changes only the row it was
+given, so approving `ALERT-01` leaves `SAVE-01` a `candidate` and the next run picks it. The
+earlier prompt told the agent to blank the rest of the table, which emptied the queue after one
+run — that is why the rule is now stated the other way around.
 
 ## Gates that hold at every step
 

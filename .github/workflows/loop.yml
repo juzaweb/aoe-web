@@ -666,6 +666,47 @@ jobs:
           gh pr merge "$PR_URL" --merge --delete-branch
           echo "::notice::Merged $PR_URL into develop."
 
+      # The merge is the point of the pipeline, so the state file has to say so
+      # without a model deciding it. `mark-shipped.sh` rewrites exactly one cell
+      # and refuses if the table does not look the way it expects.
+      #
+      # Best effort by design: a green merge must not turn red because a
+      # bookkeeping push was refused. If it cannot push, the row stays at
+      # VERIFIED and the next triage reconciles it against git history.
+      - name: Mark the slice shipped
+        id: mark
+        if: steps.merge.outcome == 'success'
+        env:
+          SLICE: ${{ steps.slice.outputs.slice }}
+          PR_URL: ${{ steps.ship.outputs.url }}
+          LOOP_PAT: ${{ secrets.LOOP_PAT }}
+        run: |
+          set -euo pipefail
+          # Edit the merged tree, not the loop branch: it is develop's STATE.md
+          # that moved, and the loop branch is about to be irrelevant.
+          git fetch origin develop
+          git checkout -B develop origin/develop
+
+          if ! bash "${{ github.workspace }}/scripts/mark-shipped.sh" "$SLICE" "$PR_URL"; then
+            echo "::warning::Could not mark $SLICE shipped; leaving the row as it is."
+            exit 0
+          fi
+
+          if git diff --quiet -- STATE.md; then
+            echo "::notice::STATE.md already records $SLICE as shipped."
+            exit 0
+          fi
+
+          git add STATE.md
+          git commit -m "chore(loop): mark $SLICE shipped" \
+            -m "Merged as $PR_URL."
+          if ! bash "${{ github.workspace }}/scripts/ci-push.sh" develop; then
+            echo "::warning::Could not push the SHIPPED marker to develop (branch protection?)."
+            echo "::warning::The row stays at VERIFIED; the next triage reconciles it."
+            exit 0
+          fi
+          echo "::notice::Marked $SLICE shipped on develop."
+
       - name: Summary
         if: always()
         run: |
@@ -679,6 +720,7 @@ jobs:
             echo "- Proposal PR (state): ${{ steps.state.outputs.url || 'none' }}"
             echo "- Code PR: ${{ steps.ship.outputs.url || 'none' }}"
             echo "- Code merged: ${{ steps.merge.outcome == 'success' && 'yes' || 'no' }}"
+            echo "- Slice marked shipped: ${{ steps.mark.outcome || 'skipped' }}"
             echo ""
             echo "\`\`\`"
             git status --porcelain || true
