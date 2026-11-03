@@ -1,0 +1,299 @@
+name: Loop
+
+# Manual only. Nothing runs on a schedule or on push: every run costs tokens and
+# can write to the repository, so a human presses the button.
+on:
+  workflow_dispatch:
+    inputs:
+      step:
+        description: Pipeline step to run
+        type: choice
+        required: true
+        default: triage
+        options:
+          - triage
+          - pick
+          - plan
+          - build
+          - verify
+          - ship
+          - full
+      slice:
+        description: Slice ID from STATE.md (required for every step except triage)
+        type: string
+        required: false
+        default: ''
+      model:
+        description: Provider/model override, empty uses opencode.json
+        type: string
+        required: false
+        default: ''
+      merge:
+        description: Merge the PR into develop once it is opened
+        type: boolean
+        required: false
+        default: false
+
+# One run at a time: two agents editing STATE.md would overwrite each other's
+# status column, and the status column is what gates each step.
+concurrency:
+  group: loop
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+env:
+  # STATE.md and docs/plans are Vietnamese. Without UTF-8 the runner mangles it.
+  LANG: en_US.UTF-8
+  LC_ALL: en_US.UTF-8
+
+jobs:
+  loop:
+    name: ${{ inputs.step }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Validate inputs
+        env:
+          STEP: ${{ inputs.step }}
+          SLICE: ${{ inputs.slice }}
+        run: |
+          set -euo pipefail
+          if [ "$STEP" != "triage" ] && [ -z "$SLICE" ]; then
+            echo "::error::Slice ID is required for step '$STEP'."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      # develop is the integration branch. If it is absent the run creates it,
+      # but that branch's history should belong to a human, not to CI.
+      - name: Ensure develop exists
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin develop >/dev/null 2>&1; then
+            git fetch origin develop
+            git checkout develop
+          else
+            echo "::warning::origin/develop is missing; creating it from the default branch."
+            git checkout -B develop
+            git push -u origin develop
+          fi
+          git config user.name "loop-bot"
+          git config user.email "loop-bot@users.noreply.github.com"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install opencode
+        run: npm install --global opencode-ai
+
+      # The key is written to the file the CLI reads, never passed as an
+      # argument, so it cannot leak into a process listing or a log line.
+      # The provider id must match the `provider/model` prefix in opencode.json.
+      - name: Configure opencode auth
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_PROVIDER: ${{ secrets.OPENCODE_PROVIDER }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENCODE_API_KEY:-}" ]; then
+            echo "::error::Missing repository secret OPENCODE_API_KEY."
+            exit 1
+          fi
+          provider="${OPENCODE_PROVIDER:-opencode-go}"
+          mkdir -p "$HOME/.local/share/opencode"
+          jq -n --arg p "$provider" --arg key "$OPENCODE_API_KEY" \
+            '{($p):{type:"api",key:$key}}' \
+            > "$HOME/.local/share/opencode/auth.json"
+          chmod 600 "$HOME/.local/share/opencode/auth.json"
+          echo "Authenticated provider: $provider"
+
+      - name: Verify skills are discoverable
+        run: |
+          set -euo pipefail
+          opencode debug skill | grep -q '"name": "loop-triage"' \
+            || { echo "::error::loop-* skills are not discovered from .agents/skills."; exit 1; }
+
+      - name: Run step
+        env:
+          STEP: ${{ inputs.step }}
+          SLICE: ${{ inputs.slice }}
+          MODEL: ${{ inputs.model }}
+        run: |
+          set -euo pipefail
+          model_args=()
+          if [ -n "$MODEL" ]; then model_args=(--model "$MODEL"); fi
+
+          agent_for() {
+            case "$1" in
+              triage) echo loop-triage ;;
+              pick)   echo build ;;
+              plan)   echo planner ;;
+              build)  echo implementer ;;
+              verify) echo verifier ;;
+              ship)   echo shipper ;;
+            esac
+          }
+
+          prompt_for() {
+            case "$1" in
+              triage) echo "Run daily triage. Report only. Merge evidence-backed findings into STATE.md High Priority and Watch List, rank by ROI, set 'Last run' to today. Do not touch source code." ;;
+              pick)   echo "The human has approved slice $SLICE. Do not write code. Set its STATE.md Next action to 'APPROVED <date> — awaiting plan', set every other High Priority row to 'not this run', append a line to loop-run-log.md recording the approval, and print the next command." ;;
+              plan)   echo "Write the implementation plan for approved slice $SLICE. Use the next free phase number in docs/plans/, follow the shape of the existing phase files, add the README phase-table row, and set the STATE.md row to 'PLANNED <date> — awaiting build'. No source code." ;;
+              build)  echo "Implement slice $SLICE from its plan in docs/plans/. Treat the acceptance criteria as the definition of done. Write tests, run them, report the exact commands and results. Do not commit. Stop and escalate on a denylisted path, a missing requirement, or a plan/code disagreement. Set the STATE.md row to 'BUILT <date> — awaiting verify'." ;;
+              verify) echo "Independently verify slice $SLICE. Run pnpm --filter @chien-quoc/client test, pnpm --filter @chien-quoc/server test and pnpm build yourself. Judge every acceptance criterion PASS or FAIL. First line must be APPROVE or REJECT. On APPROVE set the STATE.md row to 'VERIFIED <date> — awaiting ship' and append the verdict to loop-run-log.md." ;;
+              ship)   echo "Prepare slice $SLICE for shipping. Refuse unless its STATE.md row reads 'VERIFIED' and loop-run-log.md holds an APPROVE entry. Do not merge and do not push: leave the changes in the working tree and print the commit message and PR body you would use." ;;
+            esac
+          }
+
+          run_agent() {
+            local step="$1"
+            local agent
+            agent=$(agent_for "$step")
+            echo "::group::opencode $step ($agent)"
+            opencode run --agent "$agent" --auto "${model_args[@]}" "$(prompt_for "$step")"
+            echo "::endgroup::"
+          }
+
+          if [ "$STEP" = "full" ]; then
+            for s in pick plan build verify ship; do
+              run_agent "$s"
+              # A REJECT ends the pipeline. Shipping code the verifier rejected
+              # is the one outcome this workflow must never produce.
+              if [ "$s" = "verify" ] && ! grep -q '^APPROVE' loop-run-log.md; then
+                echo "::error::Verifier did not approve; stopping before ship."
+                exit 1
+              fi
+            done
+          else
+            run_agent "$STEP"
+          fi
+
+      # gate.yaml is the hard stop: a denylisted path means a human ships this,
+      # not the workflow, regardless of what the verifier said.
+      - name: Check gate policy
+        id: gate
+        if: always()
+        run: |
+          set -euo pipefail
+          # `git status --porcelain` mangles two cases that matter here: a path
+          # with a space becomes "sp ace.ts", and a rename emits "old -> new" so
+          # the old name leaks in. diff --name-only plus ls-files gives the new
+          # name only, one per NUL, and core.quotePath=false keeps it literal.
+          list_paths() {
+            git -c core.quotePath=false diff --name-only -z HEAD
+            git -c core.quotePath=false ls-files --others --exclude-standard -z
+          }
+          changed=$(list_paths | tr '\0' '\n' | grep -v '^$' | sort -u || true)
+          if [ -z "$changed" ]; then
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No file changes to ship."
+            exit 0
+          fi
+          echo "Paths changed:"; echo "$changed"
+          # loop-gate wants one comma-separated argument. Join line by line:
+          # `printf '%s\n' $changed` would word-split on the space in a path
+          # like "sp ace.ts" and hand gate a truncated name.
+          csv=$(printf '%s' "$changed" | paste -sd, -)
+          echo "csv=[$csv]"
+          # `merge`, not `auto-merge`: auto-merge also requires the path to be on
+          # autoMergeAllowlist, which is intentionally empty, so every path would
+          # escalate. `merge` enforces the denylist and max-files, which is the
+          # policy this repo actually wants.
+          set +e
+          npx --yes @cobusgreyling/loop gate check --action merge --paths "$csv"
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::gate check exited $code; a human must ship this slice."
+          fi
+
+      - name: Commit, push and open PR
+        id: ship
+        if: inputs.step == 'ship' || inputs.step == 'full'
+        env:
+          SLICE: ${{ inputs.slice }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.gate.outputs.allowed }}" != "true" ]; then
+            echo "::warning::Skipping ship: gate policy did not allow it."
+            exit 0
+          fi
+
+          slug=$(printf '%s' "$SLICE" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
+          branch="loop/${slug:-slice}-$(date +%Y%m%d-%H%M%S)"
+
+          # Bodies go to files, not to -m/--body: a multi-line argument inside a
+          # YAML block scalar is fragile, a file is not. printf keeps the text
+          # flush-left (a heredoc would inherit the block scalar's indent).
+          {
+            printf 'feat(loop): %s\n\n' "$SLICE"
+            printf 'Implemented by the loop pipeline.\n\n'
+            printf 'Slice: %s\n' "$SLICE"
+            printf 'Plan: docs/plans/\n'
+            printf 'Verifier: APPROVE\n'
+          } > /tmp/commit-msg.txt
+
+          {
+            printf 'Slice `%s` implemented by the loop pipeline.\n\n' "$SLICE"
+            printf -- '- Plan: `docs/plans/`\n'
+            printf -- '- Verifier verdict: see `loop-run-log.md`\n'
+            printf -- '- Tests: client, server and build all ran in this workflow\n\n'
+            printf 'Merging moves agent-authored code onto `develop`.\n'
+          } > /tmp/pr-body.txt
+
+          git checkout -b "$branch"
+          git add -A
+          git commit -F /tmp/commit-msg.txt
+          git push -u origin "$branch"
+          gh pr create --base develop --head "$branch" \
+            --title "feat(loop): ${SLICE}" \
+            --body-file /tmp/pr-body.txt > pr-url.txt
+          echo "url=$(tail -1 pr-url.txt)" >> "$GITHUB_OUTPUT"
+
+      # Explicit opt-in per run. A run that only wants the PR stops here.
+      - name: Merge PR into develop
+        if: inputs.merge && steps.ship.outputs.url != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ steps.ship.outputs.url }}
+        run: gh pr merge "$PR_URL" --merge --delete-branch
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Loop — ${{ inputs.step }}"
+            echo ""
+            echo "- Slice: \`${{ inputs.slice }}\`"
+            echo "- PR: ${{ steps.ship.outputs.url || 'none' }}"
+            echo "- Merged: ${{ inputs.merge && steps.ship.outputs.url != '' && 'yes' || 'no' }}"
+            echo ""
+            echo "\`\`\`"
+            git status --porcelain || true
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"

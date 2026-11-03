@@ -46,6 +46,33 @@ opencode run --agent loop-triage "Run daily triage" --auto    # no approval prom
 `--auto` approves every tool call that is not explicitly denied. Use it only for step 1,
 which cannot write source code. Steps 4-6 must stay interactive so you see every edit.
 
+## Run it in GitHub Actions
+
+`.github/workflows/loop.yml`, started by hand from the Actions tab (`workflow_dispatch`).
+Nothing runs on a schedule or on push.
+
+| Input | Meaning |
+|-------|---------|
+| `step` | `triage` / `pick` / `plan` / `build` / `verify` / `ship` / `full` |
+| `slice` | the slice ID; required for every step except `triage` |
+| `model` | optional `provider/model` override |
+| `merge` | merge the PR into `develop` once it is opened, off by default |
+
+Required repository secret: `OPENCODE_API_KEY`. Optional `OPENCODE_PROVIDER` (defaults to
+`opencode-go`, and must match the `provider/` prefix in `opencode.json`).
+
+Two hard stops before anything is committed:
+
+1. `gate check --action merge` must exit 0. A denylisted path or more than 12 files sends the
+   run to a human instead of a PR. `auto-merge` is deliberately *not* used: it also requires
+   the path to be on `autoMergeAllowlist`, which is empty, so every path would escalate.
+2. In `full` mode, the run aborts before `ship` unless `loop-run-log.md` has an `APPROVE` line.
+   Shipping code the verifier rejected is the one outcome the workflow must never produce.
+
+The workflow creates `develop` on its first run if it is missing. Push it yourself first —
+that branch's history should belong to a human, not to CI.
+
+
 ## Status vocabulary in STATE.md
 
 A slice moves through these values in its `Next action` column. Each command refuses to run
@@ -80,7 +107,10 @@ pnpm build
 
 ## Troubleshooting
 
-Skills live in `.opencode/skills/`. Check discovery before blaming a prompt:
+Skills live in `.agents/skills/`, one of the project-local directories opencode discovers
+(alongside `.opencode/skills/` and `.claude/skills/`). `.agents/skills/` also holds
+`local-assets-ai`, so the loop skills live next to the project's own skills rather than in a
+directory created only for them. Check discovery before blaming a prompt:
 
 ```bash
 opencode debug skill | grep -oE '"name": "loop-[a-z]+"'
