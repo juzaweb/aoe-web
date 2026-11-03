@@ -57,41 +57,6 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      # A blank slice is not an error: triage needs none, and every other step
-      # falls back to the first `candidate` row in STATE.md. Forcing the operator
-      # to retype an ID that is already in the state file only produced failed
-      # runs, which is why this resolves the slice rather than rejecting it.
-      - name: Resolve slice
-        id: slice
-        env:
-          STEP: ${{ inputs.step }}
-          # The raw input, not this step's own output.
-          REQUESTED: ${{ inputs.slice }}
-        run: |
-          set -euo pipefail
-          slice="$REQUESTED"
-
-          if [ -z "$slice" ] && [ "$STEP" != "triage" ]; then
-            # First table row whose Next action starts with `candidate`, read from
-            # the backticked ID in the first column.
-            slice=$(grep -E '^\| `[A-Z0-9-]+`' STATE.md \
-              | grep -F '`candidate`' \
-              | head -1 \
-              | sed -E 's/^\| `([^`]+)`.*/\1/')
-          fi
-
-          if [ -z "$slice" ] && [ "$STEP" != "triage" ]; then
-            echo "::error::No slice given and STATE.md has no 'candidate' row."
-            grep -E '^\| `[A-Z0-9-]+`' STATE.md || true
-            exit 1
-          fi
-
-          echo "slice=$slice" >> "$GITHUB_OUTPUT"
-          if [ -n "$slice" ]; then
-            echo "::notice::Slice: $slice"
-            grep -F "\`$slice\`" STATE.md | head -1 || true
-          fi
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -113,6 +78,46 @@ jobs:
           fi
           git config user.name "loop-bot"
           git config user.email "loop-bot@users.noreply.github.com"
+
+      # Runs after checkout, because it reads STATE.md from the working tree.
+      # A blank slice is not an error: triage needs none, and every other step
+      # falls back to the first `candidate` row. Forcing the operator to retype
+      # an ID that is already in the state file only produced failed runs.
+      - name: Resolve slice
+        id: slice
+        env:
+          STEP: ${{ inputs.step }}
+          # The raw input, not this step's own output.
+          REQUESTED: ${{ inputs.slice }}
+        run: |
+          set -euo pipefail
+          slice="$REQUESTED"
+
+          if [ ! -f STATE.md ]; then
+            echo "::error::STATE.md is missing after checkout; cannot resolve a slice."
+            exit 1
+          fi
+
+          if [ -z "$slice" ] && [ "$STEP" != "triage" ]; then
+            # First table row whose Next action says `candidate`, read from the
+            # backticked ID in the first column.
+            slice=$(grep -E '^\| `[A-Z0-9-]+`' STATE.md \
+              | grep -F '`candidate`' \
+              | head -1 \
+              | sed -E 's/^\| `([^`]+)`.*/\1/' || true)
+          fi
+
+          if [ -z "$slice" ] && [ "$STEP" != "triage" ]; then
+            echo "::error::No slice given and STATE.md has no 'candidate' row."
+            grep -E '^\| `[A-Z0-9-]+`' STATE.md || true
+            exit 1
+          fi
+
+          echo "slice=$slice" >> "$GITHUB_OUTPUT"
+          if [ -n "$slice" ]; then
+            echo "::notice::Slice: $slice"
+            grep -F "\`$slice\`" STATE.md | head -1 || true
+          fi
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
