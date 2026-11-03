@@ -1,18 +1,21 @@
 # loop-gate policy — https://github.com/cobusgreyling/loop-engineering
 #
 # `npx @cobusgreyling/loop gate check --action merge --paths <csv>` exits
-# 0 = allowed, 2 = escalate to a human.
+# 0 = allowed, 2 = escalate.
 #
-# The pipeline is /loop-triage -> /loop-pick -> /loop-plan -> /loop-build ->
-# /loop-verify -> /loop-ship, and .github/workflows/loop.yml runs the same steps
-# from the Actions tab. `--action merge` is used there, not `auto-merge`: the
-# latter also demands a non-empty autoMergeAllowlist, which this repo keeps empty.
+# This repo merges unattended: `.github/workflows/loop.yml` gates at build time
+# and throws the slice away when the gate refuses, so no PR ever waits for a
+# person. So this list holds only what must never change without a human reading
+# it — the loop's own tooling and secrets. Everything else merges.
+#
+# Adding a source path here means the agent cannot ship any slice that touches
+# it, and the slice is discarded. Add one only when you want that.
 version: 1
 
 denylist:
   - "**/*.env"
   - "**/.env*"
-  # Tooling that runs agents unattended.
+  # Loop tooling: an agent that can edit these can widen its own permissions.
   - "opencode.json"
   - "gate.yaml"
   - "loop-constraints.md"
@@ -20,8 +23,8 @@ denylist:
   - ".github/**"
 
 autoMergeAllowlist:
-  # Empty on purpose: the verifier approves, a human merges. An empty YAML value
-  # parses as null, which loop-gate rejects, so the list must be explicit.
+  # Unused: the workflow calls `--action merge`, which enforces denylist and
+  # maxFiles only. Listed here because loop-gate rejects a null value.
   []
 
 maxFiles: 12

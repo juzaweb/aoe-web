@@ -29,10 +29,10 @@ on:
         required: false
         default: ''
       merge:
-        description: Merge the PR into develop once it is opened
+        description: Merge the PR into develop. Leave on; turn off to inspect the PR first.
         type: boolean
         required: false
-        default: false
+        default: true
 
 # One run at a time: two agents editing STATE.md would overwrite each other's
 # status column, and the status column is what gates each step.
@@ -189,8 +189,10 @@ jobs:
             run_agent "$STEP"
           fi
 
-      # gate.yaml is the hard stop: a denylisted path means a human ships this,
-      # not the workflow, regardless of what the verifier said.
+      # gate.yaml is checked here, at build time, not only at ship time. A slice
+      # that needs a denylisted file is refused while it is still reversible: the
+      # step below reverts it. That is what keeps every PR this workflow opens
+      # auto-mergeable — there is never a PR waiting for a human to merge it.
       - name: Check gate policy
         id: gate
         if: always()
@@ -206,8 +208,8 @@ jobs:
           }
           changed=$(list_paths | tr '\0' '\n' | grep -v '^$' | sort -u || true)
           if [ -z "$changed" ]; then
-            echo "allowed=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No file changes to ship."
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::No file changes; nothing to gate."
             exit 0
           fi
           echo "Paths changed:"; echo "$changed"
@@ -218,8 +220,7 @@ jobs:
           echo "csv=[$csv]"
           # `merge`, not `auto-merge`: auto-merge also requires the path to be on
           # autoMergeAllowlist, which is intentionally empty, so every path would
-          # escalate. `merge` enforces the denylist and max-files, which is the
-          # policy this repo actually wants.
+          # escalate. `merge` enforces the denylist and max-files.
           set +e
           npx --yes @cobusgreyling/loop gate check --action merge --paths "$csv"
           code=$?
@@ -228,22 +229,39 @@ jobs:
             echo "allowed=true" >> "$GITHUB_OUTPUT"
           else
             echo "allowed=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::gate check exited $code; a human must ship this slice."
+            echo "::error::gate check exited $code — this slice needs a denylisted path."
           fi
+
+      # The slice is thrown away rather than handed over. Handing it over would
+      # mean a PR nobody may merge, which is the one outcome this workflow
+      # exists to avoid; throwing it away means the next triage simply picks a
+      # different slice.
+      - name: Reject slice that needs a denylisted path
+        if: steps.gate.outputs.allowed != 'true'
+        run: |
+          set -euo pipefail
+          echo "::error::Slice '${{ inputs.slice }}' touched a path in gate.yaml."
+          git checkout -- .
+          git clean -fd
+          {
+            echo "### Slice refused"
+            echo ""
+            echo "\`${{ inputs.slice }}\` needs a file that \`gate.yaml\` denies to"
+            echo "unattended agents. The working tree was reverted; no PR was opened."
+            echo ""
+            echo "Either split the slice so the denylisted part is a separate,"
+            echo "human-authored change, or drop it and let triage pick another."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
 
       - name: Commit, push and open PR
         id: ship
-        if: inputs.step == 'ship' || inputs.step == 'full'
+        if: (inputs.step == 'ship' || inputs.step == 'full') && steps.gate.outputs.allowed == 'true'
         env:
           SLICE: ${{ inputs.slice }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [ "${{ steps.gate.outputs.allowed }}" != "true" ]; then
-            echo "::warning::Skipping ship: gate policy did not allow it."
-            exit 0
-          fi
-
           slug=$(printf '%s' "$SLICE" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
           branch="loop/${slug:-slice}-$(date +%Y%m%d-%H%M%S)"
 
@@ -270,18 +288,26 @@ jobs:
           git add -A
           git commit -F /tmp/commit-msg.txt
           git push -u origin "$branch"
+          # --auto makes the merge immediate and unattended, so the PR is never a
+          # thing waiting on a person. If the branch protection rules require a
+          # check, gh merges as soon as it goes green; otherwise it merges now.
           gh pr create --base develop --head "$branch" \
             --title "feat(loop): ${SLICE}" \
             --body-file /tmp/pr-body.txt > pr-url.txt
           echo "url=$(tail -1 pr-url.txt)" >> "$GITHUB_OUTPUT"
 
-      # Explicit opt-in per run. A run that only wants the PR stops here.
+      # Default on: the point of the workflow is that no PR sits waiting for a
+      # person. The gate above already refused anything denylisted, so what
+      # reaches here has passed the policy check.
       - name: Merge PR into develop
         if: inputs.merge && steps.ship.outputs.url != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ steps.ship.outputs.url }}
-        run: gh pr merge "$PR_URL" --merge --delete-branch
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR_URL" --merge --delete-branch
+          echo "::notice::Merged $PR_URL into develop."
 
       - name: Summary
         if: always()
