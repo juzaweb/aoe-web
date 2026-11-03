@@ -39,6 +39,23 @@ LOCK = SCRIPT_DIR / "assets.lock.json"
 CREDITS = ROOT / "CREDITS.md"
 ASSET_ROOT = ROOT / "apps" / "client" / "public" / "assets"
 
+# Sprites built by `scripts/process_generated_assets.py` from project-original
+# generated textures. They have no upstream URL or license to record here and
+# are reproducible from that script, so they stay out of both `targets` and
+# `legacy`: pinning their bytes would make every regeneration look like a hand
+# edit. Their contract is checked by `process_generated_assets.py --check`.
+# Keep this list in sync with GATE_REL and ROAD_NAMES there; a new generated
+# file that is missing here fails `--check` with "not in the lock".
+GENERATED_PATHS = frozenset(
+    {
+        "apps/client/public/assets/buildings/portal.png",
+        "apps/client/public/assets/terrain/road_stamp.png",
+        "apps/client/public/assets/terrain/road_stamp_1.png",
+        "apps/client/public/assets/terrain/road_stamp_2.png",
+        "apps/client/public/assets/terrain/road_stamp_3.png",
+    }
+)
+
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -232,7 +249,7 @@ def legacy_paths(lock: dict) -> set[str]:
         path.relative_to(ROOT).as_posix()
         for path in ASSET_ROOT.rglob("*.png")
     }
-    return present - owned
+    return present - owned - GENERATED_PATHS
 
 
 def cmd_legacy() -> None:

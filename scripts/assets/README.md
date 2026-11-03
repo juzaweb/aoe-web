@@ -68,11 +68,28 @@ is missing from `CREDITS.md`, or when a legacy sprite was edited or is new
 - `legacy` in the lock pins the PNGs no target builds (terrain, gold/stone/berry,
   farm/mill/mining camp/tower, units, cursors, icons). They have no upstream to
   rebuild from, so they are hash-only: a hand edit or a stray regeneration fails
-  `--check` instead of shipping silently.
+  `--check` instead of shipping silently. The generated gate and road stamps are
+  excluded because another script rebuilds them (see below).
+
+## Generated art (not third-party)
+
+`scripts/process_generated_assets.py` builds `buildings/portal.png` and the four
+`terrain/road_stamp{,_1,_2,_3}.png` from project-original generated textures.
+They have no upstream URL or license and are reproducible from two source PNGs,
+so they stay out of `manifest.json` and this lock; pinning their bytes would make
+every regeneration look like a hand edit. Their contract lives in that script:
+
+```bash
+python scripts/process_generated_assets.py --gate <gate.png> --road <dirt.png>
+python scripts/process_generated_assets.py --check   # canvas, anchoring, lum, doorway
+```
+
+That script needs Pillow and numpy; the OpenGameArt pipeline itself only needs
+Pillow.
 
 ## Not migrated
 
-`terrain/*`, `resources/{gold,stone,berry}.png`, `buildings/{farm,mill,
+`terrain/{grass,dirt}*.png`, `resources/{gold,stone,berry}.png`, `buildings/{farm,mill,
 mining_camp,tower}.png`, cavalry, icons and cursors keep their previous art;
 their bytes are pinned under `legacy` in the lock, with the icon provenance
 recorded as unknown. The grassland tileset ships no tile map (its OGA page points

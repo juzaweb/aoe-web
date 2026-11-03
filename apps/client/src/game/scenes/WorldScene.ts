@@ -375,15 +375,16 @@ export class WorldScene extends Phaser.Scene {
     }
 
     // Preload generated building assets with cache-busting version (2x resolution)
-    // v=6: town centre swapped to the feudalwars castle, mirrored to face the
-    // camera. Bump the key whenever a PNG under public/assets/buildings or
-    // /resources changes.
-    const v = 'v=6';
+    // v=7: the portal got its own sheet (phase 09), so the renderer no longer
+    // borrows `building_TOWER` or tints it. Bump the key whenever a PNG under
+    // public/assets/buildings or /resources changes.
+    const v = 'v=7';
     this.load.image('building_TOWN_CENTER', `/assets/buildings/town_center.png?${v}`);
     this.load.image('building_BARRACKS', `/assets/buildings/barracks.png?${v}`);
     this.load.image('building_HOUSE', `/assets/buildings/house.png?${v}`);
     this.load.image('building_FARM', `/assets/buildings/farm.png?${v}`);
     this.load.image('building_TOWER', `/assets/buildings/tower.png?${v}`);
+    this.load.image('building_PORTAL', `/assets/buildings/portal.png?${v}`);
     this.load.image('building_LUMBER_CAMP', `/assets/buildings/lumber_camp.png?${v}`);
     this.load.image('building_MILL', `/assets/buildings/mill.png?${v}`);
     this.load.image('building_MINING_CAMP', `/assets/buildings/mining_camp.png?${v}`);
@@ -401,7 +402,8 @@ export class WorldScene extends Phaser.Scene {
     this.load.image('res_node_BERRY_BUSH', `/assets/resources/berry.png?${v}`);
 
     // Preload Age of Empires 2 Grass Terrain textures
-    const tv = 'v=7';
+    // tv=8: the road stamps were regenerated from the generated dirt texture.
+    const tv = 'v=8';
     this.load.image('tile_grass_1', `/assets/terrain/grass_1.png?${tv}`);
     this.load.image('tile_grass_2', `/assets/terrain/grass_2.png?${tv}`);
     this.load.image('tile_grass_3', `/assets/terrain/grass_3.png?${tv}`);

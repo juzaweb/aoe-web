@@ -27,7 +27,7 @@ export const SHEET_OFFSET_Y: Partial<Record<BuildingType, number>> = {
   LUMBER_CAMP: -70,
   MILL: -70,
   MINING_CAMP: -70,
-  PORTAL: -160
+  PORTAL: -140
 };
 
 /** Procedural textures used when a building has no generated PNG. */
@@ -36,8 +36,8 @@ const FALLBACK_ART: Partial<Record<BuildingType, { textureKey: string; offsetY: 
   HOUSE: { textureKey: 'b_house', offsetY: -50 },
   FARM: { textureKey: 'b_farm', offsetY: 0 },
   TOWER: { textureKey: 'b_tower', offsetY: -90 },
-  // D8: no dedicated portal art yet; the tower sheet plus the purple tint
-  // applied by `EntityRenderer` is the agreed placeholder.
+  // The gate has its own sheet now (`GATE-01`); this only draws when that PNG
+  // failed to load, so it keeps the tower silhouette rather than a blank tile.
   PORTAL: { textureKey: 'b_tower', offsetY: -90 }
 };
 
@@ -51,7 +51,8 @@ const DEFAULT_ART = { textureKey: 'b_town_center', offsetY: -130 };
  * sheet rectangle: a sprite whose art does not reach the top row leaves a gap
  * that the bar has to absorb. The OpenGameArt pass recomputed the four rows it
  * replaced from the measured top inset in `scripts/assets/assets.lock.json`;
- * the rest still describe the older AI sheets.
+ * `PORTAL` comes from the generated 320x360 sheet, whose top inset is 4 px
+ * (measured by `scripts/process_generated_assets.py --check`).
  */
 const HP_BAR_Y: Partial<Record<BuildingType, number>> = {
   TOWN_CENTER: -358,
@@ -62,7 +63,7 @@ const HP_BAR_Y: Partial<Record<BuildingType, number>> = {
   LUMBER_CAMP: -171,
   MILL: -190,
   MINING_CAMP: -190,
-  PORTAL: -350
+  PORTAL: -326
 };
 
 /**
@@ -77,17 +78,6 @@ export function buildingArt(
   type: BuildingType,
   hasTexture: (textureKey: string) => boolean
 ): BuildingArt {
-  // D8: no dedicated gate art yet. The shipped watch-tower sheet is far more
-  // legible than the tiny procedural fallback, and the purple tint applied by
-  // the renderer still marks it as travel infrastructure.
-  if (type === 'PORTAL' && hasTexture('building_TOWER')) {
-    return {
-      textureKey: 'building_TOWER',
-      offsetY: SHEET_OFFSET_Y.TOWER ?? -160,
-      scale: 1
-    };
-  }
-
   const customKey = `building_${type}`;
   if (hasTexture(customKey)) {
     return {

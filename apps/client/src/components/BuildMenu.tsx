@@ -32,7 +32,7 @@ const BUILDING_THUMBNAILS: Record<BuildingType, string> = {
   MINING_CAMP: '/assets/buildings/mining_camp.png?v=1',
   // Not listed in BUILDINGS: portals are server-created. The entry only keeps
   // the exhaustive Record type-checking.
-  PORTAL: '/assets/buildings/tower.png?v=3'
+  PORTAL: '/assets/buildings/portal.png?v=3'
 };
 
 export const BuildMenu: React.FC<BuildMenuProps> = ({

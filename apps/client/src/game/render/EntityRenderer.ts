@@ -252,9 +252,6 @@ export class EntityRenderer {
 
     const img = scene.add.image(0, offsetY, textureKey);
     img.setScale(scale);
-    // D8: the portal borrows the tower sheet; the tint is what makes it read as
-    // travel infrastructure rather than a defensive building.
-    if (building.type === 'PORTAL') img.setTint(0xc084fc);
     container.add(img);
     // ECO-01: kept so the gather state of a field can be drawn without
     // rebuilding the container.

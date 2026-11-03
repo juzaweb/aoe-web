@@ -15,7 +15,7 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | [`06-aoe-asset-rebuild.md`](./06-aoe-asset-rebuild.md) | Tạo lại art công trình/cây/tài nguyên/terrain từ collection "AoE like Assets" (`ART-01..ART-12`) | IMPLEMENTED (một phần) — 8 sprite đã thay; terrain bỏ vì atlas không cắt được; chờ verify tay |
 | [`07-smaller-kingdom-map.md`](./07-smaller-kingdom-map.md) | Kingdom riêng nhỏ lại 110×110, TC ở giữa map, map size theo zone (`D1–D8`) | IMPLEMENTED — chờ verify tay UI |
 | [`08-progression-curve.md`](./08-progression-curve.md) | Đường cong nâng cấp dài hạn: 1-10 tính bằng phút, từ 11 tính bằng giờ (×1,05/cấp), gate TC ↔ 4 trụ cột, 2 slot (`LVL2-00..LVL2-07`) | APPROVED — chờ code |
-| [`09-road-and-gate-assets.md`](./09-road-and-gate-assets.md) | Thay art đường đất + cổng bằng 2 ảnh AI gen, bỏ tint tím mượn tower (`GATE-01..ROAD-02`) | DRAFT — chờ duyệt D1–D6 |
+| [`09-road-and-gate-assets.md`](./09-road-and-gate-assets.md) | Thay art đường đất + cổng bằng 2 ảnh AI gen, bỏ tint tím mượn tower (`GATE-01..ROAD-02`) | IMPLEMENTED — chờ verify tay |
 
 Status: `DRAFT` (chưa chốt quyết định) → `APPROVED` (bắt đầu code) → `DONE`.
 
@@ -64,8 +64,9 @@ Phase 09 (road + gate assets) thay nốt 2 chỗ art còn là placeholder: 4 sta
 đang mượn sheet tower + tint tím. Nguồn là 2 ảnh AI gen trong `Downloads/games`, xử lý bằng
 `scripts/process_generated_assets.py` (không đưa vào `manifest.json` vì không phải third-party).
 Quyết định đáng chú ý: căn cổng bottom-center theo bbox (tâm lối đi lệch 17 px, đã đo), `offsetY`
-`-140`, bỏ tint, và chuẩn hoá 4 crop đường về mean 150. Chưa thay file nào; xem
-`09-road-and-gate-assets.md` §3.
+`-140`, bỏ tint, và chuẩn hoá 4 crop đường về mean 150. Đã implement ngày 2026-11-03: `portal.png`
+320×360 (topInset 4 → `HP_BAR_Y.PORTAL = -326`), 4 road stamp 120×60 mean 150, `--check` của script
+mới và `build.py --check` đều xanh; còn verify tay §7.2. Xem `09-road-and-gate-assets.md` §3 và §6.
 
 ## Quy ước
 

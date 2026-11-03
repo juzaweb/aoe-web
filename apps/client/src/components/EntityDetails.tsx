@@ -95,11 +95,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
             />
           ) : entity.type === 'building' && entity.subType ? (
             <img
-              // D8: there is no portal art yet; the tower sheet is the agreed
-              // placeholder used by the world renderer too.
-              src={`/assets/buildings/${
-                entity.subType === 'PORTAL' ? 'tower' : entity.subType.toLowerCase()
-              }.png?v=3`}
+              src={`/assets/buildings/${entity.subType.toLowerCase()}.png?v=3`}
               alt={entity.name}
               className="w-10 h-10 object-contain rounded-md bg-slate-900/90 border border-amber-500/60 p-0.5 shadow-md"
               onError={(e) => {
