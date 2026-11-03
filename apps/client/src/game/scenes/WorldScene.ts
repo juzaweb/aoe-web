@@ -36,6 +36,14 @@ import { DecorLayer } from '../render/DecorLayer.js';
 import { decorPreloadList } from '../render/decorArt.js';
 import { TerrainLayer } from '../render/TerrainLayer.js';
 import { OwnerColorRegistry, colorToCss } from '../render/ownerColor.js';
+import {
+  ATTACK_ALERT_COOLDOWN_MS,
+  ATTACK_PING_DURATION_MS,
+  MAX_ATTACK_PINGS,
+  capAttackPings,
+  pruneAttackPings,
+  type AttackPing
+} from '../render/attackAlert.js';
 import { unitActionTexture } from '../render/unitDirections.js';
 import { UNIT_ART, unitArt, unitSheets } from '../render/unitArt.js';
 import { RENDER_DELAY_MS } from '../render/unitMotion.js';
@@ -182,6 +190,8 @@ export interface SelectedEntityData {
  * composition root plus the per-frame loop, so the public fields below are the
  * scene's API to those modules, not internal scratch space.
  */
+export type { AttackPing } from '../render/attackAlert.js';
+
 export class WorldScene extends Phaser.Scene {
   public room: Room | null = null;
   /**
@@ -222,6 +232,17 @@ export class WorldScene extends Phaser.Scene {
     const player = this.room?.state?.players?.get(ownerId);
     return player?.color ?? null;
   });
+
+  /**
+   * ALERT-01: minimap pings for recent HP loss on our own entities.
+   */
+  public attackPings: AttackPing[] = [];
+  private lastAttackAlertAt = 0;
+  public readonly ATTACK_ALERT_COOLDOWN_MS = ATTACK_ALERT_COOLDOWN_MS;
+  public readonly ATTACK_PING_DURATION_MS = ATTACK_PING_DURATION_MS;
+  public readonly MAX_ATTACK_PINGS = MAX_ATTACK_PINGS;
+  /** ALERT-01: raised (subject to cooldown) when one of our entities loses HP. */
+  public onAttackAlert?: (location: { x: number; y: number }) => void;
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
 
@@ -659,6 +680,9 @@ export class WorldScene extends Phaser.Scene {
     // OWN-05: the cache belongs to the previous Room's snapshot. A reconnect may
     // restore a different profile colour, so re-resolve before repainting.
     this.ownerColorRegistry.invalidateAll();
+    // ALERT-01 (D8): drop any ping / cooldown from the previous world.
+    this.attackPings = [];
+    this.lastAttackAlertAt = 0;
 
     // A travel freezes the old map on screen instead of going blank while the
     // destination room syncs. Unfreeze before binding the new snapshot.
@@ -775,6 +799,9 @@ export class WorldScene extends Phaser.Scene {
     this.centerAttempts = 0;
     this.cachedOwnerId = '';
     this.ownerColorRegistry.invalidateAll();
+    // ALERT-01 (D8)
+    this.attackPings = [];
+    this.lastAttackAlertAt = 0;
 
     // Repaint the overlays against the now-empty selection so nothing from the
     // old map survives the frame. The new Room may not have delivered its first
@@ -802,6 +829,24 @@ export class WorldScene extends Phaser.Scene {
   public isOwnBuilding(ownerId: string): boolean {
     if (!ownerId) return false;
     return ownerId === this.myOwnerId;
+  }
+
+  /**
+   * ALERT-01: raised by EntityRenderer when one of our entities loses HP.
+   * Always records a minimap ping; the banner only fires on the global cooldown.
+   */
+  public notifyAttack(location: { x: number; y: number }): void {
+    const ping: AttackPing = {
+      x: location.x,
+      y: location.y,
+      startMs: this.time.now,
+      durationMs: this.ATTACK_PING_DURATION_MS
+    };
+    this.attackPings = capAttackPings([...this.attackPings, ping], this.MAX_ATTACK_PINGS);
+    if (this.time.now - this.lastAttackAlertAt >= this.ATTACK_ALERT_COOLDOWN_MS) {
+      this.lastAttackAlertAt = this.time.now;
+      this.onAttackAlert?.(location);
+    }
   }
 
   /** OWN-04: CSS colour of an owner, so the canvas minimap matches the world. */
@@ -870,6 +915,9 @@ export class WorldScene extends Phaser.Scene {
   }
 
   public bindRoomEvents(room: Room) {
+    // ALERT-01 (D8): a freshly bound room must not carry over pings/cooldown.
+    this.attackPings = [];
+    this.lastAttackAlertAt = 0;
     // Called from create(), setRoom() and PhaserGame effects; binding the same
     // Room twice would register duplicate schema callbacks (duplicate sprites).
     if (this.eventsBoundRoom === room) return;
@@ -1605,6 +1653,8 @@ export class WorldScene extends Phaser.Scene {
     // Spread the ~1.3k resource containers over frames instead of one long
     // synchronous burst right after a map switch.
     this.flushResourceSpawns();
+    // ALERT-01: drop expired pings.
+    this.attackPings = pruneAttackPings(this.attackPings, this.time.now);
 
     this.terrain.render();
     this.decor.render();

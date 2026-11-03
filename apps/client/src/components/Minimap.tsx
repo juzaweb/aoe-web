@@ -235,6 +235,25 @@ export const Minimap: React.FC<MinimapProps> = ({
         ctx.stroke();
       });
 
+      // 5b. ALERT-01: attack pings from the scene.
+      const pings = scene?.attackPings ?? [];
+      pings.forEach((p: any) => {
+        const point = gridToMinimap(p.x, p.y, width);
+        const age = scene?.time?.now != null ? (scene.time.now - p.startMs) / p.durationMs : 0;
+        const clampedAge = Math.min(1, Math.max(0, age));
+        const radius = 4 + clampedAge * 8;
+        const alpha = Math.max(0, 1 - clampedAge);
+        ctx.strokeStyle = `rgba(239, 68, 68, ${alpha})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(239, 68, 68, ${Math.min(1, alpha + 0.3)})`;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
       // 6. Camera viewport: the white rectangle AoE draws on its minimap.
       if (scene && scene.cameras?.main) {
         const cam = scene.cameras.main;

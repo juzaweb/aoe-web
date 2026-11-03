@@ -103,6 +103,8 @@ export const App: React.FC = () => {
   const [armedOrder, setArmedOrder] = useState<ArmedOrder | null>(null);
   /** MOB-04: the touch box-selection mode is armed for the next drag. */
   const [boxSelectArmed, setBoxSelectArmed] = useState<boolean>(false);
+  /** ALERT-01: timestamp (ms) until which the under-attack banner stays visible. */
+  const [attackAlertUntil, setAttackAlertUntil] = useState<number>(0);
 
   // Selection & Placement
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntityData | null>(null);
@@ -569,6 +571,13 @@ export const App: React.FC = () => {
   const handleCycleStance = () => sceneRef.current?.cycleSelectedStance();
   const handleToggleBoxSelect = () => sceneRef.current?.setBoxSelectMode(!boxSelectArmed);
   const handleClearSelection = () => sceneRef.current?.clearSelection();
+  const handleAttackAlert = () => setAttackAlertUntil(Date.now() + 4000);
+
+  useEffect(() => {
+    if (attackAlertUntil <= Date.now()) return;
+    const timeout = window.setTimeout(() => setAttackAlertUntil(0), Math.max(0, attackAlertUntil - Date.now()));
+    return () => window.clearTimeout(timeout);
+  }, [attackAlertUntil]);
   const handleZoomIn = () => sceneRef.current?.zoomByStep(1);
   const handleZoomOut = () => sceneRef.current?.zoomByStep(-1);
   const handleCenterBase = () => sceneRef.current?.centerOnBase();
@@ -597,6 +606,7 @@ export const App: React.FC = () => {
           onControlGroupsChange={setControlGroups}
           onArmedOrderChange={setArmedOrder}
           onBoxSelectChange={setBoxSelectArmed}
+          onAttackAlert={handleAttackAlert}
           gameRef={gameRef}
           sceneRef={sceneRef}
         />
@@ -739,6 +749,13 @@ export const App: React.FC = () => {
         <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-red-950/90 border border-red-500/80 text-red-200 px-4 py-2 rounded shadow-2xl backdrop-blur-md flex items-center gap-2 z-50 text-sm animate-bounce">
           <AlertCircle size={16} className="text-red-400" />
           <span>{notification}</span>
+        </div>
+      )}
+
+      {/* ALERT-01: under-attack banner, separate from the error notification */}
+      {attackAlertUntil > Date.now() && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-red-950/90 border border-red-500/80 text-red-200 px-4 py-2 rounded shadow-2xl backdrop-blur-md flex items-center gap-2 z-50 text-sm">
+          <span>Bạn đang bị tấn công!</span>
         </div>
       )}
 

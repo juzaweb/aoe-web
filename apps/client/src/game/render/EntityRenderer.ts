@@ -13,6 +13,7 @@ import {
 import { UNIT_ART, hasDirectionalArt, unitArt, unitClips } from './unitArt.js';
 import type { UnitAction } from './unitDirections.js';
 import { UnitMotion, walkTimeScale } from './unitMotion.js';
+import { shouldAlert } from './attackAlert.js';
 import { treeVariant } from './treeVariants.js';
 import { resourceLook } from './visualVariation.js';
 
@@ -287,12 +288,21 @@ export class EntityRenderer {
     container.setData('sizeX', building.sizeX);
     container.setData('sizeY', building.sizeY);
     container.setData('visualCenterY', offsetY);
+    container.setData('lastHp', building.hp);
 
     this.refreshOwnerBase(container, id, building.ownerId);
     this.updateBuildingBar(container, building);
 
     if (cb) {
       cb.onChange(building, () => {
+        const prevHp = container.getData('lastHp') as number | undefined;
+        if (shouldAlert(prevHp, building.hp, building.ownerId, scene.myOwnerId)) {
+          scene.notifyAttack({
+            x: building.gridX + building.sizeX / 2,
+            y: building.gridY + building.sizeY / 2
+          });
+        }
+        container.setData('lastHp', building.hp);
         this.updateBuildingBar(container, building);
         if (scene.selectedBuildingId === id) {
           scene.notifySelectionChange();
@@ -539,6 +549,7 @@ export class EntityRenderer {
     container.setDepth(getIsoDepth(unit.x, unit.y, 25));
     container.setData('entityId', id);
     container.setData('entityType', 'unit');
+    container.setData('lastHp', unit.hp);
 
     this.refreshOwnerRing(container, id, unit.ownerId);
 
@@ -652,6 +663,11 @@ export class EntityRenderer {
 
     if (cb) {
       cb.onChange(unit, () => {
+        const prevHp = container.getData('lastHp') as number | undefined;
+        if (shouldAlert(prevHp, unit.hp, unit.ownerId, scene.myOwnerId)) {
+          scene.notifyAttack({ x: unit.x, y: unit.y });
+        }
+        container.setData('lastHp', unit.hp);
         // Position is deliberately not copied here: the scene samples the
         // authoritative position once per frame instead, so a multi-property
         // patch cannot produce a sample that pairs a new x with a stale y.
