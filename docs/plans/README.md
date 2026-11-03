@@ -85,9 +85,12 @@ dưới màn hình, HUD compact landscape và cơ chế join lại khi mở lạ
 2026-11-03 với user: full touch RTS, landscape bắt buộc, **không** PWA, chưa làm gán nhóm quân trên
 mobile. Đã implement cùng ngày, **không** đổi server/shared/schema/DB, không migration: 5 module mới
 có test thuần (36 test), `tsc` sạch 2 app, vitest 336/336, và kiểm chứng tay bằng Chrome headless
-CDP (chọn / pan / pinch / đặt nhà / giữ lâu thu hoạch / tap move đều pass). Còn verify trên máy thật
-(iOS Safari page-zoom, safe-area, reconnect sau khoá màn hình). Xem `11-mobile-touch.md` §2 (D1–D10),
-§4 (bảng cử chỉ) và §11 (kết quả đo).
+CDP (chọn / pan / pinch / đặt nhà / giữ lâu thu hoạch / tap move đều pass). Vòng review sau đó sửa
+6 lỗi (radar compact trống, chuột phải minimap nhảy camera, timer long-press sống sót khi đóng
+panel, arm "Ra lệnh" bị phím `A` ghi đè, ghost bị ngón thứ hai kéo, sheet Xây tràn 12 px) và nâng
+tap target HUD lên 44 px — chi tiết ở §12. Còn verify trên máy thật (iOS Safari page-zoom,
+safe-area, reconnect sau khoá màn hình). Xem `11-mobile-touch.md` §2 (D1–D10), §4 (bảng cử chỉ),
+§11 (kết quả đo) và §12 (review & fix).
 
 ## Quy ước
 

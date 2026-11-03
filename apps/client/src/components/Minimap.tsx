@@ -110,6 +110,9 @@ export const Minimap: React.FC<MinimapProps> = ({
   const longPressFired = useRef(false);
 
   useEffect(() => {
+    // The compact layout mounts this canvas only once the panel is open, which is
+    // why `open` is a dependency below: a mount that bailed out here would never
+    // restart the loop on the next open.
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -268,13 +271,24 @@ export const Minimap: React.FC<MinimapProps> = ({
       running = false;
       cancelAnimationFrame(animId);
     };
-  }, [room, sceneRef]);
+  }, [room, sceneRef, open]);
 
   useEffect(() => {
     return () => {
       if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
     };
   }, []);
+
+  // Closing the compact panel with a finger still down must drop its timer too:
+  // it would otherwise fire a move order from a radar that is no longer on screen.
+  useEffect(() => {
+    if (open) return;
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    longPressFired.current = false;
+  }, [open]);
 
   /**
    * Maps a minimap pointer event to fractional grid coordinates.
@@ -322,6 +336,11 @@ export const Minimap: React.FC<MinimapProps> = ({
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    // Mouse: only the primary button recentres. A right-click already issued its
+    // order through `contextmenu`, and without this guard its release panned the
+    // camera too — the old click handler could never fire for it.
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+
     clearLongPress();
     // The pan is the fallback: a long-press already issued its order.
     if (longPressFired.current) {
@@ -380,7 +399,7 @@ export const Minimap: React.FC<MinimapProps> = ({
                 onClick={() => setOpen(false)}
                 aria-label="Đóng bản đồ"
                 title="Đóng"
-                className="flex h-7 w-7 items-center justify-center rounded border border-slate-700 text-slate-300"
+                className="flex h-9 w-9 items-center justify-center rounded border border-slate-700 text-slate-300"
               >
                 <X size={13} />
               </button>
@@ -398,7 +417,7 @@ export const Minimap: React.FC<MinimapProps> = ({
               style={{ width: MINIMAP_COMPACT_CSS_SIZE, height: MINIMAP_COMPACT_CSS_SIZE }}
             />
             <p className="mt-0.5 text-[8px] leading-tight text-slate-400">
-              Chạm: xem · Giữ lâu: điều quân
+              Chạm: nhảy tới · Giữ lâu: điều quân
             </p>
           </div>
         )}

@@ -41,7 +41,7 @@ interface CommandButtonProps {
   onClick: () => void;
   active?: boolean;
   disabled?: boolean;
-  /** Renders a distinct (amber) armed state instead of the neutral chrome. */
+  /** Tooltip and accessible name; the visible label is shortened for the bar. */
   title?: string;
 }
 
@@ -112,7 +112,7 @@ export const MobileCommandBar: React.FC<MobileCommandBarProps> = ({
 
   return (
     <div
-      className="pointer-events-auto flex w-full snap-x items-center justify-start gap-1 overflow-x-auto rounded-lg border border-amber-800/60 bg-slate-950/85 px-1.5 py-1.5 shadow-2xl backdrop-blur-sm"
+      className="pointer-events-auto flex w-full items-center justify-start gap-1 overflow-x-auto rounded-lg border border-amber-800/60 bg-slate-950/85 px-1.5 py-1.5 shadow-2xl backdrop-blur-sm"
       data-mobile-command-bar
     >
       {armed !== null && (

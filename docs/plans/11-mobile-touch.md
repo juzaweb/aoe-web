@@ -17,7 +17,9 @@ server và không đổi protocol.
 Tiêu chí thành công (đo được):
 
 1. Trên viewport 844×390 và 667×375 (touch emulation): HUD không chồng lấn, không phần tử nào bị
-   browser chrome che, mọi nút bấm ≥ 44×44 CSS px.
+   browser chrome che, mọi nút bấm chính ≥ 44×44 CSS px. Ngoại lệ có chủ ý (đo lại ở §11.3): hàng
+   roster trong `ControlGroups` cao 34 px (9 nhóm × 44 px = 396 px, không vừa màn 390 px) và nút
+   đóng panel 36 px (góc panel, cách control khác ≥ 8 px).
 2. Thao tác chạm chạy trọn vòng lặp: chọn dân → chọn công trình → đặt nhà → chọn dân → thu hoạch →
    chọn lính → attack-move → về cổng đổi map.
 3. Pan / pinch zoom / chọn vùng / long-press order hoạt động; zoom luôn trong `0.4..2.2`.
@@ -341,11 +343,11 @@ Không đổi: `apps/server/**`, `packages/shared/**`, schema, `NetworkMessage`,
 ```text
 apps/client  tsc --noEmit   → 0 error
 apps/server  tsc --noEmit   → 0 error
-vitest (client)             → 16 files / 336 tests pass
+vitest (client)             → 17 files / 346 tests pass
 ```
 
-36 test mới: `inputMode` 7, `touchGesture` 15, `hitTest` 6, `resume` 8; `cameraInput` +1
-(`enabled: false`).
+46 test mới: `inputMode` 7, `touchGesture` 15, `hitTest` 6, `resume` 8, `commandArm` 10; `cameraInput`
++1 (`enabled: false`).
 
 ### 11.3 Kiểm chứng tay bằng Chrome headless (CDP)
 
@@ -367,6 +369,10 @@ Dev server Vite `:5173` + game server `:2567` có sẵn.
 | `Xây` → Nhà → chạm | sheet mở, 8 ô; `buildings 2 → 3` |
 | Giữ lâu vào cây | `HARVESTING` ngay sau 600 ms, selection giữ nguyên (`selected: 1`) |
 | Chạm nền khi có dân chọn | đơn vị chuyển `MOVING`, selection vẫn `1` |
+| Nút HUD compact (idle, đăng xuất) | đo được đúng 44×44 px sau khi sửa rev-1 |
+| Panel "Bản đồ" compact | mở → canvas render (`opaqueRatio 1`, 70 mẫu màu khác nhau); đóng → unmount |
+| Chuột phải trên minimap | `scroll` delta `0/0` (chỉ ra lệnh, không nhảy camera) |
+| Chuột trái trên minimap | `scroll` delta `0/1497` (vẫn nhảy camera) |
 | Console | không error |
 
 Ghi chú: một lần đo trước đó báo giữ lâu không thu hoạch — nguyên nhân là script đo dùng toạ độ
@@ -384,3 +390,42 @@ vùng chạm của canvas khiến pinch rơi vào panel minimap (zoom đứng y�
 - `navigator.vibrate` khi giữ lâu (iOS Safari không hỗ trợ).
 - Khoá màn hình 30–60 s rồi mở lại: join lại + retry `taken` (mới chỉ kiểm bằng logic test).
 - Độ mượt pan/pinch thật (fps) trên máy tầm trung; nếu mờ thì xét `resolution` (§5.J).
+
+## 12. Vòng review & fix (rev-2, 2026-11-03)
+
+Review 5 trục trên commit `7d74cdb` (correctness / readability / architecture / security /
+performance). Security và performance không có phát hiện: không thêm input người dùng, không query,
+không N+1; chi phí mới chỉ là vài listener và một vòng `requestAnimationFrame` đã có từ trước.
+
+### 12.1 Lỗi đã sửa (correctness)
+
+| # | Lỗi | Vì sao | Fix |
+| --- | --- | --- | --- |
+| R1 | Panel "Bản đồ" compact mở ra nhưng radar trống vĩnh viễn | `canvas` chỉ mount khi `open=true`, mà `useEffect` khởi động vòng vẽ chỉ phụ thuộc `[room, sceneRef]` → lần mount đầu `canvasRef.current` là `null` và không bao giờ chạy lại | thêm `open` vào dependency; effect vẽ chạy lại khi panel mở |
+| R2 | Chuột phải trên minimap vừa ra lệnh vừa nhảy camera (regression desktop) | handler đổi từ `onClick` sang `onPointerUp`, mà `pointerup` phát cho **mọi** button; `contextmenu` mới là chỗ ra lệnh | `handlePointerUp` bỏ qua `pointerType === 'mouse' && button !== 0` |
+| R3 | Đóng panel khi ngón còn đang giữ → timer 350 ms vẫn bắn lệnh move từ radar đã biến mất | timer chỉ được clear khi unmount component | effect riêng trên `open` clear timer + reset cờ |
+| R4 | Arm "Ra lệnh" rồi bấm phím `A`/`P`: `contextualArmed` không bị xoá ⇒ lần chạm sau chạy nhánh right-click và **mất lệnh attack-move** vừa chọn | nhánh bàn phím gán `pendingOrder` trực tiếp, bỏ qua logic của `armOrder` | gom mọi thay đổi arm vào `setArmed()` / `dropArmed()`; có test hồi quy `commandArm.test.ts` (đã kiểm: test fail trên code cũ) |
+| R5 | Ngón thứ hai (bắt đầu pinch) kéo ghost đặt nhà tới điểm chạm của nó | `begin()` gọi `touchPressPointer` cho mọi ngón | chỉ gọi cho ngón bắt đầu gesture; `pointer` vẫn cập nhật để handover sau pinch đúng |
+| R6 | Sheet "Xây" hẹp hơn lưới 4×48 px ⇒ 4 ô tràn khỏi panel 12 px | `w-[214px]` với padding 8 px chỉ còn 198 px cho lưới 210 px | `w-[230px]` |
+
+### 12.2 Dọn dẹp (readability / dead code)
+
+- `MobileCommandBar`: prop `title` có comment copy-paste sai; bỏ `snap-x` không có `snap-*` con.
+- `HUD`: xoá prop `danger` của `ResourceChip` (không call site nào truyền) và dùng
+  `MOBILE_MIN_TAP_PX` cho hai control của hàng compact (trước đó hằng này chỉ xuất hiện trong test).
+- `touchGesture.ts`: sửa tiêu đề file ("Charcoal gesture recogniser"), bỏ tham số `_time` không dùng
+  của `move()`, bỏ `isPinching` (không nơi nào đọc).
+- `TouchController`: bỏ `isPinching` passthrough; comment `pointer` mô tả đúng hành vi handover.
+- `WorldScene`: comment `touchMode` nói "latched for the session" trong khi code clear mỗi khi có
+  chuột — sửa comment; `endTouchDrag` gọi `setBoxSelectMode(false)` thay vì tự gán + publish.
+- `App.tsx`: thụt lề props `MobileCommandBar`; gom 6 điều kiện lặp của Auth gate và panel "MẤT KẾT
+  NỐI" vào `gatesIdle` / `showAuthGate` / `showDisconnectGate`; bỏ comment `eslint-disable` (repo
+  không có eslint) và giải thích dependency thật.
+- `CommandController`: ba khối "clear + refresh + publish" trùng nhau → `setArmed()` và `dropArmed()`.
+
+### 12.3 Tap target
+
+Trước rev-2: nút idle và nút đăng xuất của HUD compact cao 16 px và 28 px, nút trong `EntityDetails`
+38 px — đều dưới ngưỡng 44 px mà chính plan đặt ra. Sau rev-2: idle + đăng xuất đúng 44×44 (đo bằng
+CDP), `EntityDetails` 44 px, nút đóng panel 36 px, roster `ControlGroups` giữ 34 px. Hai ngoại lệ
+được ghi rõ trong tiêu chí §1 kèm lý do không thể tăng (chiều cao màn hình).

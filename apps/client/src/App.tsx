@@ -424,9 +424,9 @@ export const App: React.FC = () => {
 
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
-    // `connectToZone` closes over the current state and is intentionally not a dep:
-    // adding it would re-register the listener on every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // `connectToZone` is recreated on every render, so it is not a dep: every piece
+    // of state it reads is listed instead, which re-registers the listener exactly
+    // when the decision could change.
   }, [authUser, isJoined, isJoining, sessionTaken, isSwitchingZone, switchError, zoneKind]);
 
   /** MOB-08: manual retry from the disconnect panel (no tolerated refusals). */
@@ -573,6 +573,15 @@ export const App: React.FC = () => {
   const handleZoomOut = () => sceneRef.current?.zoomByStep(-1);
   const handleCenterBase = () => sceneRef.current?.centerOnBase();
 
+  /**
+   * MOB-08: the two gate screens (login, and "your account is still signed in")
+   * differ only in whether a user is resolved, and both must stand down while a
+   * restore, a join, a map switch or its error panel owns the overlay slot.
+   */
+  const gatesIdle = !isRestoringSession && !isJoining && !isSwitchingZone && !switchError;
+  const showAuthGate = !isJoined && !sessionTaken && authUser === null && gatesIdle;
+  const showDisconnectGate = !isJoined && !sessionTaken && authUser !== null && gatesIdle;
+
   return (
     <div className="app-shell bg-slate-950 font-sans">
       {/* Phaser Canvas — stays mounted during a map switch so the new Room can
@@ -654,20 +663,22 @@ export const App: React.FC = () => {
 
               <div className="min-w-0 flex-1">
                 <MobileCommandBar
-              hasUnits={selectedEntity?.type === 'unit'}
-              hasOwnBuilding={selectedEntity?.type === 'building' && selectedEntity.isOwner === true}
-              armed={armedOrder}
-              boxSelectArmed={boxSelectArmed}
-              onArmContextual={handleArmContextual}
-              onArmAttackMove={handleArmAttackMove}
-              onArmPatrol={handleArmPatrol}
-              onStop={handleStopUnits}
-              onCycleStance={handleCycleStance}
-              onToggleBoxSelect={handleToggleBoxSelect}
-              onClearSelection={handleClearSelection}
-              onZoomIn={handleZoomIn}
-              onZoomOut={handleZoomOut}
-              onCenterBase={handleCenterBase}
+                  hasUnits={selectedEntity?.type === 'unit'}
+                  hasOwnBuilding={
+                    selectedEntity?.type === 'building' && selectedEntity.isOwner === true
+                  }
+                  armed={armedOrder}
+                  boxSelectArmed={boxSelectArmed}
+                  onArmContextual={handleArmContextual}
+                  onArmAttackMove={handleArmAttackMove}
+                  onArmPatrol={handleArmPatrol}
+                  onStop={handleStopUnits}
+                  onCycleStance={handleCycleStance}
+                  onToggleBoxSelect={handleToggleBoxSelect}
+                  onClearSelection={handleClearSelection}
+                  onZoomIn={handleZoomIn}
+                  onZoomOut={handleZoomOut}
+                  onCenterBase={handleCenterBase}
                   onCancelArmed={() => sceneRef.current?.cancelArmedOrder()}
                 />
               </div>
@@ -740,24 +751,12 @@ export const App: React.FC = () => {
       )}
 
       {/* Auth Gate: register / login before entering the world */}
-      {!isJoined &&
-        !sessionTaken &&
-        !authUser &&
-        !isRestoringSession &&
-        !isJoining &&
-        !isSwitchingZone &&
-        !switchError && <AuthScreen onAuthenticated={handleAuthenticated} />}
+      {showAuthGate && <AuthScreen onAuthenticated={handleAuthenticated} />}
 
       {/* MOB-08: the account is still logged in but the room is gone (phone locked,
           tab suspended, server restarted). Offering a retry beats silently showing
           the login screen with a token that is still valid. */}
-      {authUser &&
-        !isJoined &&
-        !sessionTaken &&
-        !isRestoringSession &&
-        !isJoining &&
-        !isSwitchingZone &&
-        !switchError && (
+      {showDisconnectGate && (
           <div className="absolute inset-0 z-40 flex items-center justify-center bg-slate-950/90 p-3 backdrop-blur-md">
             <div className="aoe-panel flex w-full max-w-sm flex-col items-center gap-3 rounded-xl border-2 border-amber-600 p-5 text-center shadow-2xl">
               <div className="flex items-center gap-2 text-amber-400">
@@ -860,7 +859,9 @@ export const App: React.FC = () => {
       {isJoined && (
         <div
           className={`absolute right-2 z-20 ${
-            isCompact ? 'top-[calc(env(safe-area-inset-top)+3.1rem)]' : 'top-28'
+            // The compact HUD row is 44 px tall (touch targets), so the rosters
+            // start below it instead of under it.
+            isCompact ? 'top-[calc(env(safe-area-inset-top)+3.9rem)]' : 'top-28'
           }`}
         >
           <ControlGroups

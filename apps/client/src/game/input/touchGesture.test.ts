@@ -19,7 +19,7 @@ describe('TouchGesture', () => {
   it('emits a tap for a quick press that barely moves', () => {
     const gesture = new TouchGesture();
     expect(gesture.begin(1, 100, 100, 1000)).toEqual({ kind: 'none' });
-    expect(gesture.move(1, 103, 102, 1030)).toEqual({ kind: 'none' });
+    expect(gesture.move(1, 103, 102)).toEqual({ kind: 'none' });
     expect(gesture.end(1, 103, 102, 1080)).toEqual({ kind: 'tap', x: 103, y: 102 });
   });
 
@@ -34,14 +34,14 @@ describe('TouchGesture', () => {
     gesture.begin(1, 100, 100, 1000);
 
     // Just under the threshold: still a tap candidate.
-    expect(gesture.move(1, 100 + TAP_MAX_MOVE_PX, 100, 1010)).toEqual({ kind: 'none' });
+    expect(gesture.move(1, 100 + TAP_MAX_MOVE_PX, 100)).toEqual({ kind: 'none' });
 
     // Crossing it hands the camera every pixel travelled since the press.
-    const first = gesture.move(1, 140, 130, 1020);
+    const first = gesture.move(1, 140, 130);
     expect(first).toEqual({ kind: 'pan', dx: 40, dy: 30 });
 
     // Later samples are incremental, or the camera would double-apply the start.
-    expect(gesture.move(1, 150, 140, 1030)).toEqual({ kind: 'pan', dx: 10, dy: 10 });
+    expect(gesture.move(1, 150, 140)).toEqual({ kind: 'pan', dx: 10, dy: 10 });
     expect(gesture.end(1, 150, 140, 1040)).toEqual({ kind: 'none' });
   });
 
@@ -59,7 +59,7 @@ describe('TouchGesture', () => {
   it('never long-presses once the press has already become a pan', () => {
     const gesture = new TouchGesture();
     gesture.begin(1, 100, 100, 1000);
-    gesture.move(1, 200, 200, 1010);
+    gesture.move(1, 200, 200);
     expect(gesture.tick(1000 + LONG_PRESS_MS * 2)).toEqual({ kind: 'none' });
   });
 
@@ -69,11 +69,11 @@ describe('TouchGesture', () => {
     gesture.begin(2, 200, 100, 1000);
 
     // Span 100 -> 200 doubles the zoom; midpoint 150 -> 300 travels 150 px.
-    const pinch = gesture.move(1, 400, 100, 1010);
+    const pinch = gesture.move(1, 400, 100);
     expect(pinch).toEqual({ kind: 'pinch', factor: 2, dx: 150, dy: 0, x: 300, y: 100 });
 
     // Span 200 -> 100 is 0.5 of the previous sample, not of the first one.
-    const second = gesture.move(1, 300, 100, 1020);
+    const second = gesture.move(1, 300, 100);
     expect(second).toEqual({ kind: 'pinch', factor: 0.5, dx: -50, dy: 0, x: 250, y: 100 });
   });
 
@@ -90,10 +90,10 @@ describe('TouchGesture', () => {
     const gesture = new TouchGesture();
     gesture.begin(1, 100, 100, 1000);
     gesture.begin(2, 200, 100, 1000);
-    gesture.move(1, 120, 100, 1010);
+    gesture.move(1, 120, 100);
 
     expect(gesture.end(2, 200, 100, 1020)).toEqual({ kind: 'none' });
-    expect(gesture.move(1, 180, 130, 1030)).toEqual({ kind: 'pan', dx: 60, dy: 30 });
+    expect(gesture.move(1, 180, 130)).toEqual({ kind: 'pan', dx: 60, dy: 30 });
     expect(gesture.end(1, 180, 130, 1040)).toEqual({ kind: 'none' });
   });
 
@@ -103,14 +103,14 @@ describe('TouchGesture', () => {
     gesture.begin(2, 200, 100, 1000);
     expect(gesture.end(1, 100, 100, 1010)).toEqual({ kind: 'none' });
     expect(gesture.isDown).toBe(true);
-    expect(gesture.move(2, 240, 120, 1020)).toEqual({ kind: 'pan', dx: 40, dy: 20 });
+    expect(gesture.move(2, 240, 120)).toEqual({ kind: 'pan', dx: 40, dy: 20 });
   });
 
   it('ignores a pinch below the minimum span instead of dividing by it', () => {
     const gesture = new TouchGesture();
     gesture.begin(1, 100, 100, 1000);
     gesture.begin(2, 100 + PINCH_MIN_SPAN_PX / 2, 100, 1000);
-    const first = gesture.move(1, 101, 100, 1010);
+    const first = gesture.move(1, 101, 100);
     expect(first).toMatchObject({ kind: 'pinch', factor: 1 });
   });
 
@@ -129,8 +129,8 @@ describe('TouchGesture', () => {
     gesture.begin(2, 200, 100, 1000);
     // A third finger is not part of the pinch; it must not detach the second.
     expect(gesture.begin(3, 300, 300, 1000)).toEqual({ kind: 'none' });
-    expect(gesture.move(3, 340, 340, 1010)).toEqual({ kind: 'none' });
-    const pinch = gesture.move(1, 300, 100, 1020);
+    expect(gesture.move(3, 340, 340)).toEqual({ kind: 'none' });
+    const pinch = gesture.move(1, 300, 100);
     expect(pinch).toMatchObject({ kind: 'pinch' });
   });
 });

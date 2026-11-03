@@ -1,5 +1,6 @@
 import React from 'react';
 import { Axe, Drumstick, Coins, Mountain, Users, ShieldCheck, Wifi, LogOut } from 'lucide-react';
+import { MOBILE_MIN_TAP_PX } from '../device/inputMode.js';
 
 interface HUDProps {
   playerName: string;
@@ -27,8 +28,6 @@ interface ResourceChipProps {
   icon: React.ReactNode;
   value: number;
   label: string;
-  /** Highlights the population chip at its cap, and nothing else. */
-  danger?: boolean;
 }
 
 /**
@@ -36,16 +35,10 @@ interface ResourceChipProps {
  * room for the desktop's 28 px framed icons, and the numbers are what the player
  * actually reads mid-game.
  */
-const ResourceChip: React.FC<ResourceChipProps> = ({ icon, value, label, danger = false }) => (
+const ResourceChip: React.FC<ResourceChipProps> = ({ icon, value, label }) => (
   <span className="flex items-center gap-1" title={label}>
     {icon}
-    <span
-      className={`text-[11px] font-semibold tabular-nums ${
-        danger ? 'text-red-400' : 'text-slate-100'
-      }`}
-    >
-      {Math.floor(value)}
-    </span>
+    <span className="text-[11px] font-semibold tabular-nums text-slate-100">{Math.floor(value)}</span>
   </span>
 );
 
@@ -127,7 +120,8 @@ export const HUD: React.FC<HUDProps> = ({
             disabled={idleVillagers === 0}
             data-idle-villagers={idleVillagers}
             title="Nông dân đang rảnh"
-            className={`flex items-center gap-1 ${
+            style={{ minHeight: MOBILE_MIN_TAP_PX, minWidth: MOBILE_MIN_TAP_PX }}
+            className={`flex items-center justify-center gap-1 ${
               idleVillagers > 0 ? 'cursor-pointer text-amber-300' : 'cursor-default text-slate-500'
             }`}
           >
@@ -150,7 +144,8 @@ export const HUD: React.FC<HUDProps> = ({
               onClick={onLeaveGame}
               title="Đăng xuất"
               aria-label="Đăng xuất"
-              className="ml-0.5 flex h-7 w-7 items-center justify-center rounded border border-slate-700 text-slate-300 active:border-amber-400"
+              style={{ minHeight: MOBILE_MIN_TAP_PX, minWidth: MOBILE_MIN_TAP_PX }}
+              className="ml-0.5 flex items-center justify-center rounded border border-slate-700 text-slate-300 active:border-amber-400"
             >
               <LogOut size={14} />
             </button>

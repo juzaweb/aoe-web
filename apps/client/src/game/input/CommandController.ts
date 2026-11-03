@@ -228,9 +228,10 @@ export class CommandController {
       this.lastOrderKey = { mode, at: now };
 
       event.preventDefault();
-      this.pendingOrder = mode;
-      this.scene.cursor.refresh();
-      this.scene.publishArmedOrder();
+      // An explicit mode replaces a contextual arm from the touch bar; leaving
+      // both set would make the next tap fire `handleRightClick` and silently
+      // drop the attack-move the player just chose.
+      this.setArmed(mode, false);
     };
 
     keyboard.on('keydown-A', arm('ATTACK_MOVE'));
@@ -505,10 +506,7 @@ export class CommandController {
       this.cancelPendingOrder();
       return;
     }
-    this.contextualArmed = false;
-    this.pendingOrder = mode;
-    scene.cursor.refresh();
-    scene.publishArmedOrder();
+    this.setArmed(mode, false);
   }
 
   /**
@@ -528,19 +526,36 @@ export class CommandController {
       this.cancelPendingOrder();
       return;
     }
-    this.pendingOrder = null;
-    this.contextualArmed = true;
-    scene.cursor.refresh();
-    scene.publishArmedOrder();
+    this.setArmed(null, true);
+  }
+
+  /**
+   * Writes the arm state and publishes it. Exactly one flavour is ever live, so
+   * every arm / disarm path goes through here instead of assigning the two fields
+   * (and publishing) on its own.
+   */
+  private setArmed(mode: OrderMode | null, contextual: boolean) {
+    this.pendingOrder = mode;
+    this.contextualArmed = contextual;
+    this.scene.cursor.refresh();
+    this.scene.publishArmedOrder();
+  }
+
+  /**
+   * Clears whichever arm is live.
+   *
+   * @returns true when something was armed, so a caller can leave the input that
+   *   asked for the cancellation unclaimed.
+   */
+  private dropArmed(): boolean {
+    if (!this.pendingOrder && !this.contextualArmed) return false;
+    this.setArmed(null, false);
+    return true;
   }
 
   /** Drops an armed order (right click, Escape) and restores the pointer. */
   cancelPendingOrder() {
-    if (!this.pendingOrder && !this.contextualArmed) return;
-    this.pendingOrder = null;
-    this.contextualArmed = false;
-    this.scene.cursor.refresh();
-    this.scene.publishArmedOrder();
+    this.dropArmed();
   }
 
   /**
@@ -551,18 +566,14 @@ export class CommandController {
    * dispatch a right click would, which is why `handleRightClick` is called here.
    */
   commitPendingOrder(pointer: Phaser.Input.Pointer) {
-    if (this.contextualArmed) {
-      this.contextualArmed = false;
-      this.scene.cursor.refresh();
-      this.scene.publishArmedOrder();
+    const mode = this.pendingOrder;
+    const contextual = this.contextualArmed;
+    this.dropArmed();
+
+    if (contextual) {
       this.handleRightClick(pointer, false);
       return;
     }
-
-    const mode = this.pendingOrder;
-    this.pendingOrder = null;
-    this.scene.cursor.refresh();
-    this.scene.publishArmedOrder();
     if (mode) this.issueAttackMove(pointer, mode);
   }
 

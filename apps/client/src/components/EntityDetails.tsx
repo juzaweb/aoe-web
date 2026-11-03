@@ -94,7 +94,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
         compact
           ? // MOB-06: full width of the dock's centre column, capped by the shorter
             // landscape viewport, with every inner button lifted to a thumb target.
-            'w-full max-w-[420px] max-h-[28dvh] p-2 [&_button]:min-h-[38px]'
+            'w-full max-w-[420px] max-h-[28dvh] p-2 [&_button]:min-h-[44px]'
           : 'w-80 min-h-[144px] max-h-[72vh] p-3'
       }`}
     >

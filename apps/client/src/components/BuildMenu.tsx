@@ -176,7 +176,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
         </button>
 
         {open && (
-          <div className="aoe-panel absolute bottom-full right-0 z-30 mb-2 w-[214px] rounded-lg p-2">
+          <div className="aoe-panel absolute bottom-full right-0 z-30 mb-2 w-[230px] rounded-lg p-2">
             <div className="mb-1.5 flex items-center justify-between border-b border-amber-800/40 pb-1">
               <span className="font-medieval text-[11px] font-bold tracking-wider text-amber-400">
                 XÂY CÔNG TRÌNH
@@ -186,7 +186,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
                 onClick={() => setOpen(false)}
                 title="Đóng"
                 aria-label="Đóng"
-                className="flex h-7 w-7 items-center justify-center rounded border border-slate-700 text-slate-300"
+                className="flex h-9 w-9 items-center justify-center rounded border border-slate-700 text-slate-300"
               >
                 <X size={14} />
               </button>

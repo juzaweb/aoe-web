@@ -274,11 +274,12 @@ export class WorldScene extends Phaser.Scene {
   private worldFrozen: boolean = false;
 
   /**
-   * MOB-03: true once a touch event has reached the scene.
+   * MOB-03: the pointer currently driving the world is a finger.
    *
-   * Latched for the session rather than derived per event, because it gates
-   * mouse-only affordances (CSS cursor, edge scroll) that must stay off while a
-   * finger is driving even if a stray mouse event passes through.
+   * Set by every touch event and cleared by the next mouse event, so it gates the
+   * mouse-only affordances (CSS cursor, edge scroll) per input device rather than
+   * per session: a hybrid laptop goes back to its cursor the moment the trackpad
+   * is used again.
    */
   public touchMode = false;
 
@@ -1466,8 +1467,7 @@ export class WorldScene extends Phaser.Scene {
     this.dragSelectionGraphics.clear();
     this.selection.handleBoxSelect(this.dragStartScreen, { x: pointer.x, y: pointer.y }, false, 'all');
     // One shot by design: leaving it armed would make the next pan paint a box.
-    this.boxSelectArmed = false;
-    this.onBoxSelectChange?.(false);
+    this.setBoxSelectMode(false);
   }
 
   /** MOB-04: a pinch took over, so the half-drawn rectangle is dropped unseen. */

@@ -1,5 +1,5 @@
 /**
- * Charcoal gesture recogniser for the touch input path.
+ * Gesture recogniser for the touch input path.
  *
  * Phaser gives every finger its own `Input.Pointer`, but it maps a touch to the
  * *left mouse button* (`Pointer#touchstart` sets `buttons = 1`), so the scene
@@ -104,14 +104,6 @@ export class TouchGesture {
     return this.down !== null;
   }
 
-  /**
-   * True once two fingers are on the glass. The caller uses it to stop hover-style
-   * work (placement ghost following) that a pinch would otherwise drag around.
-   */
-  get isPinching(): boolean {
-    return this.phase === 'pinch';
-  }
-
   /** A new finger touched down. */
   begin(id: number, x: number, y: number, time: number): TouchGestureEvent {
     if (!this.down) {
@@ -140,7 +132,7 @@ export class TouchGesture {
   }
 
   /** A finger moved. */
-  move(id: number, x: number, y: number, _time: number): TouchGestureEvent {
+  move(id: number, x: number, y: number): TouchGestureEvent {
     if (!this.down) return NONE;
 
     if (this.second && id === this.second.id) {

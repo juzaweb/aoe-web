@@ -17,7 +17,11 @@ import { TouchGesture, zoomFromPinch, type TouchGestureEvent } from './touchGest
  */
 export class TouchController {
   private readonly gesture = new TouchGesture();
-  /** The pointer the current gesture started with; used for world lookups. */
+  /**
+   * The most recent finger on the glass; used for world lookups and for the drag
+   * rectangle. After a pinch handover it is the surviving finger, which is exactly
+   * the one the remaining pan must follow.
+   */
   private pointer: Phaser.Input.Pointer | null = null;
   /** A one-finger drag has crossed the tap threshold. */
   private dragging = false;
@@ -26,25 +30,21 @@ export class TouchController {
 
   constructor(private readonly scene: WorldScene) {}
 
-  /** True while a two-finger pinch owns the input. */
-  get isPinching(): boolean {
-    return this.gesture.isPinching;
-  }
-
   begin(pointer: Phaser.Input.Pointer) {
     const time = (pointer.event as TouchEvent | undefined)?.timeStamp ?? this.now();
+    const startsGesture = !this.gesture.isDown;
     this.pointer = pointer;
     this.gesture.begin(pointer.id, pointer.x, pointer.y, time);
 
     // Placement has no hover on touch: showing the ghost where the finger landed
-    // is the only feedback before the tap that commits it.
-    this.scene.touchPressPointer(pointer);
+    // is the only feedback before the tap that commits it. A second finger is
+    // part of a pinch, so it must not drag the ghost to its own landing point.
+    if (startsGesture) this.scene.touchPressPointer(pointer);
   }
 
   move(pointer: Phaser.Input.Pointer) {
     if (!this.gesture.isDown) return;
-    const time = (pointer.event as TouchEvent | undefined)?.timeStamp ?? this.now();
-    this.handle(this.gesture.move(pointer.id, pointer.x, pointer.y, time), pointer);
+    this.handle(this.gesture.move(pointer.id, pointer.x, pointer.y), pointer);
   }
 
   /**
