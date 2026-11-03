@@ -63,22 +63,33 @@ Required repository secret: `OPENCODE_API_KEY`. Optional `OPENCODE_PROVIDER` (de
 
 ### What each step does to the repository
 
-Two different commits, on purpose:
+Two different PRs, and only one of them needs you:
 
-| Steps | Written | Where it goes |
-|-------|---------|---------------|
-| `triage`, `plan`, `verify` | `STATE.md`, `loop-run-log.md`, `docs/plans/**` | pushed **straight to `develop`** by the *Persist loop state* step |
-| `ship`, `full` | source, tests, docs | feature branch → PR → merged into `develop` |
+| Steps | Written | Delivered as |
+|-------|---------|--------------|
+| `triage`, `plan`, `verify` | `STATE.md`, `loop-run-log.md`, `docs/plans/**` | **a PR you review and merge** |
+| `ship`, `full` | source, tests, docs, state | a PR that merges itself |
 
-The first row matters because the runner is disposable. Without that push, a triage run would
-update `STATE.md` and lose it, so the next run would read the same stale state and re-propose
-the same slice forever.
+### Approving a feature
+
+For `triage` the `STATE.md` diff **is** the deliverable, so the PR is the proposal:
+
+1. Run `step = triage`, `slice` blank.
+2. The run opens a PR titled `loop(triage): state update`.
+3. In that PR, edit `STATE.md` and change the `Next action` cell of the feature you
+   want from `candidate` to `APPROVED <date> — awaiting plan`. Anything you leave as
+   `candidate` is not approved.
+4. Merge the PR. That merge is the approval — nothing else records it.
+5. Run `step = plan` with `slice = <ID>`.
+
+You can also edit `STATE.md` on `develop` directly, or use `/loop-pick <ID>` in the TUI.
+All three produce the same thing: one row reading `APPROVED`.
 
 ### The two hard stops
 
-1. **Gate at build time.** `gate check --action merge` must exit 0. If it does not, the slice is
-   **thrown away** — the working tree is reverted and the run fails. It does not become a PR
-   waiting for a human, because the whole point is that no such PR exists.
+1. **Gate before anything is committed.** `gate check --action merge` must exit 0. If it does
+   not, the slice is **thrown away** — the working tree is reverted and the run fails. It does
+   not become a PR waiting for a human.
 2. **Verifier before ship**, in `full` mode. The run aborts unless `loop-run-log.md` gained an
    `APPROVE` line.
 

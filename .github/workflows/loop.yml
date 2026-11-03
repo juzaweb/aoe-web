@@ -284,12 +284,18 @@ jobs:
           exit 1
 
       # triage/plan/verify write no feature code, but they DO write STATE.md and
-      # loop-run-log.md. The runner is disposable, so without this step those
-      # updates vanish and the next step reads a stale STATE.md and refuses.
-      # State files are committed straight to develop: they are the loop's own
-      # bookkeeping, not a code change anyone reviews.
-      - name: Persist loop state
-        if: steps.gate.outputs.allowed == 'true'
+      # loop-run-log.md, and the runner is disposable. Those updates go to a PR
+      # instead of straight to develop, because for `triage` the STATE.md diff IS
+      # the deliverable: the proposal. Merging that PR is the approval.
+      #
+      # Skipped in ship/full: there the code PR already carries the state files,
+      # and branching a second PR off the first would make one depend on the
+      # other. One PR per run is the rule that keeps this readable.
+      - name: Open state PR
+        id: state
+        if: |
+          steps.gate.outputs.allowed == 'true'
+          && inputs.step != 'ship' && inputs.step != 'full'
         env:
           STEP: ${{ inputs.step }}
           SLICE: ${{ steps.slice.outputs.slice }}
@@ -302,16 +308,41 @@ jobs:
           changed=$(git -c core.quotePath=false status --porcelain -z -- "${state_paths[@]}" \
             | tr '\0' '\n' | sed 's/^...//' | grep -v '^$' || true)
           if [ -z "$changed" ]; then
-            echo "::notice::No state change to persist."
+            echo "::notice::No state change to propose."
             exit 0
           fi
           echo "State files changed:"; echo "$changed"
 
+          slug=$(printf '%s' "${SLICE:-$STEP}" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
+          branch="loop/state-${slug:-run}-$(date +%Y%m%d-%H%M%S)"
+
+          {
+            printf '## Loop state — %s\n\n' "$STEP"
+            printf 'Merging this PR is the approval. Nothing was built yet.\n\n'
+            printf '### Files\n\n'
+            printf '%s\n' "$changed" | sed 's/^/- /'
+            printf '\n### What to do\n\n'
+            if [ "$STEP" = "triage" ]; then
+              printf '1. Read the `High Priority` table in `STATE.md`.\n'
+              printf '2. To approve a feature, change its `Next action` cell to\n'
+              printf '   `APPROVED <date> — awaiting plan` in **this PR**.\n'
+              printf '3. To reject one, leave it as `candidate`.\n'
+              printf '4. Merge. Then run the workflow with `step = plan`.\n'
+            else
+              printf '1. Review the diff.\n2. Merge to apply it.\n'
+            fi
+          } > /tmp/pr-body.txt
+
+          git checkout -b "$branch"
           git add -- "${state_paths[@]}"
-          git commit -m "chore(loop): record $STEP${SLICE:+ for $SLICE}" \
-            -m "Written by the loop pipeline. State only; no source change."
-          git push origin HEAD:develop
-          echo "::notice::Persisted loop state to develop."
+          git commit -m "chore(loop): propose $STEP${SLICE:+ for $SLICE}" \
+            -m "State only; no source change. Merging this PR is the approval."
+          git push -u origin "$branch"
+          gh pr create --base develop --head "$branch" \
+            --title "loop(${STEP}): state update${SLICE:+ for $SLICE}" \
+            --body-file /tmp/pr-body.txt > pr-url.txt
+          echo "url=$(tail -1 pr-url.txt)" >> "$GITHUB_OUTPUT"
+          echo "::notice::Proposal PR opened: $(tail -1 pr-url.txt)"
 
       - name: Commit, push and open PR
         id: ship
@@ -355,10 +386,10 @@ jobs:
             --body-file /tmp/pr-body.txt > pr-url.txt
           echo "url=$(tail -1 pr-url.txt)" >> "$GITHUB_OUTPUT"
 
-      # Default on: the point of the workflow is that no PR sits waiting for a
-      # person. The gate above already refused anything denylisted, so what
-      # reaches here has passed the policy check.
-      - name: Merge PR into develop
+      # The code PR is the one that must never wait. The gate above already
+      # refused anything denylisted, and the verifier already approved, so
+      # merging here is the last step of an unattended pipeline.
+      - name: Merge code PR into develop
         if: inputs.merge && steps.ship.outputs.url != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -375,8 +406,9 @@ jobs:
             echo "### Loop — ${{ inputs.step }}"
             echo ""
             echo "- Slice: \`${{ steps.slice.outputs.slice }}\`"
-            echo "- PR: ${{ steps.ship.outputs.url || 'none' }}"
-            echo "- Merged: ${{ inputs.merge && steps.ship.outputs.url != '' && 'yes' || 'no' }}"
+            echo "- Proposal PR (state): ${{ steps.state.outputs.url || 'none' }}"
+            echo "- Code PR: ${{ steps.ship.outputs.url || 'none' }}"
+            echo "- Code merged: ${{ inputs.merge && steps.ship.outputs.url != '' && 'yes' || 'no' }}"
             echo ""
             echo "\`\`\`"
             git status --porcelain || true
