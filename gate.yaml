@@ -1,0 +1,36 @@
+# loop-gate policy — https://github.com/cobusgreyling/loop-engineering
+#
+# `npx @cobusgreyling/loop gate check --action auto-merge --paths <files>` exits
+# 0 = allowed, 2 = escalate to a human.
+#
+# The pipeline is /loop-triage -> /loop-pick -> /loop-plan -> /loop-build ->
+# /loop-verify -> /loop-ship. `shipper` opens a PR and stops; nothing merges
+# automatically, which is why the allowlist below is empty.
+version: 1
+
+denylist:
+  # Auth, sessions and anything that can grant access.
+  - "apps/server/src/services/AuthService.ts"
+  - "apps/server/src/services/RateLimiter.ts"
+  - "apps/server/src/rooms/AccountSessions.ts"
+  - "apps/client/src/auth/**"
+  - "**/*.env"
+  - "**/.env*"
+  # Persistence and schema changes lose player progress when wrong.
+  - "apps/server/prisma/**"
+  - "apps/server/src/services/databaseSchema.ts"
+  - "apps/server/src/services/DatabaseService.ts"
+  - "apps/server/database/**"
+  # Protocol and shared constants ripple across client + server.
+  - "packages/shared/**"
+  # Tooling that runs agents unattended.
+  - "opencode.json"
+  - "gate.yaml"
+  - "loop-constraints.md"
+  - ".opencode/**"
+  - ".github/**"
+
+autoMergeAllowlist:
+  # Empty on purpose: `shipper` opens the PR, a human merges it.
+
+maxFiles: 12

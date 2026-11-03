@@ -1,0 +1,94 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "opencode-go/beam-free",
+  "agent": {
+    "loop-triage": {
+      "name": "loop-triage",
+      "description": "Step 1 — report-only triage. Produces ranked, evidence-backed feature proposals into STATE.md. Never edits source code.",
+      "mode": "primary",
+      "prompt": "Read AGENTS.md, LOOP.md, loop-constraints.md and STATE.md first, then load the loop-triage skill. Run report-only triage: compare docs/plans, git history and code reality, then merge findings into STATE.md High Priority and Watch List and update 'Last run'. Assign each proposal an ID, an effort size (S/M/L) and a ROI rank. Do not edit source code. Respect the Vietnamese/English split in AGENTS.md.",
+      "permission": {
+        "bash": "ask",
+        "edit": "ask"
+      }
+    },
+    "planner": {
+      "name": "planner",
+      "description": "Step 3 — writes one docs/plans phase file for an already-approved slice. No source code.",
+      "mode": "subagent",
+      "prompt": "Write exactly one plan file under docs/plans/ for the single slice named in the task, following the format of the existing phase files in that directory. Read loop-constraints.md and gate.yaml first, plus the code the slice touches. The plan must contain: goal, user-visible behaviour, decisions with alternatives considered, data/schema impact, server/client split, error and edge cases, acceptance criteria written as testable statements, files to touch, and an explicit out-of-scope list. Do not write any source code and do not touch any file outside docs/plans/. Update the phase table row in docs/plans/README.md. Write the document in Vietnamese, keeping code identifiers and paths verbatim.",
+      "permission": {
+        "bash": "ask",
+        "edit": "ask"
+      }
+    },
+    "implementer": {
+      "name": "implementer",
+      "description": "Step 4 — L2 implementer. Implements exactly one approved slice, with tests, inside a git worktree.",
+      "mode": "subagent",
+      "prompt": "Implement only the single slice named in the task and nothing else. Read AGENTS.md, LOOP.md, loop-constraints.md and the slice's plan file in docs/plans/ before editing. Write tests for new behaviour, run the affected package's test suite, and report the exact commands and their results. Stop and escalate on any denylisted path in gate.yaml, on a missing requirement, or when the plan and the code disagree, instead of guessing. Never edit packages/shared/**, apps/server/prisma/**, apps/server/database/** or any auth file without a human decision. All code, comments and docstrings in English.",
+      "permission": {
+        "bash": "ask",
+        "edit": "ask"
+      }
+    },
+    "verifier": {
+      "name": "verifier",
+      "description": "Step 5 — independent checker. Runs the tests itself. APPROVE or REJECT with evidence. Never edits.",
+      "mode": "subagent",
+      "prompt": "Review the diff against AGENTS.md, LOOP.md, loop-constraints.md, gate.yaml and the slice's acceptance criteria in its docs/plans phase file. Run the project tests yourself; do not trust the implementer's claim. You must run: pnpm --filter @chien-quoc/client test, pnpm --filter @chien-quoc/server test and pnpm build. Check scope creep, missing tests, edge cases, the Vietnamese/English split, and that no denylisted path was touched. Reply with APPROVE or REJECT on the first line, then concise evidence: each acceptance criterion with PASS/FAIL, the exact test counts you observed, and any blocking issue. Do not edit any file.",
+      "permission": {
+        "bash": "ask",
+        "edit": "deny"
+      }
+    },
+    "shipper": {
+      "name": "shipper",
+      "description": "Step 6 — commits, pushes and opens the merge request after a human confirms. Never merges.",
+      "mode": "subagent",
+      "prompt": "Only run after the human confirms in the task text that the verifier returned APPROVE. Confirm the slice's STATE.md row reads 'VERIFIED' and that loop-run-log.md holds an APPROVE entry; if either is missing, stop and refuse. Create a feature branch named <type>/<slice-id>-<slug> off the current HEAD, stage only the files belonging to this slice, and commit with an English Conventional Commit message whose body explains the why. Then push the branch and open a pull request against main with gh pr create. The PR body must contain: the slice ID, a summary, the acceptance criteria with the evidence the verifier produced, the test commands and their results, and the plan file path. Never merge, never force-push, never rewrite history, and never commit files outside this slice. Report the branch name and the PR URL. All commit and PR text in English.",
+      "permission": {
+        "bash": "ask",
+        "edit": "ask"
+      }
+    }
+  },
+  "command": {
+    "loop-triage": {
+      "description": "Step 1/6 — report-only triage into STATE.md",
+      "agent": "loop-triage",
+      "subtask": false,
+      "template": "Run daily triage. Report only. Merge evidence-backed findings into STATE.md High Priority and Watch List, rank by ROI, set 'Last run' to today. Do not touch source code. When done, print the High Priority table so the human can pick one and reject the rest."
+    },
+    "loop-pick": {
+      "description": "Step 2/6 — human approval: promote one slice ID from STATE.md",
+      "agent": "build",
+      "subtask": false,
+      "template": "The human has approved slice $ARGUMENTS for implementation. Do not write any code. Instead: 1) verify the ID exists in STATE.md High Priority, 2) set its Next action to 'APPROVED <date> — awaiting plan', 3) change every other High Priority row's Next action to 'not this run', 4) append a line to loop-run-log.md recording the approval, 5) tell the human the exact next command to run: /loop-plan $ARGUMENTS. If the ID is ambiguous or missing, stop and list the real IDs."
+    },
+    "loop-plan": {
+      "description": "Step 3/6 — write docs/plans phase file for an approved slice",
+      "agent": "planner",
+      "subtask": false,
+      "template": "Write the implementation plan for approved slice $ARGUMENTS. Pick the next free phase number in docs/plans/, create docs/plans/<NN>-<slug>.md in the same shape as the existing phase files, add the row to the phase table in docs/plans/README.md with status 'APPROVED — awaiting code', and set the STATE.md row to 'PLANNED <date> — awaiting build'. No source code. Finish by printing the acceptance criteria list and the exact next command: /loop-build $ARGUMENTS"
+    },
+    "loop-build": {
+      "description": "Step 4/6 — implement one planned slice with tests",
+      "agent": "implementer",
+      "subtask": false,
+      "template": "Implement slice $ARGUMENTS from its plan file in docs/plans/. Read the plan's acceptance criteria first and treat them as the definition of done. Write the tests, run them, and report the exact commands plus their output. Do not touch any file outside the plan's 'files to touch' list. Do not commit. Stop and escalate on a denylisted path, a missing requirement, or a plan/code disagreement. When done, set the STATE.md row to 'BUILT <date> — awaiting verify' and print the exact next command: /loop-verify $ARGUMENTS"
+    },
+    "loop-verify": {
+      "description": "Step 5/6 — independent verification, APPROVE or REJECT",
+      "agent": "verifier",
+      "subtask": false,
+      "template": "Independently verify slice $ARGUMENTS. Run the three test commands yourself. Judge every acceptance criterion from its docs/plans file as PASS or FAIL. First line must be APPROVE or REJECT. On REJECT, list the blocking issues and tell the human the next command is /loop-build $ARGUMENTS. On APPROVE, set the STATE.md row to 'VERIFIED <date> — awaiting ship' and print the exact next command: /loop-ship $ARGUMENTS"
+    },
+    "loop-ship": {
+      "description": "Step 6/6 — branch, commit, push, open the merge request",
+      "agent": "shipper",
+      "subtask": false,
+      "template": "Ship verified slice $ARGUMENTS. Confirm in STATE.md that its row reads 'VERIFIED' and that loop-run-log.md holds an APPROVE entry; if either is missing, stop and refuse. Then create the feature branch, commit only this slice's files with an English Conventional Commit message, push, and open a pull request against main. Print the branch name and PR URL. Do not merge."
+    }
+  }
+}
