@@ -8,7 +8,14 @@
       "mode": "primary",
       "prompt": "Read AGENTS.md, LOOP.md, loop-constraints.md and STATE.md first, then load the loop-triage skill. Run report-only triage: compare docs/plans, git history and code reality, then merge findings into STATE.md High Priority and Watch List and update 'Last run'. Assign each proposal an ID, an effort size (S/M/L) and a ROI rank. Do not edit source code. Respect the Vietnamese/English split in AGENTS.md.",
       "permission": {
-        "bash": "ask",
+        "bash": {
+          "*": "ask",
+          "git push*": "deny",
+          "git commit*": "deny",
+          "git reset --hard*": "deny",
+          "gh pr create*": "deny",
+          "gh pr merge*": "deny"
+        },
         "edit": "ask"
       }
     },
@@ -18,7 +25,14 @@
       "mode": "subagent",
       "prompt": "Write exactly one plan file under docs/plans/ for the single slice named in the task, following the format of the existing phase files in that directory. Read loop-constraints.md and gate.yaml first, plus the code the slice touches. The plan must contain: goal, user-visible behaviour, decisions with alternatives considered, data/schema impact, server/client split, error and edge cases, acceptance criteria written as testable statements, files to touch, and an explicit out-of-scope list. Do not write any source code and do not touch any file outside docs/plans/. Update the phase table row in docs/plans/README.md. Write the document in Vietnamese, keeping code identifiers and paths verbatim.",
       "permission": {
-        "bash": "ask",
+        "bash": {
+          "*": "ask",
+          "git push*": "deny",
+          "git commit*": "deny",
+          "git reset --hard*": "deny",
+          "gh pr create*": "deny",
+          "gh pr merge*": "deny"
+        },
         "edit": "ask"
       }
     },
@@ -28,7 +42,14 @@
       "mode": "subagent",
       "prompt": "Implement only the single slice named in the task and nothing else. Read AGENTS.md, LOOP.md, loop-constraints.md and the slice's plan file in docs/plans/ before editing. Write tests for new behaviour, run the affected package's test suite, and report the exact commands and their results. Stop and escalate on any denylisted path in gate.yaml, on a missing requirement, or when the plan and the code disagree, instead of guessing. Never edit packages/shared/**, apps/server/prisma/**, apps/server/database/** or any auth file without a human decision. All code, comments and docstrings in English.",
       "permission": {
-        "bash": "ask",
+        "bash": {
+          "*": "ask",
+          "git push*": "deny",
+          "git commit*": "deny",
+          "git reset --hard*": "deny",
+          "gh pr create*": "deny",
+          "gh pr merge*": "deny"
+        },
         "edit": "ask"
       }
     },
@@ -36,9 +57,16 @@
       "name": "verifier",
       "description": "Step 5 — independent checker. Runs the tests itself. APPROVE or REJECT with evidence. Never edits.",
       "mode": "subagent",
-      "prompt": "Review the diff against AGENTS.md, LOOP.md, loop-constraints.md, gate.yaml and the slice's acceptance criteria in its docs/plans phase file. Run the project tests yourself; do not trust the implementer's claim. You must run: pnpm --filter @chien-quoc/client test, pnpm --filter @chien-quoc/server test and pnpm build. Check scope creep, missing tests, edge cases, the Vietnamese/English split, and that no denylisted path was touched. Reply with APPROVE or REJECT on the first line, then concise evidence: each acceptance criterion with PASS/FAIL, the exact test counts you observed, and any blocking issue. Do not edit any file.",
+      "prompt": "Load the code-review-and-quality skill and use its five-axis review: correctness, readability, architecture, security, performance. Review the diff against AGENTS.md, LOOP.md, loop-constraints.md, gate.yaml and the slice's acceptance criteria in its docs/plans phase file. Run the project tests yourself; do not trust the implementer's claim. You must run: pnpm --filter @chien-quoc/client test, pnpm --filter @chien-quoc/server test and pnpm build. Then do one mutation test with bash, never with the edit tool: pick a condition the change adds, invert it with sed -i, run the suite, and restore with `git checkout -- <file>`. A mutation that stays green means a test case is missing. Check scope creep, the Vietnamese/English split, and that no denylisted path was touched. Label every finding Critical / Required / Optional / Nit, and lead with correctness and security. Reply with APPROVE or REJECT on the first line, then each acceptance criterion with PASS/FAIL, the exact test counts you observed, and any blocking issue. Never leave a file modified: end with `git status --porcelain` and confirm it matches what it was before your mutation.",
       "permission": {
-        "bash": "ask",
+        "bash": {
+          "*": "ask",
+          "git push*": "deny",
+          "git commit*": "deny",
+          "git reset --hard*": "deny",
+          "gh pr create*": "deny",
+          "gh pr merge*": "deny"
+        },
         "edit": "deny"
       }
     },
@@ -48,7 +76,14 @@
       "mode": "subagent",
       "prompt": "Only run after the human confirms in the task text that the verifier returned APPROVE. Confirm the slice's STATE.md row reads 'VERIFIED' and that loop-run-log.md holds an APPROVE entry; if either is missing, stop and refuse. Create a feature branch named <type>/<slice-id>-<slug> off the current HEAD, stage only the files belonging to this slice, and commit with an English Conventional Commit message whose body explains the why. Then push the branch and open a pull request against main with gh pr create. The PR body must contain: the slice ID, a summary, the acceptance criteria with the evidence the verifier produced, the test commands and their results, and the plan file path. Never merge, never force-push, never rewrite history, and never commit files outside this slice. Report the branch name and the PR URL. All commit and PR text in English.",
       "permission": {
-        "bash": "ask",
+        "bash": {
+          "*": "ask",
+          "git push*": "deny",
+          "git commit*": "deny",
+          "git reset --hard*": "deny",
+          "gh pr create*": "deny",
+          "gh pr merge*": "deny"
+        },
         "edit": "ask"
       }
     }
@@ -82,7 +117,7 @@
       "description": "Step 5/6 — independent verification, APPROVE or REJECT",
       "agent": "verifier",
       "subtask": false,
-      "template": "Independently verify slice $ARGUMENTS. Run the three test commands yourself. Judge every acceptance criterion from its docs/plans file as PASS or FAIL. First line must be APPROVE or REJECT. On REJECT, list the blocking issues and tell the human the next command is /loop-build $ARGUMENTS. On APPROVE, set the STATE.md row to 'VERIFIED <date> — awaiting ship' and print the exact next command: /loop-ship $ARGUMENTS"
+      "template": "Independently verify slice $ARGUMENTS using the code-review-and-quality skill's five-axis review. Run the three test commands yourself, plus one mutation test via sed -i + git checkout. Judge every acceptance criterion from its docs/plans file as PASS or FAIL. First line must be APPROVE or REJECT. On REJECT, list the blocking issues by severity (Critical / Required) and tell the human the next command is /loop-build $ARGUMENTS. On APPROVE, set the STATE.md row to 'VERIFIED <date> — awaiting ship' and print the exact next command: /loop-ship $ARGUMENTS"
     },
     "loop-ship": {
       "description": "Step 6/6 — branch, commit, push, open the merge request",

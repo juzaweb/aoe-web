@@ -54,7 +54,9 @@ jobs:
   loop:
     name: ${{ inputs.step }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # full mode runs five agents plus three test suites; 45 minutes was tight
+    # enough that a slow pnpm install alone could fail the run.
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -164,6 +166,7 @@ jobs:
             || { echo "::error::loop-* skills are not discovered from .agents/skills."; exit 1; }
 
       - name: Run step
+        id: run
         env:
           STEP: ${{ inputs.step }}
           SLICE: ${{ steps.slice.outputs.slice }}
@@ -190,7 +193,7 @@ jobs:
               pick)   echo "The human has approved slice $SLICE. Do not write code. Set its STATE.md Next action to 'APPROVED <date> — awaiting plan', set every other High Priority row to 'not this run', append a line to loop-run-log.md recording the approval, and print the next command." ;;
               plan)   echo "Write the implementation plan for approved slice $SLICE. Use the next free phase number in docs/plans/, follow the shape of the existing phase files, add the README phase-table row, and set the STATE.md row to 'PLANNED <date> — awaiting build'. No source code." ;;
               build)  echo "Implement slice $SLICE from its plan in docs/plans/. Treat the acceptance criteria as the definition of done. Write tests, run them, report the exact commands and results. Do not commit. Stop and escalate on a denylisted path, a missing requirement, or a plan/code disagreement. Set the STATE.md row to 'BUILT <date> — awaiting verify'." ;;
-              verify) echo "Independently verify slice $SLICE. Run pnpm --filter @chien-quoc/client test, pnpm --filter @chien-quoc/server test and pnpm build yourself. Judge every acceptance criterion PASS or FAIL. First line must be APPROVE or REJECT. On APPROVE set the STATE.md row to 'VERIFIED <date> — awaiting ship' and append the verdict to loop-run-log.md." ;;
+              verify) echo "Independently verify slice $SLICE using the code-review-and-quality skill's five-axis review. Run pnpm --filter @chien-quoc/client test, pnpm --filter @chien-quoc/server test and pnpm build yourself, plus one mutation test via sed -i and git checkout. Judge every acceptance criterion PASS or FAIL. Append a line to loop-run-log.md whose FIRST word is APPROVE or REJECT — the pipeline greps for it at the start of a line. On APPROVE set the STATE.md row to 'VERIFIED <date> — awaiting ship'." ;;
               ship)   echo "Prepare slice $SLICE for shipping. Refuse unless its STATE.md row reads 'VERIFIED' and loop-run-log.md holds an APPROVE entry. Do not merge and do not push: leave the changes in the working tree and print the commit message and PR body you would use." ;;
             esac
           }
@@ -204,16 +207,37 @@ jobs:
             echo "::endgroup::"
           }
 
+          # Only the LAST verdict counts. loop-run-log.md accumulates across runs
+          # and slices, so `grep -q '^APPROVE'` would stay green because some
+          # earlier slice was approved, even after this one was rejected.
+          last_verdict_is_approve() {
+            local last
+            last=$(grep -E '^(APPROVE|REJECT)' loop-run-log.md | tail -1 || true)
+            # The verifier writes evidence after the word, so this is a prefix
+            # test, not an equality test.
+            case "$last" in APPROVE*) return 0 ;; *) return 1 ;; esac
+          }
+
           if [ "$STEP" = "full" ]; then
-            for s in pick plan build verify ship; do
-              run_agent "$s"
-              # A REJECT ends the pipeline. Shipping code the verifier rejected
-              # is the one outcome this workflow must never produce.
-              if [ "$s" = "verify" ] && ! grep -q '^APPROVE' loop-run-log.md; then
-                echo "::error::Verifier did not approve; stopping before ship."
+            run_agent pick
+            run_agent plan
+            # loop-constraints.md allows three fix attempts per slice. The
+            # verifier cannot edit (edit: deny), so the fix comes from another
+            # build run; without this loop a REJECT would just fail the job and
+            # leave the slice half-done with nobody to finish it.
+            attempt=1
+            while : ; do
+              run_agent build
+              run_agent verify
+              last_verdict_is_approve && break
+              if [ "$attempt" -ge 3 ]; then
+                echo "::error::Verifier rejected this slice 3 times; giving up."
                 exit 1
               fi
+              echo "::warning::Verifier rejected (attempt $attempt of 3); rebuilding."
+              attempt=$((attempt + 1))
             done
+            run_agent ship
           else
             run_agent "$STEP"
           fi
@@ -294,7 +318,8 @@ jobs:
       - name: Open state PR
         id: state
         if: |
-          steps.gate.outputs.allowed == 'true'
+          steps.run.outcome == 'success'
+          && steps.gate.outputs.allowed == 'true'
           && inputs.step != 'ship' && inputs.step != 'full'
         env:
           STEP: ${{ inputs.step }}
@@ -305,8 +330,14 @@ jobs:
           state_paths=(STATE.md loop-run-log.md)
           [ -d docs/plans ] && state_paths+=(docs/plans)
 
-          changed=$(git -c core.quotePath=false status --porcelain -z -- "${state_paths[@]}" \
-            | tr '\0' '\n' | sed 's/^...//' | grep -v '^$' || true)
+          # Same reasoning as the gate step: `git status --porcelain` C-quotes a
+          # path with a space and emits "old -> new" for a rename, so the old name
+          # would be staged. diff --name-only + ls-files yields the new name only.
+          list_state_paths() {
+            git -c core.quotePath=false diff --name-only -z HEAD -- "${state_paths[@]}"
+            git -c core.quotePath=false ls-files --others --exclude-standard -z -- "${state_paths[@]}"
+          }
+          changed=$(list_state_paths | tr '\0' '\n' | grep -v '^$' | sort -u || true)
           if [ -z "$changed" ]; then
             echo "::notice::No state change to propose."
             exit 0
