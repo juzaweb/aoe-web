@@ -36,6 +36,8 @@ import { DecorLayer } from '../render/DecorLayer.js';
 import { decorPreloadList } from '../render/decorArt.js';
 import { TerrainLayer } from '../render/TerrainLayer.js';
 import { OwnerColorRegistry, colorToCss } from '../render/ownerColor.js';
+import { UnderAttackTracker } from '../alerts/underAttack.js';
+import type { AttackPing, DamageResult } from '../alerts/underAttack.js';
 import { unitActionTexture } from '../render/unitDirections.js';
 import { UNIT_ART, unitArt, unitSheets } from '../render/unitArt.js';
 import { RENDER_DELAY_MS } from '../render/unitMotion.js';
@@ -211,6 +213,11 @@ export class WorldScene extends Phaser.Scene {
   public myPlayerName: string = '';
   private cachedOwnerId: string = '';
   private boundRoomId: string = '';
+
+  /** ATK-01: client-side under-attack detection from replicated hp. */
+  public underAttackTracker = new UnderAttackTracker();
+  /** ATK-05: raised when a banner should be shown. */
+  public onUnderAttack: (() => void) | null = null;
   private eventsBoundRoom: Room | null = null;
 
   /**
@@ -659,6 +666,7 @@ export class WorldScene extends Phaser.Scene {
     // OWN-05: the cache belongs to the previous Room's snapshot. A reconnect may
     // restore a different profile colour, so re-resolve before repainting.
     this.ownerColorRegistry.invalidateAll();
+    this.underAttackTracker.clear();
 
     // A travel freezes the old map on screen instead of going blank while the
     // destination room syncs. Unfreeze before binding the new snapshot.
@@ -775,6 +783,7 @@ export class WorldScene extends Phaser.Scene {
     this.centerAttempts = 0;
     this.cachedOwnerId = '';
     this.ownerColorRegistry.invalidateAll();
+    this.underAttackTracker.clear();
 
     // Repaint the overlays against the now-empty selection so nothing from the
     // old map survives the frame. The new Room may not have delivered its first
@@ -869,11 +878,24 @@ export class WorldScene extends Phaser.Scene {
     this.centerOnOwnBaseIfNeeded();
   }
 
+  /** ATK-01: record an entity's replicated hp and raise a banner if warranted. */
+  public recordEntityHp(entityId: string, ownerId: string, hp: number, gx: number, gy: number): DamageResult {
+    const result = this.underAttackTracker.record(entityId, ownerId, this.myOwnerId, hp, gx, gy, Date.now());
+    if (result.showBanner) this.onUnderAttack?.();
+    return result;
+  }
+
+  /** ATK-04: active under-attack pings for the minimap. */
+  public getUnderAttackPings(now: number = Date.now()): AttackPing[] {
+    return this.underAttackTracker.activePings(now);
+  }
+
   public bindRoomEvents(room: Room) {
     // Called from create(), setRoom() and PhaserGame effects; binding the same
     // Room twice would register duplicate schema callbacks (duplicate sprites).
     if (this.eventsBoundRoom === room) return;
     this.eventsBoundRoom = room;
+    this.underAttackTracker.clear();
 
     // Same reason as `setRoom`: a room bound directly from `create()` (page
     // refresh straight into a map) also has to publish its map size. The state
@@ -908,6 +930,16 @@ export class WorldScene extends Phaser.Scene {
     });
 
     cb.onRemove('buildings', (building: any, key: any) => {
+      // ATK-01 fallback: one-shot kill may remove before an hp patch lands.
+      const fallbackBuilding = building?.ownerId === this.myOwnerId && (building?.hp ?? 0) <= 0;
+      if (fallbackBuilding) {
+        const gx = (building.gridX ?? 0) + (building.sizeX ?? 1) / 2;
+        const gy = (building.gridY ?? 0) + (building.sizeY ?? 1) / 2;
+        this.recordEntityHp(key, building.ownerId, 0, gx, gy);
+      } else {
+        this.underAttackTracker.forget(key);
+      }
+
       const sprite = this.buildingSprites.get(key);
       if (sprite) {
         sprite.destroy();
@@ -926,6 +958,14 @@ export class WorldScene extends Phaser.Scene {
     });
 
     cb.onRemove('units', (unit: any, key: any) => {
+      // ATK-01 fallback: one-shot kill may remove before an hp patch lands.
+      const fallbackUnit = unit?.ownerId === this.myOwnerId && (unit?.hp ?? 0) <= 0;
+      if (fallbackUnit) {
+        this.recordEntityHp(key, unit.ownerId, 0, unit.x ?? 0, unit.y ?? 0);
+      } else {
+        this.underAttackTracker.forget(key);
+      }
+
       const sprite = this.unitSprites.get(key);
       if (sprite) {
         sprite.destroy();

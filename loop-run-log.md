@@ -37,3 +37,5 @@ Append one entry per run. Prune entries older than 30 days.
 Findings: 4 High Priority slices (`ALERT-01/02`, `SAVE-01`, `FLOW-01`) and 5 Watch List
 items (`ALERT-03`, `SAVE-02..05`, `DOC-01`, `DOC-02`, `TEST-01`). No slice promoted to L2,
 no source file touched. Details in `STATE.md`.
+Approval: `ALERT-01` approved 2026-11-03 — awaiting plan. Next command: /loop-plan ALERT-01.
+PASS ALERT-01 verified: client 367 tests, server 167 tests, build OK, mutation test caught (hp < prev -> hp > prev); five-axis review clean.

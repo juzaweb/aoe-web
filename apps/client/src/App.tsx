@@ -110,6 +110,9 @@ export const App: React.FC = () => {
 
   // Notifications
   const [notification, setNotification] = useState<string | null>(null);
+  // ATK-05: under-attack banner state.
+  const [underAttack, setUnderAttack] = useState<boolean>(false);
+  const underAttackTimerRef = useRef<number | null>(null);
 
   // References
   const gameRef = useRef<Phaser.Game | null>(null);
@@ -137,6 +140,19 @@ export const App: React.FC = () => {
       setNotification((curr) => (curr === msg ? null : curr));
     }, 3500);
   };
+
+  const triggerUnderAttack = () => {
+    setUnderAttack(true);
+    if (underAttackTimerRef.current !== null) window.clearTimeout(underAttackTimerRef.current);
+    underAttackTimerRef.current = window.setTimeout(() => setUnderAttack(false), 4000);
+  };
+
+  // Cleanup the under-attack timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (underAttackTimerRef.current !== null) window.clearTimeout(underAttackTimerRef.current);
+    };
+  }, []);
 
   // Dev-only handle, like `__worldScene`, so browser checks can inspect the
   // active room through a map switch.
@@ -599,6 +615,7 @@ export const App: React.FC = () => {
           onBoxSelectChange={setBoxSelectArmed}
           gameRef={gameRef}
           sceneRef={sceneRef}
+          onUnderAttack={triggerUnderAttack}
         />
       )}
 
@@ -739,6 +756,14 @@ export const App: React.FC = () => {
         <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-red-950/90 border border-red-500/80 text-red-200 px-4 py-2 rounded shadow-2xl backdrop-blur-md flex items-center gap-2 z-50 text-sm animate-bounce">
           <AlertCircle size={16} className="text-red-400" />
           <span>{notification}</span>
+        </div>
+      )}
+
+      {/* ATK-05: under-attack banner (separate from the error notification). */}
+      {underAttack && (
+        <div className={`absolute ${notification ? 'top-24' : 'top-16'} left-1/2 -translate-x-1/2 bg-red-950/90 border border-red-500/80 text-red-200 px-4 py-2 rounded shadow-2xl backdrop-blur-md flex items-center gap-2 z-50 text-sm animate-pulse`}>
+          <AlertCircle size={16} className="text-red-400" />
+          <span>Đang bị tấn công!</span>
         </div>
       )}
 

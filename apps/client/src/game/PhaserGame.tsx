@@ -24,6 +24,8 @@ interface PhaserGameProps {
   onArmedOrderChange: (armed: ArmedOrder | null) => void;
   /** MOB-04: the one-shot box-selection mode was armed or consumed. */
   onBoxSelectChange: (armed: boolean) => void;
+  /** ATK-05: raised when the player's entities lose HP. */
+  onUnderAttack: () => void;
   gameRef: React.MutableRefObject<Phaser.Game | null>;
   sceneRef: React.MutableRefObject<WorldScene | null>;
 }
@@ -38,6 +40,7 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
   onControlGroupsChange,
   onArmedOrderChange,
   onBoxSelectChange,
+  onUnderAttack,
   gameRef,
   sceneRef
 }) => {
@@ -50,6 +53,7 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
   const onControlGroupsRef = useRef(onControlGroupsChange);
   const onArmedOrderRef = useRef(onArmedOrderChange);
   const onBoxSelectRef = useRef(onBoxSelectChange);
+  const onUnderAttackRef = useRef(onUnderAttack);
   playerNameRef.current = playerName;
   roomRef.current = room;
   onBuildingHotkeyRef.current = onBuildingHotkey;
@@ -57,6 +61,7 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
   onControlGroupsRef.current = onControlGroupsChange;
   onArmedOrderRef.current = onArmedOrderChange;
   onBoxSelectRef.current = onBoxSelectChange;
+  onUnderAttackRef.current = onUnderAttack;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -131,6 +136,7 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
         scene.onControlGroupsChange = (groups) => onControlGroupsRef.current(groups);
         scene.onArmedOrderChange = (armed) => onArmedOrderRef.current(armed);
         scene.onBoxSelectChange = (armed) => onBoxSelectRef.current(armed);
+        scene.onUnderAttack = () => onUnderAttackRef.current();
 
         // Dev-only handle so browser tests can inspect state that the React HUD
         // does not expose (selection sets, camera, sprites).

@@ -291,8 +291,17 @@ export class EntityRenderer {
     this.refreshOwnerBase(container, id, building.ownerId);
     this.updateBuildingBar(container, building);
 
+    // ATK-03: seed the under-attack tracker with the initial hp (no alert).
+    const initialGx = building.gridX + building.sizeX / 2;
+    const initialGy = building.gridY + building.sizeY / 2;
+    scene.recordEntityHp(id, building.ownerId, building.hp, initialGx, initialGy);
+    container.setData('lastHp', building.hp);
+
     if (cb) {
       cb.onChange(building, () => {
+        const gx = building.gridX + building.sizeX / 2;
+        const gy = building.gridY + building.sizeY / 2;
+        scene.recordEntityHp(id, building.ownerId, building.hp, gx, gy);
         this.updateBuildingBar(container, building);
         if (scene.selectedBuildingId === id) {
           scene.notifySelectionChange();
@@ -542,6 +551,9 @@ export class EntityRenderer {
 
     this.refreshOwnerRing(container, id, unit.ownerId);
 
+    // ATK-03: seed the under-attack tracker with the initial hp (no alert).
+    scene.recordEntityHp(id, unit.ownerId, unit.hp, unit.x, unit.y);
+
     scene.unitSprites.set(id, container);
     // MOV-01: the scene owns the per-frame sampling from here on. It starts
     // parked on the spawn tile, facing the viewer.
@@ -655,6 +667,8 @@ export class EntityRenderer {
         // Position is deliberately not copied here: the scene samples the
         // authoritative position once per frame instead, so a multi-property
         // patch cannot produce a sample that pairs a new x with a stale y.
+        // ATK-03: detect hp loss before repainting the bar.
+        scene.recordEntityHp(id, unit.ownerId, unit.hp, unit.x, unit.y);
         this.updateUnitBar(container, unit.hp, unit.maxHp, isCavalry);
         const facing = (container.getData('facingDirection') as number | undefined) ?? DEFAULT_DIRECTION_INDEX;
         updateVisualState(unit.actionState, facing, unit.speed);

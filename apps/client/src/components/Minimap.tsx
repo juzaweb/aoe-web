@@ -235,6 +235,29 @@ export const Minimap: React.FC<MinimapProps> = ({
         ctx.stroke();
       });
 
+      // 5b. ATK-04: under-attack pings (red pulse at the hit location).
+      const nowMs = Date.now();
+      const pings = scene?.getUnderAttackPings?.(nowMs) ?? [];
+      pings.forEach((ping: any) => {
+        const point = gridToMinimap(ping.gx, ping.gy, width);
+        const lifetime = Math.max(1, ping.until - ping.startedAt);
+        const age = Math.min(1, (nowMs - ping.startedAt) / lifetime);
+        const alpha = 1 - age;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = '#ef4444';
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.25)';
+        ctx.lineWidth = 2;
+        const radius = 4 + age * 8;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+
       // 6. Camera viewport: the white rectangle AoE draws on its minimap.
       if (scene && scene.cameras?.main) {
         const cam = scene.cameras.main;
