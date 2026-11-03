@@ -85,13 +85,17 @@ For `triage` the `STATE.md` diff **is** the deliverable, so the PR is the propos
 You can also edit `STATE.md` on `develop` directly, or use `/loop-pick <ID>` in the TUI.
 All three produce the same thing: one row reading `APPROVED`.
 
-### The two hard stops
+### The three hard stops
 
 1. **Gate before anything is committed.** `gate check --action merge` must exit 0. If it does
    not, the slice is **thrown away** — the working tree is reverted and the run fails. It does
    not become a PR waiting for a human.
 2. **Verifier before ship**, in `full` mode. The run aborts unless `loop-run-log.md` gained a
    `PASS` line.
+3. **Tests before merge.** In `ship`/`full`, the `Run tests` step runs build + both suites on
+   the exact tree that is about to be committed. Red suite, no PR, no merge. After the PR is
+   opened the workflow also waits for the `Tests` check that `ci.yml` records against it, and
+   merges only when that check is green.
 
 `APPROVE`/`APPROVED` belongs to you alone. The verifier's verdict is `PASS` or `FAIL`, so the
 word `approve` in this repo always means a human decision and never a machine one.
@@ -134,6 +138,39 @@ pnpm --filter @chien-quoc/client test
 pnpm --filter @chien-quoc/server test
 pnpm build
 ```
+
+## CI on `develop`
+
+`.github/workflows/ci.yml` is the test gate for the integration branch. It runs on every push
+to `develop`, every PR aimed at `develop`, and on demand. One job, `Tests`:
+
+```
+pnpm install --frozen-lockfile
+build shared -> prisma generate -> tsc + vite build -> client tests -> server tests
+```
+
+`prisma generate` is not optional: `@prisma/client` is a build artifact, so a fresh runner
+cannot resolve it without that step. `dist/` is gitignored, so the builds leave the tree that
+`git add -A` commits untouched.
+
+Every failure mode is a red run, never a skipped step: a broken build, a failing test, or a
+missing `pnpm-lock.yaml` entry all stop the job.
+
+To make the check mandatory for humans as well, protect `develop` once:
+
+```bash
+gh api -X PUT "repos/{owner}/{repo}/branches/develop/protection" \
+  -F required_status_checks[strict]=true \
+  -F required_status_checks[contexts][]=Tests \
+  -F enforce_admins=false \
+  -F required_pull_request_reviews=null \
+  -F restrictions=null
+```
+
+The loop still works with that protection on, because it waits for `Tests` to go green before
+calling `gh pr merge`. Without `LOOP_PAT` the loop's PRs do not trigger `pull_request` at all
+(GitHub suppresses workflow runs caused by `GITHUB_TOKEN`), so the wait step falls back to the
+in-job test run and says so in the log.
 
 ## Troubleshooting
 

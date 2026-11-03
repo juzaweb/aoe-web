@@ -401,9 +401,49 @@ jobs:
           echo "url=$(tail -1 pr-url.txt)" >> "$GITHUB_OUTPUT"
           echo "::notice::Proposal PR opened: $(tail -1 pr-url.txt)"
 
+      # The test gate. It runs on the working tree that is about to be
+      # committed, so "the tests passed" describes exactly the tree that would
+      # land on develop — not a nearby commit and not a later one.
+      #
+      # The same commands run again in .github/workflows/ci.yml, on every PR and
+      # every push to develop. Both copies are needed: this one is what stops an
+      # unattended pipeline from opening (and then merging) a red PR, and the CI
+      # one is the verdict GitHub records against the PR.
+      - name: Run tests
+        id: tests
+        if: |
+          (inputs.step == 'ship' || inputs.step == 'full')
+          && steps.gate.outputs.allowed == 'true'
+        run: |
+          set -euo pipefail
+          run_suite() {
+            local label="$1"; shift
+            echo "::group::${label}"
+            if ! "$@"; then
+              echo "::endgroup::"
+              echo "::error::${label} failed. No PR was opened and nothing was merged."
+              return 1
+            fi
+            echo "::endgroup::"
+          }
+
+          # shared first: both apps import it through packages/shared/dist.
+          run_suite "Build shared" pnpm --filter @chien-quoc/shared run build
+          # @prisma/client is generated, not committed.
+          run_suite "Generate Prisma client" pnpm --filter @chien-quoc/server run prisma:generate
+          run_suite "Type check and build" bash -c 'pnpm --filter @chien-quoc/server run build && pnpm --filter @chien-quoc/client run build'
+          run_suite "Test client" pnpm --filter @chien-quoc/client run test
+          run_suite "Test server" pnpm --filter @chien-quoc/server run test
+          echo "verdict=pass" >> "$GITHUB_OUTPUT"
+
+      # Nothing below this line runs on a red suite: the ship step requires the
+      # tests step to have succeeded, and a failed step aborts the job.
       - name: Commit, push and open PR
         id: ship
-        if: (inputs.step == 'ship' || inputs.step == 'full') && steps.gate.outputs.allowed == 'true'
+        if: |
+          (inputs.step == 'ship' || inputs.step == 'full')
+          && steps.gate.outputs.allowed == 'true'
+          && steps.tests.outcome == 'success'
         env:
           SLICE: ${{ steps.slice.outputs.slice }}
           GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
@@ -444,11 +484,66 @@ jobs:
             --body-file /tmp/pr-body.txt > pr-url.txt
           echo "url=$(tail -1 pr-url.txt)" >> "$GITHUB_OUTPUT"
 
-      # The code PR is the one that must never wait. The gate above already
-      # refused anything denylisted, and the verifier already approved, so
-      # merging here is the last step of an unattended pipeline.
-      - name: Merge code PR into develop
+      # The tests already ran in this job, on the exact tree that was committed.
+      # This step waits for the *recorded* verdict instead: the `Tests` check from
+      # ci.yml, the one branch protection reads and a reviewer sees. A merge is
+      # only as trustworthy as the check attached to it.
+      #
+      # A PR opened with GITHUB_TOKEN does not trigger a `pull_request` run at
+      # all (GitHub suppresses the recursion), so there is nothing to wait for
+      # when LOOP_PAT is unset. That case falls back to the in-job run and says
+      # so out loud, rather than pretending the PR went green.
+      - name: Wait for the Tests check on the code PR
+        id: wait
         if: inputs.merge && steps.ship.outputs.url != ''
+        env:
+          GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
+          LOOP_PAT: ${{ secrets.LOOP_PAT }}
+          PR_URL: ${{ steps.ship.outputs.url }}
+        run: |
+          set -euo pipefail
+          if [ -z "${LOOP_PAT:-}" ]; then
+            echo "::warning::LOOP_PAT is not set, so no CI run is attached to this PR."
+            echo "::warning::Relying on the in-job test run only; add LOOP_PAT to get a recorded check."
+            echo "verdict=unverified" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Checks register a few seconds to a minute after the PR is opened.
+          registered=false
+          for _ in $(seq 1 30); do
+            count=$(gh pr checks "$PR_URL" --json name --jq 'length' 2>/dev/null || echo 0)
+            if [ "${count:-0}" -gt 0 ]; then registered=true; break; fi
+            sleep 10
+          done
+          if [ "$registered" != "true" ]; then
+            echo "::error::No CI check appeared on $PR_URL within 5 minutes."
+            echo "::error::Check that .github/workflows/ci.yml runs on pull_request -> develop."
+            exit 1
+          fi
+
+          # --watch blocks until every check finishes; --fail-fast returns as
+          # soon as one fails, so a red run is not waited out in full.
+          if gh pr checks "$PR_URL" --watch --fail-fast; then
+            echo "verdict=pass" >> "$GITHUB_OUTPUT"
+            echo "::notice::Tests are green on $PR_URL."
+          else
+            echo "::error::Tests failed on $PR_URL; leaving the PR open and unmerged."
+            echo "verdict=fail" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+      # The code PR is the one that must never wait. The gate above refused
+      # anything denylisted, the tests passed in-job, and the Tests check is
+      # green on the PR, so merging here is the last step of an unattended
+      # pipeline.
+      - name: Merge code PR into develop
+        id: merge
+        if: |
+          inputs.merge
+          && steps.ship.outputs.url != ''
+          && steps.tests.outcome == 'success'
+          && (steps.wait.outcome == 'success' || steps.wait.outcome == 'skipped')
         env:
           GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
           PR_URL: ${{ steps.ship.outputs.url }}
@@ -464,9 +559,11 @@ jobs:
             echo "### Loop — ${{ inputs.step }}"
             echo ""
             echo "- Slice: \`${{ steps.slice.outputs.slice }}\`"
+            echo "- In-job tests: ${{ steps.tests.outputs.verdict || 'not run' }}"
+            echo "- CI check on the PR: ${{ steps.wait.outputs.verdict || 'not run' }}"
             echo "- Proposal PR (state): ${{ steps.state.outputs.url || 'none' }}"
             echo "- Code PR: ${{ steps.ship.outputs.url || 'none' }}"
-            echo "- Code merged: ${{ inputs.merge && steps.ship.outputs.url != '' && 'yes' || 'no' }}"
+            echo "- Code merged: ${{ steps.merge.outcome == 'success' && 'yes' || 'no' }}"
             echo ""
             echo "\`\`\`"
             git status --porcelain || true

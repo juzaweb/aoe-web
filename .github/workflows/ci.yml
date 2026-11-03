@@ -1,0 +1,77 @@
+name: CI
+
+# The test gate for `develop`. Two callers depend on it:
+#
+#   - `pull_request` — every PR aimed at develop, including the ones the loop
+#     pipeline opens, must go green before a human merges it.
+#   - `push` — every commit that already landed on develop is re-verified, so a
+#     broken merge is visible immediately instead of at the next release.
+#
+# The loop workflow (.github/workflows/loop.yml) merges its own PRs, so it also
+# runs the same commands in-job before it opens them. Keeping both is
+# deliberate: this file is the record GitHub shows on the PR, the in-job run is
+# what stops an unattended pipeline from parking on a queue.
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+  workflow_dispatch:
+
+# A superseded push does not need to finish: cancel it. Only the newest commit
+# on a branch carries a verdict worth waiting for.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # This name is what branch protection lists as a required status check.
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # packages/shared is imported through its compiled output, so it has to be
+      # built before anything type-checks or imports it.
+      - name: Build shared
+        run: pnpm --filter @chien-quoc/shared run build
+
+      # @prisma/client is a generated artifact, not a committed one; without
+      # this step every server import of it fails to resolve.
+      - name: Generate Prisma client
+        run: pnpm --filter @chien-quoc/server run prisma:generate
+
+      # tsc is the only type check in this repo. vite build proves the bundle
+      # still resolves, which tsc alone does not catch.
+      - name: Type check and build
+        run: |
+          set -euo pipefail
+          pnpm --filter @chien-quoc/server run build
+          pnpm --filter @chien-quoc/client run build
+
+      - name: Test client
+        run: pnpm --filter @chien-quoc/client run test
+
+      - name: Test server
+        run: pnpm --filter @chien-quoc/server run test
