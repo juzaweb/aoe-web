@@ -1,7 +1,5 @@
 import {
   BuildingType,
-  MAP_GRID_HEIGHT,
-  MAP_GRID_WIDTH,
   NetworkMessage,
   canTrainUnitsAt,
   gridToScreen,
@@ -513,7 +511,7 @@ export class CommandController {
 
     const worldPoint = pointerWorldPoint(scene.cameras.main, pointer);
     const grid = pointerWorldGrid(scene.cameras.main, pointer);
-    if (grid.gridX < 0 || grid.gridY < 0 || grid.gridX >= MAP_GRID_WIDTH || grid.gridY >= MAP_GRID_HEIGHT) {
+    if (grid.gridX < 0 || grid.gridY < 0 || grid.gridX >= scene.mapWidth || grid.gridY >= scene.mapHeight) {
       return;
     }
 
@@ -653,8 +651,8 @@ export class CommandController {
     if (scene.buildingToPlace) return;
     if (scene.selectedUnitIds.size === 0) return;
 
-    const targetGridX = Math.max(0, Math.min(MAP_GRID_WIDTH - 1, Math.round(gridX)));
-    const targetGridY = Math.max(0, Math.min(MAP_GRID_HEIGHT - 1, Math.round(gridY)));
+    const targetGridX = Math.max(0, Math.min(scene.mapWidth - 1, Math.round(gridX)));
+    const targetGridY = Math.max(0, Math.min(scene.mapHeight - 1, Math.round(gridY)));
 
     scene.room.send(NetworkMessage.MOVE_UNITS, {
       unitIds: Array.from(scene.selectedUnitIds),
@@ -688,7 +686,7 @@ export class CommandController {
 
     const worldPoint = pointerWorldPoint(scene.cameras.main, pointer);
     const grid = pointerWorldGrid(scene.cameras.main, pointer);
-    if (grid.gridX < 0 || grid.gridY < 0 || grid.gridX >= MAP_GRID_WIDTH || grid.gridY >= MAP_GRID_HEIGHT) {
+    if (grid.gridX < 0 || grid.gridY < 0 || grid.gridX >= scene.mapWidth || grid.gridY >= scene.mapHeight) {
       return;
     }
 

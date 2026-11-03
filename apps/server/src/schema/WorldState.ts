@@ -13,6 +13,11 @@ export class WorldState extends Schema {
    * can label the HUD/minimap without knowing the room naming scheme.
    */
   @type('string') zoneId: string = 'world';
+  /**
+   * Side lengths of the map this room simulates: 110 for a kingdom, 220 for the
+   * battlefield. Set by `WorldRoom.onCreate` and replicated so the client sizes
+   * its camera, terrain and minimap from the same numbers.
+   */
   @type('number') mapWidth: number = MAP_GRID_WIDTH;
   @type('number') mapHeight: number = MAP_GRID_HEIGHT;
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();

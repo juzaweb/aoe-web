@@ -10,8 +10,8 @@ import { DatabaseService } from './services/DatabaseService.js';
 import { AuthError, AuthService } from './services/AuthService.js';
 import { createRateLimit } from './services/RateLimiter.js';
 
-// The 220x220 map holds ~1.2k resource nodes, so a full world snapshot is far
-// larger than the 16 KB default. Raising it up front avoids the per-room
+// The battlefield (220x220) holds ~1.2k resource nodes, so a full world snapshot
+// is far larger than the 16 KB default. Raising it up front avoids the per-room
 // "buffer overflow" warning and the re-encode that follows it. Must be set
 // before any room (and therefore any Encoder) is constructed.
 Encoder.BUFFER_SIZE = 256 * 1024;

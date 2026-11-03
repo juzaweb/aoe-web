@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import {
-  BUILDING_BLUEPRINTS,
-  MAP_GRID_HEIGHT,
-  MAP_GRID_WIDTH
-} from '@chien-quoc/shared';
+import { BUILDING_BLUEPRINTS, mapSizeForZone } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { WorldState } from '../schema/WorldState.js';
@@ -13,6 +9,11 @@ import { arrivalPoint, ensurePortalFor, findOwnPortal } from './portals.js';
 function createState(zone: string): WorldState {
   const state = new WorldState();
   state.zoneId = zone;
+  // The room sets these in `onCreate`; a bare state would fall back to the
+  // battlefield defaults and hide a kingdom-sized bug.
+  const size = mapSizeForZone(zone);
+  state.mapWidth = size.width;
+  state.mapHeight = size.height;
   return state;
 }
 
@@ -71,8 +72,9 @@ describe('ensurePortalFor', () => {
 
     expect(portal).not.toBeNull();
     expect(portal!.type).toBe('PORTAL');
-    expect(portal!.gridX).toBeGreaterThan(MAP_GRID_WIDTH - 12);
-    expect(Math.abs(portal!.gridY - (MAP_GRID_HEIGHT / 2 - 1))).toBeLessThan(20);
+    // Kingdom 110x110, portal 2x2, margin 5: the fixed column is x = 103.
+    expect(portal!.gridX).toBe(state.mapWidth - 5 - portal!.sizeX);
+    expect(portal!.gridY).toBe(Math.floor(state.mapHeight / 2) - Math.floor(portal!.sizeY / 2));
     expect(overlaps(portal!, townCenter)).toBe(false);
     expect(findOwnPortal(state, 'user-1')).toBe(portal);
   });
@@ -85,7 +87,7 @@ describe('ensurePortalFor', () => {
     const portal = ensurePortalFor(state, 'user-1');
 
     expect(portal).toBe(oldPortal);
-    expect(portal!.gridX).toBeGreaterThan(MAP_GRID_WIDTH - 12);
+    expect(portal!.gridX).toBe(state.mapWidth - 5 - portal!.sizeX);
   });
 
   it('is idempotent for one account', () => {
@@ -138,19 +140,19 @@ describe('arrivalPoint', () => {
     const portal = ensurePortalFor(state, 'user-1')!;
 
     for (let index = 0; index < 40; index++) {
-      const point = arrivalPoint(portal, index);
+      const point = arrivalPoint(portal, index, state);
       expect(point.x).toBeGreaterThan(0);
-      expect(point.x).toBeLessThan(MAP_GRID_WIDTH);
+      expect(point.x).toBeLessThan(state.mapWidth);
       expect(point.y).toBeGreaterThan(0);
-      expect(point.y).toBeLessThan(MAP_GRID_HEIGHT);
+      expect(point.y).toBeLessThan(state.mapHeight);
       expect(point.y).toBeGreaterThanOrEqual(portal.gridY + portal.sizeY);
     }
   });
 
   it('moves arrivals out of a building placed below the portal', () => {
     const state = createState('kingdom:user-1');
-    const portal = addBuilding(state, 'user-1', 'PORTAL', 100, 100);
-    const blocker = addBuilding(state, 'user-1', 'TOWN_CENTER', 98, 102);
+    const portal = addBuilding(state, 'user-1', 'PORTAL', 60, 60);
+    const blocker = addBuilding(state, 'user-1', 'TOWN_CENTER', 58, 62);
 
     const point = arrivalPoint(portal, 0, state);
     const insideBlocker =
@@ -164,10 +166,10 @@ describe('arrivalPoint', () => {
 
   it('clamps arrivals at the bottom edge of the map', () => {
     const state = createState('kingdom:user-1');
-    const portal = addBuilding(state, 'user-1', 'PORTAL', 10, MAP_GRID_HEIGHT - 3);
+    const portal = addBuilding(state, 'user-1', 'PORTAL', 10, state.mapHeight - 3);
 
-    const point = arrivalPoint(portal, 95);
-    expect(point.y).toBeLessThan(MAP_GRID_HEIGHT);
-    expect(point.x).toBeLessThan(MAP_GRID_WIDTH);
+    const point = arrivalPoint(portal, 95, state);
+    expect(point.y).toBeLessThan(state.mapHeight);
+    expect(point.x).toBeLessThan(state.mapWidth);
   });
 });

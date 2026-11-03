@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAP_GRID_HEIGHT, MAP_GRID_WIDTH } from '@chien-quoc/shared';
+import { KINGDOM_MAP_SIZE, MAP_GRID_HEIGHT, MAP_GRID_WIDTH } from '@chien-quoc/shared';
 import { Pathfinder, type GridPoint } from './Pathfinder.js';
 
 function createGrid(): Uint8Array {
@@ -166,5 +166,24 @@ describe('Pathfinder', () => {
 
     console.log(`A* corner-to-corner on ${MAP_GRID_WIDTH}x${MAP_GRID_HEIGHT}: ${perPathMs.toFixed(2)} ms/path`);
     expect(perPathMs).toBeLessThan(25);
+  });
+});
+
+describe('kingdom-sized A* workspace', () => {
+  it('routes corner-to-corner on the 110x110 kingdom map', () => {
+    const pathfinder = new Pathfinder(KINGDOM_MAP_SIZE.width, KINGDOM_MAP_SIZE.height);
+    const grid = new Uint8Array(KINGDOM_MAP_SIZE.width * KINGDOM_MAP_SIZE.height);
+    const start = { x: 2, y: 2 };
+    const goal = { x: KINGDOM_MAP_SIZE.width - 2, y: KINGDOM_MAP_SIZE.height - 2 };
+
+    const route = pathfinder.findPath(start, goal, grid);
+
+    expect(route).not.toBeNull();
+    for (const step of route!) {
+      expect(step.x).toBeGreaterThanOrEqual(0.5);
+      expect(step.y).toBeGreaterThanOrEqual(0.5);
+      expect(step.x).toBeLessThan(KINGDOM_MAP_SIZE.width);
+      expect(step.y).toBeLessThan(KINGDOM_MAP_SIZE.height);
+    }
   });
 });

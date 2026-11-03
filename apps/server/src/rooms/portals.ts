@@ -1,17 +1,14 @@
-import {
-  BUILDING_BLUEPRINTS,
-  MAP_GRID_HEIGHT,
-  MAP_GRID_WIDTH,
-  isDirtRoadTile,
-  zoneKindOf
-} from '@chien-quoc/shared';
+import { BUILDING_BLUEPRINTS, isDirtRoadTile, zoneKindOf } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { entityIds } from '../services/EntityIdAllocator.js';
+import { terrainOf } from './mapLayout.js';
 
 const PORTAL_BLUEPRINT = BUILDING_BLUEPRINTS.PORTAL;
 const PORTAL_MARGIN = 5;
+
+
 
 /** The account's portal in this room, if it already exists. */
 export function findOwnPortal(state: WorldState, ownerId: string): BuildingState | null {
@@ -61,20 +58,22 @@ function isPortalFootprintFree(
 ): boolean {
   const sizeX = PORTAL_BLUEPRINT.sizeX;
   const sizeY = PORTAL_BLUEPRINT.sizeY;
+  const { mapWidth: width, mapHeight: height } = state;
 
   if (
     gx < PORTAL_MARGIN ||
     gy < PORTAL_MARGIN ||
-    gx + sizeX > MAP_GRID_WIDTH - PORTAL_MARGIN ||
-    gy + sizeY > MAP_GRID_HEIGHT - PORTAL_MARGIN
+    gx + sizeX > width - PORTAL_MARGIN ||
+    gy + sizeY > height - PORTAL_MARGIN
   ) {
     return false;
   }
 
   if (!options.ignoreRoads) {
+    const terrain = terrainOf(state);
     for (let x = gx; x < gx + sizeX; x++) {
       for (let y = gy; y < gy + sizeY; y++) {
-        if (isDirtRoadTile(x, y)) return false;
+        if (isDirtRoadTile(x, y, terrain)) return false;
       }
     }
   }
@@ -114,8 +113,8 @@ function findPortalSpot(
   const centres: Array<{ x: number; y: number }> = [];
   if (preferred) centres.push(preferred);
   centres.push({
-    x: Math.floor(MAP_GRID_WIDTH / 2) - Math.floor(PORTAL_BLUEPRINT.sizeX / 2),
-    y: Math.floor(MAP_GRID_HEIGHT / 2) - Math.floor(PORTAL_BLUEPRINT.sizeY / 2)
+    x: Math.floor(state.mapWidth / 2) - Math.floor(PORTAL_BLUEPRINT.sizeX / 2),
+    y: Math.floor(state.mapHeight / 2) - Math.floor(PORTAL_BLUEPRINT.sizeY / 2)
   });
 
   for (const centre of centres) {
@@ -144,15 +143,15 @@ function findKingdomPortalSpot(
 ): { x: number; y: number } | null {
   const sizeX = PORTAL_BLUEPRINT.sizeX;
   const sizeY = PORTAL_BLUEPRINT.sizeY;
-  const edgeX = MAP_GRID_WIDTH - PORTAL_MARGIN - sizeX;
-  const centreY = Math.floor(MAP_GRID_HEIGHT / 2) - Math.floor(sizeY / 2);
+  const edgeX = state.mapWidth - PORTAL_MARGIN - sizeX;
+  const centreY = Math.floor(state.mapHeight / 2) - Math.floor(sizeY / 2);
   const options = { ignoreRoads: true, ignoreResources: true, ignoreBuildingId };
 
   const tryColumn = (x: number): { x: number; y: number } | null => {
     for (let offset = 0; offset <= 80; offset += 2) {
       const candidates = offset === 0 ? [centreY] : [centreY - offset, centreY + offset];
       for (const y of candidates) {
-        if (y < PORTAL_MARGIN || y + sizeY > MAP_GRID_HEIGHT - PORTAL_MARGIN) continue;
+        if (y < PORTAL_MARGIN || y + sizeY > state.mapHeight - PORTAL_MARGIN) continue;
         if (isPortalFootprintFree(state, x, y, options)) return { x, y };
       }
     }
@@ -199,8 +198,8 @@ function clearPortalResources(state: WorldState, portal: { gridX: number; gridY:
  */
 function findBattlefieldSpot(state: WorldState, ownerId: string): { x: number; y: number } | null {
   const hash = hashOwner(ownerId);
-  const usableX = MAP_GRID_WIDTH - 2 * PORTAL_MARGIN;
-  const usableY = MAP_GRID_HEIGHT - 2 * PORTAL_MARGIN;
+  const usableX = Math.max(1, state.mapWidth - 2 * PORTAL_MARGIN);
+  const usableY = Math.max(1, state.mapHeight - 2 * PORTAL_MARGIN);
 
   for (let attempt = 0; attempt < 512; attempt++) {
     const seedX = (hash + Math.imul(attempt, 0x9e3779b1)) >>> 0;
@@ -284,7 +283,12 @@ export function ensurePortalFor(state: WorldState, ownerId: string): BuildingSta
 
 const ARRIVAL_COLUMNS = 7;
 
-function arrivalCandidate(portal: BuildingState, slot: number): { x: number; y: number } {
+function arrivalCandidate(
+  portal: BuildingState,
+  slot: number,
+  width: number,
+  height: number
+): { x: number; y: number } {
   const col = slot % ARRIVAL_COLUMNS;
   const row = Math.floor(slot / ARRIVAL_COLUMNS);
 
@@ -292,8 +296,8 @@ function arrivalCandidate(portal: BuildingState, slot: number): { x: number; y: 
   const y = portal.gridY + portal.sizeY + 1 + row * 0.8;
 
   return {
-    x: Math.max(0.5, Math.min(MAP_GRID_WIDTH - 0.5, x)),
-    y: Math.max(0.5, Math.min(MAP_GRID_HEIGHT - 0.5, y))
+    x: Math.max(0.5, Math.min(width - 0.5, x)),
+    y: Math.max(0.5, Math.min(height - 0.5, y))
   };
 }
 
@@ -321,18 +325,17 @@ function isInsideBuilding(state: WorldState, x: number, y: number): boolean {
 export function arrivalPoint(
   portal: BuildingState,
   index: number,
-  state?: WorldState
+  state: WorldState
 ): { x: number; y: number } {
-  if (state) {
-    for (let slot = index; slot < index + ARRIVAL_COLUMNS * 20; slot++) {
-      const candidate = arrivalCandidate(portal, slot);
-      if (!isInsideBuilding(state, candidate.x, candidate.y)) {
-        return candidate;
-      }
+  const { mapWidth, mapHeight } = state;
+  for (let slot = index; slot < index + ARRIVAL_COLUMNS * 20; slot++) {
+    const candidate = arrivalCandidate(portal, slot, mapWidth, mapHeight);
+    if (!isInsideBuilding(state, candidate.x, candidate.y)) {
+      return candidate;
     }
   }
 
-  return arrivalCandidate(portal, index);
+  return arrivalCandidate(portal, index, mapWidth, mapHeight);
 }
 
 export { isPortalFootprintFree };

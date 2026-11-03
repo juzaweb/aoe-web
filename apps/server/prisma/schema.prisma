@@ -139,3 +139,12 @@ model TravelTransfer {
   @@map("travel_transfers")
 }
 
+/// Bookkeeping for one-off data migrations that must not run twice (for example
+/// the kingdom map resize, which resets every kingdom layout).
+model SchemaMeta {
+  key   String @id
+  value String
+
+  @@map("schema_meta")
+}
+

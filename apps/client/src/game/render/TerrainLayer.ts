@@ -1,8 +1,8 @@
 import {
-  MAP_GRID_HEIGHT,
-  MAP_GRID_WIDTH,
+  MapTerrain,
   RoadSplinePoint,
-  getAllRoadSplinePoints,
+  TERRAIN_BATTLEFIELD,
+  getRoadSplinePoints,
   gridToScreen,
   screenToGrid
 } from '@chien-quoc/shared';
@@ -11,14 +11,17 @@ import type * as Phaser from 'phaser';
 /**
  * Grass tiles and dirt-road stamps, drawn from pools.
  *
- * The map is 220x220 tiles and Phaser has no batching that makes hundreds of
+ * A map is up to 220x220 tiles and Phaser has no batching that makes hundreds of
  * thousands of images cheap, so the visible window is rendered from a fixed pool
  * that is repositioned (not recreated) whenever the camera moves far enough.
+ * The road spline depends on the map's layout (kingdom vs battlefield) and is
+ * swapped by {@link setTerrain} when the scene joins a different room.
  */
 export class TerrainLayer {
   private tilePool: Phaser.GameObjects.Image[] = [];
   private roadStampPool: Phaser.GameObjects.Image[] = [];
   private allRoadPoints: RoadSplinePoint[] = [];
+  private terrain: MapTerrain = TERRAIN_BATTLEFIELD;
   private lastViewportX = -999999;
   private lastViewportY = -999999;
   private lastViewportZoom = -1;
@@ -35,7 +38,7 @@ export class TerrainLayer {
       this.tilePool.push(tile);
     }
 
-    this.allRoadPoints = getAllRoadSplinePoints();
+    this.allRoadPoints = getRoadSplinePoints(this.terrain);
 
     this.roadStampPool = [];
     for (let i = 0; i < 700; i++) {
@@ -44,6 +47,18 @@ export class TerrainLayer {
       stamp.setVisible(false);
       this.roadStampPool.push(stamp);
     }
+  }
+
+  /**
+   * Switches to another map's terrain layout.
+   *
+   * Safe to call before `create()` (the pools do not exist yet) and after it;
+   * either way the next frame repositions every stamp from the new spline.
+   */
+  setTerrain(terrain: MapTerrain) {
+    this.terrain = terrain;
+    this.allRoadPoints = getRoadSplinePoints(terrain);
+    this.invalidateViewport();
   }
 
   /** Forces the next frame to reposition the pool (new map, reset camera). */
@@ -84,9 +99,9 @@ export class TerrainLayer {
     const cBottomRight = screenToGrid(right, bottom);
 
     const minGx = Math.max(0, Math.min(cTopLeft.gridX, cTopRight.gridX, cBottomLeft.gridX, cBottomRight.gridX) - 3);
-    const maxGx = Math.min(MAP_GRID_WIDTH - 1, Math.max(cTopLeft.gridX, cTopRight.gridX, cBottomLeft.gridX, cBottomRight.gridX) + 3);
+    const maxGx = Math.min(this.terrain.width - 1, Math.max(cTopLeft.gridX, cTopRight.gridX, cBottomLeft.gridX, cBottomRight.gridX) + 3);
     const minGy = Math.max(0, Math.min(cTopLeft.gridY, cTopRight.gridY, cBottomLeft.gridY, cBottomRight.gridY) - 3);
-    const maxGy = Math.min(MAP_GRID_HEIGHT - 1, Math.max(cTopLeft.gridY, cTopRight.gridY, cBottomLeft.gridY, cBottomRight.gridY) + 3);
+    const maxGy = Math.min(this.terrain.height - 1, Math.max(cTopLeft.gridY, cTopRight.gridY, cBottomLeft.gridY, cBottomRight.gridY) + 3);
 
     let poolIdx = 0;
 

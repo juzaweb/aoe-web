@@ -6,8 +6,12 @@ import {
   NetworkMessage,
   SESSION_ALREADY_ACTIVE,
   SESSION_REPLACED_CLOSE,
+  KINGDOM_MAP_SIZE,
+  TERRAIN_KINGDOM,
   UNIT_BLUEPRINTS,
   getBuildingLevelStats,
+  isDirtRoadTile,
+  isPlazaTile,
   getBuildingUpgradeCost,
   getBuildingUpgradeTimeMs,
   getPlayerUnitLevel,
@@ -17,6 +21,7 @@ import {
 } from '@chien-quoc/shared';
 import { CORPSE_LINGER_MS, WorldRoom } from './WorldRoom.js';
 import { isWithinBuildRange } from './construction.js';
+import { generateWorldResources } from './worldGeneration.js';
 import { DatabaseService } from '../services/DatabaseService.js';
 import { WorldState } from '../schema/WorldState.js';
 import { PlayerState } from '../schema/PlayerState.js';
@@ -2084,5 +2089,104 @@ describe('death corpses', () => {
     room.state.units.delete(unit.id);
 
     expect(room.state.corpses.size).toBe(0);
+  });
+});
+
+describe('kingdom map layout (MAPS-V2)', () => {
+  /** A kingdom room as `onCreate` would size it, without the SQLite boot. */
+  function createKingdomRoom(ownerId = 'player-a') {
+    const room = createRoom();
+    room.state.zoneId = `kingdom:${ownerId}`;
+    // `onCreate` sets this field from `resolveZoneId`; the bare harness does not.
+    internals(room).zoneId = `kingdom:${ownerId}`;
+    room.state.mapWidth = KINGDOM_MAP_SIZE.width;
+    room.state.mapHeight = KINGDOM_MAP_SIZE.height;
+    return room;
+  }
+
+  it('spawns the Town Center at the centre of the 110x110 kingdom', () => {
+    const room = createKingdomRoom();
+    addPlayer(room, 'player-a');
+
+    internals(room).spawnInitialBase('player-a');
+
+    const townCenter = Array.from(room.state.buildings.values()).find(
+      (b: BuildingState) => b.type === 'TOWN_CENTER'
+    );
+    expect(townCenter).toBeDefined();
+    // Town Center is 4x4, centred on the 110x110 map.
+    expect(townCenter!.gridX).toBe(53);
+    expect(townCenter!.gridY).toBe(53);
+
+    const portal = Array.from(room.state.buildings.values()).find(
+      (b: BuildingState) => b.type === 'PORTAL'
+    );
+    expect(portal).toBeDefined();
+    // Fixed gateway column: width - margin(5) - size(2), vertically centred.
+    expect(portal!.gridX).toBe(103);
+    expect(portal!.gridY).toBe(54);
+  });
+
+  it('keeps the kingdom plaza free of resources and roads', () => {
+    const room = createKingdomRoom();
+    generateWorldResources(room.state, TERRAIN_KINGDOM);
+
+    let count = 0;
+    room.state.resourceNodes.forEach((node: ResourceNodeState) => {
+      count++;
+      expect(isPlazaTile(node.gridX, node.gridY, TERRAIN_KINGDOM)).toBe(false);
+      expect(isDirtRoadTile(node.gridX, node.gridY, TERRAIN_KINGDOM)).toBe(false);
+      expect(node.gridX).toBeGreaterThanOrEqual(0);
+      expect(node.gridX).toBeLessThan(KINGDOM_MAP_SIZE.width);
+      expect(node.gridY).toBeGreaterThanOrEqual(0);
+      expect(node.gridY).toBeLessThan(KINGDOM_MAP_SIZE.height);
+    });
+
+    // 25% of the battlefield's ~1.3k nodes, with generous bounds for randomness.
+    expect(count).toBeGreaterThan(100);
+    expect(count).toBeLessThan(700);
+  });
+
+  it('reclaims the centre tile from a restored resource node', () => {
+    const room = createKingdomRoom();
+    addPlayer(room, 'player-a');
+
+    // A node saved on the old layout can sit exactly where the Town Center goes.
+    const node = new ResourceNodeState();
+    node.id = 'res_buried';
+    node.type = 'TREE';
+    node.resourceType = 'wood';
+    node.gridX = 54;
+    node.gridY = 54;
+    node.remainingAmount = 200;
+    node.maxAmount = 200;
+    room.state.resourceNodes.set(node.id, node);
+
+    internals(room).spawnInitialBase('player-a');
+
+    const townCenter = Array.from(room.state.buildings.values()).find(
+      (b: BuildingState) => b.type === 'TOWN_CENTER'
+    );
+    // The base stays dead centre instead of being pushed off by the node.
+    expect(townCenter!.gridX).toBe(53);
+    expect(townCenter!.gridY).toBe(53);
+    expect(room.state.resourceNodes.has('res_buried')).toBe(false);
+  });
+
+  it('refuses to build outside the 110x110 kingdom', () => {
+    const room = createKingdomRoom();
+    const player = addPlayer(room, 'player-a', { wood: 5000 });
+    const client = createClient('player-a');
+
+    internals(room).commands.handlePlaceBuilding(client, {
+      type: 'HOUSE',
+      gridX: KINGDOM_MAP_SIZE.width - 1,
+      gridY: 10
+    });
+
+    expect(client.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Cannot build outside map bounds'
+    });
+    expect(player.wood).toBe(5000);
   });
 });

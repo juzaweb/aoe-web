@@ -12,8 +12,28 @@ import {
 export const TILE_WIDTH = 128;
 export const TILE_HEIGHT = 64;
 
-export const MAP_GRID_WIDTH = 220;
-export const MAP_GRID_HEIGHT = 220;
+/** Side lengths of one map, in grid tiles. */
+export interface MapSize {
+  width: number;
+  height: number;
+}
+
+/**
+ * A private kingdom is a single settlement, not a campaign map: 110x110 keeps
+ * the whole base a short walk from the Town Center instead of scattering it
+ * across an empty 220x220 field, while still leaving room for a full build order.
+ */
+export const KINGDOM_MAP_SIZE: MapSize = { width: 110, height: 110 };
+
+/** The shared PvP map keeps its original size and terrain. */
+export const BATTLEFIELD_MAP_SIZE: MapSize = { width: 220, height: 220 };
+
+/**
+ * Legacy aliases. They describe the battlefield only; anything that runs on
+ * either map must use `mapSizeForZone` / `terrainForZone` instead.
+ */
+export const MAP_GRID_WIDTH = BATTLEFIELD_MAP_SIZE.width;
+export const MAP_GRID_HEIGHT = BATTLEFIELD_MAP_SIZE.height;
 
 export const SERVER_TICK_RATE = 20; // 20 ticks per second (50ms per tick)
 
@@ -32,9 +52,20 @@ export function zoneForOwner(ownerId: string): string {
   return `${KINGDOM_ZONE_PREFIX}${ownerId}`;
 }
 
-/** Which kind of map a zone id describes. */
+/**
+ * Which kind of map a zone id describes.
+ *
+ * Prefix-based: only `kingdom:<ownerId>` is a private kingdom. Everything else —
+ * including the legacy `world` zone — is battlefield-sized, so old snapshots and
+ * the unit-test harness keep the map they were written against.
+ */
 export function zoneKindOf(zone: string): MapZoneKind {
-  return zone === BATTLEFIELD_ZONE ? 'battlefield' : 'kingdom';
+  return zone.startsWith(KINGDOM_ZONE_PREFIX) ? 'kingdom' : 'battlefield';
+}
+
+/** Size of the map `zone` lives on. */
+export function mapSizeForZone(zone: string): MapSize {
+  return zoneKindOf(zone) === 'kingdom' ? KINGDOM_MAP_SIZE : BATTLEFIELD_MAP_SIZE;
 }
 
 /** The other map a player can travel to from `zone`. */

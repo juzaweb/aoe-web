@@ -1,6 +1,6 @@
 # Phase 07 — Kingdom nhỏ hơn + Town Center giữa map
 
-Status: **DRAFT — chờ duyệt**
+Status: **IMPLEMENTED — chờ verify tay trên UI**
 Ngày ghi plan: 2026-11-03
 Phạm vi: `packages/shared`, `apps/server`, `apps/client`, migration dữ liệu SQLite (không đổi
 schema `NetworkMessage`, không reset DB).
@@ -17,7 +17,7 @@ Hiện tại cả hai map dùng chung một hằng số: `MAP_GRID_WIDTH/HEIGHT 
 
 Phase này:
 
-1. Kingdom riêng mỗi tài khoản nhỏ lại còn **96×96**; battlefield giữ nguyên **220×220**.
+1. Kingdom riêng mỗi tài khoản nhỏ lại còn **110×110**; battlefield giữ nguyên **220×220**.
 2. Vào game (lần đầu hoặc sau migration), **Town Center luôn ở đúng tâm map kingdom** và camera
    mở đúng vào TC.
 3. Kích thước map trở thành dữ liệu theo zone (`WorldState.mapWidth/mapHeight`, field đã có
@@ -31,13 +31,13 @@ travel protocol.
 
 | Mã | Quyết định |
 | --- | --- |
-| D1 | Kingdom = **96×96**, battlefield = **220×220** (không đổi). |
+| D1 | Kingdom = **110×110**, battlefield = **220×220** (không đổi). |
 | D2 | Dữ liệu kingdom cũ (toạ độ theo map 220) **reset một lần**: xoá `buildings` / `units` / `world_resource_nodes` của mọi zone `kingdom:%`, giữ nguyên row `players` (wood/food/gold/stone, level, research). Lần join kế tiếp sinh lại TC + 3 dân ở tâm. |
 | D3 | Terrain kingdom rút gọn: **2 tuyến đường chéo** (NW→SE, NE→SW) + **plaza trống bán kính 7 tile ở tâm**; bỏ đại lộ Đông–Tây, trục Bắc–Nam và hub 4 tuyến của battlefield. |
-| D4 | TC đặt **đúng tâm**: `x = floor(w/2) - floor(sizeX/2)`, `y = floor(h/2) - floor(sizeY/2)` ⇒ (46, 46) trên map 96. Chỉ lùi khi ô đó bị chiếm (spiral quanh tâm). |
+| D4 | TC đặt **đúng tâm**: `x = floor(w/2) - floor(sizeX/2)`, `y = floor(h/2) - floor(sizeY/2)` ⇒ (53, 53) trên map 110. Chỉ lùi khi ô đó bị chiếm (spiral quanh tâm). |
 | D5 | Nguồn sự thật kích thước map là `WorldState.mapWidth/mapHeight`; server set trong `onCreate` từ `mapSizeForZone(zoneId)`, client đọc từ room state. |
 | D6 | Tài nguyên kingdom scale theo diện tích (~19% mật độ battlefield); không sinh node trên tile đường hoặc trong plaza. |
-| D7 | Portal kingdom vẫn cố định ở mép phải, giữa trục dọc; trên map 96 là `(89, 47)` (margin 5, size 2×2). |
+| D7 | Portal kingdom vẫn cố định ở mép phải, giữa trục dọc; trên map 110 là `(103, 54)` (margin 5, size 2×2). |
 | D8 | Không thêm/sửa message nào trong `NetworkMessage`; travel, portal, `travel_transfers` giữ nguyên. Migration chỉ là dữ liệu, không phải thay đổi schema bảng. |
 
 ## 3. Hiện trạng — các chỗ hardcode 220 (đối chiếu code)
@@ -71,26 +71,29 @@ set** — mọi thứ đọc hằng số. Đây là lý do D5 chọn state làm 
 `packages/shared/src/constants/index.ts`:
 
 ```ts
-export type MapKind = 'kingdom' | 'battlefield';
-
 export interface MapSize {
   width: number;
   height: number;
 }
 
-export const KINGDOM_MAP_SIZE: MapSize = { width: 96, height: 96 };
+export const KINGDOM_MAP_SIZE: MapSize = { width: 110, height: 110 };
 export const BATTLEFIELD_MAP_SIZE: MapSize = { width: 220, height: 220 };
 
-/** Legacy alias kept for the battlefield; new code should use `mapSizeForZone`. */
+/** Legacy alias kept for the battlefield; new code uses `mapSizeForZone`. */
 export const MAP_GRID_WIDTH = BATTLEFIELD_MAP_SIZE.width;
 export const MAP_GRID_HEIGHT = BATTLEFIELD_MAP_SIZE.height;
 
-export function mapKindOfZone(zone: string): MapKind {
-  return zoneKindOf(zone); // already exists (constants/index.ts:36-38)
+/**
+ * Prefix-based: only `kingdom:<ownerId>` is a private kingdom. Everything else —
+ * including the legacy `world` zone — is battlefield-sized, so old snapshots and
+ * the unit-test harness keep the map they were written against.
+ */
+export function zoneKindOf(zone: string): MapZoneKind {
+  return zone.startsWith(KINGDOM_ZONE_PREFIX) ? 'kingdom' : 'battlefield';
 }
 
 export function mapSizeForZone(zone: string): MapSize {
-  return mapKindOfZone(zone) === 'kingdom' ? KINGDOM_MAP_SIZE : BATTLEFIELD_MAP_SIZE;
+  return zoneKindOf(zone) === 'kingdom' ? KINGDOM_MAP_SIZE : BATTLEFIELD_MAP_SIZE;
 }
 ```
 
@@ -103,7 +106,7 @@ sau mới thay dần call site. Cuối phase chỉ còn battlefield dùng alias 
 
 ```ts
 export interface MapTerrain extends MapSize {
-  kind: MapKind;
+  kind: MapZoneKind;
 }
 
 export const TERRAIN_BATTLEFIELD: MapTerrain = { ...BATTLEFIELD_MAP_SIZE, kind: 'battlefield' };
@@ -131,10 +134,10 @@ export function isPlazaTile(gx: number, gy: number, terrain: MapTerrain): boolea
   - bỏ mọi điểm có `hypot(gx - cx, gy - cy) <= PLAZA_RADIUS` ⇒ hai tuyến thành 4 nhánh quanh
     plaza thay vì cắt qua TC.
 - `isPlazaTile` là nguồn duy nhất cho cả `isDirtRoadTile` (trả `false` trong plaza) và generator
-  tài nguyên. Bán kính 7 so với TC 4×4 đặt ở tâm (góc (46,46), cách tâm ~2.8) đủ chỗ cho TC +
+  tài nguyên. Bán kính 7 so với TC 4×4 đặt ở tâm (góc (53,53), cách tâm ~2.8) đủ chỗ cho TC +
   nhà 2×2 sát cạnh.
 - Cache: `Map<string, RoadSplinePoint[]>` và `Map<string, Uint8Array>`; chỉ có tối đa 2 key nên
-  không cần LRU. Bảng 96×96 = 9.2 KB (so với 48.4 KB của 220).
+  không cần LRU. Bảng 110×110 = 11.8 KB (so với 48.4 KB của 220).
 
 ### 4.3. Server
 
@@ -169,26 +172,27 @@ const { x: spawnX, y: spawnY } = this.isSpawnAreaClear(cx, cy, sizeX, sizeY)
   nhà như AoE).
 - `hashPlayerName` vẫn dùng cho màu người chơi (`:797`), không xoá.
 
-**`generateWorldResources`** (D6) — bảng mật độ:
+**`generateWorldResources`** (D6) — tách sang `apps/server/src/rooms/worldGeneration.ts`
+(`generateWorldResources(state, terrain)`), để `WorldRoom` không phình thêm; bảng mật độ:
 
-| Loại | Battlefield (220²) | Kingdom (96²) | Ghi chú |
+| Loại | Battlefield (220²) | Kingdom (110²) | Ghi chú |
 | --- | --- | --- | --- |
-| Forest cluster | 85 | 16 | tree/cluster 12–16 → 8–12 |
-| Gold vein | 40 | 8 | 3–5 node/cụm giữ nguyên |
-| Stone quarry | 32 | 6 | 3–4 node/cụm giữ nguyên |
-| Berry grove | 40 | 8 | 4–6 bush/cụm giữ nguyên |
+| Forest cluster | 85 | 21 | tree/cluster 12–16 → 8–12 |
+| Gold vein | 40 | 10 | 3–5 node/cụm giữ nguyên |
+| Stone quarry | 32 | 8 | 3–4 node/cụm giữ nguyên |
+| Berry grove | 40 | 10 | 4–6 bush/cụm giữ nguyên |
 
-Hệ số 96²/220² = 0.19. Thêm bộ lọc chỉ áp cho kingdom:
+Hệ số 110²/220² = 0.25. Thêm bộ lọc chỉ áp cho kingdom:
 
 ```ts
 if (terrain.kind === 'kingdom' && (isDirtRoadTile(gx, gy, terrain) || isPlazaTile(gx, gy, terrain))) return;
 ```
 
 Battlefield giữ nguyên hoàn toàn (kể cả lỗi cũ "node đè lên đường" đã ghi ở phase 05 D8).
-Ước lượng node kingdom: ~160 cây + 32 vàng + 21 đá + 40 berry ≈ **253 node** (battlefield ~1.311).
+Ước lượng node kingdom: ~210 cây + 40 vàng + 28 đá + 50 berry ≈ **270–330 node** (battlefield ~1.311; đo thật: 274).
 
 **`portals.ts`** — đọc size từ `state.mapWidth/mapHeight` trong `isPortalFootprintFree`,
-`findPortalSpot`, `findKingdomPortalSpot`, `arrivalPoint`. Hệ quả: kingdom portal thành `(89, 47)`;
+`findPortalSpot`, `findKingdomPortalSpot`, `arrivalPoint`. Hệ quả: kingdom portal thành `(103, 54)`;
 battlefield plot hash không đổi vì state vẫn 220. `clearPortalResources` giữ nguyên.
 
 **`CommandSystem`** — bounds validate (`:160`, `:760-761`) và clamp điểm đến (`:852-853`) lấy
@@ -235,7 +239,7 @@ theo viewport nên map nhỏ không cần đổi kích thước pool.
 **`PlacementController`** (`:41-43`) và **`CommandController`** (`:516`, `:656-657`, `:691`) đọc
 `this.scene.mapWidth/mapHeight` thay hằng.
 
-**Zoom** — không đổi `ZOOM_MIN = 0.4`. Trên 96×96 at 0.4 người chơi thấy khoảng ⅓ map, đúng cảm
+**Zoom** — không đổi `ZOOM_MIN = 0.4`. Trên 110×110 at 0.4 người chơi thấy khoảng ⅓ map, đúng cảm
 giác AoE; không thêm logic "fit map". Ghi nhận là điểm cần cảm nhận tay, có thể chỉnh sau.
 
 ### 4.5. Migration dữ liệu (một lần)
@@ -250,16 +254,16 @@ CREATE TABLE IF NOT EXISTS "schema_meta" (
 ```
 
 `DatabaseService.bootstrap()` gọi `await this.resetLegacyKingdoms();` sau `ensureZoneColumns()`
-(`:99`):
+(`apps/server/src/services/DatabaseService.ts:99`):
 
 ```ts
 // One-time data migration: kingdoms used to be laid out on the 220x220 map and
-// are now 96x96 with the Town Center at the centre. Coordinates from the old
+// are now 110x110 with the Town Center at the centre. Coordinates from the old
 // layout are not remappable without overlaps, so the layout is reset once; the
 // account row (resources, levels, research) is kept.
 private static async resetLegacyKingdoms() {
   const done = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
-    `SELECT "key" FROM "schema_meta" WHERE "key" = 'kingdom_map_96_v1'`
+    `SELECT "key" FROM "schema_meta" WHERE "key" = 'kingdom_map_110_v1'`
   );
   if (done.length > 0) return;
 
@@ -267,9 +271,9 @@ private static async resetLegacyKingdoms() {
   await prisma.$executeRawUnsafe(`DELETE FROM "units" WHERE "zone" LIKE 'kingdom:%'`);
   await prisma.$executeRawUnsafe(`DELETE FROM "world_resource_nodes" WHERE "zone" LIKE 'kingdom:%'`);
   await prisma.$executeRawUnsafe(
-    `INSERT INTO "schema_meta" ("key", "value") VALUES ('kingdom_map_96_v1', 'done')`
+    `INSERT INTO "schema_meta" ("key", "value") VALUES ('kingdom_map_110_v1', 'done')`
   );
-  console.log('🗺️  [DatabaseService] Reset legacy kingdoms onto the 96x96 map.');
+  console.log('🗺️  [DatabaseService] Reset legacy kingdoms onto the 110x110 map.');
 }
 ```
 
@@ -287,24 +291,24 @@ private static async resetLegacyKingdoms() {
 | --- | --- | --- |
 | 1 | TC tâm trùng tile đường | Plaza không bao giờ là road tile; test `isDirtRoadTile(48, 48, TERRAIN_KINGDOM) === false` |
 | 2 | TC tâm trùng resource node | Generator bỏ qua plaza; `spawnInitialBase` xoá node trong footprint trước khi đặt |
-| 3 | Portal cố định (89,47) trùng công trình cũ | Migration xoá toàn bộ công trình kingdom ⇒ không có va chạm |
+| 3 | Portal cố định (103,54) trùng công trình cũ | Migration xoá toàn bộ công trình kingdom ⇒ không có va chạm |
 | 4 | Đang ở battlefield, travel về kingdom | `resetForNewWorld` → `syncMapSize` → `setTerrain` + camera về TC; test tay bắt buộc |
 | 5 | F5 vào lại kingdom | `last_zone` + restore; size lấy từ zone, không phụ thuộc localStorage |
 | 6 | Room kingdom cũ còn sống khi battle mở | `ZonePersistence` token như cũ, không đổi |
-| 7 | Pathfinder/blocked grid cấp phát sai size | Khởi tạo từ `state`, test với room kingdom 96 |
+| 7 | Pathfinder/blocked grid cấp phát sai size | Khởi tạo từ `state`, test với room kingdom 110 |
 | 8 | Minimap lệch click | scale + `gridFromEvent` cùng đọc state, test tay 2 map |
 | 9 | Battlefield đổi hình do refactor terrain | Công thức 220 giữ nguyên; `terrainMath.test` `roadCount 2205` phải vẫn xanh |
 | 10 | Mất tiến trình kingdom khi deploy | Đã chốt D2; nhắc backup `dev.db` trong PR/commit message |
 
-Rủi ro chính: (a) quên một call site `MAP_GRID_*` khiến clamp sai ở map 96 (grep lại trước khi
-merge); (b) mật độ tài nguyên 96 cần cảm nhận tay — có thể chỉnh bảng §4.3 mà không đổi code;
+Rủi ro chính: (a) quên một call site `MAP_GRID_*` khiến clamp sai ở map 110 (grep lại trước khi
+merge); (b) mật độ tài nguyên 110 cần cảm nhận tay — có thể chỉnh bảng §4.3 mà không đổi code;
 (c) camera/zoom trên map nhỏ cần chỉnh tay sau khi chạy thật.
 
 ## 6. Task / commit
 
 | # | Commit | Nội dung |
 | --- | --- | --- |
-| 1 | `feat(shared): add per-zone map size and layout-aware terrain roads` | `MapSize`, `mapSizeForZone`, `MapTerrain`, `terrainForZone`, `getRoadSplinePoints`, `isDirtRoadTile(..., terrain)`, `isPlazaTile`; cache theo layout; test terrain 96 |
+| 1 | `feat(shared): add per-zone map size and layout-aware terrain roads` | `MapSize`, `mapSizeForZone`, `MapTerrain`, `terrainForZone`, `getRoadSplinePoints`, `isDirtRoadTile(..., terrain)`, `isPlazaTile`; cache theo layout; test terrain 110 |
 | 2 | `feat(server): size each room from its zone and clamp simulation bounds` | `onCreate` set `mapWidth/mapHeight`; WorldRoom/portals/CommandSystem/MovementSystem dùng state |
 | 3 | `feat(server): spawn the kingdom town center at the map centre` | Bỏ hash spawn, TC tâm, fallback spiral ngắn, xoá node trong footprint |
 | 4 | `feat(server): scale kingdom resource clusters to the smaller map` | Bảng mật độ + lọc road/plaza cho kingdom |
@@ -315,25 +319,40 @@ merge); (b) mật độ tài nguyên 96 cần cảm nhận tay — có thể ch�
 Thứ tự bắt buộc: 1 → 2 → (3, 4 song song được) → 5 → 6 → 7. Task 5 chỉ chạy sau khi task 2 đã
 ship, nếu không kingdom sẽ bị reset rồi vẫn sinh lại trên map 220.
 
+Đã code xong 1–7 trong working tree (2026-11-03). **Chưa commit** — cần người dùng cho phép.
+Ngoài các file trong bảng, hai chỗ phát sinh khi code:
+
+- `apps/server/src/rooms/construction.ts`: `getBuildApproachPoint` /
+  `approachPointOutsideFootprint` nhận thêm `mapWidth/mapHeight` (clamp điểm đứng xây theo map),
+  `CommandSystem` và `EconomySystem` truyền `state.mapWidth/mapHeight`.
+- `apps/server/src/services/Pathfinder.ts` không đổi; `MovementSystem` dựng `Pathfinder` lazy với
+  size của state.
+- Tách thêm `apps/server/src/rooms/mapLayout.ts` (`terrainOf(state)`) và
+  `apps/server/src/rooms/worldGeneration.ts` (`generateWorldResources`) để room và portal dùng
+  chung một nguồn layout, và `WorldRoom` không tăng thêm chiều dài.
+- `zoneKindOf` gộp về một hàm prefix-based duy nhất (bản `mapKindOfZone` tạm thời đã bỏ);
+  `isDirtRoadTile`/`isPlazaTile` bắt buộc truyền `MapTerrain` để không ai vô tình kiểm tra road của
+  map khác.
+
 ## 7. Verify
 
 Đã chốt Definition of Done chung (`docs/plans/README.md` §"Definition of Done"), cụ thể phase này:
 
-- [ ] `cd apps/server && ../../node_modules/.bin/tsc --noEmit` sạch
-- [ ] `cd apps/client && ../../node_modules/.bin/tsc --noEmit` sạch
-- [ ] `pnpm --filter @chien-quoc/server test` xanh — `terrainMath.test` (thêm case 96, case 220
-      giữ `roadCount 2205`), `portals.test` (kingdom 96: portal `(89,47)`, arrival trong bounds),
-      `WorldRoom.test` (bounds đọc từ state), `Pathfinder.test` (thêm case 96)
-- [ ] `pnpm --filter @chien-quoc/client test` xanh
-- [ ] Chạy thật, tài khoản mới: kingdom 96×96, TC ở `(46,46)`, portal `(89,47)`, camera mở trên
-      TC, HUD/minimap hiện `VƯƠNG QUỐC`
-- [ ] Đặt nhà trong plaza quanh TC được; không đặt được ngoài biên 96
-- [ ] Travel sang battlefield: vẫn 220×220, không có TC, tài nguyên như cũ, plot portal không đổi
-- [ ] Travel về kingdom: map 96, TC vẫn `(46,46)`, không còn sprite/selection của map cũ
-- [ ] Minimap 96: click trái pan, click phải ra lệnh đúng ô; đường vẽ khớp world
-- [ ] DB: `buildings` kingdom 1 row/account, `world_resource_nodes` zone `kingdom:%` ≈ 253 node,
-      `schema_meta` có `kingdom_map_96_v1`
-- [ ] Lần boot thứ hai **không** xoá lại kingdom (idempotent)
+- [x] `cd apps/server && ./node_modules/.bin/tsc --noEmit` sạch
+- [x] `cd apps/client && ./node_modules/.bin/tsc --noEmit` sạch
+- [x] `vitest run` server xanh (152 test) — `terrainMath.test` có case 110 và 220 giữ
+      `roadCount 2205`; `portals.test` kingdom 110 kiểm tra portal `(103,54)`; `WorldRoom.test` có
+      nhóm `kingdom map layout (MAPS-V2)`; `Pathfinder.test` thêm case 110
+- [x] `vitest run` client xanh (142 test)
+- [x] Probe SDK thật trên dev server, tài khoản mới: `mapWidth/Height = 110`, TC `(53,53)`,
+      portal `(103,54)`, 3 dân, 274 resource node
+- [x] Probe SDK thật trên battlefield: `220×220`, 1.258 resource node, không có TC
+- [ ] Cảm nhận tay trên UI: camera mở đúng TC, minimap 110 khớp world, click trái/phải đúng ô
+- [ ] Travel vòng kingdom → battlefield → kingdom trên browser thật (cần 2 tab/2 map)
+- [ ] Đặt nhà trong plaza quanh TC được; không đặt được ngoài biên 110 trên UI
+- [x] DB: `schema_meta` có `kingdom_map_110_v1`; kingdom cũ đã reset (0 row `kingdom:%` lúc
+      migration chạy)
+- [x] Lần boot thứ hai không xoá lại kingdom (key đã ghi; boot sau chỉ đọc)
 
 ## 8. Ngoài phạm vi (ghi nhận)
 

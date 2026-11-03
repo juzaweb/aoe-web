@@ -7,8 +7,7 @@ import {
   INITIAL_POPULATION_CAP,
   MAX_POPULATION_LIMIT,
   MAX_UNIT_LEVEL,
-  MAP_GRID_HEIGHT,
-  MAP_GRID_WIDTH,
+  MapTerrain,
   MAX_TRAVEL_UNITS,
   NetworkMessage,
   RESOURCE_RESPAWN_MS,
@@ -40,7 +39,8 @@ import {
   getBuildingMaxLevel,
   getUnitLevelStats,
   getPlayerUnitLevel,
-  isDirtRoadTile
+  isDirtRoadTile,
+  mapSizeForZone
 } from '@chien-quoc/shared';
 import { WorldState } from '../schema/WorldState.js';
 import { PlayerState } from '../schema/PlayerState.js';
@@ -57,6 +57,8 @@ import { ownerIdOf, RoomAuth } from './identity.js';
 import { accountSaves, accountSessions } from './AccountSessions.js';
 import { zonePersistence } from './ZonePersistence.js';
 import { arrivalPoint, ensurePortalFor, findOwnPortal } from './portals.js';
+import { terrainOf } from './mapLayout.js';
+import { generateWorldResources } from './worldGeneration.js';
 import { isTravelCoolingDown, markTravel } from './travelCooldowns.js';
 import { entityIds } from '../services/EntityIdAllocator.js';
 import type { TravelUnitSnapshot } from '../services/DatabaseService.js';
@@ -238,6 +240,11 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     return this.persistenceToken === 0 || zonePersistence.isCurrent(this.zoneId, this.persistenceToken);
   }
 
+  /** Terrain layout of this room; see `terrainOf`. */
+  private get terrain(): MapTerrain {
+    return terrainOf(this.state);
+  }
+
   onCreate(options: any) {
     this.ownerScope = this.resolveOwnerScope(options);
     this.zoneId = this.resolveZoneId(options);
@@ -245,6 +252,13 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     this.setState(new WorldState());
     this.state.zoneId = this.zoneId;
+
+    // MAPS-V2: every map has its own size now. Replicating it lets the client
+    // size the camera, terrain and minimap from one number instead of assuming
+    // the battlefield's 220x220 everywhere.
+    const size = mapSizeForZone(this.zoneId);
+    this.state.mapWidth = size.width;
+    this.state.mapHeight = size.height;
 
     // Keep a reference so onJoin can wait until the persisted world is restored.
     // Without this, a client could join while state.buildings is still empty and
@@ -344,11 +358,18 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
   private async initializeWorldPersistence() {
     try {
+      let droppedOutOfBounds = 0;
+
       // 1. Load this map's resource nodes from SQLite.
       const savedResources = await DatabaseService.loadResources(this.zoneId);
 
       if (savedResources.length > 0) {
         for (const res of savedResources) {
+          // A row saved on a larger layout no longer belongs to this map.
+          if (!this.fitsMap(res.gridX, res.gridY)) {
+            droppedOutOfBounds++;
+            continue;
+          }
           const node = new ResourceNodeState();
           node.id = res.id;
           node.type = res.type;
@@ -367,7 +388,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       } else {
         console.log(`🗺️ [WorldRoom] Generating fresh resource clusters for ${this.zoneId}...`);
         await DatabaseService.clearAllResources(this.zoneId);
-        this.generateWorldResources();
+        generateWorldResources(this.state, this.terrain);
         const resArray: ResourceNodeState[] = [];
         this.state.resourceNodes.forEach((node: ResourceNodeState) => resArray.push(node));
         await DatabaseService.saveAllResources(resArray, this.zoneId);
@@ -383,6 +404,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       );
       for (const p of savedPlayers) {
         for (const b of p.buildings) {
+          if (!this.fitsMap(b.gridX, b.gridY, b.sizeX, b.sizeY)) {
+            droppedOutOfBounds++;
+            continue;
+          }
           const building = new BuildingState();
           building.id = b.id;
           building.ownerId = p.id;
@@ -408,6 +433,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         }
 
         for (const u of p.units) {
+          if (!this.fitsMap(u.x, u.y)) {
+            droppedOutOfBounds++;
+            continue;
+          }
           const unit = new UnitState();
           unit.id = u.id;
           unit.ownerId = p.id;
@@ -427,6 +456,11 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       }
       if (savedPlayers.length > 0) {
         console.log(`🏰 [WorldRoom] Restored bases for ${savedPlayers.length} empires from database.`);
+      }
+      if (droppedOutOfBounds > 0) {
+        console.warn(
+          `⚠️ [WorldRoom] Dropped ${droppedOutOfBounds} row(s) outside the ${this.state.mapWidth}x${this.state.mapHeight} map of ${this.zoneId}.`
+        );
       }
 
       // Keep generated entity ids unique across restarts (avoid overwriting persisted rows)
@@ -450,6 +484,21 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   }
 
   /**
+   * Whether a persisted footprint still fits this map.
+   *
+   * A row saved before the kingdom shrank (or a hand-edited database) would
+   * otherwise put a building or unit off the edge of the world.
+   */
+  private fitsMap(x: number, y: number, sizeX = 1, sizeY = 1): boolean {
+    return (
+      x >= 0 &&
+      y >= 0 &&
+      x + sizeX <= this.state.mapWidth &&
+      y + sizeY <= this.state.mapHeight
+    );
+  }
+
+  /**
    * Every building and unit owned by `ownerId`.
    *
    * Ownership is a single id now, so this is a plain filter — it is used to
@@ -470,7 +519,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   }
 
   /**
-   * Deterministic 32-bit hash so the same player name always yields the same spawn area.
+   * Deterministic 32-bit hash, used to pick a stable player colour.
    */
   private hashPlayerName(name: string): number {
     let hash = 2166136261;
@@ -488,12 +537,14 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    */
   private isFootprintFree(gx: number, gy: number, sizeX: number, sizeY: number): boolean {
     const margin = 6;
+    const { mapWidth: width, mapHeight: height } = this.state;
     if (gx < margin || gy < margin) return false;
-    if (gx + sizeX > MAP_GRID_WIDTH - margin || gy + sizeY > MAP_GRID_HEIGHT - margin) return false;
+    if (gx + sizeX > width - margin || gy + sizeY > height - margin) return false;
 
+    const terrain = this.terrain;
     for (let x = gx; x < gx + sizeX; x++) {
       for (let y = gy; y < gy + sizeY; y++) {
-        if (isDirtRoadTile(x, y)) return false;
+        if (isDirtRoadTile(x, y, terrain)) return false;
       }
     }
 
@@ -532,6 +583,28 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   }
 
   /**
+   * Removes resource nodes buried under a footprint.
+   *
+   * The generator already keeps the kingdom plaza clear, so this only matters
+   * for a snapshot restored from a layout that predates the smaller map.
+   */
+  private clearResourcesInFootprint(gx: number, gy: number, sizeX: number, sizeY: number): void {
+    const buried: string[] = [];
+    this.state.resourceNodes.forEach((res: ResourceNodeState, id: string) => {
+      if (
+        res.gridX >= gx &&
+        res.gridX < gx + sizeX &&
+        res.gridY >= gy &&
+        res.gridY < gy + sizeY
+      ) {
+        buried.push(id);
+      }
+    });
+
+    for (const id of buried) this.state.resourceNodes.delete(id);
+  }
+
+  /**
    * Prevents stacking duplicate resource nodes when a base is respawned on the
    * exact same deterministic spot.
    */
@@ -550,10 +623,13 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    * footprint is found. Never random, so retries are stable.
    */
   private findSpawnNearCenter(sizeX: number, sizeY: number): { x: number; y: number } {
-    const centerX = Math.floor(MAP_GRID_WIDTH / 2);
-    const centerY = Math.floor(MAP_GRID_HEIGHT / 2);
+    const { mapWidth: width, mapHeight: height } = this.state;
+    const centerX = Math.floor(width / 2);
+    const centerY = Math.floor(height / 2);
 
-    for (let radius = 8; radius < Math.max(MAP_GRID_WIDTH, MAP_GRID_HEIGHT); radius += 4) {
+    // Start just outside the Town Center so a blocked centre backs off by a few
+    // tiles instead of jumping to a ring eight tiles out.
+    for (let radius = 4; radius < Math.max(width, height); radius += 2) {
       for (let i = 0; i < radius * 8; i++) {
         const angle = (i / (radius * 8)) * Math.PI * 2;
         const gx = Math.round(centerX + Math.cos(angle) * radius) - Math.floor(sizeX / 2);
@@ -567,80 +643,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     // Ultimate fallback: keep the previous behaviour so the player is never base-less
     return {
-      x: Math.floor(MAP_GRID_WIDTH / 2) - Math.floor(sizeX / 2),
-      y: Math.floor(MAP_GRID_HEIGHT / 2) - Math.floor(sizeY / 2)
+      x: Math.floor(width / 2) - Math.floor(sizeX / 2),
+      y: Math.floor(height / 2) - Math.floor(sizeY / 2)
     };
-  }
-
-  private generateWorldResources() {
-    // Generate expansive natural AoE-style resource clusters for 220x220 Large Map
-    const occupiedTiles = new Set<string>();
-
-    const spawnNode = (type: string, res: 'wood' | 'food' | 'gold' | 'stone', gx: number, gy: number, amount: number) => {
-      if (gx < 5 || gx >= MAP_GRID_WIDTH - 5 || gy < 5 || gy >= MAP_GRID_HEIGHT - 5) return;
-      const key = `${gx},${gy}`;
-      if (occupiedTiles.has(key)) return;
-
-      occupiedTiles.add(key);
-      const id = `res_${entityIds.nextId()}`;
-      const node = new ResourceNodeState();
-      node.id = id;
-      node.type = type;
-      node.resourceType = res;
-      node.gridX = gx;
-      node.gridY = gy;
-      node.remainingAmount = amount;
-      node.maxAmount = amount;
-      this.state.resourceNodes.set(id, node);
-    };
-
-    // 1. Forest Groves (85 dense forest clusters, 12-16 trees each)
-    for (let c = 0; c < 85; c++) {
-      const cx = Math.floor(8 + Math.random() * (MAP_GRID_WIDTH - 16));
-      const cy = Math.floor(8 + Math.random() * (MAP_GRID_HEIGHT - 16));
-      const treeCount = 12 + Math.floor(Math.random() * 5);
-      for (let t = 0; t < treeCount; t++) {
-        const dx = Math.floor(Math.random() * 5) - 2;
-        const dy = Math.floor(Math.random() * 5) - 2;
-        spawnNode('TREE', 'wood', cx + dx, cy + dy, 200);
-      }
-    }
-
-    // 2. Gold Veins (40 clusters, 3-5 gold nodes each)
-    for (let c = 0; c < 40; c++) {
-      const cx = Math.floor(10 + Math.random() * (MAP_GRID_WIDTH - 20));
-      const cy = Math.floor(10 + Math.random() * (MAP_GRID_HEIGHT - 20));
-      const nodeCount = 3 + Math.floor(Math.random() * 3);
-      for (let n = 0; n < nodeCount; n++) {
-        const dx = Math.floor(Math.random() * 3) - 1;
-        const dy = Math.floor(Math.random() * 3) - 1;
-        spawnNode('GOLD_MINE', 'gold', cx + dx, cy + dy, 800);
-      }
-    }
-
-    // 3. Stone Quarries (32 clusters, 3-4 stone nodes each)
-    for (let c = 0; c < 32; c++) {
-      const cx = Math.floor(10 + Math.random() * (MAP_GRID_WIDTH - 20));
-      const cy = Math.floor(10 + Math.random() * (MAP_GRID_HEIGHT - 20));
-      const nodeCount = 3 + Math.floor(Math.random() * 2);
-      for (let n = 0; n < nodeCount; n++) {
-        const dx = Math.floor(Math.random() * 3) - 1;
-        const dy = Math.floor(Math.random() * 3) - 1;
-        spawnNode('STONE_MINE', 'stone', cx + dx, cy + dy, 600);
-      }
-    }
-
-    // 4. Berry Groves (40 patches, 4-6 bushes each)
-    for (let c = 0; c < 40; c++) {
-      const cx = Math.floor(10 + Math.random() * (MAP_GRID_WIDTH - 20));
-      const cy = Math.floor(10 + Math.random() * (MAP_GRID_HEIGHT - 20));
-      const bushCount = 4 + Math.floor(Math.random() * 3);
-      for (let b = 0; b < bushCount; b++) {
-        const dx = Math.floor(Math.random() * 3) - 1;
-        const dy = Math.floor(Math.random() * 3) - 1;
-        spawnNode('BERRY_BUSH', 'food', cx + dx, cy + dy, 150);
-      }
-    }
   }
 
   /**
@@ -865,35 +870,27 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     const tcBlueprint = BUILDING_BLUEPRINTS.TOWN_CENTER;
 
-    // Deterministic spawn: same player name always resolves to the same area,
-    // so re-joining never shuffles the empire around the map.
-    const baseHash = this.hashPlayerName(player.name);
-    const candidateCount = 512;
-    let spawnX = -1;
-    let spawnY = -1;
+    // MAPS-V2: the Town Center is the centre of the player's map. A kingdom is
+    // private and the plaza around the centre is kept off the road network, so
+    // the exact centre is normally free; the spiral is only a safety net for a
+    // snapshot that still has something parked there.
+    const { mapWidth: width, mapHeight: height } = this.state;
+    const centreX = Math.floor(width / 2) - Math.floor(tcBlueprint.sizeX / 2);
+    const centreY = Math.floor(height / 2) - Math.floor(tcBlueprint.sizeY / 2);
 
-    for (let attempt = 0; attempt < candidateCount; attempt++) {
-      // Golden-ratio stride keeps consecutive players far apart
-      const seedX = (baseHash + Math.imul(attempt, 0x9e3779b1)) >>> 0;
-      const seedY = ((baseHash >>> 16) + Math.imul(attempt, 0x85ebca6b)) >>> 0;
+    let spawnX = centreX;
+    let spawnY = centreY;
 
-      const usableX = MAP_GRID_WIDTH - 40;
-      const usableY = MAP_GRID_HEIGHT - 40;
-      const candidateX = 20 + (seedX % usableX);
-      const candidateY = 20 + (seedY % usableY);
-
-      if (this.isSpawnAreaClear(candidateX, candidateY, tcBlueprint.sizeX, tcBlueprint.sizeY)) {
-        spawnX = candidateX;
-        spawnY = candidateY;
-        break;
-      }
+    if (!this.isSpawnAreaClear(centreX, centreY, tcBlueprint.sizeX, tcBlueprint.sizeY)) {
+      // A restored snapshot from the old layout can still bury a node here; drop
+      // those instead of moving the base off centre.
+      this.clearResourcesInFootprint(centreX, centreY, tcBlueprint.sizeX, tcBlueprint.sizeY);
     }
 
-    // Fallback: spiral scan from map center if every hashed candidate was blocked
-    if (spawnX < 0) {
-      const centered = this.findSpawnNearCenter(tcBlueprint.sizeX, tcBlueprint.sizeY);
-      spawnX = centered.x;
-      spawnY = centered.y;
+    if (!this.isSpawnAreaClear(centreX, centreY, tcBlueprint.sizeX, tcBlueprint.sizeY)) {
+      const nearCentre = this.findSpawnNearCenter(tcBlueprint.sizeX, tcBlueprint.sizeY);
+      spawnX = nearCentre.x;
+      spawnY = nearCentre.y;
     }
 
     // Create Town Center
@@ -1495,8 +1492,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     unit.id = uId;
     unit.ownerId = ownerId;
     unit.type = unitType;
-    unit.x = Math.max(0, Math.min(MAP_GRID_WIDTH - 1, x));
-    unit.y = Math.max(0, Math.min(MAP_GRID_HEIGHT - 1, y));
+    unit.x = Math.max(0, Math.min(this.state.mapWidth - 1, x));
+    unit.y = Math.max(0, Math.min(this.state.mapHeight - 1, y));
     unit.targetX = unit.x;
     unit.targetY = unit.y;
     unit.speed = blueprint.speed;
@@ -1506,8 +1503,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     unit.actionState = 'IDLE';
 
     if (building.rallyX >= 0 && building.rallyY >= 0) {
-      const rallyX = Math.max(0, Math.min(MAP_GRID_WIDTH - 1, building.rallyX));
-      const rallyY = Math.max(0, Math.min(MAP_GRID_HEIGHT - 1, building.rallyY));
+      const rallyX = Math.max(0, Math.min(this.state.mapWidth - 1, building.rallyX));
+      const rallyY = Math.max(0, Math.min(this.state.mapHeight - 1, building.rallyY));
       // A rally point on the spawn tile needs no order; anything else does.
       if (rallyX !== unit.x || rallyY !== unit.y) {
         this.movement.setWalkTarget(unit, rallyX, rallyY);

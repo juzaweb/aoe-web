@@ -1,8 +1,6 @@
 import {
   BUILDING_BLUEPRINTS,
   BuildingType,
-  MAP_GRID_HEIGHT,
-  MAP_GRID_WIDTH,
   NetworkMessage,
   gridToScreen
 } from '@chien-quoc/shared';
@@ -38,9 +36,9 @@ export class PlacementController {
     if (!scene.room) return false;
     if (
       gx < 0 ||
-      gx + blueprint.sizeX > MAP_GRID_WIDTH ||
+      gx + blueprint.sizeX > scene.mapWidth ||
       gy < 0 ||
-      gy + blueprint.sizeY > MAP_GRID_HEIGHT
+      gy + blueprint.sizeY > scene.mapHeight
     ) {
       return false;
     }

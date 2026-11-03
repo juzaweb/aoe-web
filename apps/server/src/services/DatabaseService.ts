@@ -98,6 +98,10 @@ export class DatabaseService {
     // MAPS: the same additive treatment for zones and travel transfers.
     await this.ensureZoneColumns();
 
+    // MAPS-V2: kingdoms shrank from 220x220 to 110x110. Old coordinates cannot be
+    // remapped without overlaps, so the layout is reset once (see the method).
+    await this.resetLegacyKingdoms();
+
     // Drop empires whose account is gone before anything reads or writes them.
     await this.pruneOrphanedPlayers();
 
@@ -224,6 +228,38 @@ export class DatabaseService {
     await prisma.$executeRawUnsafe(
       "DELETE FROM world_resource_nodes WHERE zone = 'world';"
     );
+  }
+
+  /**
+   * One-time data migration for the smaller kingdom map.
+   *
+   * Kingdoms used to be laid out on the same 220x220 map as the battlefield and
+   * the Town Center was placed by a hash. The layout is now 110x110 with the Town
+   * Center dead centre; old coordinates cannot be remapped without buildings
+   * overlapping each other, so every kingdom's buildings, units and resource
+   * nodes are dropped once and regenerated on the next join.
+   *
+   * The `players` row survives on purpose: resources, levels and research are
+   * account progress, not map layout. `travel_transfers` is left alone as well,
+   * so units already walking home still arrive next to the new portal.
+   *
+   * Bump the key in both statements whenever the kingdom layout changes again;
+   * a layout change is exactly what this migration is for.
+   */
+  private static async resetLegacyKingdoms(): Promise<void> {
+    const done = await prisma.$queryRawUnsafe<Array<{ key: string }>>(
+      `SELECT "key" FROM "schema_meta" WHERE "key" = 'kingdom_map_110_v1'`
+    );
+    if (done.length > 0) return;
+
+    await prisma.$executeRawUnsafe(`DELETE FROM "buildings" WHERE "zone" LIKE 'kingdom:%'`);
+    await prisma.$executeRawUnsafe(`DELETE FROM "units" WHERE "zone" LIKE 'kingdom:%'`);
+    await prisma.$executeRawUnsafe(`DELETE FROM "world_resource_nodes" WHERE "zone" LIKE 'kingdom:%'`);
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "schema_meta" ("key", "value") VALUES ('kingdom_map_110_v1', 'done')`
+    );
+
+    console.log('🗺️  [DatabaseService] Reset legacy kingdoms onto the 110x110 map.');
   }
 
   /**

@@ -40,14 +40,18 @@ export function getBuildApproachPoint(
   unit: UnitState,
   building: BuildingState,
   index: number,
-  count: number
+  count: number,
+  mapWidth: number = MAP_GRID_WIDTH,
+  mapHeight: number = MAP_GRID_HEIGHT
 ): { x: number; y: number } {
   return approachPointOutsideFootprint(
     unit,
     building,
     index,
     count,
-    BUILD_APPROACH_DISTANCE
+    BUILD_APPROACH_DISTANCE,
+    mapWidth,
+    mapHeight
   );
 }
 
@@ -63,7 +67,9 @@ export function approachPointOutsideFootprint(
   building: BuildingState,
   index: number,
   count: number,
-  distance: number
+  distance: number,
+  mapWidth: number = MAP_GRID_WIDTH,
+  mapHeight: number = MAP_GRID_HEIGHT
 ): { x: number; y: number } {
   const centerX = building.gridX + building.sizeX / 2;
   const centerY = building.gridY + building.sizeY / 2;
@@ -83,8 +89,8 @@ export function approachPointOutsideFootprint(
   const scale = 1 / Math.max(Math.abs(dirX) / halfX, Math.abs(dirY) / halfY);
 
   return {
-    x: Math.max(0, Math.min(MAP_GRID_WIDTH - 1, centerX + dirX * scale)),
-    y: Math.max(0, Math.min(MAP_GRID_HEIGHT - 1, centerY + dirY * scale))
+    x: Math.max(0, Math.min(mapWidth - 1, centerX + dirX * scale)),
+    y: Math.max(0, Math.min(mapHeight - 1, centerY + dirY * scale))
   };
 }
 

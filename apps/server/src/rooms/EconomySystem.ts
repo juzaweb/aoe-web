@@ -189,7 +189,15 @@ export class EconomySystem {
     unit.previousActionState = '';
     unit.actionState = 'HARVESTING';
 
-    const approach = approachPointOutsideFootprint(unit, farm, 0, 1, WORK_APPROACH_DISTANCE);
+    const approach = approachPointOutsideFootprint(
+      unit,
+      farm,
+      0,
+      1,
+      WORK_APPROACH_DISTANCE,
+      this.state.mapWidth,
+      this.state.mapHeight
+    );
     this.ports.setWalkTarget(unit, approach.x, approach.y);
 
     const resourceType = gatheredType(farm);
@@ -428,7 +436,15 @@ export class EconomySystem {
 
     unit.dropOffId = dropOff.id;
     unit.actionState = 'RETURNING';
-    const approach = approachPointOutsideFootprint(unit, dropOff, 0, 1, WORK_APPROACH_DISTANCE);
+    const approach = approachPointOutsideFootprint(
+      unit,
+      dropOff,
+      0,
+      1,
+      WORK_APPROACH_DISTANCE,
+      this.state.mapWidth,
+      this.state.mapHeight
+    );
     this.ports.setWalkTarget(unit, approach.x, approach.y);
   }
 
@@ -496,7 +512,15 @@ export class EconomySystem {
       const farm = this.state.buildings.get(unit.targetEntityId);
       if (farm && farm.isConstructed && farm.ownerId === unit.ownerId && farm.resourceAmount > 0) {
         unit.actionState = 'HARVESTING';
-        const approach = approachPointOutsideFootprint(unit, farm, 0, 1, WORK_APPROACH_DISTANCE);
+        const approach = approachPointOutsideFootprint(
+      unit,
+      farm,
+      0,
+      1,
+      WORK_APPROACH_DISTANCE,
+      this.state.mapWidth,
+      this.state.mapHeight
+    );
         this.ports.setWalkTarget(unit, approach.x, approach.y);
       } else {
         this.giveUpOrRetarget(unit);

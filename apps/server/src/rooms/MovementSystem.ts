@@ -1,4 +1,3 @@
-import { MAP_GRID_HEIGHT, MAP_GRID_WIDTH } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { UnitState } from '../schema/UnitState.js';
@@ -47,8 +46,8 @@ const REPATH_COOLDOWN_MS = 500;
  * calls back into the room.
  */
 export class MovementSystem {
-  /** SIM-01: reused across searches; see `Pathfinder`. */
-  private readonly pathfinder = new Pathfinder();
+  /** SIM-01: reused across searches; sized to this room's map on first use. */
+  private pathfinderInstance: Pathfinder | null = null;
   private blockedGrid: Uint8Array | null = null;
   private blockedGridBuildingCount = -1;
   private blockedGridResourceCount = -1;
@@ -60,6 +59,18 @@ export class MovementSystem {
   private readonly lastRepathAt: Map<string, number> = new Map();
 
   constructor(private readonly state: WorldState) {}
+
+  /**
+   * A* workspace for this map.
+   *
+   * Built lazily because `WorldState.mapWidth/mapHeight` is only authoritative
+   * after the room has set it; a kingdom (110x110) allocates a quarter of the
+   * arrays a battlefield (220x220) needs.
+   */
+  private get pathfinder(): Pathfinder {
+    this.pathfinderInstance ??= new Pathfinder(this.state.mapWidth, this.state.mapHeight);
+    return this.pathfinderInstance;
+  }
 
   /**
    * Gives a unit a new walking destination and queues a fresh route to it.
@@ -176,8 +187,9 @@ export class MovementSystem {
 
   /** Whether one tile of the cached blocked grid is an obstacle. */
   private isBlockedTile(x: number, y: number): boolean {
-    if (x < 0 || y < 0 || x >= MAP_GRID_WIDTH || y >= MAP_GRID_HEIGHT) return false;
-    return this.getBlockedGrid()[y * MAP_GRID_WIDTH + x] === 1;
+    const { mapWidth, mapHeight } = this.state;
+    if (x < 0 || y < 0 || x >= mapWidth || y >= mapHeight) return false;
+    return this.getBlockedGrid()[y * mapWidth + x] === 1;
   }
 
   /**
@@ -241,15 +253,16 @@ export class MovementSystem {
 
     if (!stale) return this.blockedGrid as Uint8Array;
 
-    const grid = this.blockedGrid ?? new Uint8Array(MAP_GRID_WIDTH * MAP_GRID_HEIGHT);
+    const { mapWidth, mapHeight } = this.state;
+    const grid = this.blockedGrid ?? new Uint8Array(mapWidth * mapHeight);
     grid.fill(0);
 
     this.state.buildings.forEach((building: BuildingState) => {
-      const endX = Math.min(MAP_GRID_WIDTH, building.gridX + building.sizeX);
-      const endY = Math.min(MAP_GRID_HEIGHT, building.gridY + building.sizeY);
+      const endX = Math.min(mapWidth, building.gridX + building.sizeX);
+      const endY = Math.min(mapHeight, building.gridY + building.sizeY);
       for (let y = Math.max(0, building.gridY); y < endY; y++) {
         for (let x = Math.max(0, building.gridX); x < endX; x++) {
-          grid[y * MAP_GRID_WIDTH + x] = 1;
+          grid[y * mapWidth + x] = 1;
         }
       }
     });
@@ -257,8 +270,8 @@ export class MovementSystem {
     this.state.resourceNodes.forEach((node: ResourceNodeState) => {
       if (node.remainingAmount <= 0) return;
       if (node.gridX < 0 || node.gridY < 0) return;
-      if (node.gridX >= MAP_GRID_WIDTH || node.gridY >= MAP_GRID_HEIGHT) return;
-      grid[node.gridY * MAP_GRID_WIDTH + node.gridX] = 1;
+      if (node.gridX >= mapWidth || node.gridY >= mapHeight) return;
+      grid[node.gridY * mapWidth + node.gridX] = 1;
     });
 
     this.blockedGrid = grid;

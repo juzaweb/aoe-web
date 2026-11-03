@@ -10,8 +10,6 @@ import {
   CancelTrainPayload,
   CancelUnitUpgradePayload,
   HarvestResourcePayload,
-  MAP_GRID_HEIGHT,
-  MAP_GRID_WIDTH,
   MAX_QUEUED_WAYPOINTS,
   MAX_SELECTION,
   MoveUnitsPayload,
@@ -157,7 +155,12 @@ export class CommandSystem {
     // Check bounds
     const endX = payload.gridX + blueprint.sizeX;
     const endY = payload.gridY + blueprint.sizeY;
-    if (payload.gridX < 0 || endX > MAP_GRID_WIDTH || payload.gridY < 0 || endY > MAP_GRID_HEIGHT) {
+    if (
+      payload.gridX < 0 ||
+      endX > this.state.mapWidth ||
+      payload.gridY < 0 ||
+      endY > this.state.mapHeight
+    ) {
       this.ports.rejectCommand(client, 'Cannot build outside map bounds');
       return;
     }
@@ -757,8 +760,8 @@ export class CommandSystem {
       !Number.isFinite(gridY) ||
       gridX < 0 ||
       gridY < 0 ||
-      gridX >= MAP_GRID_WIDTH ||
-      gridY >= MAP_GRID_HEIGHT
+      gridX >= this.state.mapWidth ||
+      gridY >= this.state.mapHeight
     ) {
       this.ports.rejectCommand(client, 'Invalid rally point');
       return;
@@ -820,7 +823,14 @@ export class CommandSystem {
    */
   private assignBuildersToSite(builders: UnitState[], building: BuildingState) {
     builders.forEach((unit, idx) => {
-      const approach = getBuildApproachPoint(unit, building, idx, builders.length);
+      const approach = getBuildApproachPoint(
+        unit,
+        building,
+        idx,
+        builders.length,
+        this.state.mapWidth,
+        this.state.mapHeight
+      );
 
       unit.queueTargetX.clear();
       unit.queueTargetY.clear();
@@ -849,8 +859,8 @@ export class CommandSystem {
   ): Array<{ x: number; y: number }> {
     const offsets = computeFormationOffsets(units.length, FORMATION_SPACING);
     return units.map((_, idx) => ({
-      x: Math.max(0, Math.min(MAP_GRID_WIDTH - 1, destX + offsets[idx].x)),
-      y: Math.max(0, Math.min(MAP_GRID_HEIGHT - 1, destY + offsets[idx].y))
+      x: Math.max(0, Math.min(this.state.mapWidth - 1, destX + offsets[idx].x)),
+      y: Math.max(0, Math.min(this.state.mapHeight - 1, destY + offsets[idx].y))
     }));
   }
 

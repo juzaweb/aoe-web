@@ -100,6 +100,14 @@ export const DATABASE_TABLE_STATEMENTS: readonly string[] = [
     "source_session_id" TEXT NOT NULL,
     "units" TEXT NOT NULL,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );`,
+
+  // One row per destructive data migration that must run exactly once. Boot DDL
+  // cannot tell "never migrated" from "already migrated", so the migration
+  // itself records completion here.
+  `CREATE TABLE IF NOT EXISTS "schema_meta" (
+    "key" TEXT NOT NULL PRIMARY KEY,
+    "value" TEXT NOT NULL
   );`
 ];
 

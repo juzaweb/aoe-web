@@ -1,6 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 import { Room } from '@colyseus/sdk';
-import { MAP_GRID_HEIGHT, MAP_GRID_WIDTH, screenToGrid, TILE_HEIGHT, TILE_WIDTH } from '@chien-quoc/shared';
+import {
+  MAP_GRID_HEIGHT,
+  MAP_GRID_WIDTH,
+  TILE_HEIGHT,
+  TILE_WIDTH,
+  getRoadSplinePoints,
+  screenToGrid,
+  terrainForZone
+} from '@chien-quoc/shared';
 import { WorldScene } from '../game/scenes/WorldScene.js';
 import { UNKNOWN_OWNER_COLOR, colorToCss } from '../game/render/ownerColor.js';
 
@@ -10,6 +18,63 @@ interface MinimapProps {
   onPanToGrid: (gx: number, gy: number) => void;
   /** CTL-07: right-click issues a move order to the grid cell under the cursor. */
   onCommandAtGrid: (gx: number, gy: number) => void;
+}
+
+type MinimapState = {
+  mapWidth?: number;
+  mapHeight?: number;
+  zoneId?: string;
+};
+
+/** Map size the room replicates, falling back to the battlefield dimensions. */
+function sizeOf(room: Room | null): { width: number; height: number } {
+  const state = room?.state as MinimapState | null | undefined;
+  const width = Number(state?.mapWidth);
+  const height = Number(state?.mapHeight);
+  return {
+    width: Number.isFinite(width) && width > 0 ? width : MAP_GRID_WIDTH,
+    height: Number.isFinite(height) && height > 0 ? height : MAP_GRID_HEIGHT
+  };
+}
+
+function zoneOf(room: Room | null): string {
+  return (room?.state as MinimapState | null | undefined)?.zoneId ?? 'battlefield';
+}
+
+/**
+ * The road network as grid-space polylines, cached per layout.
+ *
+ * `getRoadSplinePoints` returns screen-space stamps for the world renderer; the
+ * minimap needs grid coordinates, and rebuilding that conversion every frame
+ * would burn through the trig cache for no reason. A jump between consecutive
+ * stamps means a new route (or the kingdom's central plaza), so the line is cut
+ * there instead of drawn straight across the gap.
+ */
+const roadPathCache = new Map<string, Array<Array<{ x: number; y: number }>>>();
+
+function roadPathsFor(zoneId: string): Array<Array<{ x: number; y: number }>> {
+  const terrain = terrainForZone(zoneId);
+  // Keyed by layout, not by zone id: every kingdom shares the same road plan, so
+  // a per-account key would leak one cache entry per visitor.
+  const key = `${terrain.kind}:${terrain.width}x${terrain.height}`;
+  let cached = roadPathCache.get(key);
+  if (cached) return cached;
+
+  const paths: Array<Array<{ x: number; y: number }>> = [];
+  let current: Array<{ x: number; y: number }> = [];
+  for (const point of getRoadSplinePoints(terrain)) {
+    const grid = screenToGrid(point.x, point.y);
+    const last = current[current.length - 1];
+    if (last && Math.hypot(grid.gridX - last.x, grid.gridY - last.y) > 2) {
+      paths.push(current);
+      current = [];
+    }
+    current.push({ x: grid.gridX, y: grid.gridY });
+  }
+  if (current.length > 0) paths.push(current);
+
+  roadPathCache.set(key, paths);
+  return paths;
 }
 
 export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, onCommandAtGrid }) => {
@@ -49,53 +114,25 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
       ctx.strokeRect(0, 0, canvas.width, canvas.height);
 
       if (room && room.state) {
-        const scaleX = canvas.width / MAP_GRID_WIDTH;
-        const scaleY = canvas.height / MAP_GRID_HEIGHT;
+        const { width, height } = sizeOf(room);
+        const zoneId = zoneOf(room);
+        const scaleX = canvas.width / width;
+        const scaleY = canvas.height / height;
 
-        // 1. Draw AoE Dirt Road Network on Minimap
+        // 1. Draw the dirt road network of whichever map is joined
         ctx.strokeStyle = '#c3946a';
         ctx.lineWidth = 2.5;
         ctx.lineCap = 'round';
-
-        // East-West Grand Highway
-        ctx.beginPath();
-        for (let gx = 0; gx < MAP_GRID_WIDTH; gx += 2) {
-          const gy = 110 + 22 * Math.sin(gx * 0.045) + 9 * Math.cos(gx * 0.09) + 4 * Math.sin(gx * 0.16);
-          if (gx === 0) ctx.moveTo(gx * scaleX, gy * scaleY);
-          else ctx.lineTo(gx * scaleX, gy * scaleY);
+        for (const path of roadPathsFor(zoneId)) {
+          ctx.beginPath();
+          // Every fourth stamp is ~1.4 tiles at the generator's 0.35 step.
+          for (let i = 0; i < path.length; i += 4) {
+            const point = path[i];
+            if (i === 0) ctx.moveTo(point.x * scaleX, point.y * scaleY);
+            else ctx.lineTo(point.x * scaleX, point.y * scaleY);
+          }
+          ctx.stroke();
         }
-        ctx.stroke();
-
-        // North-South Royal Silk Axis
-        ctx.beginPath();
-        for (let gy = 0; gy < MAP_GRID_HEIGHT; gy += 2) {
-          const gx = 110 + 22 * Math.sin(gy * 0.045) + 9 * Math.cos(gy * 0.09) + 4 * Math.sin(gy * 0.16);
-          if (gy === 0) ctx.moveTo(gx * scaleX, gy * scaleY);
-          else ctx.lineTo(gx * scaleX, gy * scaleY);
-        }
-        ctx.stroke();
-
-        // Diagonal Northwest - Southeast
-        ctx.beginPath();
-        for (let s = 10; s < 210; s += 2) {
-          const meander = 12 * Math.sin(s * 0.07);
-          const gx = s + meander / 2;
-          const gy = s - meander / 2;
-          if (s === 10) ctx.moveTo(gx * scaleX, gy * scaleY);
-          else ctx.lineTo(gx * scaleX, gy * scaleY);
-        }
-        ctx.stroke();
-
-        // Diagonal Northeast - Southwest
-        ctx.beginPath();
-        for (let s = 10; s < 210; s += 2) {
-          const meander = 12 * Math.sin((s - (220 - s)) * 0.035);
-          const gx = s;
-          const gy = 220 - s + meander;
-          if (s === 10) ctx.moveTo(gx * scaleX, gy * scaleY);
-          else ctx.lineTo(gx * scaleX, gy * scaleY);
-        }
-        ctx.stroke();
 
         // 2. Draw Resource Nodes
         room.state.resourceNodes?.forEach((res: any) => {
@@ -192,9 +229,10 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
+    const { width, height } = sizeOf(room);
     return {
-      gx: ((e.clientX - rect.left) / rect.width) * MAP_GRID_WIDTH,
-      gy: ((e.clientY - rect.top) / rect.height) * MAP_GRID_HEIGHT
+      gx: ((e.clientX - rect.left) / rect.width) * width,
+      gy: ((e.clientY - rect.top) / rect.height) * height
     };
   };
 
@@ -215,7 +253,7 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
     onCommandAtGrid(grid.gx, grid.gy);
   };
 
-  const zoneKind = (room?.state as { zoneId?: string } | undefined)?.zoneId;
+  const zoneKind = (room?.state as MinimapState | undefined)?.zoneId;
   const zoneLabel = zoneKind === 'battlefield' ? 'CHIẾN TRƯỜNG' : 'VƯƠNG QUỐC';
 
   return (
@@ -238,4 +276,3 @@ export const Minimap: React.FC<MinimapProps> = ({ room, sceneRef, onPanToGrid, o
     </div>
   );
 };
-

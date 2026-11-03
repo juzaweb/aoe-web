@@ -7,12 +7,15 @@ import {
   MAP_GRID_HEIGHT,
   MAP_GRID_WIDTH,
   MAX_UNIT_LEVEL,
+  MapTerrain,
+  TERRAIN_BATTLEFIELD,
   TILE_HEIGHT,
   TILE_WIDTH,
   getBuildingMaxLevel,
   getIsoDepth,
   gridToScreen,
-  screenToGrid
+  screenToGrid,
+  terrainForZone
 } from '@chien-quoc/shared';
 import { generateProceduralTextures } from '../renderers/ProceduralSprites.js';
 import { CommandController } from '../input/CommandController.js';
@@ -303,6 +306,15 @@ export class WorldScene extends Phaser.Scene {
   public commands!: CommandController;
   public entityRenderer!: EntityRenderer;
   public terrain!: TerrainLayer;
+  /**
+   * Size of the map currently joined. A kingdom is 110x110, the battlefield
+   * 220x220; the room replicates both numbers so camera, terrain culling,
+   * minimap and placement bounds all follow the map instead of a constant.
+   */
+  public mapWidth: number = MAP_GRID_WIDTH;
+  public mapHeight: number = MAP_GRID_HEIGHT;
+  /** Road/plaza layout of the current map, derived from its zone id. */
+  private terrainLayout: MapTerrain = TERRAIN_BATTLEFIELD;
   /** CMB-03: red marker on the enemy the selection is hitting. */
   public focus!: FocusIndicator;
 
@@ -455,7 +467,7 @@ export class WorldScene extends Phaser.Scene {
     this.input.mouse?.disableContextMenu();
 
     // Initial camera position centered on map - default to max visible area (ZOOM_MIN)
-    const center = gridToScreen(MAP_GRID_WIDTH / 2, MAP_GRID_HEIGHT / 2);
+    const center = gridToScreen(this.mapWidth / 2, this.mapHeight / 2);
     this.cameras.main.centerOn(center.x, center.y);
     this.cameras.main.setZoom(ZOOM_MIN);
 
@@ -564,6 +576,9 @@ export class WorldScene extends Phaser.Scene {
     this.room = room;
     this.cachedOwnerId = '';
     this.boundRoomId = room.roomId;
+    // The new map may be a different size than the one still on screen, so its
+    // size has to be adopted before the camera and terrain use it.
+    this.syncMapSize();
 
     // OWN-05: the cache belongs to the previous Room's snapshot. A reconnect may
     // restore a different profile colour, so re-resolve before repainting.
@@ -599,9 +614,43 @@ export class WorldScene extends Phaser.Scene {
     this.worldFrozen = false;
   }
 
+  /**
+   * Adopts the map size and terrain layout the room replicates.
+   *
+   * Called whenever a Room instance is bound, before any sprite is created: a
+   * kingdom is 110x110 with its own road layout, the battlefield is the original
+   * 220x220. Nothing is allocated here — the terrain layer only swaps its cached
+   * road spline and both controllers read the fields on demand.
+   */
+  private syncMapSize() {
+    const state = this.room?.state as
+      | { mapWidth?: number; mapHeight?: number; zoneId?: string }
+      | null
+      | undefined;
+    const width = Number(state?.mapWidth);
+    const height = Number(state?.mapHeight);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
+
+    const layout = terrainForZone(state?.zoneId ?? 'battlefield');
+    // Patches arrive continuously; only a real map change may invalidate the
+    // terrain pool, or every server tick would force a full re-stamp.
+    if (
+      width === this.mapWidth &&
+      height === this.mapHeight &&
+      layout.kind === this.terrainLayout.kind
+    ) {
+      return;
+    }
+
+    this.mapWidth = width;
+    this.mapHeight = height;
+    this.terrainLayout = layout;
+    this.terrain?.setTerrain(layout);
+  }
+
   /** Default view for a map with no known anchor yet: the whole terrain. */
   private centerCameraOnMap() {
-    const center = gridToScreen(MAP_GRID_WIDTH / 2, MAP_GRID_HEIGHT / 2);
+    const center = gridToScreen(this.mapWidth / 2, this.mapHeight / 2);
     this.cameras.main.panEffect.reset();
     this.cameras.main.centerOn(center.x, center.y);
     this.cameras.main.setZoom(ZOOM_MIN);
@@ -745,6 +794,12 @@ export class WorldScene extends Phaser.Scene {
     // Room twice would register duplicate schema callbacks (duplicate sprites).
     if (this.eventsBoundRoom === room) return;
     this.eventsBoundRoom = room;
+
+    // Same reason as `setRoom`: a room bound directly from `create()` (page
+    // refresh straight into a map) also has to publish its map size. The state
+    // listener covers a join whose snapshot lands after the room was handed over.
+    this.syncMapSize();
+    room.onStateChange(() => this.syncMapSize());
 
     const cb = Callbacks.get(room);
     this.roomCallbacks = cb;
