@@ -29,7 +29,7 @@ Then, in order:
 /loop-pick ALERT-01   # you choose; the rest are marked "not this run"
 /loop-plan ALERT-01   # writes docs/plans/12-....md, then stops
 /loop-build ALERT-01  # code + tests, then stops
-/loop-verify ALERT-01 # independent run, APPROVE or REJECT
+/loop-verify ALERT-01 # independent run, PASS or FAIL
 /loop-ship ALERT-01   # branch, commit, push, PR — asks before each
 ```
 
@@ -90,8 +90,11 @@ All three produce the same thing: one row reading `APPROVED`.
 1. **Gate before anything is committed.** `gate check --action merge` must exit 0. If it does
    not, the slice is **thrown away** — the working tree is reverted and the run fails. It does
    not become a PR waiting for a human.
-2. **Verifier before ship**, in `full` mode. The run aborts unless `loop-run-log.md` gained an
-   `APPROVE` line.
+2. **Verifier before ship**, in `full` mode. The run aborts unless `loop-run-log.md` gained a
+   `PASS` line.
+
+`APPROVE`/`APPROVED` belongs to you alone. The verifier's verdict is `PASS` or `FAIL`, so the
+word `approve` in this repo always means a human decision and never a machine one.
 
 `auto-merge` is deliberately *not* used: it also requires the path to be on
 `autoMergeAllowlist`, so every path would escalate.
@@ -111,7 +114,7 @@ if the row is not in the state it expects, which is what stops a skipped step.
 | `APPROVED <date> — awaiting plan` | step 2 | you picked it |
 | `PLANNED <date> — awaiting build` | step 3 | plan file exists |
 | `BUILT <date> — awaiting verify` | step 4 | tests written, not independent |
-| `VERIFIED <date> — awaiting ship` | step 5 | verifier returned APPROVE |
+| `VERIFIED <date> — awaiting ship` | step 5 | verifier returned PASS |
 | `SHIPPED <date> — <PR url>` | step 6 | PR open, not merged |
 
 ## Gates that hold at every step

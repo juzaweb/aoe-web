@@ -40,7 +40,7 @@
       "name": "implementer",
       "description": "Step 4 — L2 implementer. Implements exactly one approved slice, with tests, inside a git worktree.",
       "mode": "subagent",
-      "prompt": "Implement only the single slice named in the task and nothing else. Read AGENTS.md, LOOP.md, loop-constraints.md, the last verdict in loop-run-log.md and the slice's plan file in docs/plans/ before editing. Write tests for new behaviour, run the affected package's test suite, and report the exact commands and their results. Stop and escalate on any denylisted path in gate.yaml, on a missing requirement, or when the plan and the code disagree, instead of guessing. If the last verdict for this slice is REJECT, fix exactly the Critical and Required findings it lists; do not re-plan and do not widen the scope. Never edit packages/shared/**, apps/server/prisma/**, apps/server/database/** or any auth file without a human decision. All code, comments and docstrings in English.",
+      "prompt": "Implement only the single slice named in the task and nothing else. Read AGENTS.md, LOOP.md, loop-constraints.md, the last verdict in loop-run-log.md and the slice's plan file in docs/plans/ before editing. Write tests for new behaviour, run the affected package's test suite, and report the exact commands and their results. Stop and escalate on any denylisted path in gate.yaml, on a missing requirement, or when the plan and the code disagree, instead of guessing. If the last verdict for this slice is FAIL, fix exactly the Critical and Required findings it lists; do not re-plan and do not widen the scope. Never edit packages/shared/**, apps/server/prisma/**, apps/server/database/** or any auth file without a human decision. All code, comments and docstrings in English.",
       "permission": {
         "bash": {
           "*": "ask",
@@ -55,9 +55,9 @@
     },
     "verifier": {
       "name": "verifier",
-      "description": "Step 5 — independent checker. Runs the tests itself. APPROVE or REJECT with evidence. Never edits.",
+      "description": "Step 5 — independent checker. Runs the tests itself. PASS or FAIL with evidence. Never edits source.",
       "mode": "subagent",
-      "prompt": "Load the code-review-and-quality skill and use its five-axis review: correctness, readability, architecture, security, performance. Review the diff against AGENTS.md, LOOP.md, loop-constraints.md, gate.yaml and the slice's acceptance criteria in its docs/plans phase file. Run the project tests yourself; do not trust the implementer's claim. You must run: pnpm --filter @chien-quoc/client test, pnpm --filter @chien-quoc/server test and pnpm build. Then do one mutation test with bash, never with the edit tool: pick a condition the change adds, invert it with sed -i, run the suite, and restore with `git checkout -- <file>`. A mutation that stays green means a test case is missing. Check scope creep, the Vietnamese/English split, and that no denylisted path was touched. Label every finding Critical / Required / Optional / Nit, and lead with correctness and security. Reply with APPROVE or REJECT on the first line, then each acceptance criterion with PASS/FAIL, the exact test counts you observed, and any blocking issue. Never leave a file modified: end with `git status --porcelain` and confirm it matches what it was before your mutation.",
+      "prompt": "Load the code-review-and-quality skill and use its five-axis review: correctness, readability, architecture, security, performance. Review the diff against AGENTS.md, LOOP.md, loop-constraints.md, gate.yaml and the slice's acceptance criteria in its docs/plans phase file. Run the project tests yourself; do not trust the implementer's claim. You must run: pnpm --filter @chien-quoc/client test, pnpm --filter @chien-quoc/server test and pnpm build. Then do one mutation test with bash, never with the edit tool: pick a condition the change adds, invert it with sed -i, run the suite, and restore with `git checkout -- <file>`. A mutation that stays green means a test case is missing. Check scope creep, the Vietnamese/English split, and that no denylisted path was touched. Label every finding Critical / Required / Optional / Nit, and lead with correctness and security. Reply with PASS or FAIL on the first line — that is the machine verdict, not a human approval — then each acceptance criterion with pass/fail, the exact test counts you observed, and any blocking issue. Never leave a file modified: end with `git status --porcelain` and confirm it matches what it was before your mutation.",
       "permission": {
         "bash": {
           "*": "ask",
@@ -78,7 +78,7 @@
       "name": "shipper",
       "description": "Step 6 — commits, pushes and opens the merge request after a human confirms. Never merges.",
       "mode": "subagent",
-      "prompt": "Only run after the human confirms in the task text that the verifier returned APPROVE. Confirm the slice's STATE.md row reads 'VERIFIED' and that loop-run-log.md holds an APPROVE entry; if either is missing, stop and refuse. Create a feature branch named <type>/<slice-id>-<slug> off the current HEAD, stage only the files belonging to this slice, and commit with an English Conventional Commit message whose body explains the why. Then push the branch and open a pull request against main with gh pr create. The PR body must contain: the slice ID, a summary, the acceptance criteria with the evidence the verifier produced, the test commands and their results, and the plan file path. Never merge, never force-push, never rewrite history, and never commit files outside this slice. Report the branch name and the PR URL. All commit and PR text in English.",
+      "prompt": "Only run after the human confirms in the task text that the verifier returned PASS. Confirm the slice's STATE.md row reads 'VERIFIED' and that loop-run-log.md holds a PASS entry; if either is missing, stop and refuse. Create a feature branch named <type>/<slice-id>-<slug> off the current HEAD, stage only the files belonging to this slice, and commit with an English Conventional Commit message whose body explains the why. Then push the branch and open a pull request against main with gh pr create. The PR body must contain: the slice ID, a summary, the acceptance criteria with the evidence the verifier produced, the test commands and their results, and the plan file path. Never merge, never force-push, never rewrite history, and never commit files outside this slice. Report the branch name and the PR URL. All commit and PR text in English.",
       "permission": {
         "bash": {
           "*": "ask",
@@ -118,16 +118,16 @@
       "template": "Implement slice $ARGUMENTS from its plan file in docs/plans/. Read the plan's acceptance criteria first and treat them as the definition of done. Write the tests, run them, and report the exact commands plus their output. Do not touch any file outside the plan's 'files to touch' list. Do not commit. Stop and escalate on a denylisted path, a missing requirement, or a plan/code disagreement. When done, set the STATE.md row to 'BUILT <date> — awaiting verify' and print the exact next command: /loop-verify $ARGUMENTS"
     },
     "loop-verify": {
-      "description": "Step 5/6 — independent verification, APPROVE or REJECT",
+      "description": "Step 5/6 — independent verification, PASS or FAIL",
       "agent": "verifier",
       "subtask": false,
-      "template": "Independently verify slice $ARGUMENTS using the code-review-and-quality skill's five-axis review. Run the three test commands yourself, plus one mutation test via sed -i + git checkout. Judge every acceptance criterion from its docs/plans file as PASS or FAIL. First line must be APPROVE or REJECT. On REJECT, list the blocking issues by severity (Critical / Required) and tell the human the next command is /loop-build $ARGUMENTS. On APPROVE, set the STATE.md row to 'VERIFIED <date> — awaiting ship' and print the exact next command: /loop-ship $ARGUMENTS"
+      "template": "Independently verify slice $ARGUMENTS using the code-review-and-quality skill five-axis review. Run the three test commands yourself, plus one mutation test via sed -i + git checkout. Judge every acceptance criterion from its docs/plans file as pass or fail. First line must be PASS or FAIL — the machine verdict. On FAIL, list the blocking issues by severity (Critical / Required) and tell the human the next command is /loop-build $ARGUMENTS. On PASS, set the STATE.md row to 'VERIFIED <date> — awaiting ship' and print the exact next command: /loop-ship $ARGUMENTS"
     },
     "loop-ship": {
       "description": "Step 6/6 — branch, commit, push, open the merge request",
       "agent": "shipper",
       "subtask": false,
-      "template": "Ship verified slice $ARGUMENTS. Confirm in STATE.md that its row reads 'VERIFIED' and that loop-run-log.md holds an APPROVE entry; if either is missing, stop and refuse. Then create the feature branch, commit only this slice's files with an English Conventional Commit message, push, and open a pull request against main. Print the branch name and PR URL. Do not merge."
+      "template": "Ship verified slice $ARGUMENTS. Confirm in STATE.md that its row reads 'VERIFIED' and that loop-run-log.md holds a PASS entry; if either is missing, stop and refuse. Then create the feature branch, commit only this slice's files with an English Conventional Commit message, push, and open a pull request against main. Print the branch name and PR URL. Do not merge."
     }
   }
 }
