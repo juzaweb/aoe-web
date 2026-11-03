@@ -159,6 +159,11 @@ run — that is why the rule is now stated the other way around.
 
 ## Gates that hold at every step
 
+- **A slice is not done until its plan file says so.** The plan row and any measurement/baseline
+  section it asks for are part of the acceptance criteria. The first `full` run on `SAVE-01`
+  proved why: the code and tests were green, §7 still said `TODO`, and the run died at the
+  browser check with nothing merged. `implementer` now updates the plan in the same change and
+  `verifier` fails on a plan left stale.
 - `gate.yaml` denylist: auth, sessions, persistence, `packages/shared/**`, loop tooling.
   A slice touching one of those needs a human edit, not an agent.
 - `maxFiles: 12` — a slice that needs more is split before anyone codes it.
