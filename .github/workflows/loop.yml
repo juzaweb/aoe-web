@@ -254,6 +254,36 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
 
+      # triage/plan/verify write no feature code, but they DO write STATE.md and
+      # loop-run-log.md. The runner is disposable, so without this step those
+      # updates vanish and the next step reads a stale STATE.md and refuses.
+      # State files are committed straight to develop: they are the loop's own
+      # bookkeeping, not a code change anyone reviews.
+      - name: Persist loop state
+        if: steps.gate.outputs.allowed == 'true'
+        env:
+          STEP: ${{ inputs.step }}
+          SLICE: ${{ inputs.slice }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          state_paths=(STATE.md loop-run-log.md)
+          [ -d docs/plans ] && state_paths+=(docs/plans)
+
+          changed=$(git -c core.quotePath=false status --porcelain -z -- "${state_paths[@]}" \
+            | tr '\0' '\n' | sed 's/^...//' | grep -v '^$' || true)
+          if [ -z "$changed" ]; then
+            echo "::notice::No state change to persist."
+            exit 0
+          fi
+          echo "State files changed:"; echo "$changed"
+
+          git add -- "${state_paths[@]}"
+          git commit -m "chore(loop): record $STEP${SLICE:+ for $SLICE}" \
+            -m "Written by the loop pipeline. State only; no source change."
+          git push origin HEAD:develop
+          echo "::notice::Persisted loop state to develop."
+
       - name: Commit, push and open PR
         id: ship
         if: (inputs.step == 'ship' || inputs.step == 'full') && steps.gate.outputs.allowed == 'true'

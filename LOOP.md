@@ -56,21 +56,37 @@ Nothing runs on a schedule or on push.
 | `step` | `triage` / `pick` / `plan` / `build` / `verify` / `ship` / `full` |
 | `slice` | the slice ID; required for every step except `triage` |
 | `model` | optional `provider/model` override |
-| `merge` | merge the PR into `develop` once it is opened, off by default |
+| `merge` | merge the PR into `develop` once it is opened. **On by default** — the pipeline exists so no PR waits for a person |
 
 Required repository secret: `OPENCODE_API_KEY`. Optional `OPENCODE_PROVIDER` (defaults to
 `opencode-go`, and must match the `provider/` prefix in `opencode.json`).
 
-Two hard stops before anything is committed:
+### What each step does to the repository
 
-1. `gate check --action merge` must exit 0. A denylisted path or more than 12 files sends the
-   run to a human instead of a PR. `auto-merge` is deliberately *not* used: it also requires
-   the path to be on `autoMergeAllowlist`, which is empty, so every path would escalate.
-2. In `full` mode, the run aborts before `ship` unless `loop-run-log.md` has an `APPROVE` line.
-   Shipping code the verifier rejected is the one outcome the workflow must never produce.
+Two different commits, on purpose:
 
-The workflow creates `develop` on its first run if it is missing. Push it yourself first —
-that branch's history should belong to a human, not to CI.
+| Steps | Written | Where it goes |
+|-------|---------|---------------|
+| `triage`, `plan`, `verify` | `STATE.md`, `loop-run-log.md`, `docs/plans/**` | pushed **straight to `develop`** by the *Persist loop state* step |
+| `ship`, `full` | source, tests, docs | feature branch → PR → merged into `develop` |
+
+The first row matters because the runner is disposable. Without that push, a triage run would
+update `STATE.md` and lose it, so the next run would read the same stale state and re-propose
+the same slice forever.
+
+### The two hard stops
+
+1. **Gate at build time.** `gate check --action merge` must exit 0. If it does not, the slice is
+   **thrown away** — the working tree is reverted and the run fails. It does not become a PR
+   waiting for a human, because the whole point is that no such PR exists.
+2. **Verifier before ship**, in `full` mode. The run aborts unless `loop-run-log.md` gained an
+   `APPROVE` line.
+
+`auto-merge` is deliberately *not* used: it also requires the path to be on
+`autoMergeAllowlist`, so every path would escalate.
+
+The workflow creates `develop` on its first run if it is missing.
+
 
 
 ## Status vocabulary in STATE.md
