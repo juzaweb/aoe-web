@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUILDING_BLUEPRINTS,
+  MAX_CORE_BUILDING_LEVEL,
   MAX_UNIT_LEVEL,
   UNIT_BLUEPRINTS,
   getBuildingLevelStats,
   getBuildingMaxLevel,
   getBuildingUpgradeCost,
   getBuildingUpgradeTimeMs,
+  getCoreLevelGaps,
   getPlayerUnitLevel,
+  getRequiredCoreLevel,
   getUnitLevelStats,
   getUnitUpgradeCost,
   getUnitUpgradeTimeMs
@@ -37,10 +40,15 @@ describe('level stats', () => {
     });
   });
 
-  it('uses 100 levels for the Town Center and 10 for everything else', () => {
+  it('uses 100 levels for the Town Center and the core buildings, 10 for drop-offs', () => {
     expect(getBuildingMaxLevel('TOWN_CENTER')).toBe(100);
-    expect(getBuildingMaxLevel('HOUSE')).toBe(10);
-    expect(getBuildingMaxLevel('TOWER')).toBe(10);
+    expect(getBuildingMaxLevel('HOUSE')).toBe(100);
+    expect(getBuildingMaxLevel('BARRACKS')).toBe(100);
+    expect(getBuildingMaxLevel('FARM')).toBe(100);
+    expect(getBuildingMaxLevel('TOWER')).toBe(100);
+    expect(getBuildingMaxLevel('LUMBER_CAMP')).toBe(10);
+    expect(getBuildingMaxLevel('MILL')).toBe(10);
+    expect(getBuildingMaxLevel('MINING_CAMP')).toBe(10);
   });
 
   it('scales building HP and population linearly, clamping to the cap', () => {
@@ -102,6 +110,87 @@ describe('upgrade prices', () => {
     // Level 9 -> 10 is the last step and the most expensive one.
     expect(getUnitUpgradeCost('CAVALRY', 9).gold).toBe(555);
     expect(getUnitUpgradeTimeMs('CAVALRY', 9)).toBe(31400);
+  });
+});
+
+describe('two-phase progression curve (LVL2)', () => {
+  it('keeps levels 1-10 in minutes and restarts the ramp at one hour', () => {
+    expect(getBuildingUpgradeTimeMs('TOWN_CENTER', 1)).toBe(7_500);
+    expect(getBuildingUpgradeTimeMs('TOWN_CENTER', 10)).toBe(2_420_158);
+    // Level 11 is the documented "1 hour" anchor, not a continuation of 1.9x.
+    expect(getBuildingUpgradeTimeMs('TOWN_CENTER', 11)).toBe(3_600_000);
+    expect(getBuildingUpgradeTimeMs('TOWN_CENTER', 12)).toBe(3_780_000);
+    // Duration follows each blueprint's own build time: 5s House -> 20m.
+    expect(getBuildingUpgradeTimeMs('HOUSE', 11)).toBe(1_200_000);
+  });
+
+  it('has no ceiling: the last Town Center step is 73 hours', () => {
+    expect(getBuildingUpgradeTimeMs('TOWN_CENTER', 99)).toBe(263_609_355);
+    expect(getBuildingUpgradeTimeMs('TOWN_CENTER', 99)).toBeGreaterThan(70 * 3_600_000);
+  });
+
+  it('prices the first step and the phase boundary as documented', () => {
+    expect(getBuildingUpgradeCost('TOWN_CENTER', 1)).toEqual({
+      wood: 138,
+      food: 0,
+      gold: 0,
+      stone: 50
+    });
+    expect(getBuildingUpgradeCost('TOWN_CENTER', 10)).toEqual({
+      wood: 253,
+      food: 0,
+      gold: 0,
+      stone: 92
+    });
+    expect(getBuildingUpgradeCost('TOWN_CENTER', 11)).toEqual({
+      wood: 273,
+      food: 0,
+      gold: 0,
+      stone: 99
+    });
+    expect(getBuildingUpgradeCost('TOWN_CENTER', 99)).toEqual({
+      wood: 238_490,
+      food: 0,
+      gold: 0,
+      stone: 86_724
+    });
+  });
+
+  it('clamps every type at its own cap', () => {
+    expect(getBuildingUpgradeTimeMs('HOUSE', 500)).toBe(
+      getBuildingUpgradeTimeMs('HOUSE', MAX_CORE_BUILDING_LEVEL)
+    );
+    expect(getBuildingUpgradeTimeMs('MILL', 500)).toBe(getBuildingUpgradeTimeMs('MILL', 10));
+    expect(getBuildingUpgradeCost('HOUSE', 500)).toEqual(
+      getBuildingUpgradeCost('HOUSE', MAX_CORE_BUILDING_LEVEL)
+    );
+  });
+});
+
+describe('Town Center gate (LVL2)', () => {
+  it('steps the requirement every five Town Center levels and asks nothing below 5', () => {
+    expect([1, 4].map(getRequiredCoreLevel)).toEqual([0, 0]);
+    expect(getRequiredCoreLevel(5)).toBe(5);
+    expect(getRequiredCoreLevel(9)).toBe(5);
+    expect(getRequiredCoreLevel(10)).toBe(10);
+    expect(getRequiredCoreLevel(49)).toBe(45);
+    expect(getRequiredCoreLevel(99)).toBe(95);
+  });
+
+  it('reports each pillar as met or missing, in a stable order', () => {
+    expect(getCoreLevelGaps({ HOUSE: 10, BARRACKS: 4, FARM: 10 }, 10)).toEqual([
+      { type: 'HOUSE', current: 10, required: 10, met: true },
+      { type: 'BARRACKS', current: 4, required: 10, met: false },
+      { type: 'FARM', current: 10, required: 10, met: true },
+      { type: 'TOWER', current: 0, required: 10, met: false }
+    ]);
+  });
+
+  it('treats a missing or broken level map as "nothing built"', () => {
+    expect(getCoreLevelGaps(undefined, 5).every((gap) => !gap.met)).toBe(true);
+    expect(getCoreLevelGaps({ HOUSE: Number.NaN }, 5)[0].current).toBe(0);
+    // Below the first step every gap is already met, gate or not.
+    expect(getCoreLevelGaps(undefined, 4).every((gap) => gap.met)).toBe(true);
   });
 });
 

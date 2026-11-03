@@ -65,7 +65,8 @@ import type { TravelUnitSnapshot } from '../services/DatabaseService.js';
 import {
   loadPlayerLevels,
   applyBuildingUpgrade,
-  applyUnitResearch
+  applyUnitResearch,
+  restoreBuildingUpgrade
 } from './upgrades.js';
 import { otherZone, roomNameForZone, zoneKindOf } from '@chien-quoc/shared';
 import { randomUUID } from 'crypto';
@@ -417,8 +418,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           building.sizeX = b.sizeX;
           building.sizeY = b.sizeY;
           building.level = clampStoredLevel(b.level, getBuildingMaxLevel(b.type as BuildingType));
-          building.upgradeProgressMs = b.upgradeProgressMs ?? 0;
-          building.upgradeTimeMs = b.upgradeTimeMs ?? 0;
+          // LVL2/D7: a 73 h upgrade is spread over many sessions, so the saved
+          // progress is restored instead of restarting the timer.
+          restoreBuildingUpgrade(building, b.upgradeProgressMs, b.upgradeTimeMs);
           const levelStats = getBuildingLevelStats(b.type as BuildingType, building.level);
           building.maxHp = levelStats.maxHp;
           building.hp = Math.min(b.hp, levelStats.maxHp);

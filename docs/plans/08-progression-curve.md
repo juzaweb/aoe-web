@@ -1,6 +1,7 @@
 # Phase 08 — Đường cong nâng cấp dài hạn (1-10 phút, từ 11 tính bằng giờ)
 
-Status: **APPROVED — chờ code**. Chưa có dòng logic nào được sửa; phase này mới chốt số và luật.
+Status: **IMPLEMENTED — chờ verify tay trong game** (code + test xong; số liệu ở §4 lấy trực tiếp từ
+code sau khi implement).
 
 ## 1. Mục tiêu
 
@@ -60,15 +61,15 @@ Nhà chính (bậc thang):
 | Cấp | Giá | Thời gian |
 | --- | --- | --- |
 | 1→2 | 138 gỗ + 50 đá | 7,5s |
-| 5→6 | 180 gỗ + 66 đá | 2m |
-| 10→11 | 253 gỗ + 92 đá | 40m |
+| 5→6 | 180 gỗ + 66 đá | 1m37 |
+| 10→11 | 253 gỗ + 92 đá | 40m20 |
 | 20→21 | 546 gỗ + 198 đá | 1h33 |
-| 30→31 | 1.178 gỗ + 428 đá | 2h32 |
-| 40→41 | 2.544 gỗ + 925 đá | 4h07 |
+| 30→31 | 1.178 gỗ + 428 đá | 2h31 |
+| 40→41 | 2.544 gỗ + 925 đá | 4h06 |
 | 50→51 | 5.492 gỗ + 1.997 đá | 6h42 |
 | 60→61 | 11.856 gỗ + 4.311 đá | 10h55 |
 | 70→71 | 25.597 gỗ + 9.308 đá | 17h47 |
-| 80→81 | 55.261 gỗ + 20.095 đá | 28h59 |
+| 80→81 | 55.261 gỗ + 20.095 đá | 28h58 |
 | 90→91 | 119.305 gỗ + 43.383 đá | 47h12 |
 | 99→100 | 238.490 gỗ + 86.724 đá | 73h13 |
 
@@ -116,13 +117,13 @@ Nhà chính (bậc thang):
 | Task | Nội dung | Trạng thái |
 | --- | --- | --- |
 | LVL2-00 | Doc phase + index | DONE |
-| LVL2-01 | `levels.ts`: `timeScale`/`costScale` 2 giai đoạn, bỏ trần 2h, `getRequiredCoreLevel`, `getCoreLevelGaps` | TODO |
-| LVL2-02 | `getBuildingMaxLevel`: trụ cột 100, nhà phụ 10 | TODO |
-| LVL2-03 | `CommandSystem`: gate + slot, message lỗi | TODO |
-| LVL2-04 | Client: khối yêu cầu, slot, format thời gian | TODO |
-| LVL2-05 | Test: công thức, gate, slot, clamp cấp 100 | TODO |
-| LVL2-06 | Xác nhận cộng dồn qua phiên: nạp lại `upgradeProgressMs` sau khi thoát giữa chừng (hành vi có sẵn, chỉ thêm test) | TODO |
-| LVL2-07 | Cập nhật `03-level-upgrades.md` §3 và số ví dụ | TODO |
+| LVL2-01 | `levels.ts`: `timeScale`/`costScale` 2 giai đoạn, bỏ trần 2h, `getRequiredCoreLevel`, `getCoreLevelGaps` | DONE |
+| LVL2-02 | `getBuildingMaxLevel`: trụ cột 100, nhà phụ 10 | DONE |
+| LVL2-03 | `CommandSystem`: gate + slot, message lỗi | DONE |
+| LVL2-04 | Client: khối yêu cầu, slot, format thời gian | DONE |
+| LVL2-05 | Test: công thức, gate, slot, clamp cấp 100 | DONE |
+| LVL2-06 | Xác nhận cộng dồn qua phiên: nạp lại `upgradeProgressMs` sau khi thoát giữa chừng (hành vi có sẵn, chỉ thêm test) | DONE |
+| LVL2-07 | Cập nhật `03-level-upgrades.md` §3 và số ví dụ | DONE |
 
 ## 9. Rủi ro
 
@@ -159,3 +160,26 @@ Kiểm tra tay:
 4. Trụ cột hiện `Lv x/100`, nhà phụ vẫn `Lv x/10`.
 5. Nâng TC rồi thoát giữa chừng, vào lại → tiến trình giữ nguyên (không nhảy thêm, không reset) và
    timer chạy tiếp từ chỗ đã dừng.
+
+## 11. Kết quả code
+
+| File | Thay đổi |
+| --- | --- |
+| `packages/shared/src/utils/levels.ts` | `timeScale`/`costScale` hai giai đoạn thay `buildingUpgradeScale`; `getBuildingMaxLevel` trả 100 cho TC + 4 trụ cột, 10 cho nhà phụ (kể cả `PORTAL`); thêm `getRequiredCoreLevel`, `getCoreLevelGaps`, type `CoreLevelGap` |
+| `apps/server/src/rooms/upgrades.ts` | `collectCoreLevels` (chỉ công trình đã xong, lấy cấp cao nhất mỗi loại), `countActiveBuildingUpgrades`, `restoreBuildingUpgrade` |
+| `apps/server/src/rooms/CommandSystem.ts` | gate TC trước slot, rồi tới giá; message nêu tên + cấp cần + cấp đang có |
+| `apps/server/src/rooms/WorldRoom.ts` | dùng `restoreBuildingUpgrade` khi nạp lại từ DB |
+| `apps/client/src/game/scenes/WorldScene.ts` | `upgradeContext()` gom cấp trụ cột + số slot vào `SelectedEntityData`; signature của panel tính cả hai nên không bị đứng số |
+| `apps/client/src/components/UpgradePanels.tsx` | khối "Trụ cột cần Lv N" (đỏ khi thiếu), `Slot n/N`, disable nút kèm lý do, format thời gian mới |
+| `apps/client/src/components/durationText.ts` | `formatDuration` → `45s` / `12m` / `6h42` / `73h` |
+
+- Không thêm message, không thêm cột, không reset DB (đúng §6).
+- Test mới: `upgrades.test.ts` (công thức hai giai đoạn, clamp, gate), `WorldRoom.test.ts`
+  (`progression gate and slots (LVL2)`: gate TC, foundation không tính, 2 slot + huỷ giải phóng slot,
+  clamp 100, cộng dồn sau save/reload), `durationText.test.ts`.
+- Lệch nhỏ so với bảng nháp ở §4 (đã sửa theo code): `formatDuration` làm tròn xuống nên 7,5s hiện
+  `7s`, và 10→11 là `40m20` chứ không tròn `40m`.
+- `pnpm --filter @chien-quoc/shared build` đang hỏng sẵn ở HEAD (`terrainMath.ts` import `MapZoneKind`
+  từ `constants` trong khi type đó nằm ở `types`). Đã sửa để chạy được §10.
+- `terrainMath.test.ts` có ngưỡng perf 250ms; chạy song song với `pnpm test` khác thì thỉnh thoảng
+  vượt (260ms). Chạy riêng hoặc chạy cả suite server một mình đều pass — không liên quan phase này.

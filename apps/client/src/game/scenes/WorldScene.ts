@@ -4,6 +4,7 @@ import { Callbacks } from '@colyseus/schema';
 import {
   BUILDING_BLUEPRINTS,
   BuildingType,
+  CORE_BUILDING_TYPES,
   MAP_GRID_HEIGHT,
   MAP_GRID_WIDTH,
   MAX_UNIT_LEVEL,
@@ -139,6 +140,14 @@ export interface SelectedEntityData {
   unitLevels?: number[];
   researchUnitType?: string;
   researchProgressMs?: number;
+  /**
+   * LVL2: highest finished level per core building type. The Town Center gate
+   * asks for four pillars, and the panel cannot read them from one building's
+   * state, so the scene aggregates them on the selected empire.
+   */
+  coreLevels?: Partial<Record<BuildingType, number>>;
+  /** LVL2: how many of the player's buildings are upgrading right now. */
+  activeUpgrades?: number;
   researchTimeMs?: number;
   /** CMD-04b: foundations can be cancelled; finished buildings cannot. */
   isConstructed?: boolean;
@@ -1548,7 +1557,12 @@ export class WorldScene extends Phaser.Scene {
           maxLevel: getBuildingMaxLevel(b.type as BuildingType),
           upgradeProgressMs: b.upgradeProgressMs,
           upgradeTimeMs: b.upgradeTimeMs,
-          ...(b.ownerId === this.myOwnerId ? this.playerResearchDetails(b.ownerId) : {}),
+          ...(b.ownerId === this.myOwnerId
+            ? {
+                ...this.playerResearchDetails(b.ownerId),
+                ...this.upgradeContext(b.ownerId)
+              }
+            : {}),
           isOwner: b.ownerId === this.myOwnerId,
           isPortal: b.type === 'PORTAL',
           trainingQueue: Array.from(b.trainingQueue),
@@ -1744,10 +1758,14 @@ export class WorldScene extends Phaser.Scene {
 
     // Only the owner's research drives the panel; reading a foreign player's
     // timer would republish the panel on every tick for no visible change.
-    const player =
-      building.ownerId === this.myOwnerId
-        ? this.room?.state?.players?.get(building.ownerId)
-        : undefined;
+    const owned = building.ownerId === this.myOwnerId;
+    const player = owned
+      ? this.room?.state?.players?.get(building.ownerId)
+      : undefined;
+    // LVL2: the gate rows and the slot counter follow the whole empire, so a
+    // core building leveling up (or another upgrade starting) must republish the
+    // panel even though the selected building itself did not change.
+    const context = owned ? this.upgradeContext(building.ownerId) : undefined;
     const signature = [
       building.hp,
       building.maxHp,
@@ -1758,7 +1776,11 @@ export class WorldScene extends Phaser.Scene {
       building.trainingQueue.length,
       player?.researchUnitType ?? '',
       player?.researchProgressMs ?? 0,
-      player?.researchTimeMs ?? 0
+      player?.researchTimeMs ?? 0,
+      context
+        ? CORE_BUILDING_TYPES.map((type) => context.coreLevels?.[type] ?? 0).join(',')
+        : '',
+      context?.activeUpgrades ?? 0
     ].join('|');
 
     if (signature === this.lastBuildingDetailSignature) return;
@@ -1780,6 +1802,35 @@ export class WorldScene extends Phaser.Scene {
       researchProgressMs: player?.researchProgressMs ?? 0,
       researchTimeMs: player?.researchTimeMs ?? 0
     };
+  }
+
+  /**
+   * LVL2: looks at the whole empire, not one building.
+   *
+   * The Town Center gate is a condition on four other buildings, and the slot
+   * limit counts every upgrade the player has running, so both are aggregated
+   * here and published with whichever owned building is selected. Foundations
+   * are skipped for the gate — they are not a level yet — but still hold a slot
+   * if their (impossible) timer is set, which keeps the panel honest about what
+   * the server counts.
+   */
+  private upgradeContext(
+    ownerId: string
+  ): Pick<SelectedEntityData, 'coreLevels' | 'activeUpgrades'> {
+    const coreLevels: Partial<Record<BuildingType, number>> = {};
+    let activeUpgrades = 0;
+
+    this.room?.state?.buildings?.forEach((b: any) => {
+      if (b.ownerId !== ownerId) return;
+      if (b.upgradeTimeMs > 0) activeUpgrades += 1;
+      if (!b.isConstructed) return;
+
+      const type = b.type as BuildingType;
+      if (!CORE_BUILDING_TYPES.includes(type)) return;
+      coreLevels[type] = Math.max(coreLevels[type] ?? 0, b.level);
+    });
+
+    return { coreLevels, activeUpgrades };
   }
 
   /**

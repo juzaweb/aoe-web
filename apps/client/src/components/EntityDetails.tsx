@@ -367,7 +367,8 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
       )}
 
       {/* LVL: every owned, finished building can upgrade itself, except the
-          portal (server-created travel infrastructure). */}
+          portal (server-created travel infrastructure). LVL2: the gate rows and
+          the slot counter are empire-wide, so they ride along in the same data. */}
       {buildingIsOwnedAndFinished &&
         entity.subType !== 'PORTAL' &&
         entity.level !== undefined && (
@@ -379,6 +380,8 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
           upgradeProgressMs={entity.upgradeProgressMs}
           upgradeTimeMs={entity.upgradeTimeMs}
           playerResources={playerResources}
+          coreLevels={entity.coreLevels}
+          activeUpgrades={entity.activeUpgrades}
           onUpgrade={onUpgradeBuilding}
           onCancel={onCancelBuildingUpgrade}
         />

@@ -2,14 +2,18 @@ import { BUILDING_BLUEPRINTS, UNIT_BLUEPRINTS } from '../constants/index.js';
 import type { BuildingType, Resources, UnitType } from '../types/index.js';
 
 /**
- * Upgrade levels are linear in the level number: level 1 is the blueprint's
+ * Stat growth is linear in the level number: level 1 is the blueprint's
  * baseline, and every level above it adds a fixed share of that baseline. No
  * compounding, so the numbers in the UI stay predictable at level 100.
+ *
+ * Price and duration are the exception and compound in their second phase (see
+ * {@link timeScale} / {@link costScale}): stats may stay readable, the climb
+ * itself must not run out of road.
  */
 export const BUILDING_STAT_GROWTH_PER_LEVEL = 0.02;
 export const UNIT_STAT_GROWTH_PER_LEVEL = 0.05;
 
-/** Non-core buildings still stop at ten levels. */
+/** Drop-off buildings still stop at ten levels. */
 export const MAX_BUILDING_LEVEL = 10;
 export const MAX_TOWN_CENTER_LEVEL = 100;
 /** Core buildings climb alongside the Town Center, so they share its cap. */
@@ -17,7 +21,7 @@ export const MAX_CORE_BUILDING_LEVEL = 100;
 export const MAX_UNIT_LEVEL = 10;
 
 /**
- * The four buildings that gate the Town Center (LVL-08).
+ * The four buildings that gate the Town Center (LVL2).
  *
  * A Town Center may not pull ahead of them: every {@link CORE_LEVEL_STEP}
  * levels it demands the same level from all four, which turns "wait for the
@@ -70,8 +74,50 @@ export interface UnitLevelStats {
   carryCapacity: number;
 }
 
+/** One core building's progress towards the Town Center's current gate. */
+export interface CoreLevelGap {
+  type: BuildingType;
+  /** Highest finished level the player owns for this type; 0 when none. */
+  current: number;
+  required: number;
+  met: boolean;
+}
+
 export function getBuildingMaxLevel(type: BuildingType): number {
-  return type === 'TOWN_CENTER' ? MAX_TOWN_CENTER_LEVEL : MAX_BUILDING_LEVEL;
+  if (type === 'TOWN_CENTER') return MAX_TOWN_CENTER_LEVEL;
+  if (CORE_BUILDING_TYPES.includes(type)) return MAX_CORE_BUILDING_LEVEL;
+  return MAX_BUILDING_LEVEL;
+}
+
+/**
+ * The level all four core buildings must reach before the Town Center may go
+ * from `townCenterLevel` to `townCenterLevel + 1` (LVL2/D5).
+ *
+ * It only steps up every {@link CORE_LEVEL_STEP} levels, so the first four
+ * upgrades are free and a level-50 Town Center demands level-45 pillars.
+ */
+export function getRequiredCoreLevel(townCenterLevel: number): number {
+  const level = clampLevel(townCenterLevel, MAX_TOWN_CENTER_LEVEL);
+  return Math.floor(level / CORE_LEVEL_STEP) * CORE_LEVEL_STEP;
+}
+
+/**
+ * Compares the player's core buildings against the Town Center's gate.
+ *
+ * `levels` is the highest finished level per core type, so owning two Houses
+ * only requires one of them to be tall enough — the gate asks for a base that
+ * supports the Town Center, not for every copy to be upgraded.
+ */
+export function getCoreLevelGaps(
+  levels: Partial<Record<BuildingType, number>> | null | undefined,
+  townCenterLevel: number
+): CoreLevelGap[] {
+  const required = getRequiredCoreLevel(townCenterLevel);
+  return CORE_BUILDING_TYPES.map((type) => {
+    const raw = Math.floor(Number(levels?.[type] ?? 0));
+    const current = Number.isFinite(raw) && raw > 0 ? raw : 0;
+    return { type, current, required, met: current >= required };
+  });
 }
 
 export function getUnitMaxLevel(): number {
@@ -133,17 +179,18 @@ export function getUnitLevelStats(type: UnitType, rawLevel: number): UnitLevelSt
 }
 
 /**
- * Cost to take a building from `level` to `level + 1`.
+ * Cost to take a building from `level` to `level + 1` (LVL2/D2).
  *
- * The quadratic term is what keeps a 100-level Town Center meaningful: the
- * early levels cost a fraction of the build price, while the last ones are a
- * real commitment. `level` is the current level, never the target.
+ * Two phases: the first ten levels stay on the gentle ramp the opening hours
+ * need, then every level compounds by 8% so the late Town Center is a real
+ * commitment instead of spare change. `level` is the current level, never the
+ * target.
  */
 export function getBuildingUpgradeCost(type: BuildingType, rawLevel: number): Resources {
   const blueprint = BUILDING_BLUEPRINTS[type];
   if (!blueprint) return { wood: 0, food: 0, gold: 0, stone: 0 };
 
-  const scale = buildingUpgradeScale(clampLevel(rawLevel, getBuildingMaxLevel(type)));
+  const scale = costScale(clampLevel(rawLevel, getBuildingMaxLevel(type)));
   return {
     wood: Math.round(blueprint.cost.wood * scale),
     food: Math.round(blueprint.cost.food * scale),
@@ -152,12 +199,20 @@ export function getBuildingUpgradeCost(type: BuildingType, rawLevel: number): Re
   };
 }
 
+/**
+ * Time to take a building from `level` to `level + 1` (LVL2/D1).
+ *
+ * The scale is applied to the blueprint's own build time, so a House stays
+ * proportionally cheaper than the Town Center. There is deliberately **no
+ * ceiling**: a level-99 Town Center is 73 hours of online play, and a cap would
+ * flatten the whole second phase back into "a few hours per level".
+ */
 export function getBuildingUpgradeTimeMs(type: BuildingType, rawLevel: number): number {
   const blueprint = BUILDING_BLUEPRINTS[type];
   if (!blueprint) return 0;
 
   return Math.round(
-    blueprint.buildTimeMs * buildingUpgradeScale(clampLevel(rawLevel, getBuildingMaxLevel(type)))
+    blueprint.buildTimeMs * timeScale(clampLevel(rawLevel, getBuildingMaxLevel(type)))
   );
 }
 
@@ -189,9 +244,28 @@ export function getUnitUpgradeTimeMs(type: UnitType, rawLevel: number): number {
   return Math.round(blueprint.trainTimeMs * (0.5 + 0.25 * steps + 0.01 * steps * steps));
 }
 
-function buildingUpgradeScale(level: number): number {
-  const steps = level - 1;
-  return 0.5 + 0.1 * steps + 0.004 * steps * steps;
+/**
+ * Two-phase upgrade duration scale (LVL2/D1).
+ *
+ * Levels 1-10 are minutes: `7.5s` for the Town Center at 1, `40m` at 10, which
+ * is where the player learns the mechanic. From 11 the ramp restarts at exactly
+ * one hour for the Town Center and compounds by 5% per level, ending at 73.2h
+ * for the last step. Both branches are multiplied by the blueprint's build time.
+ */
+function timeScale(level: number): number {
+  return level <= 10 ? 0.5 * Math.pow(1.9, level - 1) : 240 * Math.pow(1.05, level - 11);
+}
+
+/**
+ * Two-phase upgrade price scale (LVL2/D2).
+ *
+ * Same shape as {@link timeScale} but slightly steeper in the second phase
+ * (8%), so resources stay a secondary wall behind time instead of replacing it.
+ */
+function costScale(level: number): number {
+  return level <= 10
+    ? 0.5 * Math.pow(1.07, level - 1)
+    : 0.5 * Math.pow(1.07, 9) * Math.pow(1.08, level - 10);
 }
 
 function clampLevel(level: number, maxLevel: number): number {

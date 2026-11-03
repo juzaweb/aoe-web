@@ -3,9 +3,10 @@
 Status: **IMPLEMENTED — chờ verify tay trong game**
 Ngày chốt quyết định: 2026-11-02
 
-> Đường cong giá/thời gian ở §3 đã bị **phase 08** thay thế (cấp 1-10 tính bằng phút, từ cấp 11
-> tính bằng giờ, ×1,05/cấp, cộng gate cấp và 2 slot). Phần còn hiệu lực của phase này là mô hình
-> level, protocol, persistence và hành vi server. Xem `08-progression-curve.md`.
+> Đường cong giá/thời gian ở §3 đã bị **phase 08** thay thế và phase 08 đã code xong (cấp 1-10 tính
+> bằng phút, từ cấp 11 tính bằng giờ, ×1,05/cấp, cộng gate cấp và 2 slot). Phần còn hiệu lực của
+> phase này là mô hình level, protocol, persistence và hành vi server. Xem
+> `08-progression-curve.md`; §3 dưới đây đã cập nhật theo đường cong mới.
 
 ## 1. Mục tiêu
 
@@ -19,7 +20,7 @@ trực tiếp từ blueprint theo `type`.
 | --- | --- |
 | Mô hình | Công trình có level **riêng từng cá thể**; lính nâng **toàn cục theo người chơi + loại lính** |
 | Phạm vi | Mọi công trình đều nâng được; lính nâng tại trại lính |
-| Cấp tối đa | Nhà chính 100; công trình khác 10; lính 10 |
+| Cấp tối đa | Nhà chính 100; 4 trụ cột (House/Barracks/Farm/Tower) 100; nhà phụ (Lumber Camp/Mill/Mining Camp) 10; lính 10 |
 | Tăng chỉ số | Công trình +2%/cấp; lính +5%/cấp (tuyến tính, không lũy kế) |
 | Dân số / sức chứa | Nhà chính +1 dân/cấp; nhà ở tăng 2%/cấp (làm tròn); dân làng +5% sức chứa/cấp |
 | Cơ chế thời gian | Nâng cấp/nghiên cứu chạy theo tick, không cần dân làng đứng xây; huỷ được và hoàn 100% |
@@ -33,8 +34,12 @@ Với `i = level - 1` (level hiện tại, bắt đầu từ 1):
   - `maxHp = round(maxHp_bp × (1 + 0.02i))`
   - `attackPower = round2(attackPower_bp × (1 + 0.02i))`
   - `populationProvided`: TC = `pop_bp + i`; còn lại = `round(pop_bp × (1 + 0.02i))`
-  - Giá nâng cấp: `k = 0.5 + 0.1i + 0.004i²`, mỗi resource `round(cost_bp × k)`
-  - Thời gian: `round(buildTimeMs_bp × k)`
+  - Giá nâng cấp (`costScale`, từ phase 08), mỗi resource `round(cost_bp × k)`:
+    - `level ≤ 10`: `k = 0.5 × 1.07^(level−1)`
+    - `level ≥ 11`: `k = 0.5 × 1.07^9 × 1.08^(level−10)`
+  - Thời gian (`timeScale`, từ phase 08), **không có trần**: `round(buildTimeMs_bp × k)`:
+    - `level ≤ 10`: `k = 0.5 × 1.9^(level−1)` → TC 7,5s → 40m20
+    - `level ≥ 11`: `k = 240 × 1.05^(level−11)` → TC đúng 1h ở cấp 11, 73h13 ở cấp 99
 - Lính:
   - `maxHp = round(maxHp_bp × (1 + 0.05i))`
   - `attackPower = round2(attackPower_bp × (1 + 0.05i))`
@@ -43,8 +48,9 @@ Với `i = level - 1` (level hiện tại, bắt đầu từ 1):
     `gold += 25 × level`
   - Thời gian: `round(trainTimeMs_bp × (0.5 + 0.25i + 0.01i²))`
 
-Ví dụ: TC 1→2 = 138 gỗ + 50 đá, 7.5s; TC 99→100 = 13.397 gỗ + 4.872 đá, 731s;
-Spearman 1→2 = 18 gỗ + 36 thịt + 25 vàng, 3.5s; Cavalry 9→10 = 378 thịt + 555 vàng, 31.4s.
+Ví dụ: TC 1→2 = 138 gỗ + 50 đá, 7,5s; TC 10→11 = 253 gỗ + 92 đá, 40m20; TC 99→100 =
+238.490 gỗ + 86.724 đá, 73h13; Spearman 1→2 = 18 gỗ + 36 thịt + 25 vàng, 3,5s; Cavalry 9→10 =
+378 thịt + 555 vàng, 31,4s. Bảng đầy đủ theo từng mốc ở `08-progression-curve.md` §4.
 
 Toàn bộ số liệu nằm trong `packages/shared/src/utils/levels.ts` để chỉnh một chỗ.
 
@@ -59,9 +65,12 @@ Toàn bộ số liệu nằm trong `packages/shared/src/utils/levels.ts` để c
 
 ## 5. Hành vi server
 
-- `handleUpgradeBuilding`: chỉ công trình đã xây xong, đúng chủ, chưa max, không đang nâng, đủ tiền.
-  Trừ tiền và đặt `upgradeTimeMs`; tick cộng dồn và hoàn tất.
-- `handleCancelBuildingUpgrade`: hoàn 100% giá của cấp hiện tại, reset timer.
+- `handleUpgradeBuilding`: chỉ công trình đã xây xong, đúng chủ, chưa max, không đang nâng; sau đó
+  **gate TC** (phase 08, chỉ với `TOWN_CENTER`: 4 trụ cột phải đạt `floor(level/5) × 5`), rồi
+  **slot** (tối đa 2 công trình nâng cùng lúc), rồi mới tới tiền. Trừ tiền và đặt `upgradeTimeMs`;
+  tick cộng dồn và hoàn tất.
+- `handleCancelBuildingUpgrade`: hoàn 100% giá của cấp hiện tại, reset timer và **giải phóng slot**
+  ngay trong lần gọi đó.
 - `handleUpgradeUnitType`: cần ít nhất 1 trại lính đã xây xong, chưa max, không có research khác.
   Research lưu trên player nên trại lính bị phá giữa chừng không huỷ tiến trình.
 - `handleCancelUnitUpgrade`: hoàn 100%, clear research.
@@ -70,14 +79,21 @@ Toàn bộ số liệu nằm trong `packages/shared/src/utils/levels.ts` để c
   train sau đó spawn ở cấp mới.
 - Damage lính/tháp và sức chứa dân làng đọc chỉ số theo cấp; dân số TC/nhà ở tính lại khi hoàn tất.
 - Research tạm dừng khi người chơi offline (PlayerState bị xoá khỏi room), giống hàng đợi train.
+- Nâng cấp công trình cũng chỉ chạy khi online, nhưng tiến trình **cộng dồn qua phiên**: hai cột
+  `upgrade_progress_ms`/`upgrade_time_ms` được ghi lúc autosave/leave và nạp lại bằng
+  `restoreBuildingUpgrade()` khi vào, nên một lần nâng 73h nằm rải qua nhiều session.
 
 ## 6. Client
 
 - Panel chi tiết hiển thị `Lv x/max`; khối **Nâng cấp công trình** (giá, thời gian, tiến độ, huỷ).
+- Chọn TC còn có khối **Trụ cột cần Lv N** (từng loại `Hiện/Cần`, đỏ khi thiếu) và dòng
+  `Slot n/2`; nút nâng bị disable khi hết slot hoặc thiếu trụ cột, kèm lý do.
+- Thời gian hiển thị dạng `45s` / `12m` / `6h42` / `73h` (`formatDuration`), không phải số giây thô.
 - Trại lính có khối **Nghiên cứu quân đội** cho 4 loại lính, tiến độ toàn cục + huỷ.
 - Tooltip train hiển thị HP/attack theo cấp hiện tại.
 - Sprite công trình có badge `Lv N` và thanh tiến độ nâng cấp màu xanh trên đầu.
-- `WorldScene` sync riêng cho building đang chọn vì research progress nằm trên `PlayerState`.
+- `WorldScene` sync riêng cho building đang chọn vì research progress nằm trên `PlayerState`; với
+  phase 08 nó sync thêm cấp trụ cột + số slot của cả empire.
 
 ## 7. Persistence & migration
 

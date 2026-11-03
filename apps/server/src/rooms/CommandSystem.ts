@@ -9,7 +9,9 @@ import {
   CancelBuildingUpgradePayload,
   CancelTrainPayload,
   CancelUnitUpgradePayload,
+  CoreLevelGap,
   HarvestResourcePayload,
+  MAX_CONCURRENT_BUILDING_UPGRADES,
   MAX_QUEUED_WAYPOINTS,
   MAX_SELECTION,
   MoveUnitsPayload,
@@ -29,6 +31,7 @@ import {
   getBuildingLevelStats,
   getBuildingUpgradeCost,
   getBuildingUpgradeTimeMs,
+  getCoreLevelGaps,
   getPlayerUnitLevel,
   getUnitMaxLevel,
   getUnitUpgradeCost,
@@ -41,7 +44,12 @@ import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { getBuildApproachPoint } from './construction.js';
 import { ownerIdOf } from './identity.js';
-import { clearUnitResearch, isUpgradableUnitType } from './upgrades.js';
+import {
+  clearUnitResearch,
+  collectCoreLevels,
+  countActiveBuildingUpgrades,
+  isUpgradableUnitType
+} from './upgrades.js';
 
 /**
  * What the command layer needs from the room and its sibling systems.
@@ -415,6 +423,29 @@ export class CommandSystem {
     }
     if (building.level >= getBuildingMaxLevel(type)) {
       this.ports.rejectCommand(client, 'Building is already at max level');
+      return;
+    }
+
+    // LVL2/D5: the Town Center may not pull ahead of the four core buildings.
+    // Checked before the slot and the price so the player learns about the gate
+    // even when they have nothing to spend yet.
+    if (type === 'TOWN_CENTER') {
+      const unmet = getCoreLevelGaps(collectCoreLevels(this.state, player.id), building.level).filter(
+        (gap) => !gap.met
+      );
+      if (unmet.length > 0) {
+        this.ports.rejectCommand(client, `Town Center upgrade requires ${describeCoreGaps(unmet)}`);
+        return;
+      }
+    }
+
+    // LVL2/D6: two upgrades at a time, so the gate above costs real time instead
+    // of being skipped by starting all four pillars in parallel.
+    if (countActiveBuildingUpgrades(this.state, player.id) >= MAX_CONCURRENT_BUILDING_UPGRADES) {
+      this.ports.rejectCommand(
+        client,
+        `Building upgrade limit reached (${MAX_CONCURRENT_BUILDING_UPGRADES} at a time)`
+      );
       return;
     }
 
@@ -936,4 +967,20 @@ export class CommandSystem {
     }
     return building;
   }
+}
+
+/**
+ * Renders the unmet Town Center gate as one line the error toast can show, for
+ * example `House level 10 (have 4), Farm level 10 (have 0)`.
+ *
+ * The building names come from the blueprints so the message cannot drift from
+ * what the client labels the same structure.
+ */
+function describeCoreGaps(gaps: CoreLevelGap[]): string {
+  return gaps
+    .map((gap) => {
+      const name = BUILDING_BLUEPRINTS[gap.type]?.name ?? gap.type;
+      return `${name} level ${gap.required} (have ${gap.current})`;
+    })
+    .join(', ');
 }

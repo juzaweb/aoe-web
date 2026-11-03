@@ -1,9 +1,5 @@
-import {
-  BATTLEFIELD_MAP_SIZE,
-  KINGDOM_MAP_SIZE,
-  MapZoneKind,
-  zoneKindOf
-} from '../constants/index.js';
+import { BATTLEFIELD_MAP_SIZE, KINGDOM_MAP_SIZE, zoneKindOf } from '../constants/index.js';
+import type { MapZoneKind } from '../types/index.js';
 import { gridToScreen } from './isoMath.js';
 
 export interface RoadSplinePoint {

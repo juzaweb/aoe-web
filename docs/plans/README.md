@@ -14,7 +14,7 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | [`05-map-realism.md`](./05-map-realism.md) | Map tự nhiên hơn: nền cỏ/tint, đường đất, decor PNG + rừng viền, minimap cụm rừng + glyph (`VIS-01..VIS-10`) | IMPLEMENTED — chờ verify tay |
 | [`06-aoe-asset-rebuild.md`](./06-aoe-asset-rebuild.md) | Tạo lại art công trình/cây/tài nguyên/terrain từ collection "AoE like Assets" (`ART-01..ART-12`) | IMPLEMENTED (một phần) — 8 sprite đã thay; terrain bỏ vì atlas không cắt được; chờ verify tay |
 | [`07-smaller-kingdom-map.md`](./07-smaller-kingdom-map.md) | Kingdom riêng nhỏ lại 110×110, TC ở giữa map, map size theo zone (`D1–D8`) | IMPLEMENTED — chờ verify tay UI |
-| [`08-progression-curve.md`](./08-progression-curve.md) | Đường cong nâng cấp dài hạn: 1-10 tính bằng phút, từ 11 tính bằng giờ (×1,05/cấp), gate TC ↔ 4 trụ cột, 2 slot (`LVL2-00..LVL2-07`) | APPROVED — chờ code |
+| [`08-progression-curve.md`](./08-progression-curve.md) | Đường cong nâng cấp dài hạn: 1-10 tính bằng phút, từ 11 tính bằng giờ (×1,05/cấp), gate TC ↔ 4 trụ cột, 2 slot (`LVL2-00..LVL2-07`) | IMPLEMENTED — chờ verify tay |
 | [`09-road-and-gate-assets.md`](./09-road-and-gate-assets.md) | Thay art đường đất + cổng bằng 2 ảnh AI gen, bỏ tint tím mượn tower (`GATE-01..ROAD-02`) | IMPLEMENTED — chờ verify tay |
 | [`10-persistence-scaling.md`](./10-persistence-scaling.md) | Chi phí autosave theo zone, tải theo số user, dirty tracking + batch upsert + resource delta (`SAVE-01..SAVE-07`) | DRAFT |
 | [`11-mobile-touch.md`](./11-mobile-touch.md) | Chơi trên mobile: touch gesture (pan/pinch/tap/long-press), thanh lệnh, HUD compact landscape, join lại khi resume (`MOB-01..MOB-10`) | IMPLEMENTED — chờ verify máy thật |
@@ -60,7 +60,10 @@ Phase 08 (progression curve) thay **đường cong thời gian/giá** của phas
 công trình trụ cột (House/Barracks/Farm/Tower) mỗi 5 cấp và giới hạn 2 slot nâng cùng lúc. Đường đi
 tối thiểu tới TC 100 là **4.129h** (≈3,8 năm ở 3h/ngày); nhà phụ vẫn cap 10 và không thuộc gate.
 Timer **chỉ chạy khi online** và cộng dồn qua các phiên (D7), nên "giờ" trong doc là giờ chơi thật,
-không phải lịch. Phase này **chưa có dòng code nào**. Xem `08-progression-curve.md` §2 và §4.
+không phải lịch. Đã code xong ngày 2026-11-03: `levels.ts` hai giai đoạn + `getRequiredCoreLevel`/
+`getCoreLevelGaps`, cap 100 cho 4 trụ cột, gate + slot trong `handleUpgradeBuilding`, panel client có
+khối trụ cột + `Slot n/2` + format `45s/12m/6h42/73h`; test server/client đều xanh. Còn verify tay
+§10. Xem `08-progression-curve.md` §2, §4 và §11.
 
 Phase 09 (road + gate assets) thay nốt 2 chỗ art còn là placeholder: 4 stamp đường lặp motif và cổng
 đang mượn sheet tower + tint tím. Nguồn là 2 ảnh AI gen trong `Downloads/games`, xử lý bằng

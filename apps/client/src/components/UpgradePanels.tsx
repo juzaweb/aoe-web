@@ -1,6 +1,8 @@
 import React from 'react';
 import {
+  BUILDING_BLUEPRINTS,
   BuildingType,
+  MAX_CONCURRENT_BUILDING_UPGRADES,
   Resources,
   UNIT_BLUEPRINTS,
   UNIT_UPGRADE_ORDER,
@@ -8,12 +10,14 @@ import {
   getBuildingMaxLevel,
   getBuildingUpgradeCost,
   getBuildingUpgradeTimeMs,
+  getCoreLevelGaps,
   getPlayerUnitLevel,
   getUnitMaxLevel,
   getUnitUpgradeCost,
   getUnitUpgradeTimeMs
 } from '@chien-quoc/shared';
-import { ArrowUp, Clock, Swords, X } from 'lucide-react';
+import { ArrowUp, Clock, Shield, Swords, X } from 'lucide-react';
+import { formatDuration } from './durationText.js';
 
 const RESOURCE_SHORT: Record<keyof Resources, string> = {
   wood: 'Gỗ',
@@ -69,6 +73,13 @@ interface BuildingUpgradePanelProps {
   upgradeProgressMs?: number;
   upgradeTimeMs?: number;
   playerResources: Resources;
+  /**
+   * LVL2: highest finished level the player owns per core building type. Drives
+   * the Town Center gate block; a type missing from the map counts as level 0.
+   */
+  coreLevels?: Partial<Record<BuildingType, number>>;
+  /** LVL2: how many of the player's buildings already have an upgrade running. */
+  activeUpgrades?: number;
   onUpgrade: (buildingId: string) => void;
   onCancel: (buildingId: string) => void;
 }
@@ -82,6 +93,8 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
   upgradeProgressMs = 0,
   upgradeTimeMs = 0,
   playerResources,
+  coreLevels,
+  activeUpgrades = 0,
   onUpgrade,
   onCancel
 }) => {
@@ -94,16 +107,64 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
   const progressPercent =
     (upgradeProgressMs / Math.max(1, upgradeTimeMs)) * 100;
 
+  // LVL2/D5: only the Town Center is gated, and only from level 5 on (the step
+  // below that still requires 0). The gaps are computed from the same helper the
+  // server enforces, so the panel cannot promise an upgrade the server refuses.
+  const gates = type === 'TOWN_CENTER' ? getCoreLevelGaps(coreLevels, level) : [];
+  const requiredCoreLevel = gates.length > 0 ? gates[0].required : 0;
+  const unmetGates = gates.filter((gap) => !gap.met);
+  const slotsTaken = Math.max(0, activeUpgrades);
+  const slotsFull = slotsTaken >= MAX_CONCURRENT_BUILDING_UPGRADES;
+  const canUpgrade = affordable && !slotsFull && unmetGates.length === 0;
+
   return (
     <div className="border-t border-slate-800 pt-2 space-y-1.5" data-upgrade>
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-bold text-amber-400 tracking-wider flex items-center gap-1">
           <ArrowUp size={12} /> NÂNG CẤP CÔNG TRÌNH
         </span>
-        <span className="text-[10px] text-amber-300 font-mono">
-          Lv {level}/{cap}
+        <span className="flex items-center gap-2">
+          <span
+            className={`text-[9px] font-mono ${
+              slotsFull ? 'text-red-400' : 'text-slate-400'
+            }`}
+            title={`Mỗi người chơi nâng tối đa ${MAX_CONCURRENT_BUILDING_UPGRADES} công trình cùng lúc`}
+          >
+            Slot {slotsTaken}/{MAX_CONCURRENT_BUILDING_UPGRADES}
+          </span>
+          <span className="text-[10px] text-amber-300 font-mono">
+            Lv {level}/{cap}
+          </span>
         </span>
       </div>
+
+      {requiredCoreLevel > 0 && !isMaxed && (
+        <div className="rounded border border-slate-800 bg-slate-950/60 p-1.5 space-y-1" data-gate>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[9px] font-semibold text-slate-300 flex items-center gap-1">
+              <Shield size={10} className="text-amber-400" /> Trụ cột cần Lv{' '}
+              {requiredCoreLevel}
+            </span>
+            <span
+              className={`text-[9px] font-mono ${
+                unmetGates.length === 0 ? 'text-emerald-300' : 'text-red-400'
+              }`}
+            >
+              {gates.length - unmetGates.length}/{gates.length}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+            {gates.map(({ type: coreType, current, required, met }) => (
+              <span
+                key={coreType}
+                className={`text-[9px] font-mono ${met ? 'text-emerald-300' : 'text-red-400'}`}
+              >
+                {BUILDING_BLUEPRINTS[coreType]?.name ?? coreType}: {current}/{required}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {isUpgrading ? (
         <>
@@ -112,14 +173,14 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
               <Clock size={12} className="text-amber-400" /> Đang nâng cấp
             </span>
             <span className="font-mono text-amber-300">
-              {Math.floor(upgradeProgressMs / 1000)}s / {Math.ceil(upgradeTimeMs / 1000)}s
+              {formatDuration(upgradeProgressMs)} / {formatDuration(upgradeTimeMs)}
             </span>
           </div>
           <ProgressBar percent={progressPercent} tone="amber" />
           <button
             onClick={() => onCancel(buildingId)}
             className="w-full px-2 py-1 rounded border border-red-800/70 bg-red-950/40 text-[10px] font-semibold text-red-300 hover:border-red-500 transition-all flex items-center justify-center gap-1"
-            title="Huỷ nâng cấp, hoàn lại toàn bộ tài nguyên"
+            title="Huỷ nâng cấp, hoàn lại toàn bộ tài nguyên và giải phóng slot"
           >
             <X size={12} /> Huỷ nâng cấp (hoàn tiền)
           </button>
@@ -131,20 +192,36 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
           <div className="flex items-center justify-between gap-2">
             <CostChips cost={cost} />
             <span className="text-[9px] text-slate-400 font-mono shrink-0">
-              {(duration / 1000).toFixed(1)}s
+              {formatDuration(duration)}
             </span>
           </div>
           <button
             onClick={() => onUpgrade(buildingId)}
-            disabled={!affordable}
+            disabled={!canUpgrade}
+            title={
+              slotsFull
+                ? `Đã dùng hết ${MAX_CONCURRENT_BUILDING_UPGRADES} slot nâng cấp`
+                : unmetGates.length > 0
+                  ? 'Cần nâng các công trình trụ cột trước'
+                  : !affordable
+                    ? 'Không đủ tài nguyên'
+                    : `Nâng lên Lv ${level + 1}`
+            }
             className={`w-full px-2 py-1 rounded border text-[10px] font-semibold transition-all flex items-center justify-center gap-1 ${
-              affordable
+              canUpgrade
                 ? 'aoe-button text-amber-200 hover:border-amber-400'
                 : 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed opacity-50'
             }`}
           >
             <ArrowUp size={12} /> Nâng lên Lv {level + 1}
           </button>
+          {(slotsFull || unmetGates.length > 0) && (
+            <p className="text-[9px] text-red-400/90 text-center">
+              {slotsFull
+                ? `Đã dùng hết ${MAX_CONCURRENT_BUILDING_UPGRADES} slot nâng cấp`
+                : 'Cần đạt cấp trụ cột trước khi nâng Nhà chính'}
+            </p>
+          )}
         </>
       )}
     </div>

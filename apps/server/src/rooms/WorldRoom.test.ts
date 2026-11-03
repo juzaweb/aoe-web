@@ -12,6 +12,7 @@ import {
   getBuildingLevelStats,
   isDirtRoadTile,
   isPlazaTile,
+  getBuildingMaxLevel,
   getBuildingUpgradeCost,
   getBuildingUpgradeTimeMs,
   getPlayerUnitLevel,
@@ -22,6 +23,7 @@ import {
 import { CORPSE_LINGER_MS, WorldRoom } from './WorldRoom.js';
 import { isWithinBuildRange } from './construction.js';
 import { generateWorldResources } from './worldGeneration.js';
+import { restoreBuildingUpgrade } from './upgrades.js';
 import { DatabaseService } from '../services/DatabaseService.js';
 import { WorldState } from '../schema/WorldState.js';
 import { PlayerState } from '../schema/PlayerState.js';
@@ -1746,7 +1748,7 @@ describe('building upgrades (LVL)', () => {
     });
     const foreign = addBuilding(room, { id: 'b_foreign', ownerId: 'player-b' });
     const maxed = addBuilding(room, { id: 'b_maxed', ownerId: 'player-a', type: 'HOUSE' });
-    maxed.level = 10;
+    maxed.level = getBuildingMaxLevel('HOUSE');
     const busy = addBuilding(room, { id: 'b_busy', ownerId: 'player-a', type: 'HOUSE' });
     busy.upgradeTimeMs = 1000;
 
@@ -1819,6 +1821,179 @@ describe('building upgrades (LVL)', () => {
     expect(() => internals(room).commands.handleUpgradeUnitType(client, undefined)).not.toThrow();
     expect(() => internals(room).commands.handleCancelUnitUpgrade(client, undefined)).not.toThrow();
     expect(player.researchUnitType).toBe('');
+  });
+});
+
+describe('progression gate and slots (LVL2)', () => {
+  const RICH = { wood: 2_000_000, food: 2_000_000, gold: 2_000_000, stone: 2_000_000 };
+
+  /** Raises one owned core building to `level`, as a finished structure. */
+  function addCore(room: WorldRoom, type: string, level: number, isConstructed = true) {
+    const building = addBuilding(room, {
+      id: `b_${type}`,
+      ownerId: 'player-a',
+      type,
+      isConstructed
+    });
+    building.level = level;
+    return building;
+  }
+
+  it('blocks the Town Center until the four pillars reach the step', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', RICH);
+    const townCenter = addBuilding(room, { id: 'b_tc', ownerId: 'player-a' });
+    townCenter.level = 10;
+    const client = createClient('player-a');
+
+    internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_tc' });
+
+    expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message:
+        'Town Center upgrade requires House level 10 (have 0), Barracks level 10 (have 0), ' +
+        'Farm level 10 (have 0), Watch Tower level 10 (have 0)'
+    });
+    expect(townCenter.upgradeTimeMs).toBe(0);
+  });
+
+  it('lets the Town Center through once every pillar is at the step', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', RICH);
+    const townCenter = addBuilding(room, { id: 'b_tc', ownerId: 'player-a' });
+    townCenter.level = 10;
+    for (const type of ['HOUSE', 'BARRACKS', 'FARM', 'TOWER']) {
+      addCore(room, type, 10);
+    }
+    const client = createClient('player-a');
+
+    internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_tc' });
+
+    expect(client.send).not.toHaveBeenCalled();
+    expect(townCenter.upgradeTimeMs).toBe(getBuildingUpgradeTimeMs('TOWN_CENTER', 10));
+    expect(townCenter.upgradeTimeMs).toBe(2_420_158);
+  });
+
+  it('does not count a core foundation towards the gate', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', RICH);
+    const townCenter = addBuilding(room, { id: 'b_tc', ownerId: 'player-a' });
+    townCenter.level = 5;
+    // Level 5 only requires level 5, and the House here is still a foundation.
+    addCore(room, 'HOUSE', 5, false);
+    addCore(room, 'BARRACKS', 5);
+    addCore(room, 'FARM', 5);
+    addCore(room, 'TOWER', 5);
+    const client = createClient('player-a');
+
+    internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_tc' });
+
+    expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Town Center upgrade requires House level 5 (have 0)'
+    });
+    expect(townCenter.upgradeTimeMs).toBe(0);
+  });
+
+  it('asks for nothing while the Town Center is below level 5', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', RICH);
+    const townCenter = addBuilding(room, { id: 'b_tc', ownerId: 'player-a' });
+    townCenter.level = 4;
+    const client = createClient('player-a');
+
+    internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_tc' });
+
+    expect(client.send).not.toHaveBeenCalled();
+    expect(townCenter.upgradeTimeMs).toBe(getBuildingUpgradeTimeMs('TOWN_CENTER', 4));
+  });
+
+  it('allows two upgrades at a time and frees a slot when one is cancelled', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', RICH);
+    const houses = ['h1', 'h2', 'h3'].map((id) =>
+      addBuilding(room, { id, ownerId: 'player-a', type: 'HOUSE' })
+    );
+    const client = createClient('player-a');
+
+    internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'h1' });
+    internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'h2' });
+    expect(houses[0].upgradeTimeMs).toBeGreaterThan(0);
+    expect(houses[1].upgradeTimeMs).toBeGreaterThan(0);
+
+    internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'h3' });
+    expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Building upgrade limit reached (2 at a time)'
+    });
+    expect(houses[2].upgradeTimeMs).toBe(0);
+
+    // Cancelling refunds and clears the timer in the same call, so the slot is
+    // free for the very next command instead of waiting for a tick.
+    internals(room).commands.handleCancelBuildingUpgrade(client, { buildingId: 'h1' });
+    internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'h3' });
+    expect(houses[2].upgradeTimeMs).toBeGreaterThan(0);
+  });
+
+  it('stops core buildings at level 100', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', RICH);
+    const house = addBuilding(room, { id: 'b_house', ownerId: 'player-a', type: 'HOUSE' });
+    house.level = 100;
+    const client = createClient('player-a');
+
+    internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_house' });
+
+    expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Building is already at max level'
+    });
+  });
+
+  it('continues a half-finished upgrade after a save and reload', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', RICH);
+    const house = addBuilding(room, { id: 'b_house', ownerId: 'player-a', type: 'HOUSE' });
+    house.level = 90;
+    const client = createClient('player-a');
+
+    internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_house' });
+    const duration = house.upgradeTimeMs;
+    const half = Math.floor(duration / 2);
+    internals(room).update(half);
+    expect(house.upgradeProgressMs).toBe(half);
+
+    // What `savePlayerEmpire` writes: the timer is mid-flight, not restarted.
+    const saved = {
+      level: house.level,
+      progress: house.upgradeProgressMs,
+      time: house.upgradeTimeMs
+    };
+    expect(saved.progress).toBe(half);
+
+    // A later session restores the row through the boot loader's helper.
+    const room2 = createRoom();
+    addPlayer(room2, 'player-a', RICH);
+    const restored = addBuilding(room2, { id: 'b_house', ownerId: 'player-a', type: 'HOUSE' });
+    restored.level = saved.level;
+    restoreBuildingUpgrade(restored, saved.progress, saved.time);
+
+    internals(room2).update(saved.time - saved.progress - 1);
+    expect(restored.level).toBe(saved.level);
+    expect(restored.upgradeProgressMs).toBe(saved.time - 1);
+
+    internals(room2).update(1);
+    expect(restored.level).toBe(saved.level + 1);
+  });
+
+  it('drops a stale timer when the saved row has no duration', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', RICH);
+    const house = addBuilding(room, { id: 'b_house', ownerId: 'player-a', type: 'HOUSE' });
+
+    restoreBuildingUpgrade(house, 5_000, 0);
+    expect(house.upgradeProgressMs).toBe(0);
+    expect(house.upgradeTimeMs).toBe(0);
+
+    restoreBuildingUpgrade(house, Number.NaN, 10_000);
+    expect(house.upgradeProgressMs).toBe(0);
+    expect(house.upgradeTimeMs).toBe(10_000);
   });
 });
 
