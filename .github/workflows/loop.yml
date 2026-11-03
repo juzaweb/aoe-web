@@ -65,14 +65,20 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      # develop is the integration branch. If it is absent the run creates it,
-      # but that branch's history should belong to a human, not to CI.
+      # develop is the integration branch.
+      #
+      # `checkout -B`, not `checkout`: actions/checkout already created a local
+      # `develop` at the SHA the workflow was dispatched from, and a plain
+      # `checkout develop` just switches back to it. The run then builds on a
+      # stale base and pushes commits GitHub has seen before, which is what made
+      # the push fail with a workflow-permission error.
       - name: Ensure develop exists
+        id: base
         run: |
           set -euo pipefail
           if git ls-remote --exit-code --heads origin develop >/dev/null 2>&1; then
             git fetch origin develop
-            git checkout develop
+            git checkout -B develop origin/develop
           else
             echo "::warning::origin/develop is missing; creating it from the default branch."
             git checkout -B develop
@@ -80,6 +86,11 @@ jobs:
           fi
           git config user.name "loop-bot"
           git config user.email "loop-bot@users.noreply.github.com"
+          # Everything the agents change is measured against this, not against
+          # HEAD: if an agent ever commits, a HEAD-relative diff would hide it and
+          # the gate would wave through files it never looked at.
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "::notice::Base commit $(git rev-parse --short HEAD) on develop"
 
       # Runs after checkout, because it reads STATE.md from the working tree.
       # A blank slice is not an error: triage needs none, and every other step
@@ -255,8 +266,13 @@ jobs:
           # with a space becomes "sp ace.ts", and a rename emits "old -> new" so
           # the old name leaks in. diff --name-only plus ls-files gives the new
           # name only, one per NUL, and core.quotePath=false keeps it literal.
+          #
+          # The diff base is the commit recorded at checkout, not HEAD. An agent
+          # that commits would otherwise move HEAD forward and hide its own
+          # changes from this gate entirely.
+          BASE="${{ steps.base.outputs.sha }}"
           list_paths() {
-            git -c core.quotePath=false diff --name-only -z HEAD
+            git -c core.quotePath=false diff --name-only -z "$BASE"
             git -c core.quotePath=false ls-files --others --exclude-standard -z
           }
           changed=$(list_paths | tr '\0' '\n' | grep -v '^$' | sort -u || true)
@@ -266,6 +282,14 @@ jobs:
             exit 0
           fi
           echo "Paths changed:"; echo "$changed"
+          # GITHUB_TOKEN can never push a workflow file: GitHub refuses the ref
+          # outright, whatever `permissions:` the job declares. Failing here names
+          # the real cause instead of surfacing a push rejection ten minutes later.
+          if printf '%s\n' "$changed" | grep -q '^\.github/'; then
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+            echo "::error::The slice touches .github/**. GITHUB_TOKEN cannot push workflow files; this needs a human or a LOOP_PAT secret."
+            exit 0
+          fi
           # loop-gate wants one comma-separated argument. Join line by line:
           # `printf '%s\n' $changed` would word-split on the space in a path
           # like "sp ace.ts" and hand gate a truncated name.
@@ -324,9 +348,11 @@ jobs:
         env:
           STEP: ${{ inputs.step }}
           SLICE: ${{ steps.slice.outputs.slice }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
+          LOOP_PAT: ${{ secrets.LOOP_PAT }}
         run: |
           set -euo pipefail
+          BASE="${{ steps.base.outputs.sha }}"
           state_paths=(STATE.md loop-run-log.md)
           [ -d docs/plans ] && state_paths+=(docs/plans)
 
@@ -334,7 +360,7 @@ jobs:
           # path with a space and emits "old -> new" for a rename, so the old name
           # would be staged. diff --name-only + ls-files yields the new name only.
           list_state_paths() {
-            git -c core.quotePath=false diff --name-only -z HEAD -- "${state_paths[@]}"
+            git -c core.quotePath=false diff --name-only -z "$BASE" -- "${state_paths[@]}"
             git -c core.quotePath=false ls-files --others --exclude-standard -z -- "${state_paths[@]}"
           }
           changed=$(list_state_paths | tr '\0' '\n' | grep -v '^$' | sort -u || true)
@@ -368,7 +394,7 @@ jobs:
           git add -- "${state_paths[@]}"
           git commit -m "chore(loop): propose $STEP${SLICE:+ for $SLICE}" \
             -m "State only; no source change. Merging this PR is the approval."
-          git push -u origin "$branch"
+          bash "${{ github.workspace }}/scripts/ci-push.sh" "$branch"
           gh pr create --base develop --head "$branch" \
             --title "loop(${STEP}): state update${SLICE:+ for $SLICE}" \
             --body-file /tmp/pr-body.txt > pr-url.txt
@@ -380,7 +406,8 @@ jobs:
         if: (inputs.step == 'ship' || inputs.step == 'full') && steps.gate.outputs.allowed == 'true'
         env:
           SLICE: ${{ steps.slice.outputs.slice }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
+          LOOP_PAT: ${{ secrets.LOOP_PAT }}
         run: |
           set -euo pipefail
           slug=$(printf '%s' "$SLICE" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
@@ -408,7 +435,7 @@ jobs:
           git checkout -b "$branch"
           git add -A
           git commit -F /tmp/commit-msg.txt
-          git push -u origin "$branch"
+          bash "${{ github.workspace }}/scripts/ci-push.sh" "$branch"
           # --auto makes the merge immediate and unattended, so the PR is never a
           # thing waiting on a person. If the branch protection rules require a
           # check, gh merges as soon as it goes green; otherwise it merges now.
@@ -423,7 +450,7 @@ jobs:
       - name: Merge code PR into develop
         if: inputs.merge && steps.ship.outputs.url != ''
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
           PR_URL: ${{ steps.ship.outputs.url }}
         run: |
           set -euo pipefail
