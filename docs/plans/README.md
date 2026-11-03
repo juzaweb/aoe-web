@@ -16,6 +16,7 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | [`07-smaller-kingdom-map.md`](./07-smaller-kingdom-map.md) | Kingdom riêng nhỏ lại 110×110, TC ở giữa map, map size theo zone (`D1–D8`) | IMPLEMENTED — chờ verify tay UI |
 | [`08-progression-curve.md`](./08-progression-curve.md) | Đường cong nâng cấp dài hạn: 1-10 tính bằng phút, từ 11 tính bằng giờ (×1,05/cấp), gate TC ↔ 4 trụ cột, 2 slot (`LVL2-00..LVL2-07`) | APPROVED — chờ code |
 | [`09-road-and-gate-assets.md`](./09-road-and-gate-assets.md) | Thay art đường đất + cổng bằng 2 ảnh AI gen, bỏ tint tím mượn tower (`GATE-01..ROAD-02`) | IMPLEMENTED — chờ verify tay |
+| [`10-persistence-scaling.md`](./10-persistence-scaling.md) | Chi phí autosave theo zone, tải theo số user, dirty tracking + batch upsert + resource delta (`SAVE-01..SAVE-07`) | DRAFT |
 
 Status: `DRAFT` (chưa chốt quyết định) → `APPROVED` (bắt đầu code) → `DONE`.
 
@@ -67,6 +68,14 @@ Quyết định đáng chú ý: căn cổng bottom-center theo bbox (tâm lối 
 `-140`, bỏ tint, và chuẩn hoá 4 crop đường về mean 150. Đã implement ngày 2026-11-03: `portal.png`
 320×360 (topInset 4 → `HP_BAR_Y.PORTAL = -326`), 4 road stamp 120×60 mean 150, `--check` của script
 mới và `build.py --check` đều xanh; còn verify tay §7.2. Xem `09-road-and-gate-assets.md` §3 và §6.
+
+Phase 10 (persistence scaling) không sửa gameplay: nó ghi lại chi phí thật của autosave 30 s theo
+zone (mỗi user một kingdom room, battlefield dùng chung) và đề xuất 4 bước giảm tải — dirty tracking,
+batch upsert entity, resource delta, throttle tick của room rỗng. Kết luận hiện tại: 1 request/30 s
+mỗi user là **không đáng kể**; nút thắt là số statement bên trong mỗi request (mỗi entity một upsert)
+và SQLite một writer, cộng thêm 20 Hz tick cho mỗi room. Số đo trên dev DB: battlefield 1258 resource
+node, kingdom ~260 node. **Chưa có dòng code nào**, các quyết định D1–D7 còn ở trạng thái ĐỀ XUẤT; xem
+`10-persistence-scaling.md` §2–§5.
 
 ## Quy ước
 

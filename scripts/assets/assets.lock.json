@@ -189,9 +189,9 @@
     "building.house": {
       "author": "Bleed",
       "bbox": [
-        2,
+        12,
         0,
-        253,
+        244,
         220
       ],
       "bottomInset": 0,
@@ -200,13 +200,13 @@
         220
       ],
       "license": "CC-BY-4.0",
-      "lumGain": 0.9286,
+      "lumGain": 0.974,
       "out": "apps/client/public/assets/buildings/house.png",
       "page": "https://opengameart.org/content/simple-isometric-hovel",
-      "scale": 0.6304,
-      "sha256": "a0b5836899b6745db49fc018880d67f399e5a5738c6f093c14110261c5f9fefb",
+      "scale": 0.4955,
+      "sha256": "1cffb05b7f05c0499304439d71fbd9d40d55a3bc2004f6b296b80e7673cc1f2f",
       "source": "oga.bleed-hovel",
-      "sourceSha256": "98ddedb0e1197693bcccc7238dd8f0b7714aca6d44e82151d392b79140676387",
+      "sourceSha256": "a12e61cb606ccd9d14c4ab0aa2c964a5c297cc8913443960f176f62e9ba2feeb",
       "topInset": 0
     },
     "building.lumber-camp": {

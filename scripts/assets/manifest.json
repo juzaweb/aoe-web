@@ -140,7 +140,7 @@
     "building.house": {
       "source": "oga.bleed-hovel",
       "file": "pack",
-      "entry": "hovel_00000.png",
+      "entry": "hovel_20000.png",
       "op": { "crop": "alpha", "fit": true, "matchLum": 107.3, "anchor": "bottom-center" },
       "out": "apps/client/public/assets/buildings/house.png",
       "canvas": [256, 220]
