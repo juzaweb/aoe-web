@@ -123,6 +123,36 @@ export function pointerToGrid(
   };
 }
 
+/**
+ * The portal marker, as a tiny gate silhouette rather than a diamond.
+ *
+ * At 280 px a 2x2 portal is ~2.5 px, so the glyph is deliberately drawn larger
+ * than the footprint (fixed pixel size, like unit dots). Three rectangles make
+ * an arch: two pillars and a lintel, leaving the doorway transparent so the
+ * ground shows through - that gap is what makes it read as a gate and not as a
+ * cyan blob.
+ */
+export function portalGlyphRects(
+  x: number,
+  y: number,
+  unit = 2.2
+): Array<{ x: number; y: number; w: number; h: number }> {
+  const pillarWidth = unit;
+  const totalWidth = unit * 3.4;
+  const pillarHeight = unit * 2.2;
+  const lintelHeight = unit * 1.1;
+  return [
+    { x: x - totalWidth / 2, y: y - pillarHeight / 2, w: pillarWidth, h: pillarHeight },
+    { x: x + totalWidth / 2 - pillarWidth, y: y - pillarHeight / 2, w: pillarWidth, h: pillarHeight },
+    {
+      x: x - totalWidth / 2,
+      y: y - pillarHeight / 2 - lintelHeight,
+      w: totalWidth,
+      h: lintelHeight
+    }
+  ];
+}
+
 export interface MinimapCluster {
   minX: number;
   minY: number;

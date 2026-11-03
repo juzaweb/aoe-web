@@ -8,7 +8,8 @@ import {
   markerColor,
   minimapClusters,
   minimapToGrid,
-  pointerToGrid
+  pointerToGrid,
+  portalGlyphRects
 } from './minimapArt.js';
 
 /**
@@ -175,5 +176,45 @@ describe('pointerToGrid', () => {
   it('scales a battlefield click correctly', () => {
     const grid = pointerToGrid({ clientX: 11 + 70, clientY: 21 + 70 }, rect, content, 220, 220);
     expect(grid.gx).toBeCloseTo(110, 5);
+  });
+});
+
+describe('portalGlyphRects', () => {
+  it('draws two pillars and a lintel', () => {
+    const rects = portalGlyphRects(100, 100);
+    expect(rects).toHaveLength(3);
+    for (const rect of rects) {
+      expect(rect.w).toBeGreaterThan(0);
+      expect(rect.h).toBeGreaterThan(0);
+    }
+  });
+
+  it('leaves the doorway open between the pillars', () => {
+    const [left, right] = portalGlyphRects(100, 100);
+    const gap = right.x - (left.x + left.w);
+    expect(gap).toBeGreaterThan(0.5);
+  });
+
+  it('puts the lintel on top of both pillars', () => {
+    const [left, right, lintel] = portalGlyphRects(100, 100);
+    expect(lintel.y + lintel.h).toBeCloseTo(left.y, 5);
+    expect(lintel.y + lintel.h).toBeCloseTo(right.y, 5);
+    expect(lintel.x).toBeCloseTo(left.x, 5);
+    expect(lintel.x + lintel.w).toBeCloseTo(right.x + right.w, 5);
+  });
+
+  it('stays centred horizontally and keeps its base under the centre', () => {
+    const rects = portalGlyphRects(140, 80, 2);
+    const minX = Math.min(...rects.map((r) => r.x));
+    const maxX = Math.max(...rects.map((r) => r.x + r.w));
+    expect((minX + maxX) / 2).toBeCloseTo(140, 5);
+    const maxY = Math.max(...rects.map((r) => r.y + r.h));
+    expect(maxY).toBeGreaterThan(80);
+  });
+
+  it('fits inside a marker-sized box', () => {
+    const rects = portalGlyphRects(0, 0);
+    const width = Math.max(...rects.map((r) => r.x + r.w)) - Math.min(...rects.map((r) => r.x));
+    expect(width).toBeLessThanOrEqual(8);
   });
 });

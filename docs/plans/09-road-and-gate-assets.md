@@ -182,7 +182,7 @@ Chạy thêm: `tsc --noEmit` client, `vitest run` client, `python scripts/assets
 - [ ] Click cổng mở panel travel; right-click chở quân đi; quân đi vào đúng lòng vòm.
 - [ ] Đường: không còn sọc lặp, 4 biến thể khác nhau, không thấy seam/viền elip khi pan map.
 - [ ] Hard refresh không 404 (cache `v`/`tv` đã bump).
-- [ ] Minimap vẫn vẽ kim cương cyan, không phụ thuộc art mới.
+- [ ] Minimap vẽ glyph cổng (2 trụ + lintel, lòng vòm trong suốt) thay kim cương cyan, không phụ thuộc art mới; đọc được ở cả 110×110 và 220×220.
 
 ## 8. Task log
 

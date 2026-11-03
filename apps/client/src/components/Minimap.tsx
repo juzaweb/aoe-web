@@ -14,6 +14,7 @@ import {
   markerColor,
   minimapClusters,
   pointerToGrid,
+  portalGlyphRects,
   renderForestLayer,
   type MinimapCluster
 } from './minimapArt.js';
@@ -201,9 +202,14 @@ export const Minimap: React.FC<MinimapProps> = ({
 
       room.state.buildings?.forEach((b: any) => {
         if (b.type === 'PORTAL') {
+          // An arch with an open doorway reads as a gate; a diamond read as a
+          // generic point of interest. Fixed pixel size, so it survives the
+          // 110-tile and 220-tile maps equally.
           const point = gridToMinimap(b.gridX + b.sizeX / 2, b.gridY + b.sizeY / 2, width);
           ctx.fillStyle = MINIMAP_COLORS.portal;
-          drawDiamond(ctx, point.x, point.y, 3);
+          for (const rect of portalGlyphRects(point.x, point.y)) {
+            ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+          }
           return;
         }
         ctx.fillStyle = colorFor(b.ownerId);

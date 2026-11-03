@@ -223,7 +223,7 @@ Số đo quyết định thiết kế: battlefield 220 tile → 140 CSS px = **0
   vàng = diamond `#e0ad42` (4.69:1), đá = triangle `#b0b7bb` (4.74:1), berry = dot `#e26a80`
   (3.03:1). Không dùng `/assets/resources/*.png` trên minimap: 5–6px sẽ phủ 8–9 tile.
 - Lính: circle bán kính 1.5px (mình 2px + ring trắng 1px), màu chủ, viền `#0b1206` 0.75px.
-- Nhà: rect màu chủ + viền `#0b1206`, tối thiểu 3px; portal giữ diamond cyan.
+- Nhà: rect màu chủ + viền `#0b1206`, tối thiểu 3px; portal = glyph cổng (2 trụ + lintel, lòng vòm trong suốt), màu cyan.
 - Thứ tự: terrain → đường → cụm rừng → tài nguyên → nhà → lính → viewport (trắng 1px + nền
   `rgba(255,255,255,0.08)`) → viền hổ phách.
 - Bỏ qua node `remainingAmount <= 0`; giữ click pan và right-click command.
@@ -337,7 +337,7 @@ trước khi coi là chốt.
 | VIS-04 | `TerrainLayer` vẽ cỏ ra ngoài biên `MAP_APRON_TILES = 4`; `DecorLayer` (pool theo loại, depth 5, LOD forb khi zoom < 0.55, đung đưa ±1.5°, tắt dưới zoom 0.55) + `decorArt.ts` + preload trong `WorldScene`. |
 | VIS-05 | `decorScatter.ts`: `decorAt` (hoa/cỏ theo fbm thành vạt, đá 0.8%, bụi 1.2%, bỏ tile đường/blocked), `borderDecorAt` (ring 4 mức), `canopyDecor` (1–2 cỏ quanh gốc cây). |
 | VIS-06 | `EntityRenderer.createResourceNodeSprite`: scale 0.90–1.15, flip ~50%, tint ≥ `0xdfe8cf`, bù `y` để đáy vẫn bám tile; ghi `gridX/gridY` (và `sizeX/sizeY` cho nhà) làm dữ liệu cho decor. |
-| VIS-07 | `minimapArt.ts` + `Minimap.tsx`: backing 280×280 (CSS 140), nền raster từ `isDirtRoadTile` + fbm, rừng gom cụm (bán kính 2, cache theo số cây sống) rồi vẽ thành blob tròn có viền, vàng = diamond, đá = triangle, berry = dot, lính = circle (mình có ring trắng), viewport nền mờ 8%. Bỏ hẳn nền `#1e3f16` và vòng line 45°. |
+| VIS-07 | `minimapArt.ts` + `Minimap.tsx`: backing 280×280 (CSS 140), nền raster từ `isDirtRoadTile` + fbm, rừng gom cụm (bán kính 2, cache theo số cây sống) rồi vẽ thành blob tròn có viền, vàng = diamond, đá = triangle, berry = dot, lính = circle (mình có ring trắng), portal = glyph cổng, viewport nền mờ 8%. Bỏ hẳn nền `#1e3f16` và vòng line 45°. |
 | VIS-08 | Phase này. |
 
 ### 12.3 Kiểm tra
