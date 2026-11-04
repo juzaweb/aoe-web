@@ -7,7 +7,7 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 
 | Phase | Chủ đề | Status |
 | --- | --- | --- |
-| [`01-owner-visibility.md`](./01-owner-visibility.md) | Nhìn ra quân / nhà nào của ai trên chiến trường (`OWN-01..OWN-05`; `OWN-06` DEFERRED) | APPROVED — chờ code |
+| [`01-owner-visibility.md`](./01-owner-visibility.md) | Nhìn ra quân / nhà nào của ai trên chiến trường (`OWN-01..OWN-05`; `OWN-06` DEFERRED) | IMPLEMENTED — chờ verify tay |
 | [`02-single-session.md`](./02-single-session.md) | Một tài khoản một phiên: chặn tab/thiết bị thứ hai, cưỡng chiếm phiên có xác nhận (`SESS-01..SESS-07`) | DONE — code + test |
 | [`03-level-upgrades.md`](./03-level-upgrades.md) | Nâng cấp công trình (TC 100 cấp, còn lại 10) và nghiên cứu lính toàn cục (10 cấp) (`LVL-00..LVL-07`) | IMPLEMENTED — chờ verify tay |
 | [`04-kingdoms-battlefield.md`](./04-kingdoms-battlefield.md) | Kinh thành riêng mỗi tài khoản + cổng ra chiến trường chung, travel mang quân, persistence theo zone (`MAPS-01..MAPS-10`) | IMPLEMENTED — chờ verify tay UI |
@@ -18,12 +18,13 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | [`09-road-and-gate-assets.md`](./09-road-and-gate-assets.md) | Thay art đường đất + cổng bằng 2 ảnh AI gen, bỏ tint tím mượn tower (`GATE-01..ROAD-02`) | IMPLEMENTED — chờ verify tay |
 | [`10-persistence-scaling.md`](./10-persistence-scaling.md) | Chi phí autosave theo zone, tải theo số user, dirty tracking + batch upsert + resource delta (`SAVE-01..SAVE-07`) | DRAFT |
 | [`11-mobile-touch.md`](./11-mobile-touch.md) | Chơi trên mobile: touch gesture (pan/pinch/tap/long-press), thanh lệnh, HUD compact landscape, join lại khi resume (`MOB-01..MOB-10`) | IMPLEMENTED — chờ verify máy thật |
-| [`12-under-attack-alert.md`](./12-under-attack-alert.md) | Cảnh báo khi bị tấn công: banner + ping minimap (`ATK-01..ATK-05`) | APPROVED — chờ code |
-| [`13-autosave-timing-log.md`](./13-autosave-timing-log.md) | Log thời gian + số statement mỗi lần autosave (`SAVE-01`) | IMPLEMENTED — chờ verify |
+| [`12-under-attack-alert.md`](./12-under-attack-alert.md) | Cảnh báo khi bị tấn công: banner + ping minimap (`ATK-01..ATK-05`) | IMPLEMENTED — chờ verify |
+| [`13-autosave-timing-log.md`](./13-autosave-timing-log.md) | Log thời gian + số statement mỗi lần autosave (`SAVE-01`) | DONE — code + test |
 | [`14-under-attack-audio-status.md`](./14-under-attack-audio-status.md) | Âm thanh cảnh báo + trạng thái "đang bị đánh" trong panel (`ALERT-02`) | IMPLEMENTED — chờ verify |
 | [`15-foundation-under-attack-alert.md`](./15-foundation-under-attack-alert.md) | Cảnh báo khi công trình foundation bị phá: fallback onRemove cho foundation + phân biệt huỷ của chính mình (`FND-01..FND-03`) | APPROVED — chờ code |
 | [`16-autosave-benchmark.md`](./16-autosave-benchmark.md) | Benchmark autosave: spawn N client giả, đo p95 thời gian lưu (`SAVE-06`) | IMPLEMENTED — chờ verify |
 | [`17-persistence-direct-tests.md`](./17-persistence-direct-tests.md) | Test trực tiếp cho persistence: `saveFullWorldState`, `saveZoneResources`, `initializeWorldPersistence` (`TEST-01`) | IMPLEMENTED — chờ verify |
+| [`18-doc-plan-status.md`](./18-doc-plan-status.md) | Sửa status trong `docs/plans/` (README + file plan) (`DOC-01`) | APPROVED — awaiting code |
 Status: `DRAFT` (chưa chốt quyết định) → `APPROVED` (bắt đầu code) → `DONE`.
 
 Phase 01 đã chốt 4 quyết định D1–D4 ngày 2026-11-01 (xem §11 của file phase); chưa có dòng code nào

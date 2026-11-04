@@ -11,8 +11,9 @@ sprite, cùng animation, cùng thanh máu.
 
 **Không chạm protocol, không chạm schema** → phase này **không cần reset DB**.
 
-> **Status: `APPROVED`** (chốt 2026-11-01). Bốn quyết định D1–D4 đã được duyệt, `OWN-06` hoãn.
-> **Chưa có dòng code nào được viết** — tài liệu này là toàn bộ nội dung của bước plan.
+> **Status: `IMPLEMENTED`** (cập nhật 2026-11-04). `OWN-01..OWN-05` đã có code
+> (`ownerColor.ts`/ring/diamond/`ownerColorCss`) và test (`ownerColor.test.ts`); `OWN-06` vẫn DEFERRED.
+> Chờ verify tay (kịch bản §6 + screenshot).
 
 ---
 
@@ -319,11 +320,11 @@ trên cùng server `:2567`.
 
 ## 10. Definition of Done
 
-- [ ] 4 mục bắt buộc ở §6 đều xanh
+- [x] 4 mục bắt buộc ở §6 đều xanh
 - [ ] Kịch bản tay §6 chạy đúng, có screenshot làm bằng chứng
-- [ ] Không đụng `NetworkMessage`, không đụng `@type()` → **không** cần reset DB
-- [ ] Không thêm việc nào vào vòng lặp `update()` của `WorldScene` (không tra màu mỗi frame)
-- [ ] Comment trong code mới viết **tiếng Anh**, có tham chiếu mã task (`OWN-01`…)
+- [x] Không đụng `NetworkMessage`, không đụng `@type()` → **không** cần reset DB
+- [x] Không thêm việc nào vào vòng lặp `update()` của `WorldScene` (không tra màu mỗi frame)
+- [x] Comment trong code mới viết **tiếng Anh**, có tham chiếu mã task (`OWN-01`…)
 - [ ] Mỗi task một commit, message tiếng Anh
 
 ---
@@ -348,3 +349,4 @@ phương án ban đầu (nếu có).
 | --- | --- |
 | 2026-11-01 | Tạo plan: hiện trạng, 4 quyết định đề xuất, `OWN-01..OWN-06`, edge case, verify, rủi ro |
 | 2026-11-01 | Chốt D1–D4 theo đúng đề xuất; `OWN-06` chuyển DEFERRED; status `DRAFT` → `APPROVED`. Chưa viết code |
+| 2026-11-04 | Cập nhật status `APPROVED` → `IMPLEMENTED` (DOC-01). |

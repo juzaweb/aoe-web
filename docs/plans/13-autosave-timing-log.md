@@ -4,8 +4,8 @@
 nhiêu statement SQL, từ đó có baseline trước khi tối ưu dirty tracking (phase 10, D4). Không
 đổi gameplay, schema, protocol hay DB.
 
-> **Status: `APPROVED`** (chốt 2026-11-04). Slice `SAVE-01` đã được duyệt; tài liệu này là
-> toàn bộ nội dung của bước plan. Slice cha: phase 10 (persistence scaling), trạng thái `DRAFT`.
+> **Status: `DONE`** (cập nhật 2026-11-04). Slice `SAVE-01` build + test xanh và shipped PR #6;
+> DoD §9 tick đủ.
 
 Phạm vi: `apps/server` (chỉ `DatabaseService`). **Không** đổi client, shared, schema, protocol
 hay DB.
@@ -205,3 +205,9 @@ Baseline refresh (3 query/player) **không** nằm trong `stmts` ở trên; nế
 - Test trực tiếp persistence (`TEST-01`).
 - Đổi tần suất autosave hay RPO (`phase 10 D7`).
 - Log cho `savePlayerEmpire` / `saveZonePlayerEntities` / travel (chỉ autosave).
+
+## 11. Nhật ký
+
+| Ngày | Thay đổi |
+| --- | --- |
+| 2026-11-04 | Cập nhật status `APPROVED` → `DONE` (DOC-01). |
