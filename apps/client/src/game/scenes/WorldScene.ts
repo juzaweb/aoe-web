@@ -37,6 +37,7 @@ import { decorPreloadList } from '../render/decorArt.js';
 import { TerrainLayer } from '../render/TerrainLayer.js';
 import { OwnerColorRegistry, colorToCss } from '../render/ownerColor.js';
 import { UnderAttackTracker } from '../alerts/underAttack.js';
+import { shouldAlertOnBuildingRemoval } from '../alerts/foundationRemoval.js';
 import type { AttackPing, DamageResult } from '../alerts/underAttack.js';
 import { unitActionTexture } from '../render/unitDirections.js';
 import { UNIT_ART, unitArt, unitSheets } from '../render/unitArt.js';
@@ -216,6 +217,8 @@ export class WorldScene extends Phaser.Scene {
 
   /** ATK-01: client-side under-attack detection from replicated hp. */
   public underAttackTracker = new UnderAttackTracker();
+  /** FND-02: foundations locally cancelled (self) to suppress false alerts. */
+  private cancelledFoundations = new Set<string>();
   /** ATK-05: raised when a banner should be shown. */
   public onUnderAttack: (() => void) | null = null;
   private eventsBoundRoom: Room | null = null;
@@ -667,7 +670,7 @@ export class WorldScene extends Phaser.Scene {
     // restore a different profile colour, so re-resolve before repainting.
     this.ownerColorRegistry.invalidateAll();
     this.underAttackTracker.clear();
-
+    this.cancelledFoundations.clear();
     // A travel freezes the old map on screen instead of going blank while the
     // destination room syncs. Unfreeze before binding the new snapshot.
     this.resumeWorld();
@@ -784,7 +787,7 @@ export class WorldScene extends Phaser.Scene {
     this.cachedOwnerId = '';
     this.ownerColorRegistry.invalidateAll();
     this.underAttackTracker.clear();
-
+    this.cancelledFoundations.clear();
     // Repaint the overlays against the now-empty selection so nothing from the
     // old map survives the frame. The new Room may not have delivered its first
     // state patch yet, so the rally pass is guarded.
@@ -885,6 +888,12 @@ export class WorldScene extends Phaser.Scene {
     return result;
   }
 
+  /** FND-02/FND-06: mark a foundation as locally cancelled; self-heal after 2s. */
+  public markFoundationCancelled(id: string): void {
+    this.cancelledFoundations.add(id);
+    window.setTimeout(() => this.cancelledFoundations.delete(id), 2000);
+  }
+
   /** ATK-04: active under-attack pings for the minimap. */
   public getUnderAttackPings(now: number = Date.now()): AttackPing[] {
     return this.underAttackTracker.activePings(now);
@@ -896,7 +905,7 @@ export class WorldScene extends Phaser.Scene {
     if (this.eventsBoundRoom === room) return;
     this.eventsBoundRoom = room;
     this.underAttackTracker.clear();
-
+    this.cancelledFoundations.clear();
     // Same reason as `setRoom`: a room bound directly from `create()` (page
     // refresh straight into a map) also has to publish its map size. The state
     // listener covers a join whose snapshot lands after the room was handed over.
@@ -930,15 +939,19 @@ export class WorldScene extends Phaser.Scene {
     });
 
     cb.onRemove('buildings', (building: any, key: any) => {
-      // ATK-01 fallback: one-shot kill may remove before an hp patch lands.
-      const fallbackBuilding = building?.ownerId === this.myOwnerId && (building?.hp ?? 0) <= 0;
-      if (fallbackBuilding) {
-        const gx = (building.gridX ?? 0) + (building.sizeX ?? 1) / 2;
-        const gy = (building.gridY ?? 0) + (building.sizeY ?? 1) / 2;
+      // ATK-01 / FND-02 fallback: one-shot kill may remove before an hp patch lands.
+      // Foundation (isConstructed !== true) dies in one hit, so any removal that
+      // is not a self-cancel counts as an attack.
+      const cancelled = this.cancelledFoundations.has(key);
+      const shouldAlert = shouldAlertOnBuildingRemoval(building, this.myOwnerId, cancelled);
+      if (shouldAlert) {
+        const gx = (building?.gridX ?? 0) + (building?.sizeX ?? 1) / 2;
+        const gy = (building?.gridY ?? 0) + (building?.sizeY ?? 1) / 2;
         this.recordEntityHp(key, building.ownerId, 0, gx, gy);
       } else {
         this.underAttackTracker.forget(key);
       }
+      this.cancelledFoundations.delete(key);
 
       const sprite = this.buildingSprites.get(key);
       if (sprite) {
