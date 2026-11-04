@@ -232,9 +232,11 @@ pnpm --filter @chien-quoc/client exec vite --host 127.0.0.1 --port 5173 --strict
 ```
 
 The report is one line per acceptance criterion, then console findings, then network findings,
-and a last line of `BROWSER_VERDICT: PASS` or `BROWSER_VERDICT: FAIL`. Anything else counts as a
-failure. Headless Chrome has no GPU, so WebGL and Phaser fallback warnings are Nit environment
-artifacts rather than blockers.
+and a last line starting with `BROWSER_VERDICT: PASS` or `BROWSER_VERDICT: FAIL`. The workflow
+matches that marker by its first word, so an agent that appends its evidence to the same line
+(`BROWSER_VERDICT: PASS — 167/167 green`) still passes; `FAIL`, a missing marker, or a word that
+only starts like the marker (`PASSED`) does not. Headless Chrome has no GPU, so WebGL and Phaser
+fallback warnings are Nit environment artifacts rather than blockers.
 
 Run it by hand when you want the same eyes outside CI:
 

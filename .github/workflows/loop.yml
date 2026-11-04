@@ -499,7 +499,7 @@ jobs:
           model_args=()
           if [ -n "$MODEL" ]; then model_args=(--model "$MODEL"); fi
 
-          prompt="Browser check for slice ${SLICE}. Find its plan file under docs/plans/ (the file naming ${SLICE}) and treat its acceptance criteria as the checklist. The app is running: client http://127.0.0.1:5173, API http://127.0.0.1:2567. Drive the real UI, then judge every criterion."
+          prompt="Browser check for slice ${SLICE}. Find its plan file under docs/plans/ (the file naming ${SLICE}) and treat its acceptance criteria as the checklist. The app is running: client http://127.0.0.1:5173, API http://127.0.0.1:2567. Drive the real UI, then judge every criterion. End your output with a single line holding only BROWSER_VERDICT: PASS or BROWSER_VERDICT: FAIL — no trailing text on that line; put the reasoning on the lines above it."
 
           # 15 minutes is generous for a handful of interactions; a hung Chrome
           # or a page that never loads must not hold the job hostage.
@@ -516,11 +516,24 @@ jobs:
 
           # The verdict is the last marker in the log, not the first: an earlier
           # retry inside the same session must not decide this run.
+          #
+          # The match is on the marker as a prefix, not as the whole line. The
+          # agent appends its evidence to the same line ("BROWSER_VERDICT: PASS —
+          # 167/167 green"), and an equality test read that as a failure while
+          # the log plainly said PASS. PASS must end the marker or be followed by
+          # a non-alphanumeric character; a bare `PASS*` would also accept
+          # "BROWSER_VERDICT: PASSED" and "BROWSER_VERDICT: PASSX".
           verdict=$(grep -E '^BROWSER_VERDICT: (PASS|FAIL)' /tmp/browser-check.log \
             | tail -1 || true)
           echo "verdict=${verdict#BROWSER_VERDICT: }" >> "$GITHUB_OUTPUT"
 
-          if [ "$rc" -ne 0 ] || [ "$verdict" != "BROWSER_VERDICT: PASS" ]; then
+          verdict_ok=false
+          case "$verdict" in
+            "BROWSER_VERDICT: PASS" | "BROWSER_VERDICT: PASS"[![:alnum:]]*)
+              verdict_ok=true ;;
+          esac
+
+          if [ "$rc" -ne 0 ] || [ "$verdict_ok" != "true" ]; then
             echo "::error::The browser check did not pass (${verdict:-no verdict}, exit ${rc})."
             echo "::error::No PR was opened; the next build attempt gets the findings."
             echo "::group::Browser check output"
