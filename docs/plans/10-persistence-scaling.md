@@ -139,7 +139,7 @@ chưa đo được — cần `SAVE-06` để xác nhận.
 | `SAVE-03` | Batch upsert entity (D2) + test so sánh row sau save. | TODO |
 | `SAVE-04` | Resource delta, bỏ `findMany` toàn zone (D3) + test node mới/biến mất/đổi lượng. | TODO |
 | `SAVE-05` | Idle room tick throttle (D5) + kiểm tra combat/respawn không lệch. | TODO |
-| `SAVE-06` | Benchmark script (spawn N client giả, đo autosave ms, p95) — chỉ chạy local. | TODO |
+| `SAVE-06` | Benchmark script (spawn N client giả, đo autosave ms, p95) — chỉ chạy local. | DONE (2026-11-04) |
 | `SAVE-07` | Cập nhật doc này bằng số đo sau `SAVE-01`/`SAVE-06`. | TODO |
 
 Thứ tự đề xuất: `SAVE-01` → `SAVE-02` → `SAVE-03` → `SAVE-04` → (đo lại) → `SAVE-05` nếu cần →

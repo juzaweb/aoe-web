@@ -45,3 +45,5 @@ Approval: `ALERT-02` approved 2026-11-04 — awaiting plan. Next command: /loop-
 PASS ALERT-02 verified: client 373 tests, server 167 tests, build OK, mutation test caught (enabled guard flipped); five-axis review clean.
 
 PASS ALERT-03 verified: client 383 tests, server 167 tests, build OK, mutation caught (cancelled guard flipped); five-axis review clean; paperwork OK (no TODO task rows / no empty baseline).
+
+PASS SAVE-06 verified: client 383 tests, server 167 tests, build OK, mutation caught (percentileNearestRank ceil->floor); five-axis review clean; paperwork OK (no TODO task rows / no empty baseline); benchmark ran (kingdom 8 samples, battlefield 4).
