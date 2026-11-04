@@ -58,6 +58,7 @@ would react to its own commits.
 | `slice` | the slice ID; required for every step except `triage` |
 | `model` | optional `provider/model` override |
 | `merge` | merge the PR into `develop` once it is opened. **On by default** — the pipeline exists so no PR waits for a person |
+| `chain` | how many follow-up runs this one may dispatch. **1 by default**; the schedule passes `0` |
 
 Required repository secret: `OPENCODE_API_KEY`. Optional `OPENCODE_PROVIDER` (defaults to
 `opencode-go`, and must match the `provider/` prefix in `opencode.json`).
@@ -80,9 +81,28 @@ That is what stops the schedule from idling forever once every candidate shipped
 refills the queue, and the next slot builds. Override it by dispatching the scheduler by hand
 with `step = full` or `step = triage`.
 
+The scheduler always passes `chain=0`: one slot, one slice. Chaining exists for a hand-started
+run, not for the cron — see below.
+
 Turn it off with `gh workflow disable loop-schedule`. GitHub treats cron as best-effort: a busy
 queue can delay a slot, and a repository without pushes for 60 days has its schedules paused by
 GitHub itself.
+
+### Chaining a follow-up run
+
+A `full` run merges exactly one slice and stops. The `Dispatch the next loop run` step removes
+the wait: when the merge went through, `chain` is above 0 and `STATE.md` on `develop` still
+holds a `candidate` row, the job dispatches `loop.yml` again with `chain` one lower.
+
+No timer and no second scheduler are involved. The follow-up lands in the same `loop`
+concurrency group, so it queues behind the run that dispatched it and starts the moment that
+run ends. `workflow_dispatch` is one of the few events `GITHUB_TOKEN` may trigger, which is why
+this needs `actions: write` and nothing else.
+
+The bound is the point. With `chain=1` a slot does at most two slices, so a slice that keeps
+re-merging cannot spend a whole night of tokens. `chain=0` is a single run. Only `full` chains:
+`triage` and `verify` leave their state change in a PR nobody merged yet, so a follow-up would
+read the same `STATE.md` and repeat itself.
 
 ### What each step does to the repository
 
