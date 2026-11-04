@@ -71,8 +71,8 @@ phần upsert gần như không đáng kể; con số này sẽ tăng theo tiế
 ## 4. Ước lượng tải theo quy mô
 
 Giả định: mỗi user 1 kingdom room, cộng thêm 1 battlefield room dùng chung; entity trung bình
-B=20/U=40 (mức giữa game) → ~68 statement mỗi lần lưu. **Đây là ước lượng, chưa benchmark** — §7
-yêu cầu đo lại trước khi tối ưu.
+B=20/U=40 (mức giữa game) → ~68 statement mỗi lần lưu. Bảng dưới là **ước lượng** cho quy mô lớn;
+số đo thực tế cho 1/2/10 user (entity hiện tại B≈4, U≈3, resource sweep delta) ở cuối mục này.
 
 | User online | Room | Autosave/s | Statement/s (ước lượng) | Tick/s (20 Hz) | Nhận xét |
 | --- | --- | --- | --- | --- | --- |
@@ -86,6 +86,23 @@ yêu cầu đo lại trước khi tối ưu.
 (1) số statement bên trong mỗi request tăng theo số entity, (2) tài nguyên server tỉ lệ tuyến tính
 theo số user vì mỗi user một room với tick 20 Hz và một bản đồ đầy đủ trong RAM, (3) SQLite chỉ có
 một writer.
+
+## 4b. Số đo thực tế sau `SAVE-01` (2026-11-04)
+
+Đo trên `apps/server/database/dev.db` bằng cách gọi `DatabaseService.saveFullWorldState` ở trạng
+thái steady-state (save thứ 2, sau khi node đã persist), entity hiện tại B≈4/U≈3. `ms` là
+wall-clock của task trong `withZoneQueue`; `stmts` theo quy tắc đếm D4. Baseline refresh
+(3 query/player) **không** nằm trong `stmts`.
+
+| Quy mô | Room | ms/save (đo được) | stmts/save (đo được) | Ghi chú |
+| --- | --- | --- | --- | --- |
+| 1 user | 2 | battlefield 11–13 ms; kingdom 10–13 ms | battlefield 2; kingdom 12 | kingdom room + battlefield |
+| 2 user | 3 | battlefield 8–11 ms; kingdom 9–10 ms mỗi room | battlefield 2; kingdom 12 mỗi room | 2 kingdom room + 1 battlefield dùng chung |
+| 10 client giả lập | 11 | battlefield 8 ms; kingdom 8–10 ms mỗi room | battlefield 2; kingdom 12 mỗi room (tổng ~122 stmts/chu kỳ) | 10 kingdom room + 1 battlefield |
+
+Kết luận: ở quy mô nhỏ, mỗi save chỉ ~10 ms và ≤ 12 stmts/zone; tài nguyên server không phải
+nút thắt hiện tại. Con số `~68 stmts/lần lưu` trong §4 là ước lượng cho giữa game (B=20/U=40),
+chưa đo được — cần `SAVE-06` để xác nhận.
 
 ## 5. Quyết định (đề xuất, chưa chốt)
 
@@ -117,7 +134,7 @@ một writer.
 
 | Task | Nội dung | Trạng thái |
 | --- | --- | --- |
-| `SAVE-01` | Thêm log thời gian + số statement mỗi lần lưu; ghi baseline 1 user / 2 user / 10 client giả lập vào doc này. | TODO |
+| `SAVE-01` | Thêm log thời gian + số statement mỗi lần lưu; ghi baseline 1 user / 2 user / 10 client giả lập vào doc này. | DONE (2026-11-04) |
 | `SAVE-02` | Dirty tracking theo zone (D1) + test. | TODO |
 | `SAVE-03` | Batch upsert entity (D2) + test so sánh row sau save. | TODO |
 | `SAVE-04` | Resource delta, bỏ `findMany` toàn zone (D3) + test node mới/biến mất/đổi lượng. | TODO |

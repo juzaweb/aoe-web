@@ -386,12 +386,13 @@ export class DatabaseService {
    * write queue for seconds (a player's leave waits behind it), so the current
    * rows are read once and only new/changed nodes are written.
    */
-  private static async saveZoneResources(zone: string, nodes: ResourceNodeState[]) {
+  private static async saveZoneResources(zone: string, nodes: ResourceNodeState[], stmts?: { n: number }) {
     if (nodes.length > 0) {
       const existing = await prisma.worldResourceNode.findMany({
         where: { zone },
         select: { id: true, remainingAmount: true }
       });
+      if (stmts) stmts.n++;
       const knownAmounts = new Map(
         existing.map((row) => [row.id, row.remainingAmount] as const)
       );
@@ -405,6 +406,7 @@ export class DatabaseService {
       }
 
       if (created.length > 0) {
+        if (stmts) stmts.n++;
         await prisma.worldResourceNode.createMany({
           data: created.map((node) => ({
             id: node.id,
@@ -420,6 +422,7 @@ export class DatabaseService {
       }
 
       if (changed.length > 0) {
+        if (stmts) stmts.n += changed.length;
         await prisma.$transaction(
           changed.map((node) =>
             prisma.worldResourceNode.update({
@@ -431,6 +434,7 @@ export class DatabaseService {
       }
     }
 
+    if (stmts) stmts.n++;
     await prisma.worldResourceNode.deleteMany({
       where: { zone, id: { notIn: nodes.map((node) => node.id) } }
     });
@@ -521,8 +525,9 @@ export class DatabaseService {
     });
   }
 
-  private static async savePlayerAccountInternal(player: PlayerState, zone: string) {
+  private static async savePlayerAccountInternal(player: PlayerState, zone: string, stmts?: { n: number }) {
     const ownerId = player.id;
+    if (stmts) stmts.n++;
     await prisma.player.upsert({
       where: { id: ownerId },
       create: {
@@ -570,10 +575,12 @@ export class DatabaseService {
     zone: string,
     ownerId: string,
     buildings: BuildingState[],
-    units: UnitState[]
+    units: UnitState[],
+    stmts?: { n: number }
   ) {
     await prisma.$transaction(async (tx) => {
       const currentBuildingIds = buildings.map((b) => b.id);
+      if (stmts) stmts.n++;
       await tx.building.deleteMany({
         where: {
           ownerId,
@@ -583,6 +590,7 @@ export class DatabaseService {
       });
 
       for (const b of buildings) {
+        if (stmts) stmts.n++;
         await tx.building.upsert({
           where: { id: b.id },
           create: {
@@ -623,6 +631,7 @@ export class DatabaseService {
       }
 
       const currentUnitIds = units.map((u) => u.id);
+      if (stmts) stmts.n++;
       await tx.unit.deleteMany({
         where: {
           ownerId,
@@ -632,6 +641,7 @@ export class DatabaseService {
       });
 
       for (const u of units) {
+        if (stmts) stmts.n++;
         await tx.unit.upsert({
           where: { id: u.id },
           create: {
@@ -675,7 +685,9 @@ export class DatabaseService {
     await this.withZoneQueue(
       zone,
       async () => {
+        const started = performance.now();
         await this.initialize();
+        const stmts = { n: 0 };
 
         const entitiesByOwner = new Map<
           string,
@@ -711,17 +723,18 @@ export class DatabaseService {
           // A player who travelled away must not have the source room's stale
           // resources written back over the travel commit / destination room.
           if (player && !options.skipAccountFor?.has(ownerId)) {
-            await this.savePlayerAccountInternal(player, zone);
+            await this.savePlayerAccountInternal(player, zone, stmts);
           }
-          await this.saveZoneEntitiesInternal(zone, ownerId, group.buildings, group.units);
+          await this.saveZoneEntitiesInternal(zone, ownerId, group.buildings, group.units, stmts);
         }
 
         const nodes: ResourceNodeState[] = [];
         state.resourceNodes.forEach((node: ResourceNodeState) => nodes.push(node));
-        await this.saveZoneResources(zone, nodes);
+        await this.saveZoneResources(zone, nodes, stmts);
 
+        const elapsedMs = Math.round(performance.now() - started);
         console.log(
-          `💾 [DatabaseService] ${zone} auto-saved (Players: ${state.players.size}, Buildings: ${state.buildings.size}, Units: ${state.units.size})`
+          `💾 [DatabaseService] ${zone} auto-saved (Players: ${state.players.size}, Buildings: ${state.buildings.size}, Units: ${state.units.size}, ${elapsedMs} ms, ${stmts.n} stmts)`
         );
       },
       options.skipIfBusy === true
