@@ -10,7 +10,6 @@
 - Ask clarifying questions until you are at least 95% confident that you understand the task and can successfully complete it.
 - Never make assumptions when a missing requirement could materially affect the implementation.
 - Before writing any source code, define the implementation logic and potential error cases / edge cases.
-- Notify me if any resources are missing; do not draw without permission.
 
 <!-- CODEGRAPH_START -->
 ## CodeGraph
