@@ -1,6 +1,13 @@
 # Loop State — Chien Quoc (2D MMO RTS)
 
-Last run: 2026-11-04 — daily triage (report-only). No new shipments since the previous run
+Last run: 2026-11-04 — **human decision recorded**. `FLOW-01` unblocked: payload
+`{ message, code: RejectCode }` (code mandatory, option A), 8 groups
+`RESOURCE/PLACEMENT/PREREQUISITE/BUSY/GONE/INVALID/FORBIDDEN/LIMIT`, client varies colour +
+icon per group (3.5s, no audio — `ALERT-02` owns audio), `packages/shared/src/types/index.ts`
+may be edited for this slice only. `FLOW-01` is now the first `candidate` row; `DOC-03` still
+queued behind it. No source code touched in this edit.
+
+Previous triage run: 2026-11-04 — daily triage (report-only). No new shipments since the previous run
 (HEAD 1616c35 = merge of PR #13 state-triage). All four evidence sources re-swept; no new
 slices proposed. Shipped to date: `ALERT-01` (PR #5), `SAVE-01` (PR #6), `ALERT-02` (PR #8),
 `ALERT-03` (PR #9), `SAVE-06` (PR #10), `TEST-01` (PR #11), `DOC-01` (PR #12); tests green
@@ -27,7 +34,7 @@ Baseline at last run: `apps/client` 383 tests passed, `apps/server` 184 tests pa
 | --- | --- | --- | --- | --- | --- |
 | `ALERT-01` | **Cảnh báo khi bị tấn công** (banner + ping minimap) | Người chơi hiện **không có bất kỳ tín hiệu nào** khi quân/nhà của mình bị đánh. `hp` có replicated nhưng client chỉ vẽ thanh máu nhỏ ở sprite; không âm thanh, không banner, minimap không nháy. Trong AoE2 đây là tính năng phòng thủ cốt lõi ("Your town is under attack"). | `SHIPPED 2026-11-03 — PR #5` | M | 1 |
 | `SAVE-01` | Log thời gian + số statement mỗi lần autosave | Phase 10 (DRAFT) cần baseline trước khi tối ưu dirty tracking. Hiện log chỉ có `Players/Buildings/Units`, không có `ms` → không so sánh được trước/sau. | `SHIPPED 2026-11-04 — https://github.com/juzaweb/chien-quoc/pull/6` | S | 2 |
-| `FLOW-01` | Bảng "lệnh bị từ chối" có phân loại | 64 chỗ `rejectCommand` (server) đều đổ về **một** notification đỏ chung (`ERROR_NOTIFICATION`). Người chơi không phân biệt "thiếu tài nguyên" với "ô bị chặn". | `blocked` — needs a UX decision first | M | 3 |
+| `FLOW-01` | Bảng "lệnh bị từ chối" có phân loại | 54 call site `rejectCommand` (`CommandSystem.ts` 46 + `EconomySystem.ts` 8) đều đổ về **một** notification đỏ chung (`WorldRoom.ts:1225`, payload chỉ có `message`). Người chơi không phân biệt "thiếu tài nguyên" với "ô bị chặn". **Đã chốt 2026-11-04:** payload `{ message, code: RejectCode }` với `code` **bắt buộc** (phương án A); 8 nhóm `RESOURCE, PLACEMENT, PREREQUISITE, BUSY, GONE, INVALID, FORBIDDEN, LIMIT`; client đổi màu + icon theo nhóm, giữ 3.5s, **không** âm thanh (tránh trùng `ALERT-02`). | `candidate` | M | 3 |
 | `ALERT-02` | Âm thanh cảnh báo + trạng thái "đang bị đánh" trong panel | Phụ thuộc `ALERT-01`. Repo **không có** bất kỳ audio layer nào (`grep sound|audio|AudioContext` → 0 hit). | `SHIPPED 2026-11-04 — https://github.com/juzaweb/chien-quoc/pull/8` | S | 4 |
 
 ## Agent-ready backlog (chưa implement, loop làm được)
@@ -58,7 +65,6 @@ Không việc nào ở đây được ghi `candidate`: agent không có đườn
 | Verify tay phase 03 §9, 04 §10, 05 §12.4, 06 §16.4, 07 §7, 08 §10, 09 §7.2 | Cần nhìn UI thật; 60 checkbox `- [ ]` chưa tick trong `docs/plans/`. |
 | Verify phase 11 trên iOS Safari thật (§11.4) | Page-zoom, safe-area, reconnect sau khoá màn hình. |
 | `SAVE-07` | Cần số đo thật sinh ra từ `SAVE-01` + `SAVE-06` trên máy bạn. |
-| `FLOW-01` (ROI 3) | Cần quyết định UX: chia lỗi bị từ chối thành mấy nhóm, đặt tên gì. |
 
 ## Watch List
 
