@@ -16,7 +16,7 @@ Baseline at last run: `apps/client` 367 tests passed, `apps/server` 167 tests pa
 | ID | Slice | Why it matters | Next action | Effort | ROI |
 | --- | --- | --- | --- | --- | --- |
 | `ALERT-01` | **Cảnh báo khi bị tấn công** (banner + ping minimap) | Người chơi hiện **không có bất kỳ tín hiệu nào** khi quân/nhà của mình bị đánh. `hp` có replicated nhưng client chỉ vẽ thanh máu nhỏ ở sprite; không âm thanh, không banner, minimap không nháy. Trong AoE2 đây là tính năng phòng thủ cốt lõi ("Your town is under attack"). | `SHIPPED 2026-11-03 — PR #5` | M | 1 |
-| `SAVE-01` | Log thời gian + số statement mỗi lần autosave | Phase 10 (DRAFT) cần baseline trước khi tối ưu dirty tracking. Hiện log chỉ có `Players/Buildings/Units`, không có `ms` → không so sánh được trước/sau. | `candidate` | S | 2 |
+| `SAVE-01` | Log thời gian + số statement mỗi lần autosave | Phase 10 (DRAFT) cần baseline trước khi tối ưu dirty tracking. Hiện log chỉ có `Players/Buildings/Units`, không có `ms` → không so sánh được trước/sau. | `VERIFIED 2026-11-04 — awaiting ship` | S | 2 |
 | `FLOW-01` | Bảng "lệnh bị từ chối" có phân loại | 64 chỗ `rejectCommand` (server) đều đổ về **một** notification đỏ chung (`ERROR_NOTIFICATION`). Người chơi không phân biệt "thiếu tài nguyên" với "ô bị chặn". | `blocked` — needs a UX decision first | M | 3 |
 | `ALERT-02` | Âm thanh cảnh báo + trạng thái "đang bị đánh" trong panel | Phụ thuộc `ALERT-01`. Repo **không có** bất kỳ audio layer nào (`grep sound|audio|AudioContext` → 0 hit). | `candidate` | S | 4 |
 
