@@ -19,7 +19,9 @@ const __dirname = path.dirname(__filename);
  * `dist/services` (compiled). The directory is created on boot when missing.
  */
 export const DATABASE_DIR = path.resolve(__dirname, '../../database');
-export const DATABASE_FILE = path.join(DATABASE_DIR, 'dev.db');
+export const DATABASE_FILE = process.env.DATABASE_FILE
+  ? path.resolve(process.env.DATABASE_FILE)
+  : path.join(DATABASE_DIR, 'dev.db');
 
 export const prisma = new PrismaClient({
   datasources: {
@@ -119,7 +121,7 @@ export class DatabaseService {
    * so a fresh clone (or a deleted `database/` folder) starts without extra setup.
    */
   private static ensureDatabaseFile(): void {
-    fs.mkdirSync(DATABASE_DIR, { recursive: true });
+    fs.mkdirSync(path.dirname(DATABASE_FILE), { recursive: true });
 
     if (fs.existsSync(DATABASE_FILE)) {
       return;

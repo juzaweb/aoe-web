@@ -23,6 +23,7 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | [`14-under-attack-audio-status.md`](./14-under-attack-audio-status.md) | Âm thanh cảnh báo + trạng thái "đang bị đánh" trong panel (`ALERT-02`) | IMPLEMENTED — chờ verify |
 | [`15-foundation-under-attack-alert.md`](./15-foundation-under-attack-alert.md) | Cảnh báo khi công trình foundation bị phá: fallback onRemove cho foundation + phân biệt huỷ của chính mình (`FND-01..FND-03`) | APPROVED — chờ code |
 | [`16-autosave-benchmark.md`](./16-autosave-benchmark.md) | Benchmark autosave: spawn N client giả, đo p95 thời gian lưu (`SAVE-06`) | IMPLEMENTED — chờ verify |
+| [`17-persistence-direct-tests.md`](./17-persistence-direct-tests.md) | Test trực tiếp cho persistence: `saveFullWorldState`, `saveZoneResources`, `initializeWorldPersistence` (`TEST-01`) | IMPLEMENTED — chờ verify |
 Status: `DRAFT` (chưa chốt quyết định) → `APPROVED` (bắt đầu code) → `DONE`.
 
 Phase 01 đã chốt 4 quyết định D1–D4 ngày 2026-11-01 (xem §11 của file phase); chưa có dòng code nào
