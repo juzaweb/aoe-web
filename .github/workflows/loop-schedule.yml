@@ -27,10 +27,15 @@ on:
           - full
           - triage
 
-# Two schedulers overlapping would dispatch twice; the loop's own `group: loop`
-# would then queue the second run hours behind the first.
+# Both schedulers share ONE concurrency group. `loop-schedule` and
+# `triage-schedule` used to hold different groups, so they could evaluate and
+# dispatch at the same moment; the loop's own `group: loop` would then queue the
+# second dispatch behind the first and run it half an hour later on a `develop`
+# the first run had already moved. Six runs piled up in two hours that way.
+# Sharing a group serialises the check-then-dispatch pair, which is what makes
+# the preflight below meaningful.
 concurrency:
-  group: loop-schedule
+  group: loop-dispatch
   cancel-in-progress: false
 
 permissions:
@@ -50,8 +55,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: develop
-          # Nothing else is read here, and the repo carries large assets.
-          sparse-checkout: STATE.md
+          # STATE.md to decide the step, scripts/ for the preflight. Nothing else.
+          sparse-checkout: |
+            STATE.md
+            scripts
 
       # One slot either builds or proposes, never both: `full` already spends ten
       # minutes on agents, and running triage in the same slot would double the
@@ -87,21 +94,19 @@ jobs:
       - name: Dispatch the loop
         env:
           GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           STEP: ${{ steps.pick.outputs.step }}
         run: |
           set -euo pipefail
-          # merge stays on: the loop's gate, test and browser checks stand between
-          # an agent and develop, so the dispatch does not add a human step that a
-          # schedule cannot provide anyway.
+
+          # Preflight, dispatch and the registration wait are one script because
+          # the guard is only correct if the next scheduler can already see the
+          # run this one created. `gh workflow run` returns before the run
+          # appears in `gh run list`, and that gap is a second dispatch.
           #
-          # chain=0: a slot does one slice. The loop itself defaults to one
-          # chained hop, but that is for a human pressing the button and
-          # watching; here the next slot is five hours away and doubling the
-          # per-slot spend is exactly what this file's "one slot does one
-          # thing" comment is trying to avoid.
-          gh workflow run loop.yml \
-            --ref develop \
-            -f step="$STEP" \
-            -f merge=true \
-            -f chain=0
-          echo "::notice::Dispatched loop.yml with step=$STEP."
+          # merge stays on inside the script: the loop's gate, test and browser
+          # checks stand between an agent and develop, so the dispatch does not
+          # add a human step a schedule cannot provide anyway. chain=0: a slot
+          # does one slice; the loop's own default of one chained hop is for a
+          # human pressing the button and watching.
+          bash scripts/dispatch-loop.sh "$STEP" 0
