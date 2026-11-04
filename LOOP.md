@@ -49,8 +49,8 @@ which cannot write source code. Steps 4-6 must stay interactive so you see every
 ## Run it in GitHub Actions
 
 `.github/workflows/loop.yml`, started by hand from the Actions tab (`workflow_dispatch`) or
-dispatched by `.github/workflows/loop-schedule.yml`. Never on push: a push-triggered agent
-would react to its own commits.
+dispatched by `.github/workflows/loop-schedule.yml` or `.github/workflows/triage-schedule.yml`.
+Never on push: a push-triggered agent would react to its own commits.
 
 | Input | Meaning |
 |-------|---------|
@@ -87,6 +87,19 @@ run, not for the cron — see below.
 Turn it off with `gh workflow disable loop-schedule`. GitHub treats cron as best-effort: a busy
 queue can delay a slot, and a repository without pushes for 60 days has its schedules paused by
 GitHub itself.
+
+### The two-hour triage schedule
+
+`.github/workflows/triage-schedule.yml` runs on `cron: '0 */2 * * *'` (UTC: 00, 02, 04, 06, 08, 10,
+12, 14, 16, 18, 20, 22 → 07:00, 09:00, 11:00, 13:00, 15:00, 17:00, 19:00, 21:00, 23:00, 01:00,
+03:00, 05:00 in Asia/Ho_Chi_Minh) and dispatches `loop.yml` with `step = triage`.
+
+Unlike `loop-schedule.yml` (which defaults to `auto` and runs `full` if candidates exist), this
+schedule specifically refreshes the proposal pipeline every 2 hours: it gathers evidence, updates
+`STATE.md` (High Priority, Watch List, ROI rankings, and last run timestamp), and opens a state PR
+without touching source code.
+
+Turn it off with `gh workflow disable triage-schedule`.
 
 ### Chaining a follow-up run
 
