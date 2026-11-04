@@ -29,7 +29,7 @@ Cùng luật với High Priority: row ghi `candidate` là slice agent được p
 
 | ID | Slice | Why it matters | Next action | Effort | ROI |
 | --- | --- | --- | --- | --- | --- |
-| `ALERT-03` | Cảnh báo khi công trình foundation bị phá | `hp` của foundation không có bar riêng ngoài thanh tiến độ, nên công trình đang xây bị đánh mà người chơi không biết. Client-only; tracker của `ALERT-01` tái dùng được. | `VERIFIED 2026-11-04 — awaiting ship` | S | 5 |
+| `ALERT-03` | Cảnh báo khi công trình foundation bị phá | `hp` của foundation không có bar riêng ngoài thanh tiến độ, nên công trình đang xây bị đánh mà người chơi không biết. Client-only; tracker của `ALERT-01` tái dùng được. | `SHIPPED 2026-11-04 — https://github.com/juzaweb/chien-quoc/pull/9` | S | 5 |
 | `SAVE-06` | Script benchmark autosave (spawn N client giả, đo p95) | Phase 10 §7: `SAVE-02..05` chỉ nên mở khi có số đo, mà hiện không có cách đo. Script chạy local, không đụng runtime. | `candidate` | S | 10 |
 | `TEST-01` | Test trực tiếp cho persistence | `saveFullWorldState`, `saveZoneResources`, `initializeWorldPersistence` không có test trực tiếp (grep `*.test.ts` → 0 hit, chỉ mock trong `WorldRoom.test.ts`). Không có lưới này thì `SAVE-03`/`SAVE-04` không verify được. | `candidate` | M | 9 |
 | `DOC-01` | Sửa status trong `docs/plans/` (README + file plan) | README ghi phase 01 "APPROVED — chờ code" và phase 12 "APPROVED — chờ code" trong khi code đã có (`OWN-01..05` trong `ownerColor.ts`/ring/diamond/`ownerColorCss`) và `ALERT-01` đã shipped PR #5; phase 13 vẫn "IMPLEMENTED — chờ verify" dù `SAVE-01` shipped PR #6. File plan 01/12/13 cũng còn `APPROVED` và DoD checkbox tự động chưa tick. Doc chỉ, không sửa code. | `candidate` | S | 7 |
