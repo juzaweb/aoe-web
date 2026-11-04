@@ -41,3 +41,5 @@ Approval: `ALERT-01` approved 2026-11-03 — awaiting plan. Next command: /loop-
 PASS ALERT-01 verified: client 367 tests, server 167 tests, build OK, mutation test caught (hp < prev -> hp > prev); five-axis review clean.
 Approval: `SAVE-01` approved 2026-11-04 — awaiting plan. Next command: /loop-plan SAVE-01.
 PASS SAVE-01 verified: client 367 tests, server 167 tests, build OK, tsc clean, mutation survived (no direct persistence tests — TEST-01 pending); five-axis review clean; baseline §4b/§7 + task row SAVE-01 DONE paperwork OK.
+Approval: `ALERT-02` approved 2026-11-04 — awaiting plan. Next command: /loop-plan ALERT-02.
+PASS ALERT-02 verified: client 373 tests, server 167 tests, build OK, mutation test caught (enabled guard flipped); five-axis review clean.

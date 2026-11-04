@@ -20,6 +20,7 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | [`11-mobile-touch.md`](./11-mobile-touch.md) | Chơi trên mobile: touch gesture (pan/pinch/tap/long-press), thanh lệnh, HUD compact landscape, join lại khi resume (`MOB-01..MOB-10`) | IMPLEMENTED — chờ verify máy thật |
 | [`12-under-attack-alert.md`](./12-under-attack-alert.md) | Cảnh báo khi bị tấn công: banner + ping minimap (`ATK-01..ATK-05`) | APPROVED — chờ code |
 | [`13-autosave-timing-log.md`](./13-autosave-timing-log.md) | Log thời gian + số statement mỗi lần autosave (`SAVE-01`) | IMPLEMENTED — chờ verify |
+| [`14-under-attack-audio-status.md`](./14-under-attack-audio-status.md) | Âm thanh cảnh báo + trạng thái "đang bị đánh" trong panel (`ALERT-02`) | IMPLEMENTED — chờ verify |
 Status: `DRAFT` (chưa chốt quyết định) → `APPROVED` (bắt đầu code) → `DONE`.
 
 Phase 01 đã chốt 4 quyết định D1–D4 ngày 2026-11-01 (xem §11 của file phase); chưa có dòng code nào
