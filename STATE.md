@@ -1,15 +1,18 @@
 # Loop State — Chien Quoc (2D MMO RTS)
 
-Last run: 2026-11-04 — daily triage (report-only). Shipped since last run: `ALERT-02` (PR #8),
+Last run: 2026-11-04 — daily triage (report-only). No new shipments since the previous run
+(HEAD 1616c35 = merge of PR #13 state-triage). All four evidence sources re-swept; no new
+slices proposed. Shipped to date: `ALERT-01` (PR #5), `SAVE-01` (PR #6), `ALERT-02` (PR #8),
 `ALERT-03` (PR #9), `SAVE-06` (PR #10), `TEST-01` (PR #11), `DOC-01` (PR #12); tests green
-(client 383, server 184), build OK. Plan status drift now only phases 15 & 18 (still `APPROVED`
-though shipped) — folded into new `DOC-03`. Asset gap: `mill.png`/`mining_camp.png` are legacy
-AI art with no licensed source (`scripts/assets/assets.lock.json` `legacy`, no `targets` entry;
-`CREDITS.md` has no section) — added `WATCH-05`. Unchecked DoD boxes now 60
-(`grep -rnE '^\s*- \[ \]' docs/plans/` → 60). CI on `develop`: no red `ci.yml` runs; two one-off
-`loop/` branch CI failures (run ids 41769065653, 41772382791) already replaced by the retry loop —
-ignored. PR feedback: only Jules bot auto-comments on PRs #1–#3, no unanswered human review.
-No source code touched.
+(client 383, server 184), build OK. Plan status drift still only phases 15 & 18 (still `APPROVED`
+though shipped) — `DOC-03` candidate. Asset gap: `mill.png`/`mining_camp.png` (WATCH-05) plus
+terrain grass/dirt legacy (WATCH-06, new) have no licensed source / no `CREDITS.md` section.
+Unchecked DoD boxes still 60 (`grep -rnE '^\s*- \[ \]' docs/plans/` → 60). CI on `develop`: no
+red `ci.yml` runs; the two `loop/` branch failures (run ids 41769065653, 41772382791) already
+replaced by the retry loop — ignored; earlier `Loop` workflow failures on develop (run ids
+41660755613, 41665677527, 41673640446, 41674921220, 41745494265) were transitional (missing
+secret / no candidate row) and have since been replaced by successful runs. PR feedback: only
+Jules bot auto-comments on PRs #1–#3, no unanswered human review. No source code touched.
 See `loop-run-log.md`.
 Pipeline: `/loop-triage` → `/loop-pick` → `/loop-plan` → `/loop-build` → `/loop-verify` →
 `/loop-ship`. One slice at a time. `pick` is the only step that needs a human; every other
@@ -51,7 +54,7 @@ Không việc nào ở đây được ghi `candidate`: agent không có đườn
 
 | Việc | Vì sao chặn |
 | --- | --- |
-| 7 asset thiếu nguồn: Farm, Watch Tower, Gold Mine, Stone Mine, Berry Bush, Cavalry, Icon HUD 64×64, cursor 32×32 (phase 06 §5) | Cần art, và AGENTS.md cấm tự vẽ. Portal + road đã xong ở phase 09. |
+| 8 asset thiếu nguồn: Farm, Watch Tower, Gold Mine, Stone Mine, Berry Bush, Cavalry, Icon HUD 64×64, cursor 32×32 (phase 06 §5) | Cần art, và AGENTS.md cấm tự vẽ. Portal + road đã xong ở phase 09. |
 | Verify tay phase 03 §9, 04 §10, 05 §12.4, 06 §16.4, 07 §7, 08 §10, 09 §7.2 | Cần nhìn UI thật; 60 checkbox `- [ ]` chưa tick trong `docs/plans/`. |
 | Verify phase 11 trên iOS Safari thật (§11.4) | Page-zoom, safe-area, reconnect sau khoá màn hình. |
 | `SAVE-07` | Cần số đo thật sinh ra từ `SAVE-01` + `SAVE-06` trên máy bạn. |
@@ -76,6 +79,13 @@ Không việc nào ở đây được ghi `candidate`: agent không có đườn
   này) và `CREDITS.md` không có section. Plan 06 §5 không liệt kê hai file này (chỉ Farm/Watch Tower/
   Gold Mine/Stone Mine/Berry Bush/Cavalry/Icon HUD/cursor). Cùng blocker với các asset thiếu nguồn
   khác (cần art; AGENTS.md cấm tự vẽ). Chỉ theo dõi, không mở slice.
+- `WATCH-06` (S, ROI 17): terrain legacy (`grass.png`, `grass_1..3.png`, `dirt.png`, `dirt_1..3.png`)
+  không có nguồn licensed và không có section trong `CREDITS.md`: `scripts/assets/assets.lock.json`
+  `legacy` (không có `targets` entry cho 8 path này), `scripts/assets/manifest.json` `targets` không
+  chứa terrain, `CREDITS.md` không có mục terrain. Plan 06 §16.3 đã bỏ `ART-03` (atlas
+  `grassland_tiles.png` không cắt được thành diamond 64×32, render unlit mean RGB (60,56,44) so với
+  grass hiện tại (102,123,44)) — D2 (CC-BY-SA) vì thế không áp dụng. Chỉ theo dõi; cần một nguồn
+  tile mới hoặc quyết định paint-over trước khi mở slice.
 - Phase 02 (`SESS-01..07`) đang `DONE — code + test`; phase 12 (`ATK-01..05`) đã code đủ và ship ở
   PR #5; phase 13 (`SAVE-01`) ship ở PR #6. Phase 15 (`ALERT-03`) ship ở PR #9 và phase 18 (`DOC-01`)
   ship ở PR #12; drift còn lại là status `APPROVED` cho hai phase này — đó chính là `DOC-03`.
@@ -85,8 +95,12 @@ Không việc nào ở đây được ghi `candidate`: agent không có đườn
 - `.codegraph` yêu cầu cập nhật v1.5.0 → v1.6.2: không liên quan codebase.
 - `pnpm` báo có v12.16.1: không nằm trong scope.
 - `TODO/FIXME/HACK` trong source: **0 hit** — không có nợ kỹ thuật đánh dấu sẵn để dọn.
-- `console.log` 32 hit và 15 `catch {}` rỗng trong source: nợ chất lượng nhỏ, không chặn; để cho
-  vòng code-review, không mở slice triage.
+- `console.log` 27 hit và 2 `catch {}` rỗng trong source (đếm lại 2026-11-04): nợ chất lượng nhỏ,
+  không chặn; để cho vòng code-review, không mở slice triage.
+- `Loop` workflow failures trên `develop` trước 2026-11-04 03:22 UTC (run ids 41660755613,
+  41665677527, 41673640446, 41674921220, 41745494265): transitional (secret chưa set / chưa có
+  `candidate` row), đã được các run sau thay thế — không phải regression code. `ci.yml` trên
+  `develop` không có run đỏ.
 
 ---
 Run log: `loop-run-log.md`
