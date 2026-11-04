@@ -48,3 +48,6 @@ PASS ALERT-03 verified: client 383 tests, server 167 tests, build OK, mutation c
 
 PASS SAVE-06 verified: client 383 tests, server 167 tests, build OK, mutation caught (percentileNearestRank ceil->floor); five-axis review clean; paperwork OK (no TODO task rows / no empty baseline); benchmark ran (kingdom 8 samples, battlefield 4).
 PASS TEST-01 verified: client 383 tests, server 184 tests, build OK, tsc clean, mutation caught (changed-amount condition flipped: 4 tests failed); five-axis review clean; paperwork OK (task rows TEST-01A..D DONE, no TODO, no empty measurement/baseline).
+Approval: `DOC-01` approved 2026-11-04 — awaiting plan. Next command: /loop-plan DOC-01.
+
+PASS DOC-01 verified: client 383 tests, server 184 tests, build OK, mutation caught (hp < prev -> hp > prev inverted: underAttack tests failed); five-axis review clean; paperwork OK (01/12 IMPLEMENTED + auto DoD ticked, 13 DONE, README rows 01/12/13 + 18, no source touched, no TODO task rows / no empty baseline).

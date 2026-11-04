@@ -8,8 +8,8 @@ không đổi protocol/server/schema/DB.
 chơi không có tín hiệu tổng quát: không banner, minimap không nháy, nên rất dễ bị đánh lén
 mà không biết. Đây là tính năng phòng thủ cốt lõi của AoE2 ("Your town is under attack").
 
-> **Status: `APPROVED`** (chốt 2026-11-03). Slice `ALERT-01` đã được duyệt; tài liệu này là
-> toàn bộ nội dung của bước plan.
+> **Status: `IMPLEMENTED`** (cập nhật 2026-11-04). `ATK-01..ATK-05` shipped PR #5; code + test xanh;
+> manual scenario (banner/ping/screenshot) chờ verify.
 >
 > Phạm vi: `apps/client` (+ `docs/plans`). **Không** đổi `apps/server`, `packages/shared`,
 > schema, protocol hay DB.
@@ -387,11 +387,11 @@ flowchart LR
 
 ## 10. Definition of Done
 
-- [ ] 4 mục bắt buộc ở §6 đều xanh
+- [x] 4 mục bắt buộc ở §6 đều xanh
 - [ ] Kịch bản tay §6 chạy đúng, có screenshot làm bằng chứng
-- [ ] Không đụng `NetworkMessage`, `@type()`, schema, DB → **không** cần reset DB
-- [ ] Không thêm việc nào vào vòng lặp `update()` (không tra hp mỗi frame)
-- [ ] Comment trong code mới viết **tiếng Anh**, có tham chiếu mã task (`ATK-01`…)
+- [x] Không đụng `NetworkMessage`, `@type()`, schema, DB → **không** cần reset DB
+- [x] Không thêm việc nào vào vòng lặp `update()` (không tra hp mỗi frame)
+- [x] Comment trong code mới viết **tiếng Anh**, có tham chiếu mã task (`ATK-01`…)
 - [ ] Mỗi task một commit, message tiếng Anh
 
 ---
@@ -413,3 +413,4 @@ flowchart LR
 | Ngày | Thay đổi |
 | --- | --- |
 | 2026-11-03 | Tạo plan: hiện trạng, 5 quyết định, `ATK-01..ATK-05`, edge case, verify, rủi ro. Status `APPROVED` |
+| 2026-11-04 | Cập nhật status `APPROVED` → `IMPLEMENTED` (DOC-01). |
