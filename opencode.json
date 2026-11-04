@@ -20,7 +20,7 @@
       "name": "loop-triage",
       "description": "Step 1 — report-only triage. Produces ranked, evidence-backed feature proposals into STATE.md. Never edits source code.",
       "mode": "primary",
-      "prompt": "Read AGENTS.md, LOOP.md, loop-constraints.md and STATE.md first, then load the loop-triage skill. Run report-only triage: compare docs/plans, git history and code reality, then merge findings into STATE.md High Priority and Watch List and update 'Last run'. Assign each proposal an ID, an effort size (S/M/L) and a ROI rank. Do not edit source code. Respect the Vietnamese/English split in AGENTS.md.",
+      "prompt": "Read AGENTS.md, LOOP.md, loop-constraints.md and STATE.md first, then load the loop-triage skill. Run report-only triage: compare docs/plans, git history and code reality, then merge findings into STATE.md High Priority and Watch List and update 'Last run'. The evidence sweep has four sources and the skill lists the exact commands for each: (1) GitHub — `gh issue list`, `gh pr list --json reviews,comments` for PR feedback nobody answered, and `gh run list --status failure` for CI that stayed red, ignoring a one-off `loop/` branch failure because the retry loop already replaced it; (2) plan paperwork — unchecked `- [ ]` boxes, `Ngoài phạm vi` sections and `DEFERRED` rows in docs/plans, plus a stale status column in docs/plans/README.md; (3) the asset gap — paths in `legacy` of scripts/assets/assets.lock.json that no `targets` entry can rebuild, cross-checked against scripts/assets/manifest.json and CREDITS.md; (4) repository reality — recent commits, STATE.md rows, the last verdict in loop-run-log.md, and the code itself. Every proposed row cites its evidence (path:line, PR number, run id or command output); an uncited row is a guess and does not enter STATE.md. Assign each proposal an ID, an effort size (S/M/L) and a ROI rank. A row is `candidate` only when the loop can finish it alone; a missing UX decision, a measurement nobody took, or missing art makes it `blocked`. Never propose a slice touching a gate.yaml denylist path. Do not edit source code. Respect the Vietnamese/English split in AGENTS.md.",
       "permission": {
         "bash": {
           "*": "ask",
@@ -28,7 +28,21 @@
           "git commit*": "deny",
           "git reset --hard*": "deny",
           "gh pr create*": "deny",
-          "gh pr merge*": "deny"
+          "gh pr merge*": "deny",
+          "gh pr review*": "deny",
+          "gh pr comment*": "deny",
+          "gh pr close*": "deny",
+          "gh pr edit*": "deny",
+          "gh issue create*": "deny",
+          "gh issue close*": "deny",
+          "gh issue comment*": "deny",
+          "gh issue edit*": "deny",
+          "gh workflow*": "deny",
+          "gh release*": "deny",
+          "gh secret*": "deny",
+          "gh repo*": "deny",
+          "gh auth*": "deny",
+          "gh api*": "deny"
         },
         "edit": "ask"
       }
@@ -125,7 +139,7 @@
       "description": "Step 1/6 — report-only triage into STATE.md",
       "agent": "loop-triage",
       "subtask": false,
-      "template": "Run daily triage. Report only. Merge evidence-backed findings into STATE.md High Priority and Watch List, rank by ROI, set 'Last run' to today. Do not touch source code. When done, print the High Priority table so the human can pick one and reject the rest."
+      "template": "Run daily triage. Report only. Merge evidence-backed findings into STATE.md High Priority and Watch List, rank by ROI, set 'Last run' to today. The evidence sweep has four sources and the loop-triage skill lists the exact commands for each: GitHub issues, unanswered PR reviews/comments, and CI runs that stayed red; plan paperwork (unticked `- [ ]` boxes, `Ngoài phạm vi` sections, `DEFERRED` rows, stale status in docs/plans/README.md); the asset gap (`legacy` paths in scripts/assets/assets.lock.json with no rebuildable `targets` entry, cross-checked against manifest.json and CREDITS.md); and repository reality (commits, STATE.md, loop-run-log.md, the code itself). Every row cites its evidence inline; an uncited row does not go in. Do not touch source code. When done, print the High Priority table so the human can pick one and reject the rest."
     },
     "loop-pick": {
       "description": "Step 2/6 — human approval: promote one slice ID from STATE.md",
