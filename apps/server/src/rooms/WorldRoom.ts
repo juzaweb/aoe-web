@@ -32,6 +32,7 @@ import {
   SERVER_TICK_RATE,
   UNIT_BLUEPRINTS,
   UnitType,
+  RejectCode,
   SESSION_ALREADY_ACTIVE,
   SESSION_BUSY,
   SESSION_REPLACED_CLOSE,
@@ -143,7 +144,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   /** Built on first use; see {@link commandSystem}. */
   private get commands(): CommandSystem {
     this.commandSystem ??= new CommandSystem(this.state, {
-      rejectCommand: (client, message) => this.rejectCommand(client, message),
+      rejectCommand: (client, message, code) => this.rejectCommand(client, message, code),
       setWalkTarget: (unit, x, y) => this.movement.setWalkTarget(unit, x, y),
       advanceQueuedWaypoint: (unit) => this.movement.advanceQueuedWaypoint(unit),
       clearHarvestOrder: (unitId) => this.economy.clearHarvestOrder(unitId),
@@ -185,7 +186,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.economySystem ??= new EconomySystem(this.state, {
       setWalkTarget: (unit, x, y) => this.movement.setWalkTarget(unit, x, y),
       resumeQueuedWaypoint: (unit) => this.movement.resumeQueuedWaypoint(unit),
-      rejectCommand: (client, message) => this.rejectCommand(client, message),
+      rejectCommand: (client, message, code) => this.rejectCommand(client, message, code),
       onNodeDepleted: (node) => this.scheduleResourceRespawn(node)
     });
     return this.economySystem;
@@ -1110,22 +1111,22 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     const portal = payload?.portalId ? this.state.buildings.get(payload.portalId) : undefined;
     if (!portal || portal.type !== 'PORTAL' || portal.ownerId !== ownerId) {
-      this.rejectCommand(client, 'Cổng dịch chuyển không hợp lệ.');
+      this.rejectCommand(client, 'Cổng dịch chuyển không hợp lệ.', RejectCode.INVALID);
       return;
     }
 
     if (this.travelingOwners.has(ownerId)) {
-      this.rejectCommand(client, 'Bạn đang chuyển bản đồ.');
+      this.rejectCommand(client, 'Bạn đang chuyển bản đồ.', RejectCode.BUSY);
       return;
     }
     if (isTravelCoolingDown(ownerId)) {
-      this.rejectCommand(client, 'Vui lòng đợi một chút rồi thử lại.');
+      this.rejectCommand(client, 'Vui lòng đợi một chút rồi thử lại.', RejectCode.BUSY);
       return;
     }
 
     const requested = Array.isArray(payload.unitIds) ? [...new Set(payload.unitIds)] : [];
     if (requested.length > MAX_TRAVEL_UNITS) {
-      this.rejectCommand(client, 'Quá nhiều đơn vị trong một lần chuyển.');
+      this.rejectCommand(client, 'Quá nhiều đơn vị trong một lần chuyển.', RejectCode.LIMIT);
       return;
     }
 
@@ -1167,7 +1168,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       });
     } catch (err) {
       console.error(`❌ [WorldRoom] Travel commit failed for ${ownerId}:`, err);
-      this.rejectCommand(client, 'Không thể chuyển bản đồ. Vui lòng thử lại.');
+      this.rejectCommand(client, 'Không thể chuyển bản đồ. Vui lòng thử lại.', RejectCode.INVALID);
       return;
     } finally {
       this.travelingOwners.delete(ownerId);
@@ -1221,8 +1222,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   }
 
   /** Notify a client that a command was refused, so the UI can explain why. */
-  rejectCommand(client: Client, message: string) {
-    client.send(NetworkMessage.ERROR_NOTIFICATION, { message });
+  rejectCommand(client: Client, message: string, code: RejectCode) {
+    client.send(NetworkMessage.ERROR_NOTIFICATION, { message, code });
   }
 
   private scheduleResourceRespawn(node: ResourceNodeState): void {

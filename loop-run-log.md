@@ -51,3 +51,5 @@ PASS TEST-01 verified: client 383 tests, server 184 tests, build OK, tsc clean, 
 Approval: `DOC-01` approved 2026-11-04 — awaiting plan. Next command: /loop-plan DOC-01.
 
 PASS DOC-01 verified: client 383 tests, server 184 tests, build OK, mutation caught (hp < prev -> hp > prev inverted: underAttack tests failed); five-axis review clean; paperwork OK (01/12 IMPLEMENTED + auto DoD ticked, 13 DONE, README rows 01/12/13 + 18, no source touched, no TODO task rows / no empty baseline).
+
+PASS FLOW-01 verified: client 387 tests, server 184 tests, build OK, mutation caught (getRejectVisual null guard inverted: 2 tests failed); five-axis review clean; paperwork OK (no TODO task rows / no empty measurement or baseline).
