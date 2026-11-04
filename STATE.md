@@ -1,7 +1,7 @@
 # Loop State — Chien Quoc (2D MMO RTS)
 
 Last run: 2026-11-04 — daily triage (report-only). `SAVE-01` shipped as PR #6; baseline §4
-filled (~10 ms/save, ≤12 stmts/zone at 10-client scale). Tests green: client 367, server 167;
+filled (~10 ms/save, ≤12 stmts/zone at 10-client scale). Tests green: client 383, server 184;
 build OK. Doc/plan status drift found for shipped slices (phase 01/12/13 still read `APPROVED`);
 folded into `DOC-01`. Four new watch items added (`WATCH-01..WATCH-04`). No source code touched.
 See `loop-run-log.md`.
@@ -10,7 +10,7 @@ Pipeline: `/loop-triage` → `/loop-pick` → `/loop-plan` → `/loop-build` →
 step runs unattended in `.github/workflows/loop.yml`, which merges verified slices into
 `develop` without waiting for a reviewer. See `LOOP.md`.
 
-Baseline at last run: `apps/client` 367 tests passed, `apps/server` 167 tests passed.
+Baseline at last run: `apps/client` 383 tests passed, `apps/server` 184 tests passed.
 
 ## High Priority (loop is acting or waiting on human)
 
@@ -31,7 +31,7 @@ Cùng luật với High Priority: row ghi `candidate` là slice agent được p
 | --- | --- | --- | --- | --- | --- |
 | `ALERT-03` | Cảnh báo khi công trình foundation bị phá | `hp` của foundation không có bar riêng ngoài thanh tiến độ, nên công trình đang xây bị đánh mà người chơi không biết. Client-only; tracker của `ALERT-01` tái dùng được. | `SHIPPED 2026-11-04 — https://github.com/juzaweb/chien-quoc/pull/9` | S | 5 |
 | `SAVE-06` | Script benchmark autosave (spawn N client giả, đo p95) | Phase 10 §7: `SAVE-02..05` chỉ nên mở khi có số đo, mà hiện không có cách đo. Script chạy local, không đụng runtime. | `SHIPPED 2026-11-04 — https://github.com/juzaweb/chien-quoc/pull/10` | S | 10 |
-| `TEST-01` | Test trực tiếp cho persistence | `saveFullWorldState`, `saveZoneResources`, `initializeWorldPersistence` không có test trực tiếp (grep `*.test.ts` → 0 hit, chỉ mock trong `WorldRoom.test.ts`). Không có lưới này thì `SAVE-03`/`SAVE-04` không verify được. | `candidate` | M | 9 |
+| `TEST-01` | Test trực tiếp cho persistence | `saveFullWorldState`, `saveZoneResources`, `initializeWorldPersistence` không có test trực tiếp (grep `*.test.ts` → 0 hit, chỉ mock trong `WorldRoom.test.ts`). Không có lưới này thì `SAVE-03`/`SAVE-04` không verify được. | `VERIFIED 2026-11-04 — awaiting ship` | M | 9 |
 | `DOC-01` | Sửa status trong `docs/plans/` (README + file plan) | README ghi phase 01 "APPROVED — chờ code" và phase 12 "APPROVED — chờ code" trong khi code đã có (`OWN-01..05` trong `ownerColor.ts`/ring/diamond/`ownerColorCss`) và `ALERT-01` đã shipped PR #5; phase 13 vẫn "IMPLEMENTED — chờ verify" dù `SAVE-01` shipped PR #6. File plan 01/12/13 cũng còn `APPROVED` và DoD checkbox tự động chưa tick. Doc chỉ, không sửa code. | `candidate` | S | 7 |
 | `SAVE-02` | Dirty tracking theo zone | Phase 10 D1. Cần biết zone nào thực sự dirty trước khi bỏ upsert toàn bộ. | `blocked` — chờ số đo từ `SAVE-01` + `SAVE-06` | L | 6 |
 | `SAVE-03` | Batch upsert entity | Nút thắt thật theo phase 10 §2: mỗi entity một upsert, SQLite chỉ một writer. Là đòn bẩy lớn nhất nhưng phải có `TEST-01` trước. | `blocked` — chờ `SAVE-01` + `TEST-01` | L | 6 |
