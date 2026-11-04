@@ -41,6 +41,7 @@ import {
   isAuthRejection
 } from './auth/api.js';
 import { AlertCircle } from 'lucide-react';
+import { playUnderAttackAlert } from './game/audio/alertSound.js';
 
 const LAST_ZONE_PREFIX = 'cq_last_zone';
 
@@ -143,6 +144,7 @@ export const App: React.FC = () => {
 
   const triggerUnderAttack = () => {
     setUnderAttack(true);
+    playUnderAttackAlert();
     if (underAttackTimerRef.current !== null) window.clearTimeout(underAttackTimerRef.current);
     underAttackTimerRef.current = window.setTimeout(() => setUnderAttack(false), 4000);
   };
@@ -634,6 +636,7 @@ export const App: React.FC = () => {
           isConnected={isConnected}
           idleVillagers={idleVillagers}
           onSelectIdleVillager={() => sceneRef.current?.cycleToIdleUnit('villager')}
+          underAttack={underAttack}
           compact={isCompact}
           onLeaveGame={handleLeaveGame}
         />

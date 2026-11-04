@@ -20,6 +20,8 @@ interface HUDProps {
   onSelectIdleVillager: () => void;
   /** MOB-06: render the one-row mobile bar instead of the three-panel desktop one. */
   compact?: boolean;
+  /** ATK-05/ALERT-02: whether the player is currently under attack. */
+  underAttack?: boolean;
   /** MOB-06: compact only; the desktop layout keeps its own floating button. */
   onLeaveGame?: () => void;
 }
@@ -63,6 +65,7 @@ export const HUD: React.FC<HUDProps> = ({
   idleVillagers,
   onSelectIdleVillager,
   compact = false,
+  underAttack = false,
   onLeaveGame
 }) => {
   const zoneIsBattle = zoneLabel === 'CHIẾN TRƯỜNG';
@@ -86,6 +89,12 @@ export const HUD: React.FC<HUDProps> = ({
             }`}
             title={zoneLabel}
           />
+          {underAttack && (
+            <span
+              className="h-2 w-2 shrink-0 rounded-full bg-red-500 animate-pulse"
+              title="Đang bị tấn công"
+            />
+          )}
         </div>
 
         {/* Resources: icon + number only, dividers instead of labels. */}
@@ -287,6 +296,11 @@ export const HUD: React.FC<HUDProps> = ({
 
       {/* Network Status indicator */}
       <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-700/80 rounded-md px-3 py-2 text-xs backdrop-blur-sm pointer-events-auto">
+        {underAttack && (
+          <span className="text-xs font-bold text-red-200 border border-red-500/80 bg-red-950/80 px-1.5 py-0.5 rounded animate-pulse">
+            ĐANG BỊ TẤN CÔNG
+          </span>
+        )}
         <Wifi size={14} className={isConnected ? 'text-emerald-400' : 'text-red-500 animate-pulse'} />
         <span className={isConnected ? 'text-emerald-400' : 'text-red-400'}>
           {isConnected ? 'ONLINE' : 'OFFLINE'}
