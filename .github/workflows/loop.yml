@@ -36,6 +36,11 @@ on:
         type: boolean
         required: false
         default: true
+      chain:
+        description: Automatic follow-up runs left. 0 stops after this slice; the schedule passes 0.
+        type: string
+        required: false
+        default: '1'
 
 # One run at a time: two agents editing STATE.md would overwrite each other's
 # status column, and the status column is what gates each step.
@@ -47,6 +52,9 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  # `gh workflow run` needs this to dispatch the follow-up run. workflow_dispatch
+  # is one of the few events GITHUB_TOKEN may trigger (unlike `push`).
+  actions: write
 
 env:
   # STATE.md and docs/plans are Vietnamese. Without UTF-8 the runner mangles it.
@@ -727,6 +735,56 @@ jobs:
           fi
           echo "::notice::Marked $SLICE shipped on develop."
 
+      # Chaining. A `full` run merges one verified slice and then stops, so the
+      # next slice waits for the five-hour slot. Dispatching from here removes
+      # that wait: the follow-up lands in the same `loop` concurrency group, so
+      # it queues behind this job and starts the moment this one ends — no
+      # sleep, no timer, no second scheduler.
+      #
+      # Bounded on purpose. `chain` counts the hops still allowed and the next
+      # run gets one fewer; with the default of 1 a slot does at most two
+      # slices, so an unexpected loop costs two runs, not a night of tokens.
+      # Only `full` chains: triage and verify open a state PR that nobody merged
+      # yet, so the follow-up would read the same STATE.md and repeat itself.
+      - name: Dispatch the next loop run
+        id: chain
+        if: |
+          inputs.step == 'full'
+          && inputs.merge
+          && steps.merge.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
+          CHAIN: ${{ inputs.chain }}
+        run: |
+          set -euo pipefail
+          hops="${CHAIN:-0}"
+          # A non-numeric chain is treated as 0 (stop), not as an error: a
+          # malformed input must not turn a green merge into a red job.
+          if ! [ "$hops" -gt 0 ] 2>/dev/null; then
+            echo "::notice::Chain exhausted (chain=$hops); the next slice waits for the schedule."
+            exit 0
+          fi
+
+          # Read develop, not the working tree: `mark-shipped.sh` may have
+          # rewritten STATE.md without managing to push it, and the follow-up
+          # run reads whatever develop actually holds.
+          git fetch origin develop
+          candidates=$(git show origin/develop:STATE.md \
+            | grep -E '^\| `[A-Z0-9-]+`' \
+            | grep -cF '`candidate`' || true)
+          echo "::notice::${candidates:-0} candidate slice(s) left in STATE.md."
+          if [ "${candidates:-0}" -eq 0 ]; then
+            echo "::notice::Queue is empty; not chaining."
+            exit 0
+          fi
+
+          gh workflow run loop.yml \
+            --ref develop \
+            -f step=full \
+            -f merge=true \
+            -f "chain=$((hops - 1))"
+          echo "chained=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Dispatched the next full run with chain=$((hops - 1))."
       - name: Summary
         if: always()
         run: |
@@ -741,6 +799,7 @@ jobs:
             echo "- Code PR: ${{ steps.ship.outputs.url || 'none' }}"
             echo "- Code merged: ${{ steps.merge.outcome == 'success' && 'yes' || 'no' }}"
             echo "- Slice marked shipped: ${{ steps.mark.outcome || 'skipped' }}"
+            echo "- Chained a follow-up run: ${{ steps.chain.outputs.chained || 'no' }}"
             echo ""
             echo "\`\`\`"
             git status --porcelain || true

@@ -93,8 +93,15 @@ jobs:
           # merge stays on: the loop's gate, test and browser checks stand between
           # an agent and develop, so the dispatch does not add a human step that a
           # schedule cannot provide anyway.
+          #
+          # chain=0: a slot does one slice. The loop itself defaults to one
+          # chained hop, but that is for a human pressing the button and
+          # watching; here the next slot is five hours away and doubling the
+          # per-slot spend is exactly what this file's "one slot does one
+          # thing" comment is trying to avoid.
           gh workflow run loop.yml \
             --ref develop \
             -f step="$STEP" \
-            -f merge=true
+            -f merge=true \
+            -f chain=0
           echo "::notice::Dispatched loop.yml with step=$STEP."
