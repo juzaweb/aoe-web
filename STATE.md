@@ -1,9 +1,15 @@
 # Loop State — Chien Quoc (2D MMO RTS)
 
-Last run: 2026-11-04 — daily triage (report-only). `SAVE-01` shipped as PR #6; baseline §4
-filled (~10 ms/save, ≤12 stmts/zone at 10-client scale). Tests green: client 383, server 184;
-build OK. Doc/plan status drift found for shipped slices (phase 01/12/13 still read `APPROVED`);
-folded into `DOC-01`. Four new watch items added (`WATCH-01..WATCH-04`). No source code touched.
+Last run: 2026-11-04 — daily triage (report-only). Shipped since last run: `ALERT-02` (PR #8),
+`ALERT-03` (PR #9), `SAVE-06` (PR #10), `TEST-01` (PR #11), `DOC-01` (PR #12); tests green
+(client 383, server 184), build OK. Plan status drift now only phases 15 & 18 (still `APPROVED`
+though shipped) — folded into new `DOC-03`. Asset gap: `mill.png`/`mining_camp.png` are legacy
+AI art with no licensed source (`scripts/assets/assets.lock.json` `legacy`, no `targets` entry;
+`CREDITS.md` has no section) — added `WATCH-05`. Unchecked DoD boxes now 60
+(`grep -rnE '^\s*- \[ \]' docs/plans/` → 60). CI on `develop`: no red `ci.yml` runs; two one-off
+`loop/` branch CI failures (run ids 41769065653, 41772382791) already replaced by the retry loop —
+ignored. PR feedback: only Jules bot auto-comments on PRs #1–#3, no unanswered human review.
+No source code touched.
 See `loop-run-log.md`.
 Pipeline: `/loop-triage` → `/loop-pick` → `/loop-plan` → `/loop-build` → `/loop-verify` →
 `/loop-ship`. One slice at a time. `pick` is the only step that needs a human; every other
@@ -33,6 +39,7 @@ Cùng luật với High Priority: row ghi `candidate` là slice agent được p
 | `SAVE-06` | Script benchmark autosave (spawn N client giả, đo p95) | Phase 10 §7: `SAVE-02..05` chỉ nên mở khi có số đo, mà hiện không có cách đo. Script chạy local, không đụng runtime. | `SHIPPED 2026-11-04 — https://github.com/juzaweb/chien-quoc/pull/10` | S | 10 |
 | `TEST-01` | Test trực tiếp cho persistence | `saveFullWorldState`, `saveZoneResources`, `initializeWorldPersistence` không có test trực tiếp (grep `*.test.ts` → 0 hit, chỉ mock trong `WorldRoom.test.ts`). Không có lưới này thì `SAVE-03`/`SAVE-04` không verify được. | `SHIPPED 2026-11-04 — https://github.com/juzaweb/chien-quoc/pull/11` | M | 9 |
 | `DOC-01` | Sửa status trong `docs/plans/` (README + file plan) | README ghi phase 01 "APPROVED — chờ code" và phase 12 "APPROVED — chờ code" trong khi code đã có (`OWN-01..05` trong `ownerColor.ts`/ring/diamond/`ownerColorCss`) và `ALERT-01` đã shipped PR #5; phase 13 vẫn "IMPLEMENTED — chờ verify" dù `SAVE-01` shipped PR #6. File plan 01/12/13 cũng còn `APPROVED` và DoD checkbox tự động chưa tick. Doc chỉ, không sửa code. | `SHIPPED 2026-11-04 — https://github.com/juzaweb/chien-quoc/pull/12` | S | 7 |
+| `DOC-03` | Sửa status phase 15 & 18 trong `docs/plans/` (README + file plan) | README phase 15 vẫn "APPROVED — chờ code" và phase 18 "APPROVED — awaiting code" dù `ALERT-03` shipped PR #9 và `DOC-01` shipped PR #12; file plan 15 & 18 còn status `APPROVED`. DoD tự động đã tick (phase 15: 4/4; phase 18: 5/5). Doc chỉ, không sửa code. | `candidate` | S | 7 |
 | `SAVE-02` | Dirty tracking theo zone | Phase 10 D1. Cần biết zone nào thực sự dirty trước khi bỏ upsert toàn bộ. | `blocked` — chờ số đo từ `SAVE-01` + `SAVE-06` | L | 6 |
 | `SAVE-03` | Batch upsert entity | Nút thắt thật theo phase 10 §2: mỗi entity một upsert, SQLite chỉ một writer. Là đòn bẩy lớn nhất nhưng phải có `TEST-01` trước. | `blocked` — chờ `SAVE-01` + `TEST-01` | L | 6 |
 | `SAVE-04` | Resource delta, bỏ `findMany` toàn zone | 1258 node ở battlefield: đọc cả zone mỗi lần lưu là chi phí cố định vô ích. | `blocked` — chờ `SAVE-01` + `TEST-01` | L | 6 |
@@ -45,7 +52,7 @@ Không việc nào ở đây được ghi `candidate`: agent không có đườn
 | Việc | Vì sao chặn |
 | --- | --- |
 | 7 asset thiếu nguồn: Farm, Watch Tower, Gold Mine, Stone Mine, Berry Bush, Cavalry, Icon HUD 64×64, cursor 32×32 (phase 06 §5) | Cần art, và AGENTS.md cấm tự vẽ. Portal + road đã xong ở phase 09. |
-| Verify tay phase 03 §9, 04 §10, 05 §12.4, 06 §16.4, 07 §7, 08 §10, 09 §7.2 | Cần nhìn UI thật; 58 checkbox `- [ ]` chưa tick trong `docs/plans/`. |
+| Verify tay phase 03 §9, 04 §10, 05 §12.4, 06 §16.4, 07 §7, 08 §10, 09 §7.2 | Cần nhìn UI thật; 60 checkbox `- [ ]` chưa tick trong `docs/plans/`. |
 | Verify phase 11 trên iOS Safari thật (§11.4) | Page-zoom, safe-area, reconnect sau khoá màn hình. |
 | `SAVE-07` | Cần số đo thật sinh ra từ `SAVE-01` + `SAVE-06` trên máy bạn. |
 | `FLOW-01` (ROI 3) | Cần quyết định UX: chia lỗi bị từ chối thành mấy nhóm, đặt tên gì. |
@@ -62,12 +69,16 @@ Không việc nào ở đây được ghi `candidate`: agent không có đườn
   có thể cảm nhận. Chưa chặn; theo dõi nếu thêm asset. Nếu mở, cần code-split/dynamic import.
 - `WATCH-03` (S, ROI 14): `pnpm --filter @chien-quoc/server test` fail trên clone mới vì thiếu
   `prisma generate` (`index.test.ts`); `scripts/run-tests.sh` đã cover. DX nhỏ, không chặn CI.
-- `WATCH-04` (S, ROI 15): 64 checkbox DoD chưa tick trong `docs/plans/` (manual verify, human-only);
-  đếm cập nhật từ 58. Không phải nợ code.
+- `WATCH-04` (S, ROI 15): 60 checkbox DoD chưa tick trong `docs/plans/` (manual verify, human-only);
+  đếm cập nhật từ 64 → 60 (`grep -rnE '^\s*- \[ \]' docs/plans/` → 60). Không phải nợ code.
+- `WATCH-05` (S, ROI 16): `mill.png` và `mining_camp.png` là art AI cũ, legacy, không có nguồn
+  licensed rebuild: `scripts/assets/assets.lock.json` `legacy` (không có `targets` entry cho hai path
+  này) và `CREDITS.md` không có section. Plan 06 §5 không liệt kê hai file này (chỉ Farm/Watch Tower/
+  Gold Mine/Stone Mine/Berry Bush/Cavalry/Icon HUD/cursor). Cùng blocker với các asset thiếu nguồn
+  khác (cần art; AGENTS.md cấm tự vẽ). Chỉ theo dõi, không mở slice.
 - Phase 02 (`SESS-01..07`) đang `DONE — code + test`; phase 12 (`ATK-01..05`) đã code đủ và ship ở
-  PR #5; phase 13 (`SAVE-01`) ship ở PR #6. Cả ba không cần row trong bảng nào ở trên, nhưng
-  `docs/plans/README.md` và file plan 01/12/13 vẫn ghi `APPROVED`/`IMPLEMENTED — chờ verify` — đó
-  chính là `DOC-01`.
+  PR #5; phase 13 (`SAVE-01`) ship ở PR #6. Phase 15 (`ALERT-03`) ship ở PR #9 và phase 18 (`DOC-01`)
+  ship ở PR #12; drift còn lại là status `APPROVED` cho hai phase này — đó chính là `DOC-03`.
 
 ## Recent Noise (ignored this run)
 
