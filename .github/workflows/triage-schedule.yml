@@ -52,10 +52,10 @@ jobs:
 
       - name: Dispatch triage loop
         env:
-          # `gh` reads GH_TOKEN, not `secrets.GITHUB_TOKEN`: a runner carries no
-          # stored auth, so the token has to be exported for the CLI to find it.
+          # `gh` reads GH_TOKEN, not the token context: a runner carries no stored
+          # auth, so the credential has to be exported for the CLI to find it.
           # GH_REPO is not needed — the checkout already configured `origin`.
-          GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.LOOP_PAT || github.token }}
         run: |
           set -euo pipefail
 

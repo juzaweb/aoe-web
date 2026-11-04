@@ -98,11 +98,12 @@ jobs:
 
       - name: Dispatch the loop
         env:
-          # `gh` reads GH_TOKEN, not `secrets.GITHUB_TOKEN`: a runner carries no
-          # stored auth, so the token has to be exported for the CLI to find it.
-          # LOOP_PAT is preferred only because a PAT's pushes can trigger CI;
-          # for dispatching, GITHUB_TOKEN alone is enough.
-          GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
+          # `gh` reads GH_TOKEN, not the token context: a runner carries no stored
+          # auth, so the credential has to be exported for the CLI to find it.
+          # `github.token` is the built-in credential; `secrets.LOOP_PAT` is
+          # preferred only because a PAT's pushes can trigger CI, which the
+          # built-in token suppresses.
+          GH_TOKEN: ${{ secrets.LOOP_PAT || github.token }}
           STEP: ${{ steps.pick.outputs.step }}
         run: |
           set -euo pipefail

@@ -202,8 +202,10 @@ jobs:
           MODEL: ${{ inputs.model }}
           # triage reads issues, PR feedback and CI history. Read-only use: the
           # loop-triage agent denies every `gh` write below, and `--auto` cannot
-          # override a deny. GITHUB_TOKEN is enough here; LOOP_PAT is not used.
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # override a deny. The default token is enough here; LOOP_PAT is not
+          # used, and `github.token` is the same credential without the reserved
+          # `GITHUB_` secret name.
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           model_args=()
@@ -321,7 +323,7 @@ jobs:
         env:
           STEP: ${{ inputs.step }}
           SLICE: ${{ steps.slice.outputs.slice }}
-          GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.LOOP_PAT || github.token }}
           LOOP_PAT: ${{ secrets.LOOP_PAT }}
         run: |
           set -euo pipefail
@@ -474,7 +476,7 @@ jobs:
           )
         env:
           SLICE: ${{ steps.slice.outputs.slice }}
-          GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.LOOP_PAT || github.token }}
           LOOP_PAT: ${{ secrets.LOOP_PAT }}
         run: |
           set -euo pipefail
@@ -550,7 +552,7 @@ jobs:
         id: wait
         if: inputs.merge && steps.ship.outputs.url != ''
         env:
-          GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.LOOP_PAT || github.token }}
           LOOP_PAT: ${{ secrets.LOOP_PAT }}
           PR_URL: ${{ steps.ship.outputs.url }}
         run: |
@@ -607,7 +609,7 @@ jobs:
             )
           )
         env:
-          GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.LOOP_PAT || github.token }}
           PR_URL: ${{ steps.ship.outputs.url }}
         run: |
           set -euo pipefail
@@ -673,7 +675,7 @@ jobs:
           && inputs.merge
           && steps.merge.outcome == 'success'
         env:
-          GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.LOOP_PAT || github.token }}
           CHAIN: ${{ inputs.chain }}
         run: |
           set -euo pipefail
