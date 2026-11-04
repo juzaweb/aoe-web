@@ -23,16 +23,10 @@
 ## Chien Quoc specifics
 - Language split is binding: chat/plan prose may be Vietnamese; all code, comments,
   docstrings and commit messages are English.
-- Never edit `packages/shared/**` without a human decision — a constant or type change
-  ripples across client, server and any saved data.
-- Never change `@type()` fields in `apps/server/src/schema/**`; it alters the wire protocol
-  and needs a client in the same PR.
-- Never touch `apps/server/database/**`, `apps/server/prisma/**` or run a migration.
 - Tests live next to their source as `*.test.ts`; a new exported function in
   `apps/client/src/game/render/` or `apps/server/src/rooms/` needs a test in the same run.
 - Verify with: `pnpm --filter @chien-quoc/client test`, `pnpm --filter @chien-quoc/server test`,
   `pnpm build`.
-- Do not add a third-party dependency without asking; the monorepo is deliberately small.
 - Never skip a pipeline step. `/loop-build` refuses unless the STATE.md row reads `PLANNED`,
   and `/loop-ship` refuses unless it reads `VERIFIED`. A skipped step is a rejected run.
 - Never merge. `shipper` opens a PR against `develop` and stops.
