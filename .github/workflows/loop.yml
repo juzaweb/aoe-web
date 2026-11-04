@@ -221,14 +221,11 @@ jobs:
           }
 
           prompt_for() {
-            case "$1" in
-              triage) echo "Run daily triage. Report only. Merge evidence-backed findings into STATE.md High Priority and Watch List, rank by ROI, set 'Last run' to today. The loop-triage skill lists the exact commands for each source; sweep all four: (1) GitHub - gh issue list, gh pr list --json reviews,comments for feedback nobody answered, gh run list --status failure for CI that stayed red while ignoring a one-off loop/ branch failure already replaced by the retry loop; (2) plan paperwork - unticked '- [ ]' boxes, 'Ngoài phạm vi' sections, DEFERRED rows and a stale status column in docs/plans/README.md; (3) the asset gap - 'legacy' paths in scripts/assets/assets.lock.json that no 'targets' entry can rebuild, cross-checked against scripts/assets/manifest.json and CREDITS.md; (4) repository reality - recent commits, existing STATE.md rows, the last verdict in loop-run-log.md, and the code itself. Every proposed row cites its evidence inline (path:line, PR number, run id or command output); an uncited row is a guess and does not go in. A row is 'candidate' only when the loop can finish it alone; a missing UX decision, an untaken measurement or missing art makes it 'blocked'. Never propose a slice that touches a gate.yaml denylist path. Do not touch source code." ;;
-              pick)   echo "Record the approval of slice $SLICE. Do not write code. Change only that row's Next action cell in STATE.md to 'APPROVED <date> — awaiting plan', append a line to loop-run-log.md recording the approval, and print the next command. Leave every other row and every other column byte-for-byte unchanged. Never write 'not this run' over a row that is still a candidate: the next run picks the next candidate, and that is how one slice at a time is enforced." ;;
-              plan)   echo "Write the implementation plan for approved slice $SLICE. Use the next free phase number in docs/plans/, follow the shape of the existing phase files, add the README phase-table row, and set the STATE.md row to 'PLANNED <date> — awaiting build'. No source code." ;;
-              build)  echo "Implement slice $SLICE from its plan in docs/plans/. Treat the acceptance criteria as the definition of done. Write tests, run them, report the exact commands and results. Do not commit. Stop and escalate on a denylisted path, a missing requirement, or a plan/code disagreement. Update the slice's own plan file in the same change: tick its task-table row and fill any measurement or baseline section the plan asks for — a slice whose code passes while its plan still says TODO is not done. Set the STATE.md row to 'BUILT <date> — awaiting verify'." ;;
-              verify) echo "Independently verify slice $SLICE using the code-review-and-quality skill's five-axis review. Run pnpm --filter @chien-quoc/client test, pnpm --filter @chien-quoc/server test and pnpm build yourself, plus one mutation test via sed -i and git checkout. Judge every acceptance criterion pass or fail — including the paperwork: if the slice's plan file still marks its own task row TODO, or a measurement/baseline section it asks for is still empty, that is a FAIL. Append a line to loop-run-log.md whose FIRST word is PASS or FAIL — that is your verdict; the word APPROVE is reserved for the human and must not appear. On PASS set the STATE.md row to 'VERIFIED <date> — awaiting ship'." ;;
-              ship)   echo "Prepare slice $SLICE for shipping. Refuse unless its STATE.md row reads 'VERIFIED' and loop-run-log.md holds a PASS entry. Do not merge and do not push: leave the changes in the working tree and print the commit message and PR body you would use." ;;
-            esac
+            # One definition of every prompt, in scripts/agent-prompt.sh: the
+            # retry loop in scripts/retry-gates.sh passes the same text, and two
+            # copies would drift until a retried build was asked for something
+            # the first attempt never was.
+            bash "${{ github.workspace }}/scripts/agent-prompt.sh" "$1" "$SLICE"
           }
 
           run_agent() {
@@ -240,36 +237,17 @@ jobs:
             echo "::endgroup::"
           }
 
-          # Only the LAST verdict counts. loop-run-log.md accumulates across runs
-          # and slices, so `grep -q '^PASS'` would stay green because some
-          # earlier slice passed, even after this one failed.
-          last_verdict_is_pass() {
-            local last
-            last=$(grep -E '^(PASS|FAIL)' loop-run-log.md | tail -1 || true)
-            # The verifier writes evidence after the word, so this is a prefix
-            # test, not an equality test.
-            case "$last" in PASS*) return 0 ;; *) return 1 ;; esac
-          }
-
           if [ "$STEP" = "full" ]; then
             run_agent pick
             run_agent plan
-            # loop-constraints.md allows three fix attempts per slice. The
-            # verifier cannot edit (edit: deny), so the fix comes from another
-            # build run; without this loop a REJECT would just fail the job and
-            # leave the slice half-done with nobody to finish it.
-            attempt=1
-            while : ; do
-              run_agent build
-              run_agent verify
-              last_verdict_is_pass && break
-              if [ "$attempt" -ge 3 ]; then
-                echo "::error::Verifier failed this slice 3 times; giving up."
-                exit 1
-              fi
-              echo "::warning::Verifier failed (attempt $attempt of 3); rebuilding."
-              attempt=$((attempt + 1))
-            done
+            # The build/verify/test/browser/gate sequence lives in
+            # scripts/retry-gates.sh because a YAML job cannot loop back to a
+            # previous step, and a retry that re-enters only the agent is not a
+            # retry: the tree, the build and the gate all have to run again.
+            # loop-constraints.md caps the attempts at 3, and the browser check
+            # shares that budget with the verifier.
+            BASE="${{ steps.base.outputs.sha }}" SLICE="$SLICE" MODEL="$MODEL" \
+              bash "${{ github.workspace }}/scripts/retry-gates.sh"
             run_agent ship
           else
             run_agent "$STEP"
@@ -287,46 +265,14 @@ jobs:
       - name: Check gate policy
         id: gate
         if: always() && steps.slice.outcome == 'success'
+        env:
+          BASE: ${{ steps.base.outputs.sha }}
         run: |
           set -euo pipefail
-          # `git status --porcelain` mangles two cases that matter here: a path
-          # with a space becomes "sp ace.ts", and a rename emits "old -> new" so
-          # the old name leaks in. diff --name-only plus ls-files gives the new
-          # name only, one per NUL, and core.quotePath=false keeps it literal.
-          #
-          # The diff base is the commit recorded at checkout, not HEAD. An agent
-          # that commits would otherwise move HEAD forward and hide its own
-          # changes from this gate entirely.
-          BASE="${{ steps.base.outputs.sha }}"
-          list_paths() {
-            git -c core.quotePath=false diff --name-only -z "$BASE"
-            git -c core.quotePath=false ls-files --others --exclude-standard -z
-          }
-          changed=$(list_paths | tr '\0' '\n' | grep -v '^$' | sort -u || true)
-          if [ -z "$changed" ]; then
-            echo "allowed=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::No file changes; nothing to gate."
-            exit 0
-          fi
-          echo "Paths changed:"; echo "$changed"
-          # GITHUB_TOKEN can never push a workflow file: GitHub refuses the ref
-          # outright, whatever `permissions:` the job declares. Failing here names
-          # the real cause instead of surfacing a push rejection ten minutes later.
-          if printf '%s\n' "$changed" | grep -q '^\.github/'; then
-            echo "allowed=false" >> "$GITHUB_OUTPUT"
-            echo "::error::The slice touches .github/**. GITHUB_TOKEN cannot push workflow files; this needs a human or a LOOP_PAT secret."
-            exit 0
-          fi
-          # loop-gate wants one comma-separated argument. Join line by line:
-          # `printf '%s\n' $changed` would word-split on the space in a path
-          # like "sp ace.ts" and hand gate a truncated name.
-          csv=$(printf '%s' "$changed" | paste -sd, -)
-          echo "csv=[$csv]"
-          # `merge`, not `auto-merge`: auto-merge also requires the path to be on
-          # autoMergeAllowlist, which is intentionally empty, so every path would
-          # escalate. `merge` enforces the denylist and max-files.
+          # The policy lives in scripts/gate-check.sh so the retry loop and this
+          # one-shot check cannot disagree about what is denylisted.
           set +e
-          npx --yes @cobusgreyling/loop gate check --action merge --paths "$csv"
+          bash "${{ github.workspace }}/scripts/gate-check.sh"
           code=$?
           set -e
           if [ "$code" -eq 0 ]; then
@@ -438,7 +384,7 @@ jobs:
       - name: Run tests
         id: tests
         if: |
-          (inputs.step == 'ship' || inputs.step == 'full')
+          inputs.step == 'ship'
           && steps.gate.outputs.allowed == 'true'
         run: |
           set -euo pipefail
@@ -449,121 +395,83 @@ jobs:
           echo "verdict=pass" >> "$GITHUB_OUTPUT"
 
       # Unit tests cannot see a rendered page. This stage serves the very tree
-      # that is about to be committed and lets an agent judge it in a real
-      # Chrome, via the chrome-devtools MCP server configured in opencode.json.
+      # that is about to be committed and lets the browser-verifier judge it in
+      # real Chrome, via the chrome-devtools MCP server in opencode.json.
       #
-      # The server runs from apps/server/dist, which the test gate just built,
-      # and Vite runs in dev mode because that is what proxies /colyseus to the
-      # API. dev.db is created on boot when it is missing and is gitignored, so
-      # nothing here can end up in the commit.
-      - name: Start the game for the browser check
-        id: serve
-        if: |
-          (inputs.step == 'ship' || inputs.step == 'full')
-          && steps.gate.outputs.allowed == 'true'
-          && steps.tests.outcome == 'success'
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/game-logs
-          nohup pnpm --filter @chien-quoc/server run start \
-            > /tmp/game-logs/server.log 2>&1 &
-          nohup pnpm --filter @chien-quoc/client exec vite \
-            --host 127.0.0.1 --port 5173 --strictPort \
-            > /tmp/game-logs/client.log 2>&1 &
-
-          wait_for() {
-            local url="$1" name="$2" log="$3"
-            for _ in $(seq 1 60); do
-              if curl -sf "$url" >/dev/null 2>&1; then
-                echo "::notice::${name} is up on ${url}"
-                return 0
-              fi
-              sleep 2
-            done
-            echo "::error::${name} did not answer on ${url} within 120s."
-            echo "::group::${name} log"
-            tail -40 "$log" || true
-            echo "::endgroup::"
-            return 1
-          }
-
-          wait_for http://127.0.0.1:2567/health server /tmp/game-logs/server.log
-          wait_for http://127.0.0.1:5173/ client /tmp/game-logs/client.log
-
-      # The browser check. Judged by what the page does, not by what the code
-      # says: console errors, failed requests and the slice's acceptance
-      # criteria driven by hand in a real browser.
+      # The serve-and-judge sequence lives in scripts/browser-check.sh because
+      # `full` has to run it again on every retry attempt, and a gate buried in
+      # a YAML step cannot be re-entered from the shell loop that retries.
       #
-      # The agent cannot edit and cannot run git, so a failing check reports and
-      # stops — the fix belongs to the next build attempt, not to the checker.
+      # Only `ship` runs it here. `full` already ran it inside
+      # scripts/retry-gates.sh, against a tree built by the same test gate;
+      # running it twice would double the most expensive stage for no new
+      # information.
       - name: Browser check
         id: browser
         if: |
-          (inputs.step == 'ship' || inputs.step == 'full')
+          inputs.step == 'ship'
           && steps.gate.outputs.allowed == 'true'
           && steps.tests.outcome == 'success'
-          && steps.serve.outcome == 'success'
         env:
           SLICE: ${{ steps.slice.outputs.slice }}
           MODEL: ${{ inputs.model }}
         run: |
           set -euo pipefail
-          model_args=()
-          if [ -n "$MODEL" ]; then model_args=(--model "$MODEL"); fi
-
-          prompt="Browser check for slice ${SLICE}. Find its plan file under docs/plans/ (the file naming ${SLICE}) and treat its acceptance criteria as the checklist. The app is running: client http://127.0.0.1:5173, API http://127.0.0.1:2567. Drive the real UI, then judge every criterion. End your output with a single line holding only BROWSER_VERDICT: PASS or BROWSER_VERDICT: FAIL — no trailing text on that line; put the reasoning on the lines above it."
-
-          # 15 minutes is generous for a handful of interactions; a hung Chrome
-          # or a page that never loads must not hold the job hostage.
-          set +e
-          timeout --signal=TERM 900 opencode run --agent browser-verifier --auto \
-            "${model_args[@]}" "$prompt" 2>&1 | tee /tmp/browser-check.log
-          rc=${PIPESTATUS[0]}
-          set -e
-
-          if [ "$rc" -eq 124 ]; then
-            echo "::error::The browser check timed out after 15 minutes."
-            exit 1
-          fi
-
-          # The verdict is the last marker in the log, not the first: an earlier
-          # retry inside the same session must not decide this run.
-          #
-          # The match is on the marker as a prefix, not as the whole line. The
-          # agent appends its evidence to the same line ("BROWSER_VERDICT: PASS —
-          # 167/167 green"), and an equality test read that as a failure while
-          # the log plainly said PASS. PASS must end the marker or be followed by
-          # a non-alphanumeric character; a bare `PASS*` would also accept
-          # "BROWSER_VERDICT: PASSED" and "BROWSER_VERDICT: PASSX".
-          verdict=$(grep -E '^BROWSER_VERDICT: (PASS|FAIL)' /tmp/browser-check.log \
-            | tail -1 || true)
-          echo "verdict=${verdict#BROWSER_VERDICT: }" >> "$GITHUB_OUTPUT"
-
-          verdict_ok=false
-          case "$verdict" in
-            "BROWSER_VERDICT: PASS" | "BROWSER_VERDICT: PASS"[![:alnum:]]*)
-              verdict_ok=true ;;
-          esac
-
-          if [ "$rc" -ne 0 ] || [ "$verdict_ok" != "true" ]; then
-            echo "::error::The browser check did not pass (${verdict:-no verdict}, exit ${rc})."
+          if ! bash "${{ github.workspace }}/scripts/browser-check.sh"; then
             echo "::error::No PR was opened; the next build attempt gets the findings."
-            echo "::group::Browser check output"
-            tail -80 /tmp/browser-check.log || true
-            echo "::endgroup::"
             exit 1
           fi
-          echo "::notice::Browser check passed: $verdict"
 
-      # Nothing below this line runs on a red suite or a failed browser check:
-      # the ship step requires both, and a failed step aborts the job.
+      # A failed browser check kills the job before it can commit, so the runner
+      # — and the log inside it — is gone by the time a human looks. Uploading it
+      # is the only way the next attempt can see what the page actually did.
+      #
+      # `always()` and no outcome test: in `full` mode the browser check runs
+      # inside scripts/retry-gates.sh, so the YAML step of that name is skipped
+      # even though a log exists.
+      - name: Keep the browser check log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-check-${{ steps.slice.outputs.slice || 'run' }}-${{ github.run_id }}
+          path: |
+            /tmp/browser-check.log
+            /tmp/game-logs/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # The verdict goes into loop-run-log.md so the next triage knows this slice
+      # failed and why, instead of proposing it again as if nothing happened.
+      # Best effort: a red run stays red for the real reason, not because a
+      # bookkeeping append was refused.
+      - name: Record the failed browser check
+        if: steps.browser.outcome == 'failure'
+        env:
+          SLICE: ${{ steps.slice.outputs.slice }}
+        run: |
+          set -euo pipefail
+          tail -5 /tmp/browser-check.log > /tmp/bc-tail.txt 2>/dev/null || echo "no log" > /tmp/bc-tail.txt
+          bash "${{ github.workspace }}/scripts/record-verdict.sh" FAIL "browser:${SLICE}" \
+            "$(tr '\n' ' ' < /tmp/bc-tail.txt)" || \
+            echo "::warning::Could not append the browser verdict to loop-run-log.md."
+
+      # Nothing below this line runs on a red suite or a failed browser check.
+      # `ship` needs both steps above; `full` needs its retry script to have
+      # passed, which is exactly `steps.run.outcome == 'success'` (the script
+      # exits non-zero once the attempt budget is spent).
       - name: Commit, push and open PR
         id: ship
         if: |
-          (inputs.step == 'ship' || inputs.step == 'full')
-          && steps.gate.outputs.allowed == 'true'
-          && steps.tests.outcome == 'success'
-          && steps.browser.outcome == 'success'
+          (
+            inputs.step == 'ship'
+            && steps.gate.outputs.allowed == 'true'
+            && steps.tests.outcome == 'success'
+            && steps.browser.outcome == 'success'
+          ) || (
+            inputs.step == 'full'
+            && steps.gate.outputs.allowed == 'true'
+            && steps.run.outcome == 'success'
+          )
         env:
           SLICE: ${{ steps.slice.outputs.slice }}
           GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
@@ -687,9 +595,17 @@ jobs:
         if: |
           inputs.merge
           && steps.ship.outputs.url != ''
-          && steps.tests.outcome == 'success'
-          && steps.browser.outcome == 'success'
           && (steps.wait.outcome == 'success' || steps.wait.outcome == 'skipped')
+          && (
+            (
+              inputs.step == 'ship'
+              && steps.tests.outcome == 'success'
+              && steps.browser.outcome == 'success'
+            ) || (
+              inputs.step == 'full'
+              && steps.run.outcome == 'success'
+            )
+          )
         env:
           GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
           PR_URL: ${{ steps.ship.outputs.url }}
@@ -796,8 +712,9 @@ jobs:
             echo "### Loop — ${{ inputs.step }}"
             echo ""
             echo "- Slice: \`${{ steps.slice.outputs.slice }}\`"
+            echo "- Pipeline: ${{ steps.run.outcome || 'skipped' }}"
             echo "- In-job tests: ${{ steps.tests.outputs.verdict || 'not run' }}"
-            echo "- Browser check: ${{ steps.browser.outputs.verdict || 'not run' }}"
+            echo "- Browser check: ${{ steps.browser.outputs.verdict || 'inside the retry script or not run' }}"
             echo "- CI check on the PR: ${{ steps.wait.outputs.verdict || 'not run' }}"
             echo "- Proposal PR (state): ${{ steps.state.outputs.url || 'none' }}"
             echo "- Code PR: ${{ steps.ship.outputs.url || 'none' }}"
