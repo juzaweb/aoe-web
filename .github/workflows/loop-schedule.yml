@@ -43,6 +43,11 @@ permissions:
   # GITHUB_TOKEN may trigger (unlike `push`, which it suppresses).
   actions: write
   contents: read
+  # scripts/should-dispatch.sh reads `gh pr list` to notice an unmerged
+  # `loop/state-*` proposal. A `permissions:` block sets every scope it does not
+  # name to `none`, so without this the query 403s and the preflight silently
+  # reads "no proposal pending".
+  pull-requests: read
 
 jobs:
   dispatch:
@@ -93,8 +98,11 @@ jobs:
 
       - name: Dispatch the loop
         env:
+          # `gh` reads GH_TOKEN, not `secrets.GITHUB_TOKEN`: a runner carries no
+          # stored auth, so the token has to be exported for the CLI to find it.
+          # LOOP_PAT is preferred only because a PAT's pushes can trigger CI;
+          # for dispatching, GITHUB_TOKEN alone is enough.
           GH_TOKEN: ${{ secrets.LOOP_PAT || secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
           STEP: ${{ steps.pick.outputs.step }}
         run: |
           set -euo pipefail
