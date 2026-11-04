@@ -4,6 +4,7 @@ import {
   BuildingType,
   HarvestResourcePayload,
   MAX_SELECTION,
+  RejectCode,
   ResourceType,
   UnitType,
   UNIT_BLUEPRINTS,
@@ -30,7 +31,7 @@ export interface EconomyPorts {
   /** Falls back to the next queued waypoint, or IDLE. */
   resumeQueuedWaypoint(unit: UnitState): void;
   /** Sends an `ERROR_NOTIFICATION` to the client. */
-  rejectCommand(client: Client, message: string): void;
+  rejectCommand(client: Client, message: string, code: RejectCode): void;
   /**
    * A node just ran dry. The room keeps the empty node in state (so the client
    * can hide it) and schedules its refill instead of deleting the row.
@@ -102,7 +103,7 @@ export class EconomySystem {
   handleHarvestOrder(client: Client, payload: HarvestResourcePayload) {
     if (!payload?.unitIds || payload.unitIds.length === 0) return;
     if (payload.unitIds.length > MAX_SELECTION) {
-      this.ports.rejectCommand(client, 'Too many units in one command');
+      this.ports.rejectCommand(client, 'Too many units in one command', RejectCode.LIMIT);
       return;
     }
 
@@ -113,11 +114,11 @@ export class EconomySystem {
 
     const resource = this.state.resourceNodes.get(payload.resourceNodeId ?? '');
     if (!resource) {
-      this.ports.rejectCommand(client, 'Resource node no longer exists');
+      this.ports.rejectCommand(client, 'Resource node no longer exists', RejectCode.GONE);
       return;
     }
     if (resource.remainingAmount <= 0) {
-      this.ports.rejectCommand(client, 'Resource node is depleted');
+      this.ports.rejectCommand(client, 'Resource node is depleted', RejectCode.RESOURCE);
       return;
     }
 
@@ -143,25 +144,25 @@ export class EconomySystem {
   private assignFarmHarvest(client: Client, unitIds: string[], buildingId: string) {
     const farm = this.state.buildings.get(buildingId);
     if (!farm) {
-      this.ports.rejectCommand(client, 'Farm no longer exists');
+      this.ports.rejectCommand(client, 'Farm no longer exists', RejectCode.GONE);
       return;
     }
     if (farm.ownerId !== ownerIdOf(client)) {
-      this.ports.rejectCommand(client, 'That farm is not yours');
+      this.ports.rejectCommand(client, 'That farm is not yours', RejectCode.FORBIDDEN);
       return;
     }
     if (!farm.isConstructed) {
-      this.ports.rejectCommand(client, 'Farm is still under construction');
+      this.ports.rejectCommand(client, 'Farm is still under construction', RejectCode.PREREQUISITE);
       return;
     }
 
     const resourceType = gatheredType(farm);
     if (!resourceType) {
-      this.ports.rejectCommand(client, 'That building cannot be harvested');
+      this.ports.rejectCommand(client, 'That building cannot be harvested', RejectCode.INVALID);
       return;
     }
     if (farm.resourceAmount <= 0) {
-      this.ports.rejectCommand(client, 'Farm is empty');
+      this.ports.rejectCommand(client, 'Farm is empty', RejectCode.RESOURCE);
       return;
     }
 

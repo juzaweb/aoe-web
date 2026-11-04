@@ -4,6 +4,7 @@ import {
   MAP_GRID_WIDTH,
   MAX_SELECTION,
   NetworkMessage,
+  RejectCode,
   SESSION_ALREADY_ACTIVE,
   SESSION_REPLACED_CLOSE,
   KINGDOM_MAP_SIZE,
@@ -219,7 +220,7 @@ describe('handleMoveUnits', () => {
     internals(room).commands.handleMoveUnits(clientA, { unitIds, targetGridX: 60, targetGridY: 60 });
 
     expect(clientA.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Too many units in one command'
+      message: 'Too many units in one command', code: RejectCode.LIMIT
     });
   });
 });
@@ -238,7 +239,7 @@ describe('handleAttackTarget', () => {
     });
 
     expect(clientA.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Cannot attack your own units or buildings'
+      message: 'Cannot attack your own units or buildings', code: RejectCode.FORBIDDEN
     });
     expect(own.actionState).toBe('IDLE');
     expect(own.targetEntityId).toBe('');
@@ -293,7 +294,7 @@ describe('handleTrainUnit', () => {
     internals(room).commands.handleTrainUnit(clientA, { buildingId: 'b_1', unitType: 'VILLAGER' });
 
     expect(clientA.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Insufficient resources to train unit'
+      message: 'Insufficient resources to train unit', code: RejectCode.RESOURCE
     });
     expect(player.food).toBe(10);
     expect(room.state.buildings.get('b_1')!.trainingQueue.length).toBe(0);
@@ -328,7 +329,7 @@ describe('handlePlaceBuilding', () => {
     internals(room).commands.handlePlaceBuilding(clientA, { type: 'HOUSE', gridX: 41, gridY: 41 });
 
     expect(clientA.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Placement obstructed by existing structure or resource'
+      message: 'Placement obstructed by existing structure or resource', code: RejectCode.PLACEMENT
     });
     expect(room.state.buildings.size).toBe(buildingsBefore);
     expect(player.wood).toBe(500);
@@ -346,7 +347,7 @@ describe('handlePlaceBuilding', () => {
     });
 
     expect(clientA.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Cannot build outside map bounds'
+      message: 'Cannot build outside map bounds', code: RejectCode.PLACEMENT
     });
     expect(player.wood).toBe(500);
   });
@@ -742,7 +743,7 @@ describe('farm gathering (ECO-01)', () => {
     internals(room).economy.handleHarvestOrder(client, { unitIds: ['u_1'], buildingId: farm.id });
 
     expect(farm.resourceAmount).toBe(0);
-    expect(client.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, { message: 'Farm is empty' });
+    expect(client.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, { message: 'Farm is empty', code: RejectCode.RESOURCE });
   });
 
   it('refuses a harvest order on a farm owned by somebody else', () => {
@@ -752,7 +753,7 @@ describe('farm gathering (ECO-01)', () => {
     internals(room).economy.handleHarvestOrder(stranger, { unitIds: ['u_1'], buildingId: farm.id });
 
     expect(stranger.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'That farm is not yours'
+      message: 'That farm is not yours', code: RejectCode.FORBIDDEN
     });
   });
 
@@ -1754,22 +1755,22 @@ describe('building upgrades (LVL)', () => {
 
     internals(room).commands.handleUpgradeBuilding(clientA, { buildingId: foundation.id });
     expect(clientA.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Building is still under construction'
+      message: 'Building is still under construction', code: RejectCode.PREREQUISITE
     });
 
     internals(room).commands.handleUpgradeBuilding(clientA, { buildingId: foreign.id });
     expect(clientA.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Not your building'
+      message: 'Not your building', code: RejectCode.FORBIDDEN
     });
 
     internals(room).commands.handleUpgradeBuilding(clientA, { buildingId: maxed.id });
     expect(clientA.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Building is already at max level'
+      message: 'Building is already at max level', code: RejectCode.LIMIT
     });
 
     internals(room).commands.handleUpgradeBuilding(clientA, { buildingId: busy.id });
     expect(clientA.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Building is already upgrading'
+      message: 'Building is already upgrading', code: RejectCode.BUSY
     });
   });
 
@@ -1782,7 +1783,7 @@ describe('building upgrades (LVL)', () => {
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_1' });
 
     expect(client.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Insufficient resources to upgrade building'
+      message: 'Insufficient resources to upgrade building', code: RejectCode.RESOURCE
     });
     expect(player.wood).toBe(0);
   });
@@ -1851,7 +1852,8 @@ describe('progression gate and slots (LVL2)', () => {
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
       message:
         'Town Center upgrade requires House level 10 (have 0), Barracks level 10 (have 0), ' +
-        'Farm level 10 (have 0), Watch Tower level 10 (have 0)'
+        'Farm level 10 (have 0), Watch Tower level 10 (have 0)',
+      code: RejectCode.PREREQUISITE
     });
     expect(townCenter.upgradeTimeMs).toBe(0);
   });
@@ -1888,7 +1890,7 @@ describe('progression gate and slots (LVL2)', () => {
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_tc' });
 
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Town Center upgrade requires House level 5 (have 0)'
+      message: 'Town Center upgrade requires House level 5 (have 0)', code: RejectCode.PREREQUISITE
     });
     expect(townCenter.upgradeTimeMs).toBe(0);
   });
@@ -1921,7 +1923,7 @@ describe('progression gate and slots (LVL2)', () => {
 
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'h3' });
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Building upgrade limit reached (2 at a time)'
+      message: 'Building upgrade limit reached (2 at a time)', code: RejectCode.LIMIT
     });
     expect(houses[2].upgradeTimeMs).toBe(0);
 
@@ -1942,7 +1944,7 @@ describe('progression gate and slots (LVL2)', () => {
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_house' });
 
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Building is already at max level'
+      message: 'Building is already at max level', code: RejectCode.LIMIT
     });
   });
 
@@ -2006,7 +2008,7 @@ describe('unit research (LVL)', () => {
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'SPEARMAN' });
 
     expect(client.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Build a Barracks before researching unit upgrades'
+      message: 'Build a Barracks before researching unit upgrades', code: RejectCode.PREREQUISITE
     });
   });
 
@@ -2023,13 +2025,13 @@ describe('unit research (LVL)', () => {
 
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'SPEARMAN' });
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Build a Barracks before researching unit upgrades'
+      message: 'Build a Barracks before researching unit upgrades', code: RejectCode.PREREQUISITE
     });
 
     addBuilding(room, { id: 'b_ready', ownerId: 'player-a', type: 'BARRACKS' });
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'SPEARMAN' });
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Insufficient resources to research unit upgrade'
+      message: 'Insufficient resources to research unit upgrade', code: RejectCode.RESOURCE
     });
     expect(player.researchUnitType).toBe('');
   });
@@ -2134,19 +2136,19 @@ describe('unit research (LVL)', () => {
     player.unitLevels[1] = 10;
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'SPEARMAN' });
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Unit type is already at max level'
+      message: 'Unit type is already at max level', code: RejectCode.LIMIT
     });
 
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'DRAGON' as never });
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Invalid unit type'
+      message: 'Invalid unit type', code: RejectCode.INVALID
     });
 
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'ARCHER' });
     expect(player.researchUnitType).toBe('ARCHER');
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'CAVALRY' });
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Another unit research is already in progress'
+      message: 'Another unit research is already in progress', code: RejectCode.BUSY
     });
   });
 
@@ -2360,7 +2362,7 @@ describe('kingdom map layout (MAPS-V2)', () => {
     });
 
     expect(client.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Cannot build outside map bounds'
+      message: 'Cannot build outside map bounds', code: RejectCode.PLACEMENT
     });
     expect(player.wood).toBe(5000);
   });

@@ -26,6 +26,7 @@ import {
   UnitType,
   UpgradeBuildingPayload,
   UpgradeUnitTypePayload,
+  RejectCode,
   canTrainUnitsAt,
   getBuildingMaxLevel,
   getBuildingLevelStats,
@@ -59,7 +60,7 @@ import {
  */
 export interface CommandPorts {
   /** Sends an `ERROR_NOTIFICATION` to the client. */
-  rejectCommand(client: Client, message: string): void;
+  rejectCommand(client: Client, message: string, code: RejectCode): void;
   /** Replaces the unit's route with one to this point (SIM-01). */
   setWalkTarget(unit: UnitState, targetX: number, targetY: number): void;
   /** Pops the next queued waypoint into the active order (CTL-05). */
@@ -139,13 +140,13 @@ export class CommandSystem {
 
     // Portals are server-created travel infrastructure, never a build order.
     if (payload.type === 'PORTAL') {
-      this.ports.rejectCommand(client, 'Portals cannot be built');
+      this.ports.rejectCommand(client, 'Portals cannot be built', RejectCode.FORBIDDEN);
       return;
     }
 
     const blueprint = BUILDING_BLUEPRINTS[payload.type];
     if (!blueprint) {
-      this.ports.rejectCommand(client, 'Invalid building type');
+      this.ports.rejectCommand(client, 'Invalid building type', RejectCode.INVALID);
       return;
     }
 
@@ -156,7 +157,7 @@ export class CommandSystem {
       player.gold < blueprint.cost.gold ||
       player.stone < blueprint.cost.stone
     ) {
-      this.ports.rejectCommand(client, 'Insufficient resources to construct building');
+      this.ports.rejectCommand(client, 'Insufficient resources to construct building', RejectCode.RESOURCE);
       return;
     }
 
@@ -169,7 +170,7 @@ export class CommandSystem {
       payload.gridY < 0 ||
       endY > this.state.mapHeight
     ) {
-      this.ports.rejectCommand(client, 'Cannot build outside map bounds');
+      this.ports.rejectCommand(client, 'Cannot build outside map bounds', RejectCode.PLACEMENT);
       return;
     }
 
@@ -192,7 +193,7 @@ export class CommandSystem {
     });
 
     if (isColliding) {
-      this.ports.rejectCommand(client, 'Placement obstructed by existing structure or resource');
+      this.ports.rejectCommand(client, 'Placement obstructed by existing structure or resource', RejectCode.PLACEMENT);
       return;
     }
 
@@ -233,11 +234,11 @@ export class CommandSystem {
   handleMoveUnits(client: Client, payload: MoveUnitsPayload) {
     if (!payload.unitIds || payload.unitIds.length === 0) return;
     if (payload.unitIds.length > MAX_SELECTION) {
-      this.ports.rejectCommand(client, 'Too many units in one command');
+      this.ports.rejectCommand(client, 'Too many units in one command', RejectCode.LIMIT);
       return;
     }
     if (!Number.isFinite(payload.targetGridX) || !Number.isFinite(payload.targetGridY)) {
-      this.ports.rejectCommand(client, 'Invalid move target');
+      this.ports.rejectCommand(client, 'Invalid move target', RejectCode.INVALID);
       return;
     }
 
@@ -285,7 +286,7 @@ export class CommandSystem {
 
     const blueprint = BUILDING_BLUEPRINTS[building.type as BuildingType];
     if (!blueprint || !blueprint.trainableUnits.includes(payload.unitType)) {
-      this.ports.rejectCommand(client, 'Unit cannot be trained at this structure');
+      this.ports.rejectCommand(client, 'Unit cannot be trained at this structure', RejectCode.PREREQUISITE);
       return;
     }
 
@@ -294,7 +295,7 @@ export class CommandSystem {
 
     // Population limit check
     if (player.population >= player.populationCap) {
-      this.ports.rejectCommand(client, 'Population limit reached. Build more Houses!');
+      this.ports.rejectCommand(client, 'Population limit reached. Build more Houses!', RejectCode.LIMIT);
       return;
     }
 
@@ -305,7 +306,7 @@ export class CommandSystem {
       player.gold < unitBlueprint.cost.gold ||
       player.stone < unitBlueprint.cost.stone
     ) {
-      this.ports.rejectCommand(client, 'Insufficient resources to train unit');
+      this.ports.rejectCommand(client, 'Insufficient resources to train unit', RejectCode.RESOURCE);
       return;
     }
 
@@ -335,7 +336,7 @@ export class CommandSystem {
     if (!building) return;
 
     if (building.trainingQueue.length === 0) {
-      this.ports.rejectCommand(client, 'Nothing is being trained here');
+      this.ports.rejectCommand(client, 'Nothing is being trained here', RejectCode.GONE);
       return;
     }
 
@@ -344,7 +345,7 @@ export class CommandSystem {
     const unitType = building.trainingQueue[0] as UnitType;
     const blueprint = UNIT_BLUEPRINTS[unitType];
     if (!blueprint) {
-      this.ports.rejectCommand(client, 'Unknown unit in training queue');
+      this.ports.rejectCommand(client, 'Unknown unit in training queue', RejectCode.INVALID);
       return;
     }
 
@@ -370,7 +371,7 @@ export class CommandSystem {
     if (!building) return;
 
     if (building.isConstructed) {
-      this.ports.rejectCommand(client, 'Cannot cancel a completed building');
+      this.ports.rejectCommand(client, 'Cannot cancel a completed building', RejectCode.INVALID);
       return;
     }
 
@@ -404,25 +405,25 @@ export class CommandSystem {
     if (!building) return;
 
     if (!building.isConstructed) {
-      this.ports.rejectCommand(client, 'Building is still under construction');
+      this.ports.rejectCommand(client, 'Building is still under construction', RejectCode.PREREQUISITE);
       return;
     }
     if (building.upgradeTimeMs > 0) {
-      this.ports.rejectCommand(client, 'Building is already upgrading');
+      this.ports.rejectCommand(client, 'Building is already upgrading', RejectCode.BUSY);
       return;
     }
 
     const type = building.type as BuildingType;
     if (!BUILDING_BLUEPRINTS[type]) {
-      this.ports.rejectCommand(client, 'Unknown building type');
+      this.ports.rejectCommand(client, 'Unknown building type', RejectCode.INVALID);
       return;
     }
     if (type === 'PORTAL') {
-      this.ports.rejectCommand(client, 'Portals cannot be upgraded');
+      this.ports.rejectCommand(client, 'Portals cannot be upgraded', RejectCode.FORBIDDEN);
       return;
     }
     if (building.level >= getBuildingMaxLevel(type)) {
-      this.ports.rejectCommand(client, 'Building is already at max level');
+      this.ports.rejectCommand(client, 'Building is already at max level', RejectCode.LIMIT);
       return;
     }
 
@@ -434,7 +435,7 @@ export class CommandSystem {
         (gap) => !gap.met
       );
       if (unmet.length > 0) {
-        this.ports.rejectCommand(client, `Town Center upgrade requires ${describeCoreGaps(unmet)}`);
+        this.ports.rejectCommand(client, `Town Center upgrade requires ${describeCoreGaps(unmet)}`, RejectCode.PREREQUISITE);
         return;
       }
     }
@@ -442,16 +443,13 @@ export class CommandSystem {
     // LVL2/D6: two upgrades at a time, so the gate above costs real time instead
     // of being skipped by starting all four pillars in parallel.
     if (countActiveBuildingUpgrades(this.state, player.id) >= MAX_CONCURRENT_BUILDING_UPGRADES) {
-      this.ports.rejectCommand(
-        client,
-        `Building upgrade limit reached (${MAX_CONCURRENT_BUILDING_UPGRADES} at a time)`
-      );
+      this.ports.rejectCommand(client, `Building upgrade limit reached (${MAX_CONCURRENT_BUILDING_UPGRADES} at a time)`, RejectCode.LIMIT);
       return;
     }
 
     const cost = getBuildingUpgradeCost(type, building.level);
     if (!this.canAfford(player, cost)) {
-      this.ports.rejectCommand(client, 'Insufficient resources to upgrade building');
+      this.ports.rejectCommand(client, 'Insufficient resources to upgrade building', RejectCode.RESOURCE);
       return;
     }
 
@@ -469,12 +467,12 @@ export class CommandSystem {
     if (!building) return;
 
     if (building.type === 'PORTAL') {
-      this.ports.rejectCommand(client, 'Portals cannot be upgraded');
+      this.ports.rejectCommand(client, 'Portals cannot be upgraded', RejectCode.FORBIDDEN);
       return;
     }
 
     if (building.upgradeTimeMs <= 0) {
-      this.ports.rejectCommand(client, 'No upgrade is in progress');
+      this.ports.rejectCommand(client, 'No upgrade is in progress', RejectCode.GONE);
       return;
     }
 
@@ -496,27 +494,27 @@ export class CommandSystem {
 
     const requestedType = payload?.unitType;
     if (!requestedType || !isUpgradableUnitType(requestedType)) {
-      this.ports.rejectCommand(client, 'Invalid unit type');
+      this.ports.rejectCommand(client, 'Invalid unit type', RejectCode.INVALID);
       return;
     }
 
     const currentLevel = getPlayerUnitLevel(player.unitLevels, requestedType);
     if (currentLevel >= getUnitMaxLevel()) {
-      this.ports.rejectCommand(client, 'Unit type is already at max level');
+      this.ports.rejectCommand(client, 'Unit type is already at max level', RejectCode.LIMIT);
       return;
     }
     if (player.researchUnitType) {
-      this.ports.rejectCommand(client, 'Another unit research is already in progress');
+      this.ports.rejectCommand(client, 'Another unit research is already in progress', RejectCode.BUSY);
       return;
     }
     if (!this.hasConstructedBuilding(ownerId, 'BARRACKS')) {
-      this.ports.rejectCommand(client, 'Build a Barracks before researching unit upgrades');
+      this.ports.rejectCommand(client, 'Build a Barracks before researching unit upgrades', RejectCode.PREREQUISITE);
       return;
     }
 
     const cost = getUnitUpgradeCost(requestedType, currentLevel);
     if (!this.canAfford(player, cost)) {
-      this.ports.rejectCommand(client, 'Insufficient resources to research unit upgrade');
+      this.ports.rejectCommand(client, 'Insufficient resources to research unit upgrade', RejectCode.RESOURCE);
       return;
     }
 
@@ -533,7 +531,7 @@ export class CommandSystem {
 
     const requestedType = payload?.unitType;
     if (!player.researchUnitType || player.researchUnitType !== requestedType) {
-      this.ports.rejectCommand(client, 'No matching unit research is in progress');
+      this.ports.rejectCommand(client, 'No matching unit research is in progress', RejectCode.GONE);
       return;
     }
 
@@ -546,7 +544,7 @@ export class CommandSystem {
   handleAttackTarget(client: Client, payload: AttackTargetPayload) {
     if (!payload.unitIds || payload.unitIds.length === 0) return;
     if (payload.unitIds.length > MAX_SELECTION) {
-      this.ports.rejectCommand(client, 'Too many units in one command');
+      this.ports.rejectCommand(client, 'Too many units in one command', RejectCode.LIMIT);
       return;
     }
 
@@ -562,11 +560,11 @@ export class CommandSystem {
           : undefined;
 
     if (!target) {
-      this.ports.rejectCommand(client, 'Target no longer exists');
+      this.ports.rejectCommand(client, 'Target no longer exists', RejectCode.GONE);
       return;
     }
     if (target.ownerId === ownerId) {
-      this.ports.rejectCommand(client, 'Cannot attack your own units or buildings');
+      this.ports.rejectCommand(client, 'Cannot attack your own units or buildings', RejectCode.FORBIDDEN);
       return;
     }
 
@@ -575,7 +573,7 @@ export class CommandSystem {
     if (payload.targetType === 'building') {
       const targetBlueprint = BUILDING_BLUEPRINTS[(target as BuildingState).type as BuildingType];
       if (targetBlueprint?.attackable === false) {
-        this.ports.rejectCommand(client, 'That structure cannot be attacked');
+        this.ports.rejectCommand(client, 'That structure cannot be attacked', RejectCode.FORBIDDEN);
         return;
       }
     }
@@ -614,11 +612,11 @@ export class CommandSystem {
   handleAttackMove(client: Client, payload: AttackMovePayload, mode: 'ATTACK_MOVE' | 'PATROL') {
     if (!payload?.unitIds || payload.unitIds.length === 0) return;
     if (payload.unitIds.length > MAX_SELECTION) {
-      this.ports.rejectCommand(client, 'Too many units in one command');
+      this.ports.rejectCommand(client, 'Too many units in one command', RejectCode.LIMIT);
       return;
     }
     if (!Number.isFinite(payload.targetGridX) || !Number.isFinite(payload.targetGridY)) {
-      this.ports.rejectCommand(client, 'Invalid move target');
+      this.ports.rejectCommand(client, 'Invalid move target', RejectCode.INVALID);
       return;
     }
 
@@ -667,24 +665,24 @@ export class CommandSystem {
   handleBuildTarget(client: Client, payload: BuildTargetPayload) {
     if (!payload?.unitIds || payload.unitIds.length === 0) return;
     if (payload.unitIds.length > MAX_SELECTION) {
-      this.ports.rejectCommand(client, 'Too many units in one command');
+      this.ports.rejectCommand(client, 'Too many units in one command', RejectCode.LIMIT);
       return;
     }
 
     const building = this.requireOwnedBuilding(client, payload.buildingId);
     if (!building) return;
     if (building.isConstructed) {
-      this.ports.rejectCommand(client, 'Building is already finished');
+      this.ports.rejectCommand(client, 'Building is already finished', RejectCode.INVALID);
       return;
     }
     if (!BUILDING_BLUEPRINTS[building.type as BuildingType]) {
-      this.ports.rejectCommand(client, 'Unknown building type');
+      this.ports.rejectCommand(client, 'Unknown building type', RejectCode.INVALID);
       return;
     }
 
     const builders = this.collectBuilders(client, payload.unitIds);
     if (builders.length === 0) {
-      this.ports.rejectCommand(client, 'Only villagers can build');
+      this.ports.rejectCommand(client, 'Only villagers can build', RejectCode.PREREQUISITE);
       return;
     }
 
@@ -713,7 +711,7 @@ export class CommandSystem {
   handleStopUnits(client: Client, payload: StopUnitsPayload) {
     if (!payload?.unitIds || payload.unitIds.length === 0) return;
     if (payload.unitIds.length > MAX_SELECTION) {
-      this.ports.rejectCommand(client, 'Too many units in one command');
+      this.ports.rejectCommand(client, 'Too many units in one command', RejectCode.LIMIT);
       return;
     }
 
@@ -750,11 +748,11 @@ export class CommandSystem {
   handleSetStance(client: Client, payload: SetStancePayload) {
     if (!payload?.unitIds || payload.unitIds.length === 0) return;
     if (payload.unitIds.length > MAX_SELECTION) {
-      this.ports.rejectCommand(client, 'Too many units in one command');
+      this.ports.rejectCommand(client, 'Too many units in one command', RejectCode.LIMIT);
       return;
     }
     if (!UNIT_STANCES.includes(payload.stance)) {
-      this.ports.rejectCommand(client, 'Unknown unit stance');
+      this.ports.rejectCommand(client, 'Unknown unit stance', RejectCode.INVALID);
       return;
     }
 
@@ -780,7 +778,7 @@ export class CommandSystem {
     if (!building) return;
 
     if (!canTrainUnitsAt(building.type as BuildingType)) {
-      this.ports.rejectCommand(client, 'This building cannot train units');
+      this.ports.rejectCommand(client, 'This building cannot train units', RejectCode.PREREQUISITE);
       return;
     }
 
@@ -794,7 +792,7 @@ export class CommandSystem {
       gridX >= this.state.mapWidth ||
       gridY >= this.state.mapHeight
     ) {
-      this.ports.rejectCommand(client, 'Invalid rally point');
+      this.ports.rejectCommand(client, 'Invalid rally point', RejectCode.INVALID);
       return;
     }
 
@@ -958,11 +956,11 @@ export class CommandSystem {
 
     const building = this.state.buildings.get(buildingId);
     if (!building) {
-      this.ports.rejectCommand(client, 'Building no longer exists');
+      this.ports.rejectCommand(client, 'Building no longer exists', RejectCode.GONE);
       return null;
     }
     if (building.ownerId !== ownerIdOf(client)) {
-      this.ports.rejectCommand(client, 'Not your building');
+      this.ports.rejectCommand(client, 'Not your building', RejectCode.FORBIDDEN);
       return null;
     }
     return building;

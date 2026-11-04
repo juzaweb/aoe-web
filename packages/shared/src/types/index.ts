@@ -330,3 +330,19 @@ export enum NetworkMessage {
   SYSTEM_ANNOUNCEMENT = 'SYSTEM_ANNOUNCEMENT'
 }
 
+
+export enum RejectCode {
+  RESOURCE = 'RESOURCE',
+  PLACEMENT = 'PLACEMENT',
+  PREREQUISITE = 'PREREQUISITE',
+  BUSY = 'BUSY',
+  GONE = 'GONE',
+  INVALID = 'INVALID',
+  FORBIDDEN = 'FORBIDDEN',
+  LIMIT = 'LIMIT'
+}
+
+export interface ErrorNotificationPayload {
+  message: string;
+  code: RejectCode;
+}

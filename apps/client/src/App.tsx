@@ -8,6 +8,8 @@ import {
   INITIAL_POPULATION_CAP,
   MapZoneKind,
   NetworkMessage,
+  RejectCode,
+  ErrorNotificationPayload,
   Resources,
   SESSION_REPLACED_CLOSE,
   TravelReadyPayload,
@@ -40,8 +42,26 @@ import {
   getStoredToken,
   isAuthRejection
 } from './auth/api.js';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Coins, MapPin, Lock, Clock, XCircle, AlertTriangle, ShieldBan, Users } from 'lucide-react';
+import { getRejectVisual } from './game/alerts/rejectVisuals.js';
 import { playUnderAttackAlert } from './game/audio/alertSound.js';
+
+const REJECT_ICON_MAP: Record<string, any> = {
+  Coins,
+  MapPin,
+  Lock,
+  Clock,
+  XCircle,
+  AlertTriangle,
+  ShieldBan,
+  Users,
+  AlertCircle
+};
+
+function RejectIcon({ iconKey, className }: { iconKey: string; className: string }) {
+  const Icon = REJECT_ICON_MAP[iconKey] ?? AlertCircle;
+  return <Icon size={16} className={className} />;
+}
 
 const LAST_ZONE_PREFIX = 'cq_last_zone';
 
@@ -110,7 +130,7 @@ export const App: React.FC = () => {
   const [activeBuildingType, setActiveBuildingType] = useState<BuildingType | null>(null);
 
   // Notifications
-  const [notification, setNotification] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{ message: string; code: RejectCode | null } | null>(null);
   // ATK-05: under-attack banner state.
   const [underAttack, setUnderAttack] = useState<boolean>(false);
   const underAttackTimerRef = useRef<number | null>(null);
@@ -135,10 +155,11 @@ export const App: React.FC = () => {
   /** MOB-08: one resume join at a time; two sockets for one account is a conflict. */
   const resumingRef = useRef(false);
 
-  const showNotification = (msg: string) => {
-    setNotification(msg);
+  const showNotification = (msg: string, code: RejectCode | null = null) => {
+    const next = { message: msg, code };
+    setNotification(next);
     setTimeout(() => {
-      setNotification((curr) => (curr === msg ? null : curr));
+      setNotification((curr) => (curr === next ? null : curr));
     }, 3500);
   };
 
@@ -241,8 +262,8 @@ export const App: React.FC = () => {
       storeZone(user.id, zone);
 
       // Listen to room error messages
-      joinedRoom.onMessage(NetworkMessage.ERROR_NOTIFICATION, (data: { message: string }) => {
-        showNotification(data.message);
+      joinedRoom.onMessage(NetworkMessage.ERROR_NOTIFICATION, (data: ErrorNotificationPayload) => {
+        showNotification(data.message, data.code);
       });
 
       // A travel ack is the only signal that the server already moved the units
@@ -757,12 +778,15 @@ export const App: React.FC = () => {
       )}
 
       {/* In-game Notification Banner */}
-      {notification && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-red-950/90 border border-red-500/80 text-red-200 px-4 py-2 rounded shadow-2xl backdrop-blur-md flex items-center gap-2 z-50 text-sm animate-bounce">
-          <AlertCircle size={16} className="text-red-400" />
-          <span>{notification}</span>
-        </div>
-      )}
+      {notification && (() => {
+        const visual = getRejectVisual(notification.code);
+        return (
+          <div className={visual.containerClass}>
+            <RejectIcon iconKey={visual.iconKey} className={visual.iconClass} />
+            <span>{notification.message}</span>
+          </div>
+        );
+      })()}
 
       {/* ATK-05: under-attack banner (separate from the error notification). */}
       {underAttack && (
