@@ -18,8 +18,10 @@ on:
     - cron: '0 */2 * * *'
   workflow_dispatch:
 
+# Same group as `loop-schedule`: the two schedulers must not evaluate their
+# preflight at the same time, or both see "nothing running" and both dispatch.
 concurrency:
-  group: triage-schedule
+  group: loop-dispatch
   cancel-in-progress: false
 
 permissions:
@@ -39,7 +41,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: develop
-          sparse-checkout: STATE.md
+          sparse-checkout: |
+            STATE.md
+            scripts
 
       - name: Dispatch triage loop
         env:
@@ -47,12 +51,16 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          # Dispatches loop.yml with step=triage.
+
+          # The preflight checks two things, and both are cheap next to a run
+          # that executes against a moved develop:
+          #   - a loop run already in flight, any step (queued counts: that is
+          #     what `group: loop` makes of a second dispatch)
+          #   - an unmerged `loop/state-*` PR, meaning the previous triage already
+          #     proposed the next batch and is waiting on a human
+          #
+          # The dispatch and the wait for it to register live in the same script
+          # so a second scheduler cannot slip through the gap between them.
           # chain=0: triage opens a proposal PR and never chains anyway.
-          gh workflow run loop.yml \
-            --ref develop \
-            -f step=triage \
-            -f merge=true \
-            -f chain=0
-          echo "::notice::Dispatched loop.yml with step=triage."
+          bash scripts/dispatch-loop.sh triage 0
 
