@@ -298,9 +298,10 @@ export class EconomySystem {
     }
 
     if (resource.remainingAmount <= 0) {
-      // MAPS: the node stays in the snapshot as an empty slot so the client can
-      // hide it and the room can refill it after a respawn delay. Deleting it
-      // would make the battlefield permanently poorer the longer it is played.
+      // MAPS: a generated node stays in the snapshot as an empty slot so the
+      // client can hide it and the room can refill it after a respawn delay;
+      // deleting it would make the battlefield permanently poorer the longer it
+      // is played. The room decides: a starter node is removed for good.
       this.ports.onNodeDepleted(resource);
       // AoE behaviour: bank what is in hand, then walk to the next node of the
       // same type instead of standing idle next to an empty stump.

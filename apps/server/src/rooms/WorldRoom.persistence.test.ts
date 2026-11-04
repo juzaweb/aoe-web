@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorldRoom } from './WorldRoom.js';
 import { WorldState } from '../schema/WorldState.js';
-import { mapSizeForZone } from '@chien-quoc/shared';
+import { RESOURCE_REGROW_MS, mapSizeForZone } from '@chien-quoc/shared';
 import { DatabaseService } from '../services/DatabaseService.js';
 
 vi.mock('../services/DatabaseService.js', () => ({
@@ -201,6 +201,59 @@ describe('WorldRoom.initializeWorldPersistence', () => {
     const b = room.state.buildings.get('b1')!;
     expect(b.upgradeProgressMs).toBe(1000);
     expect(b.upgradeTimeMs).toBe(5000);
+  });
+
+  it('P7 keeps a depleted node empty and resumes its stored deadline', async () => {
+    const { room, internals } = createRoom('battlefield');
+    const future = Date.now() + 120_000;
+    (DatabaseService as any).loadResources.mockResolvedValue([
+      { id: 'res_gold', zone: 'battlefield', type: 'GOLD_MINE', resourceType: 'gold', gridX: 5, gridY: 6, remainingAmount: 0, maxAmount: 800, respawnAt: future }
+    ]);
+    await internals.initializeWorldPersistence();
+
+    const node = room.state.resourceNodes.get('res_gold')!;
+    expect(node.remainingAmount).toBe(0);
+    const respawnAt = internals.resourceRespawnAt as Map<string, number>;
+    expect(respawnAt.get('res_gold')).toBe(future);
+  });
+
+  it('P8 refills a node whose deadline passed while the server was down', async () => {
+    const { room, internals } = createRoom('battlefield');
+    (DatabaseService as any).loadResources.mockResolvedValue([
+      { id: 'res_stone', zone: 'battlefield', type: 'STONE_MINE', resourceType: 'stone', gridX: 5, gridY: 6, remainingAmount: 0, maxAmount: 600, respawnAt: Date.now() - 1 }
+    ]);
+    await internals.initializeWorldPersistence();
+
+    const node = room.state.resourceNodes.get('res_stone')!;
+    expect(node.remainingAmount).toBe(600);
+    const respawnAt = internals.resourceRespawnAt as Map<string, number>;
+    expect(respawnAt.has('res_stone')).toBe(false);
+  });
+
+  it('P9 schedules a fresh delay for a depleted row with no stored deadline', async () => {
+    const { room, internals } = createRoom('battlefield');
+    (DatabaseService as any).loadResources.mockResolvedValue([
+      { id: 'res_wood', zone: 'battlefield', type: 'TREE', resourceType: 'wood', gridX: 5, gridY: 6, remainingAmount: 0, maxAmount: 200, respawnAt: null }
+    ]);
+    const before = Date.now();
+    await internals.initializeWorldPersistence();
+
+    const node = room.state.resourceNodes.get('res_wood')!;
+    expect(node.remainingAmount).toBe(0);
+    const respawnAt = internals.resourceRespawnAt as Map<string, number>;
+    expect(respawnAt.get('res_wood')).toBeGreaterThanOrEqual(before + RESOURCE_REGROW_MS.wood);
+  });
+
+  it('P10 drops a depleted starter node instead of refilling it', async () => {
+    const { room, internals } = createRoom('kingdom:player-a');
+    (DatabaseService as any).loadResources.mockResolvedValue([
+      { id: 'res_starter_1', zone: 'kingdom:player-a', type: 'TREE', resourceType: 'wood', gridX: 51, gridY: 52, remainingAmount: 0, maxAmount: 200, respawnAt: null }
+    ]);
+    await internals.initializeWorldPersistence();
+
+    expect(room.state.resourceNodes.has('res_starter_1')).toBe(false);
+    const respawnAt = internals.resourceRespawnAt as Map<string, number>;
+    expect(respawnAt.has('res_starter_1')).toBe(false);
   });
 
   it('P6 load error', async () => {

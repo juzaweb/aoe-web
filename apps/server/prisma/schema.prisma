@@ -115,6 +115,8 @@ model WorldResourceNode {
   gridY           Int      @map("grid_y")
   remainingAmount Float    @map("remaining_amount")
   maxAmount       Float    @map("max_amount")
+  /// Epoch ms at which a depleted node refills; null while it still has stock.
+  respawnAt       Float?   @map("respawn_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@index([gridX, gridY])

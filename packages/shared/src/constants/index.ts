@@ -2,6 +2,7 @@ import {
   BuildingBlueprint,
   BuildingType,
   MapZoneKind,
+  ResourceType,
   Resources,
   UnitBlueprint,
   UnitStance,
@@ -84,8 +85,19 @@ export const MAX_TRAVEL_UNITS = 120;
 /** Server-side cooldown between two travel orders from the same account. */
 export const TRAVEL_COOLDOWN_MS = 2000;
 
-/** How long a depleted resource node stays empty before it refills. */
-export const RESOURCE_RESPAWN_MS = 90_000;
+/**
+ * How long a depleted resource node stays empty before it refills to
+ * `maxAmount`.
+ *
+ * Split per resource so the map's economy has a shape: wood comes back fastest
+ * (a settlement always needs it), gold slowest (it gates research and cavalry).
+ */
+export const RESOURCE_REGROW_MS: Record<ResourceType, number> = {
+  wood: 60_000,
+  food: 90_000,
+  stone: 150_000,
+  gold: 240_000
+};
 
 /**
  * Upper bound on how many unit ids a single client command may reference.

@@ -89,6 +89,7 @@ export const DATABASE_TABLE_STATEMENTS: readonly string[] = [
     "grid_y" INTEGER NOT NULL,
     "remaining_amount" REAL NOT NULL,
     "max_amount" REAL NOT NULL,
+    "respawn_at" REAL NULL,
     "updated_at" DATETIME NOT NULL
   );`,
 

@@ -96,8 +96,11 @@ lại theo zone. Không cần reset DB; nếu reset thì mọi thứ sinh lại 
 ## 7. Tài nguyên cạn
 
 Node cạn **không bị xoá** khỏi state/DB. `remainingAmount = 0`, client ẩn sprite, room hẹn
-refill sau `RESOURCE_RESPAWN_MS` (90s) và hiện lại khi đầy. Khi restore, node đang cạn được
-refill ngay.
+refill theo loại tài nguyên và hiện lại khi đầy.
+
+> **Phase 20 thay thế hành vi này**: delay theo `resourceType` (`RESOURCE_REGROW_MS`) và mốc hồi
+> được lưu vào `world_resource_nodes.respawn_at`, nên restart không còn refill ngay. Xem
+> [`20-kingdom-resource-density-regrow.md`](./20-kingdom-resource-density-regrow.md).
 
 ## 8. Client
 

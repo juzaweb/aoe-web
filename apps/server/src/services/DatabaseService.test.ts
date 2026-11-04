@@ -65,14 +65,14 @@ function parseStmts(logs: string[]): number {
 describe('saveZoneResources', () => {
   it('R1 empty', async () => {
     const stmts = { n: 0 };
-    await (DatabaseService as any).saveZoneResources('test:zone', [], stmts);
+    await (DatabaseService as any).saveZoneResources('test:zone', [], { stmts });
     expect(stmts.n).toBe(1);
     expect(await prisma.worldResourceNode.count()).toBe(0);
   });
 
   it('R2 new node', async () => {
     const stmts = { n: 0 };
-    await (DatabaseService as any).saveZoneResources('test:zone', [node('res_1', 5)], stmts);
+    await (DatabaseService as any).saveZoneResources('test:zone', [node('res_1', 5)], { stmts });
     expect(stmts.n).toBe(3);
     const rows = await prisma.worldResourceNode.findMany();
     expect(rows).toHaveLength(1);
@@ -84,7 +84,7 @@ describe('saveZoneResources', () => {
       data: { id: 'res_1', zone: 'test:zone', type: 'TREE', resourceType: 'wood', gridX: 1, gridY: 2, remainingAmount: 5, maxAmount: 10 }
     });
     const stmts = { n: 0 };
-    await (DatabaseService as any).saveZoneResources('test:zone', [node('res_1', 5)], stmts);
+    await (DatabaseService as any).saveZoneResources('test:zone', [node('res_1', 5)], { stmts });
     expect(stmts.n).toBe(2);
     const row = await prisma.worldResourceNode.findUnique({ where: { id: 'res_1' } });
     expect(row.remainingAmount).toBe(5);
@@ -95,7 +95,7 @@ describe('saveZoneResources', () => {
       data: { id: 'res_1', zone: 'test:zone', type: 'TREE', resourceType: 'wood', gridX: 1, gridY: 2, remainingAmount: 5, maxAmount: 10 }
     });
     const stmts = { n: 0 };
-    await (DatabaseService as any).saveZoneResources('test:zone', [node('res_1', 3)], stmts);
+    await (DatabaseService as any).saveZoneResources('test:zone', [node('res_1', 3)], { stmts });
     expect(stmts.n).toBe(3);
     const row = await prisma.worldResourceNode.findUnique({ where: { id: 'res_1' } });
     expect(row.remainingAmount).toBe(3);
@@ -108,7 +108,7 @@ describe('saveZoneResources', () => {
     const n = node('res_new', 5);
     n.id = 'res_new';
     const stmts = { n: 0 };
-    await (DatabaseService as any).saveZoneResources('test:zone', [n], stmts);
+    await (DatabaseService as any).saveZoneResources('test:zone', [n], { stmts });
     expect(stmts.n).toBe(3);
     const rows = await prisma.worldResourceNode.findMany();
     expect(rows.map((r: any) => r.id)).toEqual(['res_new']);
@@ -126,13 +126,113 @@ describe('saveZoneResources', () => {
     const neu = node('res_new', 2);
     neu.id = 'res_new';
     const stmts = { n: 0 };
-    await (DatabaseService as any).saveZoneResources('test:zone', [keep, neu], stmts);
+    await (DatabaseService as any).saveZoneResources('test:zone', [keep, neu], { stmts });
     expect(stmts.n).toBe(4);
     const rows = await prisma.worldResourceNode.findMany();
     const byId = Object.fromEntries(rows.map((r: any) => [r.id, r.remainingAmount]));
     expect(byId.res_keep).toBe(4);
     expect(byId.res_new).toBe(2);
     expect(byId.res_drop).toBeUndefined();
+  });
+});
+
+describe('resource respawn persistence', () => {
+  it('R7 stores the refill deadline of a depleted node', async () => {
+    const state = new WorldState();
+    state.zoneId = 'test:zone';
+    const goldNode = node('res_gold', 0);
+    goldNode.type = 'GOLD_MINE';
+    goldNode.resourceType = 'gold';
+    state.resourceNodes.set('res_gold', goldNode);
+
+    const deadline = Date.now() + 240_000;
+    await DatabaseService.saveFullWorldState(state, 'test:zone', {
+      resourceRespawnAt: new Map([['res_gold', deadline]])
+    });
+
+    const row = await prisma.worldResourceNode.findUnique({ where: { id: 'res_gold' } });
+    expect(row.remainingAmount).toBe(0);
+    expect(row.respawnAt).toBe(deadline);
+  });
+
+  it('R8 clears the deadline once the node refills', async () => {
+    await prisma.worldResourceNode.create({
+      data: {
+        id: 'res_wood',
+        zone: 'test:zone',
+        type: 'TREE',
+        resourceType: 'wood',
+        gridX: 1,
+        gridY: 2,
+        remainingAmount: 0,
+        maxAmount: 10,
+        respawnAt: Date.now() + 60_000
+      }
+    });
+
+    const state = new WorldState();
+    state.zoneId = 'test:zone';
+    state.resourceNodes.set('res_wood', node('res_wood', 10));
+
+    await DatabaseService.saveFullWorldState(state, 'test:zone');
+    const row = await prisma.worldResourceNode.findUnique({ where: { id: 'res_wood' } });
+    expect(row.remainingAmount).toBe(10);
+    expect(row.respawnAt).toBeNull();
+  });
+
+  it('R9 rewrites a node whose deadline moved even with the same amount', async () => {
+    const first = Date.now() + 60_000;
+    await prisma.worldResourceNode.create({
+      data: {
+        id: 'res_wood',
+        zone: 'test:zone',
+        type: 'TREE',
+        resourceType: 'wood',
+        gridX: 1,
+        gridY: 2,
+        remainingAmount: 0,
+        maxAmount: 10,
+        respawnAt: first
+      }
+    });
+
+    const state = new WorldState();
+    state.zoneId = 'test:zone';
+    state.resourceNodes.set('res_wood', node('res_wood', 0));
+
+    const moved = first + 30_000;
+    await DatabaseService.saveFullWorldState(state, 'test:zone', {
+      resourceRespawnAt: new Map([['res_wood', moved]])
+    });
+
+    const row = await prisma.worldResourceNode.findUnique({ where: { id: 'res_wood' } });
+    expect(row.respawnAt).toBe(moved);
+  });
+
+  it('R10 adds the respawn column to a database created before it existed', async () => {
+    // `initialize` already ran on this file; the column is part of the DDL and
+    // the additive migration, so a second boot must not fail and must keep rows.
+    await prisma.worldResourceNode.create({
+      data: {
+        id: 'res_old',
+        zone: 'test:zone',
+        type: 'TREE',
+        resourceType: 'wood',
+        gridX: 1,
+        gridY: 2,
+        remainingAmount: 5,
+        maxAmount: 10
+      }
+    });
+    await DatabaseService.initialize();
+
+    const columns: Array<{ name: string }> = await prisma.$queryRawUnsafe(
+      'PRAGMA table_info("world_resource_nodes")'
+    );
+    expect(columns.some((c) => c.name === 'respawn_at')).toBe(true);
+    const row = await prisma.worldResourceNode.findUnique({ where: { id: 'res_old' } });
+    expect(row.remainingAmount).toBe(5);
+    expect(row.respawnAt).toBeNull();
   });
 });
 

@@ -929,6 +929,12 @@ export class WorldScene extends Phaser.Scene {
         sprite.destroy();
         this.resourceSprites.delete(key);
       }
+      // A felled starter node leaves the state for good, so a details panel
+      // still pinned to it would show a resource that no longer exists.
+      if (this.selectedResourceId === key) {
+        this.selection.clearEntity();
+        this.notifySelectionChange();
+      }
     });
 
     // 2. Synchronize Buildings

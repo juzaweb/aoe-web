@@ -26,6 +26,7 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | [`17-persistence-direct-tests.md`](./17-persistence-direct-tests.md) | Test trực tiếp cho persistence: `saveFullWorldState`, `saveZoneResources`, `initializeWorldPersistence` (`TEST-01`) | IMPLEMENTED — chờ verify |
 | [`18-doc-plan-status.md`](./18-doc-plan-status.md) | Sửa status trong `docs/plans/` (README + file plan) (`DOC-01`) | APPROVED — awaiting code |
 | [`19-rejected-command-classification.md`](./19-rejected-command-classification.md) | Bảng "lệnh bị từ chối" có phân loại (`FLOW-01`) | IMPLEMENTED — chờ verify |
+| [`20-kingdom-resource-density-regrow.md`](./20-kingdom-resource-density-regrow.md) | Tài nguyên kingdom dồn vành rìa, mật độ ~2×, hồi đầy theo loại và lưu mốc vào SQLite (`RES-01..RES-03`) | IMPLEMENTED — chờ verify tay |
 Status: `DRAFT` (chưa chốt quyết định) → `APPROVED` (bắt đầu code) → `DONE`.
 
 Phase 01 đã chốt 4 quyết định D1–D4 ngày 2026-11-01 (xem §11 của file phase); chưa có dòng code nào

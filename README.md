@@ -25,7 +25,14 @@ chien-quoc/
 
 ## 🎮 Gameplay Features
 
-- **Persistent Isometric 2.5D World:** 60x60 grid map with terrain, natural forests (Wood), gold deposits (Gold), stone quarries (Stone), and berry bushes (Food).
+- **Persistent Isometric 2.5D World:** per-account kingdom (110x110) plus a shared battlefield
+  (220x220), with natural forests (Wood), gold deposits (Gold), stone quarries (Stone), and berry
+  bushes (Food). A kingdom's clusters ring the map border, leaving the centre open for the Town
+  Center.
+- **Regrowing Resources:** a depleted node on the border ring refills to full after a per-type
+  delay (wood 60 s, food 90 s, stone 150 s, gold 240 s). The deadline is stored in SQLite, so a
+  restart resumes the wait instead of refilling the map. The starter woodline and berry patch
+  given with the Town Center are a one-off supply: once felled they are gone for good.
 - **Empire Base Building:**
   - **Town Center:** Base headquarters providing population and training Villagers.
   - **Barracks:** Military garrison to train Spearmen, Archers, and Cavalry.

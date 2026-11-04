@@ -167,7 +167,10 @@ export class DatabaseService {
       ['buildings', 'level', 'INTEGER NOT NULL DEFAULT 1'],
       ['buildings', 'upgrade_progress_ms', 'REAL NOT NULL DEFAULT 0'],
       ['buildings', 'upgrade_time_ms', 'REAL NOT NULL DEFAULT 0'],
-      ['units', 'level', 'INTEGER NOT NULL DEFAULT 1']
+      ['units', 'level', 'INTEGER NOT NULL DEFAULT 1'],
+      // Regrow: a depleted node keeps its refill timestamp so an empty map is
+      // not refilled by a restart (see `WorldRoom.scanResourceRespawns`).
+      ['world_resource_nodes', 'respawn_at', 'REAL NULL']
     ];
 
     for (const [table, column, definition] of columns) {
@@ -179,7 +182,7 @@ export class DatabaseService {
       await prisma.$executeRawUnsafe(
         `ALTER TABLE "${table}" ADD COLUMN "${column}" ${definition}`
       );
-      console.log(`🗄️  [DatabaseService] Added ${table}.${column} for upgrade levels.`);
+      console.log(`🗄️  [DatabaseService] Added ${table}.${column} to an existing database.`);
     }
   }
 
@@ -375,7 +378,8 @@ export class DatabaseService {
         gridX: node.gridX,
         gridY: node.gridY,
         remainingAmount: node.remainingAmount,
-        maxAmount: node.maxAmount
+        maxAmount: node.maxAmount,
+        respawnAt: null
       }))
     });
   }
@@ -388,29 +392,44 @@ export class DatabaseService {
    * write queue for seconds (a player's leave waits behind it), so the current
    * rows are read once and only new/changed nodes are written.
    */
-  private static async saveZoneResources(zone: string, nodes: ResourceNodeState[], stmts?: { n: number }) {
+  private static async saveZoneResources(
+    zone: string,
+    nodes: ResourceNodeState[],
+    options: {
+      stmts?: { n: number };
+      /** Refill deadline per depleted node id; `null`/absent means "has stock". */
+      respawnAtOf?: ReadonlyMap<string, number>;
+    } = {}
+  ) {
+    const { stmts, respawnAtOf } = options;
+
     if (nodes.length > 0) {
       const existing = await prisma.worldResourceNode.findMany({
         where: { zone },
-        select: { id: true, remainingAmount: true }
+        select: { id: true, remainingAmount: true, respawnAt: true }
       });
       if (stmts) stmts.n++;
-      const knownAmounts = new Map(
-        existing.map((row) => [row.id, row.remainingAmount] as const)
-      );
+      const known = new Map(existing.map((row) => [row.id, row] as const));
 
-      const created: ResourceNodeState[] = [];
-      const changed: ResourceNodeState[] = [];
+      const created: Array<{ node: ResourceNodeState; respawnAt: number | null }> = [];
+      const changed: Array<{ node: ResourceNodeState; respawnAt: number | null }> = [];
       for (const node of nodes) {
-        const known = knownAmounts.get(node.id);
-        if (known === undefined) created.push(node);
-        else if (known !== node.remainingAmount) changed.push(node);
+        const respawnAt = respawnAtOf?.get(node.id) ?? null;
+        const saved = known.get(node.id);
+        if (saved === undefined) {
+          created.push({ node, respawnAt });
+        } else if (
+          saved.remainingAmount !== node.remainingAmount ||
+          (saved.respawnAt ?? null) !== respawnAt
+        ) {
+          changed.push({ node, respawnAt });
+        }
       }
 
       if (created.length > 0) {
         if (stmts) stmts.n++;
         await prisma.worldResourceNode.createMany({
-          data: created.map((node) => ({
+          data: created.map(({ node, respawnAt }) => ({
             id: node.id,
             zone,
             type: node.type,
@@ -418,7 +437,8 @@ export class DatabaseService {
             gridX: node.gridX,
             gridY: node.gridY,
             remainingAmount: node.remainingAmount,
-            maxAmount: node.maxAmount
+            maxAmount: node.maxAmount,
+            respawnAt
           }))
         });
       }
@@ -426,10 +446,10 @@ export class DatabaseService {
       if (changed.length > 0) {
         if (stmts) stmts.n += changed.length;
         await prisma.$transaction(
-          changed.map((node) =>
+          changed.map(({ node, respawnAt }) =>
             prisma.worldResourceNode.update({
               where: { id: node.id },
-              data: { remainingAmount: node.remainingAmount }
+              data: { remainingAmount: node.remainingAmount, respawnAt }
             })
           )
         );
@@ -682,7 +702,11 @@ export class DatabaseService {
   public static async saveFullWorldState(
     state: WorldState,
     zone = state.zoneId || 'world',
-    options: { skipIfBusy?: boolean; skipAccountFor?: Set<string> } = {}
+    options: {
+      skipIfBusy?: boolean;
+      skipAccountFor?: Set<string>;
+      resourceRespawnAt?: ReadonlyMap<string, number>;
+    } = {}
   ) {
     await this.withZoneQueue(
       zone,
@@ -732,7 +756,10 @@ export class DatabaseService {
 
         const nodes: ResourceNodeState[] = [];
         state.resourceNodes.forEach((node: ResourceNodeState) => nodes.push(node));
-        await this.saveZoneResources(zone, nodes, stmts);
+        await this.saveZoneResources(zone, nodes, {
+          stmts,
+          respawnAtOf: options.resourceRespawnAt
+        });
 
         const elapsedMs = Math.round(performance.now() - started);
         console.log(

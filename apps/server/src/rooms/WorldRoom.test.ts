@@ -8,6 +8,7 @@ import {
   SESSION_ALREADY_ACTIVE,
   SESSION_REPLACED_CLOSE,
   KINGDOM_MAP_SIZE,
+  RESOURCE_REGROW_MS,
   TERRAIN_KINGDOM,
   UNIT_BLUEPRINTS,
   getBuildingLevelStats,
@@ -22,6 +23,7 @@ import {
   getUnitUpgradeTimeMs
 } from '@chien-quoc/shared';
 import { CORPSE_LINGER_MS, WorldRoom } from './WorldRoom.js';
+import { STARTER_RESOURCE_PREFIX } from './resources.js';
 import { isWithinBuildRange } from './construction.js';
 import { generateWorldResources } from './worldGeneration.js';
 import { restoreBuildingUpgrade } from './upgrades.js';
@@ -2365,5 +2367,114 @@ describe('kingdom map layout (MAPS-V2)', () => {
       message: 'Cannot build outside map bounds', code: RejectCode.PLACEMENT
     });
     expect(player.wood).toBe(5000);
+  });
+});
+
+describe('resource regrow (RES-02)', () => {
+  function addNode(room: WorldRoom, id: string, type: string, resourceType: string) {
+    const node = new ResourceNodeState();
+    node.id = id;
+    node.type = type;
+    node.resourceType = resourceType;
+    node.gridX = 10;
+    node.gridY = 10;
+    node.remainingAmount = 100;
+    node.maxAmount = 200;
+    room.state.resourceNodes.set(id, node);
+    return node;
+  }
+
+  it('waits longer for gold than for wood', () => {
+    const room = createRoom();
+    const wood = addNode(room, 'res_wood', 'TREE', 'wood');
+    const gold = addNode(room, 'res_gold', 'GOLD_MINE', 'gold');
+
+    const before = Date.now();
+    internals(room).scheduleResourceRespawn(wood);
+    internals(room).scheduleResourceRespawn(gold);
+
+    const respawnAt = internals(room).resourceRespawnAt as Map<string, number>;
+    expect(respawnAt.get('res_wood')).toBeGreaterThanOrEqual(before + RESOURCE_REGROW_MS.wood);
+    expect(respawnAt.get('res_gold')).toBeGreaterThanOrEqual(before + RESOURCE_REGROW_MS.gold);
+    expect(respawnAt.get('res_gold')! - respawnAt.get('res_wood')!).toBeGreaterThan(
+      RESOURCE_REGROW_MS.gold - RESOURCE_REGROW_MS.wood - 100
+    );
+  });
+
+  it('refills a depleted node once its deadline passes and drops the entry', () => {
+    const room = createRoom();
+    const node = addNode(room, 'res_stone', 'STONE_MINE', 'stone');
+    node.remainingAmount = 0;
+
+    const respawnAt = new Map<string, number>([['res_stone', Date.now() - 1]]);
+    internals(room).resourceRespawnAt = respawnAt;
+
+    internals(room).scanResourceRespawns(Date.now());
+
+    expect(node.remainingAmount).toBe(200);
+    expect(respawnAt.has('res_stone')).toBe(false);
+  });
+
+  it('fells a starter node for good instead of refilling it', () => {
+    const room = createRoom();
+    const node = addNode(room, `${STARTER_RESOURCE_PREFIX}1`, 'TREE', 'wood');
+    node.remainingAmount = 0;
+
+    internals(room).scheduleResourceRespawn(node);
+
+    // Unlike a generated node, the starter woodline next to the Town Center is a
+    // one-off supply: it leaves the state, so the client drops the sprite and the
+    // autosave sweep deletes the row.
+    expect(room.state.resourceNodes.has(node.id)).toBe(false);
+    const respawnAt = internals(room).resourceRespawnAt as Map<string, number>;
+    expect(respawnAt.has(node.id)).toBe(false);
+  });
+
+  it('fells a legacy starter node by its plaza position', () => {
+    const room = createRoom();
+    // A save from before the starter prefix existed: the node sits in the
+    // kingdom plaza, which the generator never populates.
+    room.state.zoneId = 'kingdom:player-a';
+    internals(room).zoneId = 'kingdom:player-a';
+    room.state.mapWidth = KINGDOM_MAP_SIZE.width;
+    room.state.mapHeight = KINGDOM_MAP_SIZE.height;
+
+    const node = addNode(room, 'res_legacy', 'TREE', 'wood');
+    node.gridX = 54;
+    node.gridY = 54;
+    node.remainingAmount = 0;
+
+    internals(room).scheduleResourceRespawn(node);
+
+    expect(room.state.resourceNodes.has('res_legacy')).toBe(false);
+  });
+
+  it('still regrows a generated node away from the plaza', () => {
+    const room = createRoom();
+    room.state.zoneId = 'kingdom:player-a';
+    internals(room).zoneId = 'kingdom:player-a';
+    room.state.mapWidth = KINGDOM_MAP_SIZE.width;
+    room.state.mapHeight = KINGDOM_MAP_SIZE.height;
+
+    const node = addNode(room, 'res_edge', 'GOLD_MINE', 'gold');
+    node.gridX = 10;
+    node.gridY = 10;
+    node.remainingAmount = 0;
+
+    internals(room).scheduleResourceRespawn(node);
+
+    expect(room.state.resourceNodes.has('res_edge')).toBe(true);
+    const respawnAt = internals(room).resourceRespawnAt as Map<string, number>;
+    expect(respawnAt.get('res_edge')).toBeGreaterThan(Date.now());
+  });
+
+  it('forgets a deadline whose node left the state', () => {
+    const room = createRoom();
+    const respawnAt = new Map<string, number>([['res_gone', Date.now() - 1]]);
+    internals(room).resourceRespawnAt = respawnAt;
+
+    internals(room).scanResourceRespawns(Date.now());
+
+    expect(respawnAt.has('res_gone')).toBe(false);
   });
 });

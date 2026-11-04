@@ -10,7 +10,6 @@ import {
   MapTerrain,
   MAX_TRAVEL_UNITS,
   NetworkMessage,
-  RESOURCE_RESPAWN_MS,
   TravelPayload,
   TravelReadyPayload,
   PlaceBuildingPayload,
@@ -60,6 +59,7 @@ import { zonePersistence } from './ZonePersistence.js';
 import { arrivalPoint, ensurePortalFor, findOwnPortal } from './portals.js';
 import { terrainOf } from './mapLayout.js';
 import { generateWorldResources } from './worldGeneration.js';
+import { isOneOffResourceNode, regrowDelayMs, starterResourceId } from './resources.js';
 import { isTravelCoolingDown, markTravel } from './travelCooldowns.js';
 import { entityIds } from '../services/EntityIdAllocator.js';
 import type { TravelUnitSnapshot } from '../services/DatabaseService.js';
@@ -115,8 +115,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   /** Where an account is travelling to while its leave save runs. */
   private readonly departureZoneByOwner = new Map<string, string>();
   /**
-   * Depleted resource nodes and when they refill. In-memory only: a restart
-   * refills them immediately, which is the same outcome a fresh room has.
+   * Depleted resource nodes and when they refill. In-memory only; the deadline
+   * is persisted per node (see `DatabaseService.saveZoneResources`) so a restart
+   * resumes the wait instead of refilling the map.
    */
   private readonly resourceRespawnAt = new Map<string, number>();
   private lastRespawnScanAt = 0;
@@ -378,9 +379,25 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           node.resourceType = res.resourceType;
           node.gridX = res.gridX;
           node.gridY = res.gridY;
+          // A starter node is a one-off supply: one that ran out is dropped
+          // instead of refilled, and the sweep deletes its row.
+          if (res.remainingAmount <= 0 && isOneOffResourceNode(res, this.terrain)) continue;
+
           // A depleted node is kept as an empty slot so the client can hide it
-          // and the respawn scan can refill it. A restart refills immediately.
-          node.remainingAmount = res.remainingAmount > 0 ? res.remainingAmount : res.maxAmount;
+          // and the respawn scan can refill it. The refill deadline is persisted,
+          // so a restart resumes the wait instead of refilling on boot.
+          const storedRespawnAt = res.respawnAt ?? null;
+          if (res.remainingAmount > 0) {
+            node.remainingAmount = res.remainingAmount;
+          } else if (storedRespawnAt !== null && storedRespawnAt <= Date.now()) {
+            node.remainingAmount = res.maxAmount;
+          } else {
+            node.remainingAmount = 0;
+            this.resourceRespawnAt.set(
+              res.id,
+              storedRespawnAt ?? Date.now() + regrowDelayMs(res.resourceType)
+            );
+          }
           node.maxAmount = res.maxAmount;
           this.state.resourceNodes.set(res.id, node);
         }
@@ -926,7 +943,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       const gridY = spawnY + off.dy;
       if (this.hasResourceAt(gridX, gridY)) return;
 
-      const id = `res_${entityIds.nextId()}`;
+      const id = starterResourceId(entityIds.nextId());
       const node = new ResourceNodeState();
       node.id = id;
       node.type = 'TREE';
@@ -949,7 +966,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       const gridY = spawnY + off.dy;
       if (this.hasResourceAt(gridX, gridY)) return;
 
-      const id = `res_${entityIds.nextId()}`;
+      const id = starterResourceId(entityIds.nextId());
       const node = new ResourceNodeState();
       node.id = id;
       node.type = 'BERRY_BUSH';
@@ -1092,7 +1109,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       await this.refreshForeignBaseline(player);
     }
 
-    await DatabaseService.saveFullWorldState(this.state, this.zoneId, { skipIfBusy: true });
+    await DatabaseService.saveFullWorldState(this.state, this.zoneId, {
+      skipIfBusy: true,
+      resourceRespawnAt: this.resourceRespawnAt
+    });
   }
 
   /**
@@ -1227,8 +1247,16 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   }
 
   private scheduleResourceRespawn(node: ResourceNodeState): void {
+    // Neither the starter woodline nor the berry patch near the Town Center
+    // comes back; see `isOneOffResourceNode` for how they are recognised.
+    if (isOneOffResourceNode(node, this.terrain)) {
+      this.resourceRespawnAt.delete(node.id);
+      this.state.resourceNodes.delete(node.id);
+      return;
+    }
+
     if (this.resourceRespawnAt.has(node.id)) return;
-    this.resourceRespawnAt.set(node.id, Date.now() + RESOURCE_RESPAWN_MS);
+    this.resourceRespawnAt.set(node.id, Date.now() + regrowDelayMs(node.resourceType));
   }
 
   /** Refills depleted nodes whose respawn delay has elapsed. */
@@ -1640,7 +1668,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         // A hand-off leave may have returned early (the destination already
         // owned the session), leaving the player entry in this state. Flush the
         // entities but not the stale account row.
-        skipAccountFor: new Set(this.departureZoneByOwner.keys())
+        skipAccountFor: new Set(this.departureZoneByOwner.keys()),
+        resourceRespawnAt: this.resourceRespawnAt
       });
     } else {
       console.log(`🛑 [WorldRoom] ${this.zoneId} disposing; newer room owns the zone.`);
