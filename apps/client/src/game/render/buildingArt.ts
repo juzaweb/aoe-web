@@ -13,6 +13,28 @@ export interface BuildingArt {
 }
 
 /**
+ * The generated gate sheet, as measured by
+ * `scripts/process_generated_assets.py --check`: a 320x360 canvas with four
+ * empty rows on top, drawn at 1.5x so the gate reads as a landmark rather than a
+ * 2x2 prop. Its lift and health-bar height are derived from these numbers, so a
+ * rescale or a re-crop cannot leave the bar floating over the arch.
+ */
+const PORTAL_SHEET = { canvasHeight: 360, topInset: 4, scale: 1.5 } as const;
+
+/** Local y of the art's bottom row: the same `+40` the 2x2 house uses. */
+const GATE_BASE_Y = 40;
+
+/** Lift that puts the scaled sheet's bottom row on `GATE_BASE_Y`. */
+const PORTAL_LIFT = GATE_BASE_Y - (PORTAL_SHEET.canvasHeight * PORTAL_SHEET.scale) / 2;
+
+/** Bar 8 px above the scaled art top, which sits `topInset` below the canvas. */
+const PORTAL_HP_BAR_Y =
+  PORTAL_LIFT -
+  (PORTAL_SHEET.canvasHeight / 2) * PORTAL_SHEET.scale +
+  PORTAL_SHEET.topInset * PORTAL_SHEET.scale -
+  8;
+
+/**
  * Lift of the generated `building_<TYPE>` sheet above the tile centre.
  *
  * Every sheet is bottom-anchored (art touches the last row), so the lift is what
@@ -32,7 +54,18 @@ export const SHEET_OFFSET_Y: Partial<Record<BuildingType, number>> = {
   LUMBER_CAMP: -70,
   MILL: -70,
   MINING_CAMP: -70,
-  PORTAL: -140
+  // Bottom-anchored at `GATE_BASE_Y`, so the taller art grows upwards.
+  PORTAL: PORTAL_LIFT
+};
+
+/**
+ * Sprite scale for sheets that are drawn larger than their footprint.
+ *
+ * The 2x2 footprint is unchanged, so collision and the server's placement rules
+ * are untouched; only the drawn sprite grows.
+ */
+const SHEET_SCALE: Partial<Record<BuildingType, number>> = {
+  PORTAL: PORTAL_SHEET.scale
 };
 
 /** Procedural textures used when a building has no generated PNG. */
@@ -97,7 +130,8 @@ const HP_BAR_Y: Partial<Record<BuildingType, number>> = {
   LUMBER_CAMP: -171,
   MILL: -190,
   MINING_CAMP: -190,
-  PORTAL: -326
+  // Gate: the bar follows the scaled art's top edge, not the sheet rectangle.
+  PORTAL: PORTAL_HP_BAR_Y
 };
 
 /**
@@ -133,7 +167,7 @@ export function buildingArt(
     return {
       textureKey: customKey,
       offsetY: SHEET_OFFSET_Y[type] ?? DEFAULT_ART.offsetY,
-      scale: 1
+      scale: SHEET_SCALE[type] ?? 1
     };
   }
   return { ...(FALLBACK_ART[type] ?? DEFAULT_ART), scale: 1 };

@@ -72,8 +72,8 @@ describe('ensurePortalFor', () => {
 
     expect(portal).not.toBeNull();
     expect(portal!.type).toBe('PORTAL');
-    // Kingdom 110x110, portal 2x2, margin 5: the fixed column is x = 103.
-    expect(portal!.gridX).toBe(state.mapWidth - 5 - portal!.sizeX);
+    // Kingdom 110x110, portal 2x2 flush on the right edge: x = 108.
+    expect(portal!.gridX).toBe(state.mapWidth - portal!.sizeX);
     expect(portal!.gridY).toBe(Math.floor(state.mapHeight / 2) - Math.floor(portal!.sizeY / 2));
     expect(overlaps(portal!, townCenter)).toBe(false);
     expect(findOwnPortal(state, 'user-1')).toBe(portal);
@@ -87,7 +87,7 @@ describe('ensurePortalFor', () => {
     const portal = ensurePortalFor(state, 'user-1');
 
     expect(portal).toBe(oldPortal);
-    expect(portal!.gridX).toBe(state.mapWidth - 5 - portal!.sizeX);
+    expect(portal!.gridX).toBe(state.mapWidth - portal!.sizeX);
   });
 
   it('is idempotent for one account', () => {
@@ -147,6 +147,21 @@ describe('arrivalPoint', () => {
       expect(point.y).toBeLessThan(state.mapHeight);
       expect(point.y).toBeGreaterThanOrEqual(portal.gridY + portal.sizeY);
     }
+  });
+
+  it('spreads arrivals across the edge when the portal is flush on it', () => {
+    // A kingdom gateway touches the right edge, so a fan centred on it would
+    // clamp every column to nearly the same x and arrivals would stack.
+    const state = createState('kingdom:user-1');
+    addBuilding(state, 'user-1', 'TOWN_CENTER', 40, 40);
+    const portal = ensurePortalFor(state, 'user-1')!;
+
+    const firstRow = [0, 1, 2, 3, 4, 5, 6].map((i) => arrivalPoint(portal, i, state).x);
+    const distinct = new Set(firstRow.map((x) => x.toFixed(2)));
+
+    expect(distinct.size).toBe(firstRow.length);
+    expect(Math.max(...firstRow) - Math.min(...firstRow)).toBeGreaterThan(3);
+    expect(Math.max(...firstRow)).toBeLessThan(state.mapWidth);
   });
 
   it('moves arrivals out of a building placed below the portal', () => {

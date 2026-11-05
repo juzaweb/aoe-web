@@ -63,7 +63,7 @@ thành nguồn sự thật cho server + client. Phase này **có** migration d�
 và §5. Không đổi schema bảng, không cần reset DB, nhưng nên backup `apps/server/database/dev.db`
 trước lần boot đầu tiên. Đã code xong ngày 2026-11-03 (chưa commit): migration đã chạy trên
 `apps/server/database/dev.db`, probe SDK thật xác nhận kingdom 110×110 với TC `(53,53)`/portal
-`(103,54)` và battlefield vẫn 220×220.
+`(108,54)` (sát mép phải, cập nhật 2026-11-05) và battlefield vẫn 220×220.
 
 Phase 08 (progression curve) đặt **đường cong thời gian/giá** cho nâng cấp. Bản 2026-11-05 rút thang
 xuống **10 cấp cho mọi công trình** và dùng một đường cong duy nhất: thời gian **×3**/cấp, giá
@@ -81,8 +81,10 @@ Phase 09 (road + gate assets) thay nốt 2 chỗ art còn là placeholder: 4 sta
 `scripts/process_generated_assets.py` (không đưa vào `manifest.json` vì không phải third-party).
 Quyết định đáng chú ý: căn cổng bottom-center theo bbox (tâm lối đi lệch 17 px, đã đo), `offsetY`
 `-140`, bỏ tint, và chuẩn hoá 4 crop đường về mean 150. Đã implement ngày 2026-11-03: `portal.png`
-320×360 (topInset 4 → `HP_BAR_Y.PORTAL = -326`), 4 road stamp 120×60 mean 150, `--check` của script
-mới và `build.py --check` đều xanh; còn verify tay §7.2. Xem `09-road-and-gate-assets.md` §3 và §6.
+320×360 (topInset 4), 4 road stamp 120×60 mean 150, `--check` của script mới và `build.py --check`
+đều xanh. Cập nhật 2026-11-05: cổng vẽ ở **scale 1,5** (`SHEET_SCALE.PORTAL`), nên `offsetY = -230`
+và `HP_BAR_Y.PORTAL = -502`; cổng kingdom đặt **sát mép phải** (`x = width - sizeX`, trên map 110 là
+`(108, 54)`). Xem `09-road-and-gate-assets.md` §3 và §6.
 
 Phase 10 (persistence scaling) không sửa gameplay: nó ghi lại chi phí thật của autosave 30 s theo
 zone (mỗi user một kingdom room, battlefield dùng chung) và đề xuất 4 bước giảm tải — dirty tracking,

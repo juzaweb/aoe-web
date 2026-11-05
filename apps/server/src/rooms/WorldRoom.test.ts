@@ -2478,8 +2478,8 @@ describe('kingdom map layout (MAPS-V2)', () => {
       (b: BuildingState) => b.type === 'PORTAL'
     );
     expect(portal).toBeDefined();
-    // Fixed gateway column: width - margin(5) - size(2), vertically centred.
-    expect(portal!.gridX).toBe(103);
+    // Fixed gateway column: flush on the right edge (width - size), centred.
+    expect(portal!.gridX).toBe(108);
     expect(portal!.gridY).toBe(54);
   });
 

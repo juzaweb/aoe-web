@@ -83,7 +83,7 @@ pnpm --filter @chien-quoc/client build      # ok
 | `resource_type` lạ trong row cũ | fallback `RESOURCE_REGROW_MS.wood` |
 | Autosave chậm hơn 60 s | không ảnh hưởng: mốc tuyệt đối, không phải countdown |
 | Cụm rìa bị road/plaza chặn | mỗi cạnh vẫn có `ceil(count/4)` cụm; `spawnNode` chỉ bỏ node lẻ |
-| Cụm rìa bị TC/portal chiếm | TC ở tâm (cách biên 55 tile); portal `(103,54)`; `clearResourcesInFootprint` dọn node dưới chân công trình |
+| Cụm rìa bị TC/portal chiếm | TC ở tâm (cách biên 55 tile); portal `(108,54)` (sát mép phải, cập nhật 2026-11-05; trước là `(103,54)`); `clearResourcesInFootprint` dọn node dưới chân công trình |
 | Save lỗi giữa chừng | delta save idempotent; lần autosave sau ghi lại |
 | Node tặng kèm đã cạn trong save cũ | Bị bỏ khi restore; sweep của `saveZoneResources` xoá row |
 | Base bị xoá rồi tạo lại | `spawnInitialBase` chạy lại → tặng woodline/berry mới (đúng ý: đế mới, nguồn khởi đầu mới) |

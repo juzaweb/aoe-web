@@ -37,7 +37,7 @@ travel protocol.
 | D4 | TC đặt **đúng tâm**: `x = floor(w/2) - floor(sizeX/2)`, `y = floor(h/2) - floor(sizeY/2)` ⇒ (53, 53) trên map 110. Chỉ lùi khi ô đó bị chiếm (spiral quanh tâm). |
 | D5 | Nguồn sự thật kích thước map là `WorldState.mapWidth/mapHeight`; server set trong `onCreate` từ `mapSizeForZone(zoneId)`, client đọc từ room state. |
 | D6 | Tài nguyên kingdom scale theo diện tích (~19% mật độ battlefield); không sinh node trên tile đường hoặc trong plaza. |
-| D7 | Portal kingdom vẫn cố định ở mép phải, giữa trục dọc; trên map 110 là `(103, 54)` (margin 5, size 2×2). |
+| D7 | Portal kingdom vẫn cố định ở mép phải, giữa trục dọc; trên map 110 là `(103, 54)` (margin 5, size 2×2). *Cập nhật 2026-11-05: cổng dời sát mép (margin 0) ⇒ `(108, 54)`; xem `09-road-and-gate-assets.md`.* |
 | D8 | Không thêm/sửa message nào trong `NetworkMessage`; travel, portal, `travel_transfers` giữ nguyên. Migration chỉ là dữ liệu, không phải thay đổi schema bảng. |
 
 ## 3. Hiện trạng — các chỗ hardcode 220 (đối chiếu code)
@@ -192,7 +192,8 @@ Battlefield giữ nguyên hoàn toàn (kể cả lỗi cũ "node đè lên đư�
 Ước lượng node kingdom: ~210 cây + 40 vàng + 28 đá + 50 berry ≈ **270–330 node** (battlefield ~1.311; đo thật: 274).
 
 **`portals.ts`** — đọc size từ `state.mapWidth/mapHeight` trong `isPortalFootprintFree`,
-`findPortalSpot`, `findKingdomPortalSpot`, `arrivalPoint`. Hệ quả: kingdom portal thành `(103, 54)`;
+`findPortalSpot`, `findKingdomPortalSpot`, `arrivalPoint`. Hệ quả: kingdom portal thành `(103, 54)`
+(thời điểm đó; nay là `(108, 54)` — xem ghi chú D7);
 battlefield plot hash không đổi vì state vẫn 220. `clearPortalResources` giữ nguyên.
 
 **`CommandSystem`** — bounds validate (`:160`, `:760-761`) và clamp điểm đến (`:852-853`) lấy
@@ -341,11 +342,11 @@ Ngoài các file trong bảng, hai chỗ phát sinh khi code:
 - [x] `cd apps/server && ./node_modules/.bin/tsc --noEmit` sạch
 - [x] `cd apps/client && ./node_modules/.bin/tsc --noEmit` sạch
 - [x] `vitest run` server xanh (152 test) — `terrainMath.test` có case 110 và 220 giữ
-      `roadCount 2205`; `portals.test` kingdom 110 kiểm tra portal `(103,54)`; `WorldRoom.test` có
+      `roadCount 2205`; `portals.test` kingdom 110 kiểm tra portal (khi đó `(103,54)`, nay `(108,54)`); `WorldRoom.test` có
       nhóm `kingdom map layout (MAPS-V2)`; `Pathfinder.test` thêm case 110
 - [x] `vitest run` client xanh (142 test)
 - [x] Probe SDK thật trên dev server, tài khoản mới: `mapWidth/Height = 110`, TC `(53,53)`,
-      portal `(103,54)`, 3 dân, 274 resource node
+      portal (khi đó `(103,54)`), 3 dân, 274 resource node
 - [x] Probe SDK thật trên battlefield: `220×220`, 1.258 resource node, không có TC
 - [ ] Cảm nhận tay trên UI: camera mở đúng TC, minimap 110 khớp world, click trái/phải đúng ô
 - [ ] Travel vòng kingdom → battlefield → kingdom trên browser thật (cần 2 tab/2 map)
