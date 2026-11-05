@@ -62,12 +62,35 @@ export const UNIT_UPGRADE_ORDER: readonly UnitType[] = [
   'CAVALRY'
 ];
 
+/**
+ * Level milestones where a building's artwork changes (LVL3).
+ *
+ * A building has one sprite per "visual tier". The house climbs to level 100,
+ * which is far too many drawings to ship, so the shape changes at four points:
+ * a hut, a cottage, a timber house, a stone house and finally a manor. The
+ * tiers are a pure function of the level, so the server never has to replicate
+ * anything and a client that reconnects redraws the same shape.
+ *
+ * Element `i` is the first level of tier `i + 1`: level 1 is tier 1, level 2
+ * tier 2, level 5 tier 3, level 10 tier 4 and level 25 tier 5, and every level
+ * above 25 stays on the last tier.
+ */
+export const HOUSE_VISUAL_TIER_LEVELS: readonly number[] = [1, 2, 5, 10, 25];
+
+/** Display names of the house tiers, index-aligned with the milestones. */
+export const HOUSE_VISUAL_TIER_NAMES: readonly string[] = [
+  'Thatched Hut',
+  'Timber Cottage',
+  'Stone Cottage',
+  'Town House',
+  'Manor'
+];
+
 export interface BuildingLevelStats {
   maxHp: number;
   attackPower: number;
   populationProvided: number;
 }
-
 export interface UnitLevelStats {
   maxHp: number;
   attackPower: number;
@@ -87,6 +110,73 @@ export function getBuildingMaxLevel(type: BuildingType): number {
   if (type === 'TOWN_CENTER') return MAX_TOWN_CENTER_LEVEL;
   if (CORE_BUILDING_TYPES.includes(type)) return MAX_CORE_BUILDING_LEVEL;
   return MAX_BUILDING_LEVEL;
+}
+
+/**
+ * Which visual tier's artwork a building shows at `rawLevel` (LVL3).
+ *
+ * Returns a 1-based tier index clamped to the milestone table, so a level-100
+ * House keeps the last drawing instead of asking for a sprite that does not
+ * exist. Types without their own tier table always stay on tier 1.
+ */
+export function getBuildingVisualTier(type: BuildingType, rawLevel: number): number {
+  const milestones = visualTierLevels(type);
+  if (!milestones) return 1;
+
+  const level = clampLevel(rawLevel, getBuildingMaxLevel(type));
+  let tier = 1;
+  for (let i = 0; i < milestones.length; i++) {
+    if (level >= milestones[i]) tier = i + 1;
+  }
+  return tier;
+}
+
+/** How many distinct shapes a building type ships; `1` means level-invariant. */
+export function getBuildingVisualTierCount(type: BuildingType): number {
+  return visualTierLevels(type)?.length ?? 1;
+}
+
+/**
+ * English display name of a 1-based tier, or `null` when the type has no tiers.
+ *
+ * `rawTier` is the 1-based tier index. The client resolves which shape it
+ * actually drew (a missing sheet degrades to the previous one) and names that
+ * index, so the label always matches the sprite. Callers that only have a level
+ * go through {@link getBuildingVisualTierName}.
+ */
+export function getBuildingVisualTierNameForTier(
+  type: BuildingType,
+  rawTier: number
+): string | null {
+  const milestones = visualTierLevels(type);
+  if (!milestones) return null;
+  const tier = Math.floor(Number(rawTier));
+  if (!Number.isFinite(tier) || tier < 1 || tier > milestones.length) return null;
+  return HOUSE_VISUAL_TIER_NAMES[tier - 1] ?? null;
+}
+
+/** English display name of the tier a level draws, or `null` without tiers. */
+export function getBuildingVisualTierName(type: BuildingType, rawLevel: number): string | null {
+  return getBuildingVisualTierNameForTier(type, getBuildingVisualTier(type, rawLevel));
+}
+
+/**
+ * The level at which the next shape appears, or `null` at the last tier.
+ *
+ * The UI reads this to tell the player "shape changes at level 5" without
+ * duplicating the milestone table.
+ */
+export function getNextVisualTierLevel(type: BuildingType, rawLevel: number): number | null {
+  const milestones = visualTierLevels(type);
+  if (!milestones) return null;
+
+  const tier = getBuildingVisualTier(type, rawLevel);
+  return tier < milestones.length ? milestones[tier] : null;
+}
+
+/** Per-type tier milestones; `null` for types whose art is level-invariant. */
+function visualTierLevels(type: BuildingType): readonly number[] | null {
+  return type === 'HOUSE' ? HOUSE_VISUAL_TIER_LEVELS : null;
 }
 
 /**

@@ -382,6 +382,10 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
           playerResources={playerResources}
           coreLevels={entity.coreLevels}
           activeUpgrades={entity.activeUpgrades}
+          visualTier={entity.visualTier}
+          visualTierCount={entity.visualTierCount}
+          visualTierName={entity.visualTierName}
+          nextVisualTierLevel={entity.nextVisualTierLevel}
           onUpgrade={onUpgradeBuilding}
           onCancel={onCancelBuildingUpgrade}
         />

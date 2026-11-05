@@ -1,4 +1,9 @@
-import type { BuildingType } from '@chien-quoc/shared';
+import {
+  getBuildingVisualTier,
+  getBuildingVisualTierNameForTier,
+  getNextVisualTierLevel,
+  type BuildingType
+} from '@chien-quoc/shared';
 
 /** Where a building type's artwork sits relative to its container origin. */
 export interface BuildingArt {
@@ -41,6 +46,35 @@ const FALLBACK_ART: Partial<Record<BuildingType, { textureKey: string; offsetY: 
   PORTAL: { textureKey: 'b_tower', offsetY: -90 }
 };
 
+/**
+ * Per-tier artwork for buildings whose silhouette changes with level (LVL3).
+ *
+ * Index 0 is tier 1. `canvasHeight` and `topInset` are the shipped sheet's
+ * measurements (see `scripts/assets/assets.lock.json`); everything else is
+ * derived from them. The lift reproduces the existing `-70` for the level-1
+ * house's 220 px canvas, and the bar stays the invariant the asset test
+ * enforces, so a new tier cannot ship a floating health bar.
+ *
+ * The milestones themselves live in `@chien-quoc/shared`
+ * (`HOUSE_VISUAL_TIER_LEVELS`), so art and game rules cannot drift apart.
+ */
+interface TierArtSpec {
+  canvasHeight: number;
+  topInset: number;
+}
+
+const HOUSE_TIERS: readonly TierArtSpec[] = [
+  { canvasHeight: 220, topInset: 0 },
+  { canvasHeight: 232, topInset: 1 },
+  { canvasHeight: 256, topInset: 0 },
+  { canvasHeight: 280, topInset: 0 },
+  { canvasHeight: 304, topInset: 0 }
+];
+
+const TIER_ART: Partial<Record<BuildingType, readonly TierArtSpec[]>> = {
+  HOUSE: HOUSE_TIERS
+};
+
 const DEFAULT_ART = { textureKey: 'b_town_center', offsetY: -130 };
 
 /**
@@ -73,11 +107,27 @@ const HP_BAR_Y: Partial<Record<BuildingType, number>> = {
  *
  * `hasTexture` keeps this free of Phaser: the callers pass their texture
  * manager's `exists`.
+ *
+ * `level` selects a visual tier for types whose shape changes with level
+ * (LVL3). The lookup walks down from the requested tier so a missing sheet
+ * degrades to the previous shape instead of a green box, and the level-1 sheet
+ * is the last generated fallback before the procedural texture.
  */
 export function buildingArt(
   type: BuildingType,
-  hasTexture: (textureKey: string) => boolean
+  hasTexture: (textureKey: string) => boolean,
+  level = 1
 ): BuildingArt {
+  const requested = visualTier(type, level);
+  const drawn = drawnTier(type, requested, hasTexture);
+  if (drawn > 1) {
+    return {
+      textureKey: `building_${type}_${drawn}`,
+      offsetY: tierOffsetY(type, drawn),
+      scale: 1
+    };
+  }
+
   const customKey = `building_${type}`;
   if (hasTexture(customKey)) {
     return {
@@ -89,7 +139,109 @@ export function buildingArt(
   return { ...(FALLBACK_ART[type] ?? DEFAULT_ART), scale: 1 };
 }
 
-/** HP bar position for a building type; unknown types fall back to the default. */
-export function buildingHpBarY(type: string): number {
-  return HP_BAR_Y[type as BuildingType] ?? -120;
+/**
+ * The highest tier at or below `requested` whose sheet actually loaded.
+ *
+ * One walk, so the sprite and the detail panel cannot disagree: if tier 4's PNG
+ * is missing, both draw and *report* tier 3 rather than labelling a cottage as
+ * a manor. Returns `1` when even the tier-1 sheet is missing, which is the
+ * procedural fallback the caller then handles.
+ */
+function drawnTier(
+  type: BuildingType,
+  requested: number,
+  hasTexture: (textureKey: string) => boolean
+): number {
+  for (let candidate = requested; candidate > 1; candidate--) {
+    if (hasTexture(`building_${type}_${candidate}`)) return candidate;
+  }
+  return 1;
+}
+
+/**
+ * How many shape sheets a type ships; `1` means level-invariant.
+ *
+ * This is the *art* count, and it is deliberately separate from
+ * `getBuildingVisualTierCount` in `@chien-quoc/shared`: that one counts game
+ * milestones. If the shared table gains a milestone before the sheet exists,
+ * preload would ask for a PNG nobody drew — so preload and the renderer read
+ * this count, and a missing sheet just degrades to the previous shape.
+ */
+export function buildingVisualTierCount(type: BuildingType): number {
+  return TIER_ART[type]?.length ?? 1;
+}
+
+/** Everything the detail panel shows about a building's shape. */
+export interface BuildingTierInfo {
+  /** 1-based shape currently drawn, clamped to the shipped sheets. */
+  tier: number;
+  /** How many shapes this type ships; `1` means level-invariant. */
+  count: number;
+  /** English shape name, or `null` for a type that never changes. */
+  name: string | null;
+  /** Level that draws the next shape, or `null` at the last shipped one. */
+  nextLevel: number | null;
+}
+
+/**
+ * Resolves the tier triple in one place so the panel cannot disagree with the
+ * sprite, including when a sheet is missing and the art degrades.
+ *
+ * `hasTexture` is optional so a caller without a texture manager (a test, or a
+ * future non-Phaser surface) still gets the level-derived answer, but the scene
+ * passes its real one.
+ */
+export function buildingTierInfo(
+  type: BuildingType,
+  level = 1,
+  hasTexture: (textureKey: string) => boolean = () => true
+): BuildingTierInfo {
+  const count = buildingVisualTierCount(type);
+  if (count === 1) return { tier: 1, count: 1, name: null, nextLevel: null };
+
+  const requested = visualTier(type, level);
+  const tier = drawnTier(type, requested, hasTexture);
+  return {
+    tier,
+    count,
+    name: getBuildingVisualTierNameForTier(type, tier),
+    // Only promise a shape change we can actually draw.
+    nextLevel: tier < count ? getNextVisualTierLevel(type, level) : null
+  };
+}
+
+/**
+ * Top of the health / construction bar for a building at `level`, in container
+ * space. Level-invariant types keep the hand-tuned table; tiered types derive
+ * it from the sheet's measured art top so a new tier cannot float its bar.
+ */
+export function buildingHpBarY(type: BuildingType, level = 1): number {
+  const tier = visualTier(type, level);
+  const spec = tierSpec(type, tier);
+  if (spec) {
+    return tierOffsetY(type, tier) - spec.canvasHeight / 2 + spec.topInset - 8;
+  }
+  return HP_BAR_Y[type] ?? -120;
+}
+
+/**
+ * Visual tier for a level: the shared milestone answer, clamped to the number
+ * of sheets this module actually ships.
+ */
+function visualTier(type: BuildingType, level: number): number {
+  const specs = TIER_ART[type];
+  if (!specs) return 1;
+  return Math.min(getBuildingVisualTier(type, level), specs.length);
+}
+
+function tierSpec(type: BuildingType, tier: number): TierArtSpec | null {
+  const specs = TIER_ART[type];
+  if (!specs) return null;
+  return specs[Math.min(Math.max(1, tier), specs.length) - 1];
+}
+
+function tierOffsetY(type: BuildingType, tier: number): number {
+  const spec = tierSpec(type, tier);
+  if (!spec) return SHEET_OFFSET_Y[type] ?? DEFAULT_ART.offsetY;
+  return 40 - spec.canvasHeight / 2;
 }

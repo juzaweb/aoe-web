@@ -46,6 +46,27 @@ def crop_to_alpha(im: Image.Image, floor: int = ALPHA_FLOOR) -> Image.Image:
     """Crop away transparent margins, keeping every visible edge pixel."""
     return im.crop(alpha_bbox(im, floor))
 
+def floor_alpha(im: Image.Image, floor: int) -> Image.Image:
+    """Remove pixels fainter than ``floor`` alpha and rescale the rest to 0-255.
+
+    Some packs bake a soft drop shadow into the sprite instead of shipping it as
+    a separate layer. The shadow reaches far to one side, so the lowest opaque
+    row ends up off-centre and the sprite fails the `iso_base` gate even though
+    the building itself stands on a proper iso corner. Fading the shadow out and
+    rescaling the remaining alpha keeps the silhouette crisp: a hard threshold
+    alone would leave a jagged edge, because the source fades over many pixels.
+
+    The same floor is applied again after `fit`, where lanczos resampling
+    reintroduces faint pixels along the base and moves the measured corner.
+    """
+    if floor <= 0:
+        return im
+    a = np.asarray(im).astype(np.float32)
+    alpha = a[:, :, 3]
+    alpha = np.where(alpha <= floor, 0.0, (alpha - floor) * 255.0 / (255.0 - floor))
+    a[:, :, 3] = np.clip(alpha, 0, 255)
+    return Image.fromarray(a.astype(np.uint8), "RGBA")
+
 
 def luminance(im: Image.Image, floor: int = 200) -> float:
     """Mean Rec.709 luminance of the solid part of a sprite."""

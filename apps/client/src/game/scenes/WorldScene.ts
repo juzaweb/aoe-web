@@ -19,6 +19,7 @@ import {
   terrainForZone
 } from '@chien-quoc/shared';
 import { generateProceduralTextures } from '../renderers/ProceduralSprites.js';
+import { buildingTierInfo, buildingVisualTierCount } from '../render/buildingArt.js';
 import { CommandController } from '../input/CommandController.js';
 import { CursorController } from '../input/CursorController.js';
 import { PlacementController } from '../input/PlacementController.js';
@@ -139,6 +140,16 @@ export interface SelectedEntityData {
   /** LVL: building upgrade timer; `upgradeTimeMs = 0` means idle. */
   upgradeProgressMs?: number;
   upgradeTimeMs?: number;
+  /**
+   * LVL3: which of the building's shipped shapes is drawn at the current level.
+   * `visualTierCount` is 1 for types that never change shape, so the panel can
+   * hide the whole block with one check.
+   */
+  visualTier?: number;
+  visualTierCount?: number;
+  visualTierName?: string | null;
+  /** LVL3: level at which the next shape appears; `null` at the last tier. */
+  nextVisualTierLevel?: number | null;
   /** LVL: player-wide research levels, indexed by UNIT_UPGRADE_ORDER. */
   unitLevels?: number[];
   researchUnitType?: string;
@@ -435,14 +446,21 @@ export class WorldScene extends Phaser.Scene {
     }
 
     // Preload generated building assets with cache-busting version (2x resolution)
-    // v=9: the house moved from hovel frame 00000 (a straight-on elevation
-    // whose base was a flat line as wide as the plot) to the 45-degree frame
-    // 60000, so its base converges on the tile's front corner. Bump the key
-    // whenever a PNG under public/assets/buildings or /resources changes.
-    const v = 'v=9';
+    // v=10: the house gained four level-tier sheets (`house_2..5.png`), which
+    // will ship alongside the existing level-1 sheet. Bump the key whenever a
+    // PNG under public/assets/buildings or /resources changes.
+    const v = 'v=10';
     this.load.image('building_TOWN_CENTER', `/assets/buildings/town_center.png?${v}`);
     this.load.image('building_BARRACKS', `/assets/buildings/barracks.png?${v}`);
     this.load.image('building_HOUSE', `/assets/buildings/house.png?${v}`);
+    // LVL3: the house changes silhouette at four level milestones. Keys follow
+    // `building_<TYPE>_<tier>`; `buildingArt` walks down from the requested tier
+    // so a sheet that fails to load degrades to the previous shape. The loop
+    // counts the *sheets the renderer knows about*, not the shared milestone
+    // table, so a milestone added before its art cannot 404 here.
+    for (let tier = 2; tier <= buildingVisualTierCount('HOUSE'); tier++) {
+      this.load.image(`building_HOUSE_${tier}`, `/assets/buildings/house_${tier}.png?${v}`);
+    }
     this.load.image('building_FARM', `/assets/buildings/farm.png?${v}`);
     this.load.image('building_TOWER', `/assets/buildings/tower.png?${v}`);
     this.load.image('building_PORTAL', `/assets/buildings/portal.png?${v}`);
@@ -1605,6 +1623,9 @@ export class WorldScene extends Phaser.Scene {
       const b = this.room?.state?.buildings.get(this.selectedBuildingId);
       if (b) {
         const bp = BUILDING_BLUEPRINTS[b.type as BuildingType];
+        const tier = buildingTierInfo(b.type as BuildingType, b.level, (key) =>
+          this.textures.exists(key)
+        );
         this.onSelectionChange({
           id: this.selectedBuildingId,
           type: 'building',
@@ -1614,6 +1635,10 @@ export class WorldScene extends Phaser.Scene {
           maxHp: b.maxHp,
           level: b.level,
           maxLevel: getBuildingMaxLevel(b.type as BuildingType),
+          visualTier: tier.tier,
+          visualTierCount: tier.count,
+          visualTierName: tier.name,
+          nextVisualTierLevel: tier.nextLevel,
           upgradeProgressMs: b.upgradeProgressMs,
           upgradeTimeMs: b.upgradeTimeMs,
           ...(b.ownerId === this.myOwnerId

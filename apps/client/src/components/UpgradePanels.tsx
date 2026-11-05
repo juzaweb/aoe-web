@@ -80,6 +80,11 @@ interface BuildingUpgradePanelProps {
   coreLevels?: Partial<Record<BuildingType, number>>;
   /** LVL2: how many of the player's buildings already have an upgrade running. */
   activeUpgrades?: number;
+  /** LVL3: which shape is drawn right now, and when the next one appears. */
+  visualTier?: number;
+  visualTierCount?: number;
+  visualTierName?: string | null;
+  nextVisualTierLevel?: number | null;
   onUpgrade: (buildingId: string) => void;
   onCancel: (buildingId: string) => void;
 }
@@ -95,6 +100,10 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
   playerResources,
   coreLevels,
   activeUpgrades = 0,
+  visualTier,
+  visualTierCount = 1,
+  visualTierName,
+  nextVisualTierLevel,
   onUpgrade,
   onCancel
 }) => {
@@ -137,6 +146,21 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
           </span>
         </span>
       </div>
+
+      {visualTierCount > 1 && visualTierName && (
+        <div
+          className="flex items-center justify-between gap-2 text-[9px] font-mono text-slate-400"
+          data-visual-tier
+          title="Hình dáng công trình đổi theo cấp"
+        >
+          <span>
+            Hình {visualTier}/{visualTierCount} · {visualTierName}
+          </span>
+          {nextVisualTierLevel != null && (
+            <span className="text-sky-300 shrink-0">đổi ở Lv {nextVisualTierLevel}</span>
+          )}
+        </div>
+      )}
 
       {requiredCoreLevel > 0 && !isMaxed && (
         <div className="rounded border border-slate-800 bg-slate-950/60 p-1.5 space-y-1" data-gate>

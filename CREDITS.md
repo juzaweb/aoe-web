@@ -113,6 +113,25 @@ scaled to 256x220 and luminance-matched. The separate shadow layer in the pack
 is not shipped as a second sprite; the game has no dynamic shadow system, so the
 building stands on its own footprint.
 
+### Medieval Buildings 01, 04, 05 and 06 — Bleed
+
+- **Author:** Bleed
+- **Source:** https://opengameart.org/content/medieval-building-01-bleeds-game-art-0,
+  https://opengameart.org/content/medieval-building-04-bleeds-game-art,
+  https://opengameart.org/content/medieval-building-05-bleeds-game-art,
+  https://opengameart.org/content/medieval-building-06
+- **License:** [CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/)
+- **Used for:** `assets/buildings/house_2.png` (building 05),
+  `house_3.png` (building 06), `house_4.png` (building 01) and `house_5.png`
+  (building 04) — the four level tiers above the hovel above.
+
+**Changes made.** Each sheet is cropped to alpha, luminance-matched to the map's
+`107.3` target and fitted to its own canvas, anchored bottom-centre. Three of the
+four pack a soft drop shadow into the sprite itself; `scripts/assets/ops.py`
+`floor_alpha` fades it out (alpha ≤ 96 → 0, the rest rescaled) before the crop and
+again after the fit, because the shadow otherwise drags the measured iso base
+corner ~12–17% off centre and fails `build.py --check`. Nothing is redrawn.
+
 ### Medieval Barracks, Medieval Stable and Castle — feudalwars
 
 - **Author:** feudalwars (made for [Feudal Wars](https://feudalwars.net/))

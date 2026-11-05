@@ -8,7 +8,12 @@ import {
   getBuildingMaxLevel,
   getBuildingUpgradeCost,
   getBuildingUpgradeTimeMs,
+  getBuildingVisualTier,
+  getBuildingVisualTierCount,
+  getBuildingVisualTierName,
+  getBuildingVisualTierNameForTier,
   getCoreLevelGaps,
+  getNextVisualTierLevel,
   getPlayerUnitLevel,
   getRequiredCoreLevel,
   getUnitLevelStats,
@@ -191,6 +196,60 @@ describe('Town Center gate (LVL2)', () => {
     expect(getCoreLevelGaps({ HOUSE: Number.NaN }, 5)[0].current).toBe(0);
     // Below the first step every gap is already met, gate or not.
     expect(getCoreLevelGaps(undefined, 4).every((gap) => gap.met)).toBe(true);
+  });
+});
+
+describe('visual tiers (LVL3)', () => {
+  it('steps the house shape at its four milestones', () => {
+    const expected: [number, number][] = [
+      [1, 1],
+      [2, 2],
+      [4, 2],
+      [5, 3],
+      [9, 3],
+      [10, 4],
+      [24, 4],
+      [25, 5],
+      [100, 5]
+    ];
+    for (const [level, tier] of expected) {
+      expect(getBuildingVisualTier('HOUSE', level), `level ${level}`).toBe(tier);
+    }
+  });
+
+  it('clamps out-of-range levels instead of asking for a missing sheet', () => {
+    expect(getBuildingVisualTier('HOUSE', 0)).toBe(1);
+    expect(getBuildingVisualTier('HOUSE', -7)).toBe(1);
+    expect(getBuildingVisualTier('HOUSE', 100000)).toBe(5);
+  });
+
+  it('leaves every other building level-invariant', () => {
+    for (const type of ['TOWN_CENTER', 'BARRACKS', 'FARM', 'TOWER'] as const) {
+      expect(getBuildingVisualTierCount(type)).toBe(1);
+      expect(getBuildingVisualTier(type, 100)).toBe(1);
+      expect(getBuildingVisualTierName(type, 100)).toBeNull();
+      expect(getNextVisualTierLevel(type, 1)).toBeNull();
+    }
+  });
+
+  it('names each house tier and reports when the next one arrives', () => {
+    expect(getBuildingVisualTierCount('HOUSE')).toBe(5);
+    expect(getBuildingVisualTierName('HOUSE', 1)).toBe('Thatched Hut');
+    expect(getBuildingVisualTierName('HOUSE', 5)).toBe('Stone Cottage');
+    expect(getBuildingVisualTierName('HOUSE', 25)).toBe('Manor');
+    expect(getNextVisualTierLevel('HOUSE', 1)).toBe(2);
+    expect(getNextVisualTierLevel('HOUSE', 4)).toBe(5);
+    expect(getNextVisualTierLevel('HOUSE', 100)).toBeNull();
+  });
+
+  it('names a tier by index so a degraded sprite keeps an honest label', () => {
+    expect(getBuildingVisualTierNameForTier('HOUSE', 1)).toBe('Thatched Hut');
+    expect(getBuildingVisualTierNameForTier('HOUSE', 5)).toBe('Manor');
+    // Out of range and level-invariant types have no name.
+    expect(getBuildingVisualTierNameForTier('HOUSE', 0)).toBeNull();
+    expect(getBuildingVisualTierNameForTier('HOUSE', 6)).toBeNull();
+    expect(getBuildingVisualTierNameForTier('HOUSE', Number.NaN)).toBeNull();
+    expect(getBuildingVisualTierNameForTier('FARM', 1)).toBeNull();
   });
 });
 

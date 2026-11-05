@@ -216,8 +216,10 @@ export class EntityRenderer {
       building.gridY + building.sizeY / 2 - 0.5
     );
 
-    const { textureKey, offsetY, scale } = buildingArt(building.type as BuildingType, (key) =>
-      scene.textures.exists(key)
+    const { textureKey, offsetY, scale } = buildingArt(
+      building.type as BuildingType,
+      (key) => scene.textures.exists(key),
+      building.level ?? 1
     );
 
     const container = scene.add.container(screenPos.x, screenPos.y);
@@ -302,6 +304,7 @@ export class EntityRenderer {
         const gx = building.gridX + building.sizeX / 2;
         const gy = building.gridY + building.sizeY / 2;
         scene.recordEntityHp(id, building.ownerId, building.hp, gx, gy);
+        this.applyBuildingTier(container, building);
         this.updateBuildingBar(container, building);
         if (scene.selectedBuildingId === id) {
           scene.notifySelectionChange();
@@ -310,6 +313,39 @@ export class EntityRenderer {
     }
 
     scene.buildingSprites.set(id, container);
+  }
+
+  /**
+   * LVL3: swaps the artwork when a building crosses a visual tier.
+   *
+   * A level-up finishes on the server, so the client only sees `level` jump in
+   * a state patch. Everything that depends on the sheet has to move with it: the
+   * image texture, its lift above the tile, the badge anchored to the art's top
+   * and the `visualCenterY` the selection hit-test reads.
+   *
+   * The texture key is the cache: it is what the sheet actually resolved to, so
+   * one comparison covers both "level crossed a tier" and "the sheet we wanted
+   * was missing and we degraded". Any other state patch is a no-op.
+   */
+  applyBuildingTier(container: any, building: any) {
+    const image = container.getData('buildingImage') as Phaser.GameObjects.Image | undefined;
+    if (!image) return;
+
+    const art = buildingArt(
+      building.type as BuildingType,
+      (key) => this.scene.textures.exists(key),
+      building.level ?? 1
+    );
+    if (image.texture.key === art.textureKey) return;
+
+    image.setTexture(art.textureKey);
+    image.setY(art.offsetY);
+    image.setScale(art.scale);
+
+    const badge = container.getData('levelBadge') as Phaser.GameObjects.Text | undefined;
+    if (badge) badge.setY(art.offsetY - image.displayHeight / 2 - 6);
+
+    container.setData('visualCenterY', art.offsetY);
   }
 
   updateBuildingBar(container: any, building: any) {
@@ -342,7 +378,7 @@ export class EntityRenderer {
     const width = Math.max(70, building.sizeX * 36);
     const height = 6;
 
-    const barY = buildingHpBarY(building.type);
+    const barY = buildingHpBarY(building.type as BuildingType, building.level ?? 1);
 
     // Background
     hpBar.fillStyle(0x0f172a, 0.85);
