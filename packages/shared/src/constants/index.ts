@@ -100,6 +100,31 @@ export const RESOURCE_REGROW_MS: Record<ResourceType, number> = {
 };
 
 /**
+ * Units one villager takes off a source per second of standing there.
+ *
+ * Split per resource, and far slower than the flat 10/s the first pass used:
+ * at 10 a villager filled its 10-slot load in one second, so gathering itself
+ * cost nothing and only the walk to a drop-off was ever felt. Rates here make
+ * standing at the node the visible half of a trip, and give each resource a
+ * different weight — food comes off a field fast, gold is a slow grind.
+ *
+ * Harvest is paid in whole units, one every `1000 / rate` milliseconds, so a
+ * fractional rate never leaves a fraction in the replicated amount.
+ */
+export const GATHER_UNITS_PER_SECOND: Record<ResourceType, number> = {
+  wood: 2,
+  food: 2.5,
+  stone: 1.5,
+  gold: 1.25
+};
+
+/** Milliseconds of standing at a source to take one unit of `resourceType`. */
+export function gatherIntervalMs(resourceType: string): number {
+  const rate = GATHER_UNITS_PER_SECOND[resourceType as ResourceType] ?? GATHER_UNITS_PER_SECOND.wood;
+  return 1000 / rate;
+}
+
+/**
  * Upper bound on how many unit ids a single client command may reference.
  * Guards the authoritative handlers against a client sending thousands of ids
  * in one message to force unbounded per-tick work.
@@ -250,7 +275,10 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     // ECO-01: a farm is a source, not a drop-off. Villagers harvest it in place,
     // and a villager who empties it re-plants it for the farm's own cost.
     gatheredResource: 'food',
-    gatherCapacity: 250,
+    // ECO-02: sized so one field is a real shift rather than a few seconds of
+    // work. At the food gather rate (2.5/s) one villager needs four minutes to
+    // strip it, so a single field supports a whole crew of harvesters.
+    gatherCapacity: 600,
     description: 'Renewable source of food. Villagers harvest it in place and re-sow it when it runs dry.'
   },
   TOWER: {

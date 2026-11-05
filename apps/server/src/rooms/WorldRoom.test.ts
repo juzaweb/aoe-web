@@ -20,6 +20,7 @@ import {
   getBuildingUpgradeTimeMs,
   getPlayerUnitLevel,
   getUnitLevelStats,
+  gatherIntervalMs,
   getUnitUpgradeCost,
   getUnitUpgradeTimeMs
 } from '@chien-quoc/shared';
@@ -104,6 +105,21 @@ function createClient(
     send: vi.fn(),
     leave: vi.fn()
   };
+}
+
+/** Runs `ms` of simulation in 100 ms steps, the room's own tick granularity. */
+function simulate(room: WorldRoom, ms: number, tickMs = 100) {
+  for (let elapsed = 0; elapsed < ms; elapsed += tickMs) internals(room).update(tickMs);
+}
+
+/**
+ * ECO-02: time one villager needs to fill its carry slot from `resourceType`.
+ *
+ * Gathering is paid in whole units, so this is exact rather than approximate:
+ * a load of `carryCapacity` takes that many harvest intervals.
+ */
+function fullLoadMs(resourceType: string): number {
+  return gatherIntervalMs(resourceType) * UNIT_BLUEPRINTS.VILLAGER.carryCapacity;
 }
 
 function addPlayer(room: WorldRoom, sessionId: string, overrides: Partial<PlayerState> = {}) {
@@ -570,7 +586,7 @@ describe('gathering and drop-off (SIM-02)', () => {
   it('carries a full load instead of crediting the player directly', () => {
     const { room, player, node, unit } = harvestScenario();
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('wood'));
 
     expect(unit.carryingAmount).toBe(UNIT_BLUEPRINTS.VILLAGER.carryCapacity);
     expect(unit.carryingResourceType).toBe('wood');
@@ -580,11 +596,22 @@ describe('gathering and drop-off (SIM-02)', () => {
     expect(unit.dropOffId).toBe('b_tc');
   });
 
+  it('takes one unit per gather interval rather than a load every second', () => {
+    const { room, node, unit } = harvestScenario();
+
+    // ECO-02: slower rates are the point of the pass, so a single second must
+    // not come close to filling the slot.
+    simulate(room, gatherIntervalMs('wood') * 2);
+
+    expect(unit.carryingAmount).toBe(2);
+    expect(node.remainingAmount).toBe(98);
+  });
+
   it('banks the load at the town center and walks back to the node', () => {
     const { room, player, unit } = harvestScenario();
     const capacity = UNIT_BLUEPRINTS.VILLAGER.carryCapacity;
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('wood'));
     expect(unit.actionState).toBe('RETURNING');
 
     let delivered = false;
@@ -601,10 +628,50 @@ describe('gathering and drop-off (SIM-02)', () => {
     expect(unit.targetEntityId).toBe('res_1');
   });
 
+  it('never takes more than a nearly empty node holds in one tick', () => {
+    const { room, node, unit } = harvestScenario({ nodeAmount: 1 });
+
+    // A long tick (lag, or a resumed room) has room for several harvest
+    // intervals; the node only has one unit left.
+    internals(room).update(3000);
+
+    expect(unit.carryingAmount).toBe(1);
+    expect(node.remainingAmount).toBe(0);
+    expect(room.state.resourceNodes.has(node.id)).toBe(true);
+  });
+
+  it('does not carry spare harvest time to a different node', () => {
+    const { room, node, unit } = harvestScenario({ nodeAmount: 1 });
+    const other = addResource(room, {
+      id: 'res_2',
+      resourceType: 'wood',
+      gridX: 51,
+      gridY: 41,
+      remainingAmount: 100
+    });
+
+    // Three seconds on a one-unit node would otherwise bank ~2.6s of credit and
+    // hand the next node almost a free load.
+    internals(room).update(3000);
+    expect(node.remainingAmount).toBe(0);
+
+    unit.targetEntityId = other.id;
+    unit.targetEntityType = 'resource';
+    unit.targetX = other.gridX;
+    unit.targetY = other.gridY;
+    unit.actionState = 'HARVESTING';
+    internals(room).update(50);
+
+    // Only the 50 ms of this tick counts: the spare time is capped at one
+    // interval, not banked into a free unit.
+    expect(unit.carryingAmount).toBe(1);
+    expect(other.remainingAmount).toBe(100);
+  });
+
   it('banks a partial load when the node runs dry mid-gather', () => {
     const { room, player, node, unit } = harvestScenario({ nodeAmount: 4 });
 
-    internals(room).update(1000);
+    simulate(room, gatherIntervalMs('wood') * 4);
 
     expect(unit.carryingAmount).toBe(4);
     // MAPS: a depleted node stays in the snapshot as an empty slot so it can
@@ -615,10 +682,21 @@ describe('gathering and drop-off (SIM-02)', () => {
     expect(player.wood).toBe(0);
   });
 
+  it('gives up on a node another villager emptied before it arrived', () => {
+    const { room, unit } = harvestScenario({ nodeAmount: 0 });
+
+    internals(room).update(50);
+
+    // The order must resolve on the first tick: a zero take cannot return early
+    // or the villager stands at an empty stump forever.
+    expect(unit.actionState).toBe('IDLE');
+    expect(unit.targetEntityId).toBe('');
+  });
+
   it('keeps the load when no drop-off accepts it', () => {
     const { room, player, unit } = harvestScenario({ withTownCenter: false });
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('wood'));
 
     expect(unit.carryingAmount).toBe(UNIT_BLUEPRINTS.VILLAGER.carryCapacity);
     expect(unit.actionState).toBe('IDLE');
@@ -629,7 +707,7 @@ describe('gathering and drop-off (SIM-02)', () => {
     const { room, player, unit } = harvestScenario();
     const capacity = UNIT_BLUEPRINTS.VILLAGER.carryCapacity;
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('wood'));
     expect(unit.actionState).toBe('RETURNING');
 
     room.state.buildings.delete('b_tc');
@@ -660,7 +738,7 @@ describe('gathering and drop-off (SIM-02)', () => {
 describe('farm gathering (ECO-01)', () => {
   /** A villager standing at a field's edge, already ordered to work it. */
   function farmScenario(options: { farmFood?: number; wood?: number } = {}) {
-    const { farmFood = 250, wood = 0 } = options;
+    const { farmFood = BUILDING_BLUEPRINTS.FARM.gatherCapacity ?? 0, wood = 0 } = options;
     const room = createRoom();
     const player = addPlayer(room, 'player-a', { wood, food: 0 });
 
@@ -685,12 +763,13 @@ describe('farm gathering (ECO-01)', () => {
 
   it('harvests food from the field instead of the ground', () => {
     const { room, player, farm, unit } = farmScenario();
+    const capacity = UNIT_BLUEPRINTS.VILLAGER.carryCapacity;
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('food'));
 
-    expect(unit.carryingAmount).toBe(UNIT_BLUEPRINTS.VILLAGER.carryCapacity);
+    expect(unit.carryingAmount).toBe(capacity);
     expect(unit.carryingResourceType).toBe('food');
-    expect(farm.resourceAmount).toBe(250 - UNIT_BLUEPRINTS.VILLAGER.carryCapacity);
+    expect(farm.resourceAmount).toBe((BUILDING_BLUEPRINTS.FARM.gatherCapacity ?? 0) - capacity);
     expect(player.food).toBe(0);
     expect(unit.actionState).toBe('RETURNING');
     expect(unit.dropOffId).toBe('b_tc');
@@ -700,7 +779,7 @@ describe('farm gathering (ECO-01)', () => {
     const { room, player, unit } = farmScenario();
     const capacity = UNIT_BLUEPRINTS.VILLAGER.carryCapacity;
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('food'));
     expect(unit.actionState).toBe('RETURNING');
 
     let delivered = false;
@@ -718,7 +797,8 @@ describe('farm gathering (ECO-01)', () => {
   it('re-sows an emptied field for the farm cost and keeps working', () => {
     const { room, player, farm, unit } = farmScenario({ farmFood: 5, wood: 60 });
 
-    internals(room).update(1000);
+    // Food comes off a field at 2.5/s, so five units is two seconds of work.
+    simulate(room, 2000);
 
     // Five units left on the field, so five are carried and the field is paid for.
     expect(unit.carryingAmount).toBe(5);
@@ -733,7 +813,7 @@ describe('farm gathering (ECO-01)', () => {
     const capacity = getBuildingLevelStats('FARM', 4).gatherCapacity;
     farm.resourceCapacity = capacity;
 
-    internals(room).update(1000);
+    simulate(room, 2000);
 
     expect(player.wood).toBe(0);
     expect(farm.resourceAmount).toBe(capacity);
@@ -744,7 +824,7 @@ describe('farm gathering (ECO-01)', () => {
   it('stop working a field it cannot re-sow, but keeps the load', () => {
     const { room, player, farm, unit } = farmScenario({ farmFood: 5, wood: 0 });
 
-    internals(room).update(1000);
+    simulate(room, 2000);
     // Empty and unaffordable: the load in hand is banked, not thrown away.
     internals(room).update(1000);
 
@@ -1358,7 +1438,7 @@ describe('drop-off buildings (ECO)', () => {
   it('lumber camp banks wood instead of the distant town center', () => {
     const { room, player, unit } = campScenario({ campType: 'LUMBER_CAMP', nodeType: 'wood' });
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('wood'));
     expect(unit.actionState).toBe('RETURNING');
     expect(unit.dropOffId).toBe('b_camp');
 
@@ -1369,7 +1449,7 @@ describe('drop-off buildings (ECO)', () => {
   it('mill banks food', () => {
     const { room, player, unit } = campScenario({ campType: 'MILL', nodeType: 'food' });
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('food'));
     expect(unit.dropOffId).toBe('b_camp');
 
     bank(room, () => player.food > 0);
@@ -1380,7 +1460,7 @@ describe('drop-off buildings (ECO)', () => {
     for (const resource of ['gold', 'stone'] as const) {
       const { room, player, unit } = campScenario({ campType: 'MINING_CAMP', nodeType: resource });
 
-      internals(room).update(1000);
+      simulate(room, fullLoadMs(resource));
       expect(unit.dropOffId, resource).toBe('b_camp');
 
       bank(room, () => player[resource] > 0);
@@ -1397,7 +1477,7 @@ describe('drop-off buildings (ECO)', () => {
       isConstructed: false
     });
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('wood'));
 
     expect(unit.actionState).toBe('RETURNING');
     expect(unit.dropOffId).toBe('b_tc');
@@ -1434,7 +1514,7 @@ describe('drop-off buildings (ECO)', () => {
     unit.targetEntityId = node.id;
     unit.targetEntityType = 'resource';
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('gold'));
 
     expect(unit.carryingAmount).toBe(UNIT_BLUEPRINTS.VILLAGER.carryCapacity);
     expect(unit.carryingResourceType).toBe('gold');

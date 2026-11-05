@@ -28,6 +28,7 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | [`19-rejected-command-classification.md`](./19-rejected-command-classification.md) | Bảng "lệnh bị từ chối" có phân loại (`FLOW-01`) | IMPLEMENTED — chờ verify |
 | [`20-kingdom-resource-density-regrow.md`](./20-kingdom-resource-density-regrow.md) | Tài nguyên kingdom dồn vành rìa, mật độ ~2×, hồi đầy theo loại và lưu mốc vào SQLite (`RES-01..RES-03`) | IMPLEMENTED — chờ verify tay |
 | [`21-house-level-visuals.md`](./21-house-level-visuals.md) | Nhà đổi hình dạng theo **cấp Nhà chính**: 5 bậc art (Lv 1 / 2 / 4 / 6 / 8 áp lên TOWN_CENTER), PNG riêng mỗi bậc (`LVL3-00..LVL3-05`) | SPEC ĐÃ SỬA — code chưa theo (đang đổi theo cấp của chính nhà) |
+| [`22-economy-gather-rates.md`](./22-economy-gather-rates.md) | Nhịp thu hoạch chậm lại theo loại (wood 2/s, food 2,5/s, stone 1,5/s, gold 1,25/s) và nông trại 250 → 600 food (`ECO-02`) | IMPLEMENTED — chờ verify tay |
 Status: `DRAFT` (chưa chốt quyết định) → `APPROVED` (bắt đầu code) → `DONE`.
 
 Phase 01 đã chốt 4 quyết định D1–D4 ngày 2026-11-01 (xem §11 của file phase); chưa có dòng code nào

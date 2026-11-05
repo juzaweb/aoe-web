@@ -16,7 +16,7 @@ export function gatheredType(building: BuildingState): ResourceType | '' {
 /**
  * ECO-01: how much a gatherable building holds at its current level, or `0`
  * when the type holds nothing. Level-aware, so an upgraded farm is a bigger
- * field rather than the same 250 units forever.
+ * field rather than the same fixed amount forever.
  */
 export function gatheredCapacity(building: BuildingState): number {
   if (!gatheredType(building)) return 0;

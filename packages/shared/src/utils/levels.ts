@@ -16,8 +16,8 @@ export const UNIT_STAT_GROWTH_PER_LEVEL = 0.05;
  * Extra field capacity per level for gatherable buildings (ECO-01).
  *
  * Faster than the generic building growth: a farm's harvest is the whole point
- * of levelling it, so 10%/level turns a 250-food field into 475 at the cap
- * instead of the 295 a 2% ramp would give.
+ * of levelling it, so 10%/level turns a 600-food field into 1,140 at the cap
+ * instead of the 708 a 2% ramp would give.
  */
 export const BUILDING_GATHER_CAPACITY_GROWTH_PER_LEVEL = 0.1;
 

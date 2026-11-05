@@ -8,6 +8,7 @@ import {
   ResourceType,
   UnitType,
   UNIT_BLUEPRINTS,
+  gatherIntervalMs,
   getUnitLevelStats
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
@@ -45,13 +46,6 @@ export interface EconomyPorts {
  * neighbouring forest patches without letting a villager cross the whole map.
  */
 const HARVEST_RETARGET_RADIUS = 10;
-
-/**
- * Units a villager takes off a node per second of harvesting. One second's worth
- * fills a starting villager's carry capacity (10), so the walk to a drop-off and
- * back — not the gathering — is what limits the economy.
- */
-const GATHER_AMOUNT_PER_SECOND = 10;
 
 /** How close to a node a villager has to stand to harvest it, in tiles. */
 const HARVEST_RANGE = 1.5;
@@ -233,6 +227,42 @@ export class EconomySystem {
     this.harvestTypeByUnit.delete(unitId);
   }
 
+  /**
+   * ECO-02: one harvest step, paid in whole units.
+   *
+   * The timer accumulates wall time and pays out one unit per interval, so a
+   * rate like 2.5/s is exactly two units every 800 ms rather than a fraction
+   * that the replicated `resourceAmount`/`carryingAmount` cannot hold. The
+   * unspent fraction of the current interval carries over, so ordinary ticks are
+   * never rounded away.
+   *
+   * @returns units taken this tick: 0 when the interval has not elapsed yet.
+   */
+  private harvestTick(
+    unit: UnitState,
+    resourceType: string,
+    deltaTime: number,
+    carryCapacity: number,
+    available: number
+  ): number {
+    const interval = gatherIntervalMs(resourceType);
+    let elapsed = (this.gatherTimers.get(unit.id) ?? 0) + deltaTime;
+    const roomInHand = carryCapacity - unit.carryingAmount;
+    if (elapsed < interval || roomInHand <= 0) {
+      this.gatherTimers.set(unit.id, elapsed);
+      return 0;
+    }
+
+    // Clamped by both the free room in hand and `available`, so a nearly empty
+    // node is not overdrawn. Whole intervals the caps blocked are dropped, so a
+    // long tick cannot bank a free load for whatever node comes next; only the
+    // fraction of the interval already worked is kept.
+    const units = Math.min(Math.floor(elapsed / interval), roomInHand, available);
+    elapsed = (elapsed - units * interval) % interval;
+    this.gatherTimers.set(unit.id, elapsed);
+    return units;
+  }
+
   private processGathering(unit: UnitState, deltaTime: number) {
     const carryCapacity = getUnitLevelStats(unit.type as UnitType, unit.level).carryCapacity;
     if (carryCapacity <= 0) return;
@@ -278,19 +308,16 @@ export class EconomySystem {
     const dist = Math.hypot(resource.gridX - unit.x, resource.gridY - unit.y);
     if (dist > HARVEST_RANGE) return;
 
-    const gatherTimer = (this.gatherTimers.get(unit.id) ?? 0) + deltaTime;
-    if (gatherTimer < 1000) {
-      this.gatherTimers.set(unit.id, gatherTimer);
-      return;
-    }
-    this.gatherTimers.set(unit.id, 0);
-
-    const taken = Math.min(
-      GATHER_AMOUNT_PER_SECOND,
-      resource.remainingAmount,
-      carryCapacity - unit.carryingAmount
+    const taken = this.harvestTick(
+      unit,
+      resource.resourceType,
+      deltaTime,
+      carryCapacity,
+      resource.remainingAmount
     );
 
+    // A node another villager already emptied is handled by the depletion branch
+    // below, so a zero take must not return early: the order would hang here.
     if (taken > 0) {
       resource.remainingAmount -= taken;
       unit.carryingAmount += taken;
@@ -355,24 +382,12 @@ export class EconomySystem {
 
     if (distanceToFootprint(unit.x, unit.y, farm) > HARVEST_RANGE) return;
 
-    const gatherTimer = (this.gatherTimers.get(unit.id) ?? 0) + deltaTime;
-    if (gatherTimer < 1000) {
-      this.gatherTimers.set(unit.id, gatherTimer);
-      return;
-    }
-    this.gatherTimers.set(unit.id, 0);
+    const taken = this.harvestTick(unit, resourceType, deltaTime, carryCapacity, farm.resourceAmount);
+    if (taken <= 0) return;
 
-    const taken = Math.min(
-      GATHER_AMOUNT_PER_SECOND,
-      farm.resourceAmount,
-      carryCapacity - unit.carryingAmount
-    );
-
-    if (taken > 0) {
-      farm.resourceAmount -= taken;
-      unit.carryingAmount += taken;
-      unit.carryingResourceType = resourceType;
-    }
+    farm.resourceAmount -= taken;
+    unit.carryingAmount += taken;
+    unit.carryingResourceType = resourceType;
 
     // Sown again the moment it is emptied, so the field is ready for the next
     // trip instead of the villager discovering a bare plot on its return.
