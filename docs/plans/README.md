@@ -9,12 +9,12 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | --- | --- | --- |
 | [`01-owner-visibility.md`](./01-owner-visibility.md) | Nhìn ra quân / nhà nào của ai trên chiến trường (`OWN-01..OWN-05`; `OWN-06` DEFERRED) | IMPLEMENTED — chờ verify tay |
 | [`02-single-session.md`](./02-single-session.md) | Một tài khoản một phiên: chặn tab/thiết bị thứ hai, cưỡng chiếm phiên có xác nhận (`SESS-01..SESS-07`) | DONE — code + test |
-| [`03-level-upgrades.md`](./03-level-upgrades.md) | Nâng cấp công trình (TC 100 cấp, còn lại 10) và nghiên cứu lính toàn cục (10 cấp) (`LVL-00..LVL-07`) | IMPLEMENTED — chờ verify tay |
+| [`03-level-upgrades.md`](./03-level-upgrades.md) | Nâng cấp công trình (mọi công trình 10 cấp) và nghiên cứu lính toàn cục (10 cấp) (`LVL-00..LVL-07`) | IMPLEMENTED — chờ verify tay |
 | [`04-kingdoms-battlefield.md`](./04-kingdoms-battlefield.md) | Kinh thành riêng mỗi tài khoản + cổng ra chiến trường chung, travel mang quân, persistence theo zone (`MAPS-01..MAPS-10`) | IMPLEMENTED — chờ verify tay UI |
 | [`05-map-realism.md`](./05-map-realism.md) | Map tự nhiên hơn: nền cỏ/tint, đường đất, decor PNG + rừng viền, minimap cụm rừng + glyph (`VIS-01..VIS-10`) | IMPLEMENTED — chờ verify tay |
 | [`06-aoe-asset-rebuild.md`](./06-aoe-asset-rebuild.md) | Tạo lại art công trình/cây/tài nguyên/terrain từ collection "AoE like Assets" (`ART-01..ART-12`) | IMPLEMENTED (một phần) — 8 sprite đã thay; terrain bỏ vì atlas không cắt được; chờ verify tay |
 | [`07-smaller-kingdom-map.md`](./07-smaller-kingdom-map.md) | Kingdom riêng nhỏ lại 110×110, TC ở giữa map, map size theo zone (`D1–D8`) | IMPLEMENTED — chờ verify tay UI |
-| [`08-progression-curve.md`](./08-progression-curve.md) | Đường cong nâng cấp dài hạn: 1-10 tính bằng phút, từ 11 tính bằng giờ (×1,05/cấp), gate TC ↔ 4 trụ cột, 2 slot (`LVL2-00..LVL2-07`) | IMPLEMENTED — chờ verify tay |
+| [`08-progression-curve.md`](./08-progression-curve.md) | Thang 10 cấp, thời gian ×3/cấp, giá ×1,3/cấp, gate TC ↔ 4 trụ cột **mỗi cấp**, 2 slot (`LVL2-00..LVL2-07`) | RETUNED 2026-11-05 |
 | [`09-road-and-gate-assets.md`](./09-road-and-gate-assets.md) | Thay art đường đất + cổng bằng 2 ảnh AI gen, bỏ tint tím mượn tower (`GATE-01..ROAD-02`) | IMPLEMENTED — chờ verify tay |
 | [`10-persistence-scaling.md`](./10-persistence-scaling.md) | Chi phí autosave theo zone, tải theo số user, dirty tracking + batch upsert + resource delta (`SAVE-01..SAVE-07`) | DRAFT |
 | [`11-mobile-touch.md`](./11-mobile-touch.md) | Chơi trên mobile: touch gesture (pan/pinch/tap/long-press), thanh lệnh, HUD compact landscape, join lại khi resume (`MOB-01..MOB-10`) | IMPLEMENTED — chờ verify máy thật |
@@ -27,7 +27,7 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | [`18-doc-plan-status.md`](./18-doc-plan-status.md) | Sửa status trong `docs/plans/` (README + file plan) (`DOC-01`) | APPROVED — awaiting code |
 | [`19-rejected-command-classification.md`](./19-rejected-command-classification.md) | Bảng "lệnh bị từ chối" có phân loại (`FLOW-01`) | IMPLEMENTED — chờ verify |
 | [`20-kingdom-resource-density-regrow.md`](./20-kingdom-resource-density-regrow.md) | Tài nguyên kingdom dồn vành rìa, mật độ ~2×, hồi đầy theo loại và lưu mốc vào SQLite (`RES-01..RES-03`) | IMPLEMENTED — chờ verify tay |
-| [`21-house-level-visuals.md`](./21-house-level-visuals.md) | Nhà đổi hình dạng theo **cấp Nhà chính**: 5 bậc art (Lv 1 / 2 / 5 / 10 / 25 áp lên TOWN_CENTER), PNG riêng mỗi bậc (`LVL3-00..LVL3-05`) | SPEC ĐÃ SỬA — code chưa theo (đang đổi theo cấp của chính nhà) |
+| [`21-house-level-visuals.md`](./21-house-level-visuals.md) | Nhà đổi hình dạng theo **cấp Nhà chính**: 5 bậc art (Lv 1 / 2 / 4 / 6 / 8 áp lên TOWN_CENTER), PNG riêng mỗi bậc (`LVL3-00..LVL3-05`) | SPEC ĐÃ SỬA — code chưa theo (đang đổi theo cấp của chính nhà) |
 Status: `DRAFT` (chưa chốt quyết định) → `APPROVED` (bắt đầu code) → `DONE`.
 
 Phase 01 đã chốt 4 quyết định D1–D4 ngày 2026-11-01 (xem §11 của file phase); chưa có dòng code nào
@@ -64,15 +64,16 @@ trước lần boot đầu tiên. Đã code xong ngày 2026-11-03 (chưa commit)
 `apps/server/database/dev.db`, probe SDK thật xác nhận kingdom 110×110 với TC `(53,53)`/portal
 `(103,54)` và battlefield vẫn 220×220.
 
-Phase 08 (progression curve) thay **đường cong thời gian/giá** của phase 03 bằng hai giai đoạn: cấp
-1-10 tính bằng phút, từ cấp 11 tính bằng giờ và nhân **1,05** mỗi cấp, cộng thêm gate cấp TC ↔ 4
-công trình trụ cột (House/Barracks/Farm/Tower) mỗi 5 cấp và giới hạn 2 slot nâng cùng lúc. Đường đi
-tối thiểu tới TC 100 là **4.129h** (≈3,8 năm ở 3h/ngày); nhà phụ vẫn cap 10 và không thuộc gate.
-Timer **chỉ chạy khi online** và cộng dồn qua các phiên (D7), nên "giờ" trong doc là giờ chơi thật,
-không phải lịch. Đã code xong ngày 2026-11-03: `levels.ts` hai giai đoạn + `getRequiredCoreLevel`/
-`getCoreLevelGaps`, cap 100 cho 4 trụ cột, gate + slot trong `handleUpgradeBuilding`, panel client có
-khối trụ cột + `Slot n/2` + format `45s/12m/6h42/73h`; test server/client đều xanh. Còn verify tay
-§10. Xem `08-progression-curve.md` §2, §4 và §11.
+Phase 08 (progression curve) đặt **đường cong thời gian/giá** cho nâng cấp. Bản 2026-11-05 rút thang
+xuống **10 cấp cho mọi công trình** và dùng một đường cong duy nhất: thời gian **×3**/cấp, giá
+**×1,3**/cấp. Gate cấp TC ↔ 4 công trình trụ cột (House/Barracks/Farm/Tower) nay chạy **mỗi cấp** —
+nâng TC từ `L` lên `L+1` đòi cả bốn đạt đúng `L` — cộng giới hạn 2 slot nâng cùng lúc. Tổng công
+việc cả 5 công trình là 35,5h, nhưng 2 slot chạy song song nên đồng hồ chỉ trôi **~22,5h** chơi thật.
+Timer **chỉ chạy khi
+online** và cộng dồn qua các phiên (D7). Code: `levels.ts` (`timeScale`/`costScale` mới,
+`getRequiredCoreLevel` = cấp TC, cap 10), gate + slot trong `handleUpgradeBuilding`, panel client có
+khối trụ cột + `Slot n/2` + format `45s/12m/6h42/13h40`; test server/client đều xanh. Xem
+`08-progression-curve.md` §2, §4 và §11.
 
 Phase 09 (road + gate assets) thay nốt 2 chỗ art còn là placeholder: 4 stamp đường lặp motif và cổng
 đang mượn sheet tower + tint tím. Nguồn là 2 ảnh AI gen trong `Downloads/games`, xử lý bằng

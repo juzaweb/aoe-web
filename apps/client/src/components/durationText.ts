@@ -1,10 +1,10 @@
 /**
  * Compact duration for upgrade timers (LVL2).
  *
- * The new curve ends at 73 hours, so seconds-only stopped being readable: a
- * level-99 Town Center is 263,609,355 ms, which the old `${(ms / 1000).toFixed(1)}s`
- * rendered as `263609.4s`. The four shapes here are `45s`, `12m`, `6h42` and
- * `73h`, dropping a zero minute part so an exact hour does not read as `73h0`.
+ * The ten-level ladder ends at 13h40 for the Town Center, so seconds-only is
+ * unreadable long before that: a raw `${(ms / 1000).toFixed(1)}s` renders the
+ * last step as `49207.5s`. The four shapes here are `45s`, `12m`, `6h42` and
+ * `13h40`, dropping a zero minute part so an exact hour does not read as `13h0`.
  *
  * Rounds down, like a countdown: showing `1m` while 59.4 s remain would oversell
  * progress.

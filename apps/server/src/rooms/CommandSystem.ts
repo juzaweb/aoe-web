@@ -428,8 +428,9 @@ export class CommandSystem {
     }
 
     // LVL2/D5: the Town Center may not pull ahead of the four core buildings.
-    // Checked before the slot and the price so the player learns about the gate
-    // even when they have nothing to spend yet.
+    // The gate asks for the Town Center's own level, so every step has to be
+    // earned. Checked before the slot and the price so the player learns about
+    // the gate even when they have nothing to spend yet.
     if (type === 'TOWN_CENTER') {
       const unmet = getCoreLevelGaps(collectCoreLevels(this.state, player.id), building.level).filter(
         (gap) => !gap.met

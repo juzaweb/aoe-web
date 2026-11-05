@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorldRoom } from './WorldRoom.js';
 import { WorldState } from '../schema/WorldState.js';
-import { RESOURCE_REGROW_MS, mapSizeForZone } from '@chien-quoc/shared';
+import { RESOURCE_REGROW_MS, getBuildingLevelStats, mapSizeForZone } from '@chien-quoc/shared';
 import { DatabaseService } from '../services/DatabaseService.js';
 
 vi.mock('../services/DatabaseService.js', () => ({
@@ -254,6 +254,45 @@ describe('WorldRoom.initializeWorldPersistence', () => {
     expect(room.state.resourceNodes.has('res_starter_1')).toBe(false);
     const respawnAt = internals.resourceRespawnAt as Map<string, number>;
     expect(respawnAt.has('res_starter_1')).toBe(false);
+  });
+
+  it('P11 clamps a stored level above the ten-level cap', async () => {
+    const { room } = createRoom('battlefield');
+    (DatabaseService as any).loadResources.mockResolvedValue([]);
+    (DatabaseService as any).loadZoneEntities.mockResolvedValue([
+      {
+        id: 'player1',
+        name: 'Player',
+        buildings: [
+          {
+            id: 'b_high',
+            ownerId: 'player1',
+            zone: 'battlefield',
+            type: 'TOWN_CENTER',
+            gridX: 2,
+            gridY: 2,
+            sizeX: 4,
+            sizeY: 4,
+            hp: 5000,
+            maxHp: 5000,
+            level: 87,
+            upgradeProgressMs: 0,
+            upgradeTimeMs: 0,
+            isConstructed: true,
+            constructionProgress: 100
+          }
+        ],
+        units: []
+      }
+    ]);
+    await (room as any).initializeWorldPersistence();
+
+    // The ladder ends at ten now, so a save written under the old cap cannot
+    // load a level the game no longer has — and its HP has to follow.
+    const building = room.state.buildings.get('b_high')!;
+    expect(building.level).toBe(10);
+    expect(building.maxHp).toBe(getBuildingLevelStats('TOWN_CENTER', 10).maxHp);
+    expect(building.hp).toBe(building.maxHp);
   });
 
   it('P6 load error', async () => {

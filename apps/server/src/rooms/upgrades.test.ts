@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUILDING_BLUEPRINTS,
-  MAX_CORE_BUILDING_LEVEL,
+  MAX_BUILDING_LEVEL,
   MAX_UNIT_LEVEL,
   UNIT_BLUEPRINTS,
   getBuildingLevelStats,
@@ -45,24 +45,24 @@ describe('level stats', () => {
     });
   });
 
-  it('uses 100 levels for the Town Center and the core buildings, 10 for drop-offs', () => {
-    expect(getBuildingMaxLevel('TOWN_CENTER')).toBe(100);
-    expect(getBuildingMaxLevel('HOUSE')).toBe(100);
-    expect(getBuildingMaxLevel('BARRACKS')).toBe(100);
-    expect(getBuildingMaxLevel('FARM')).toBe(100);
-    expect(getBuildingMaxLevel('TOWER')).toBe(100);
+  it('caps every building at ten levels', () => {
+    expect(getBuildingMaxLevel('TOWN_CENTER')).toBe(10);
+    expect(getBuildingMaxLevel('HOUSE')).toBe(10);
+    expect(getBuildingMaxLevel('BARRACKS')).toBe(10);
+    expect(getBuildingMaxLevel('FARM')).toBe(10);
+    expect(getBuildingMaxLevel('TOWER')).toBe(10);
     expect(getBuildingMaxLevel('LUMBER_CAMP')).toBe(10);
     expect(getBuildingMaxLevel('MILL')).toBe(10);
     expect(getBuildingMaxLevel('MINING_CAMP')).toBe(10);
   });
 
   it('scales building HP and population linearly, clamping to the cap', () => {
-    expect(getBuildingLevelStats('TOWN_CENTER', 100)).toMatchObject({
-      maxHp: 7152,
-      populationProvided: 114
+    expect(getBuildingLevelStats('TOWN_CENTER', 10)).toMatchObject({
+      maxHp: 2832,
+      populationProvided: 24
     });
     // An unknown level still resolves against the type's maximum.
-    expect(getBuildingLevelStats('TOWN_CENTER', 999).maxHp).toBe(7152);
+    expect(getBuildingLevelStats('TOWN_CENTER', 999).maxHp).toBe(2832);
     expect(getBuildingLevelStats('TOWN_CENTER', -3).maxHp).toBe(2400);
     // A house gains its one extra point when 2%/level rounds 5 up to 6.
     expect(getBuildingLevelStats('HOUSE', 5).populationProvided).toBe(5);
@@ -94,7 +94,7 @@ describe('upgrade prices', () => {
   });
 
   it('increases monotonically with level', () => {
-    for (let level = 1; level < 100; level++) {
+    for (let level = 1; level < 10; level++) {
       const current = getBuildingUpgradeCost('TOWN_CENTER', level);
       const next = getBuildingUpgradeCost('TOWN_CENTER', level + 1);
       expect(next.wood).toBeGreaterThan(current.wood);
@@ -118,68 +118,72 @@ describe('upgrade prices', () => {
   });
 });
 
-describe('two-phase progression curve (LVL2)', () => {
-  it('keeps levels 1-10 in minutes and restarts the ramp at one hour', () => {
+describe('ten-level progression curve (LVL2)', () => {
+  it('compounds every step by 3x, starting at 7.5s for the Town Center', () => {
     expect(getBuildingUpgradeTimeMs('TOWN_CENTER', 1)).toBe(7_500);
-    expect(getBuildingUpgradeTimeMs('TOWN_CENTER', 10)).toBe(2_420_158);
-    // Level 11 is the documented "1 hour" anchor, not a continuation of 1.9x.
-    expect(getBuildingUpgradeTimeMs('TOWN_CENTER', 11)).toBe(3_600_000);
-    expect(getBuildingUpgradeTimeMs('TOWN_CENTER', 12)).toBe(3_780_000);
-    // Duration follows each blueprint's own build time: 5s House -> 20m.
-    expect(getBuildingUpgradeTimeMs('HOUSE', 11)).toBe(1_200_000);
+    expect(getBuildingUpgradeTimeMs('TOWN_CENTER', 2)).toBe(22_500);
+    expect(getBuildingUpgradeTimeMs('TOWN_CENTER', 3)).toBe(67_500);
+    // Duration follows each blueprint's own build time: 5s House -> 2.5s.
+    expect(getBuildingUpgradeTimeMs('HOUSE', 1)).toBe(2_500);
+    // The last step of the ladder (level 9) is 13h40 for the Town Center.
+    expect(getBuildingUpgradeTimeMs('TOWN_CENTER', 9)).toBe(49_207_500);
   });
 
-  it('has no ceiling: the last Town Center step is 73 hours', () => {
-    expect(getBuildingUpgradeTimeMs('TOWN_CENTER', 99)).toBe(263_609_355);
-    expect(getBuildingUpgradeTimeMs('TOWN_CENTER', 99)).toBeGreaterThan(70 * 3_600_000);
+  it('caps the ladder instead of running out of road', () => {
+    // Beyond level 10 the answer is the level-10 step, never an unbounded value.
+    expect(getBuildingUpgradeTimeMs('TOWN_CENTER', 100)).toBe(147_622_500);
+    expect(getBuildingUpgradeTimeMs('TOWN_CENTER', 100)).toBe(
+      getBuildingUpgradeTimeMs('TOWN_CENTER', 10)
+    );
   });
 
-  it('prices the first step and the phase boundary as documented', () => {
+  it('prices the first and last steps as documented', () => {
     expect(getBuildingUpgradeCost('TOWN_CENTER', 1)).toEqual({
       wood: 138,
       food: 0,
       gold: 0,
       stone: 50
     });
+    expect(getBuildingUpgradeCost('TOWN_CENTER', 5)).toEqual({
+      wood: 393,
+      food: 0,
+      gold: 0,
+      stone: 143
+    });
+    expect(getBuildingUpgradeCost('TOWN_CENTER', 9)).toEqual({
+      wood: 1_122,
+      food: 0,
+      gold: 0,
+      stone: 408
+    });
     expect(getBuildingUpgradeCost('TOWN_CENTER', 10)).toEqual({
-      wood: 253,
+      wood: 1_458,
       food: 0,
       gold: 0,
-      stone: 92
-    });
-    expect(getBuildingUpgradeCost('TOWN_CENTER', 11)).toEqual({
-      wood: 273,
-      food: 0,
-      gold: 0,
-      stone: 99
-    });
-    expect(getBuildingUpgradeCost('TOWN_CENTER', 99)).toEqual({
-      wood: 238_490,
-      food: 0,
-      gold: 0,
-      stone: 86_724
+      stone: 530
     });
   });
 
   it('clamps every type at its own cap', () => {
     expect(getBuildingUpgradeTimeMs('HOUSE', 500)).toBe(
-      getBuildingUpgradeTimeMs('HOUSE', MAX_CORE_BUILDING_LEVEL)
+      getBuildingUpgradeTimeMs('HOUSE', MAX_BUILDING_LEVEL)
     );
     expect(getBuildingUpgradeTimeMs('MILL', 500)).toBe(getBuildingUpgradeTimeMs('MILL', 10));
     expect(getBuildingUpgradeCost('HOUSE', 500)).toEqual(
-      getBuildingUpgradeCost('HOUSE', MAX_CORE_BUILDING_LEVEL)
+      getBuildingUpgradeCost('HOUSE', MAX_BUILDING_LEVEL)
     );
   });
 });
 
 describe('Town Center gate (LVL2)', () => {
-  it('steps the requirement every five Town Center levels and asks nothing below 5', () => {
-    expect([1, 4].map(getRequiredCoreLevel)).toEqual([0, 0]);
-    expect(getRequiredCoreLevel(5)).toBe(5);
-    expect(getRequiredCoreLevel(9)).toBe(5);
+  it('demands the Town Center level itself on every step', () => {
+    expect(getRequiredCoreLevel(1)).toBe(1);
+    expect(getRequiredCoreLevel(4)).toBe(4);
+    expect(getRequiredCoreLevel(9)).toBe(9);
     expect(getRequiredCoreLevel(10)).toBe(10);
-    expect(getRequiredCoreLevel(49)).toBe(45);
-    expect(getRequiredCoreLevel(99)).toBe(95);
+    // Out-of-range input clamps to the ladder, not to a made-up step.
+    expect(getRequiredCoreLevel(0)).toBe(1);
+    expect(getRequiredCoreLevel(99)).toBe(10);
   });
 
   it('reports each pillar as met or missing, in a stable order', () => {
@@ -194,8 +198,12 @@ describe('Town Center gate (LVL2)', () => {
   it('treats a missing or broken level map as "nothing built"', () => {
     expect(getCoreLevelGaps(undefined, 5).every((gap) => !gap.met)).toBe(true);
     expect(getCoreLevelGaps({ HOUSE: Number.NaN }, 5)[0].current).toBe(0);
-    // Below the first step every gap is already met, gate or not.
-    expect(getCoreLevelGaps(undefined, 4).every((gap) => gap.met)).toBe(true);
+    // Every step is gated now, so a level-4 Town Center still needs four
+    // pillars at level 4 — no free upgrade at the bottom of the ladder.
+    expect(getCoreLevelGaps(undefined, 4).every((gap) => !gap.met)).toBe(true);
+    expect(getCoreLevelGaps({ HOUSE: 4, BARRACKS: 4, FARM: 4, TOWER: 4 }, 4).every((gap) => gap.met)).toBe(
+      true
+    );
   });
 });
 
@@ -204,13 +212,13 @@ describe('visual tiers (LVL3)', () => {
     const expected: [number, number][] = [
       [1, 1],
       [2, 2],
-      [4, 2],
+      [3, 2],
+      [4, 3],
       [5, 3],
-      [9, 3],
-      [10, 4],
-      [24, 4],
-      [25, 5],
-      [100, 5]
+      [6, 4],
+      [7, 4],
+      [8, 5],
+      [10, 5]
     ];
     for (const [level, tier] of expected) {
       expect(getBuildingVisualTier('HOUSE', level), `level ${level}`).toBe(tier);
@@ -226,8 +234,8 @@ describe('visual tiers (LVL3)', () => {
   it('leaves every other building level-invariant', () => {
     for (const type of ['TOWN_CENTER', 'BARRACKS', 'FARM', 'TOWER'] as const) {
       expect(getBuildingVisualTierCount(type)).toBe(1);
-      expect(getBuildingVisualTier(type, 100)).toBe(1);
-      expect(getBuildingVisualTierName(type, 100)).toBeNull();
+      expect(getBuildingVisualTier(type, 10)).toBe(1);
+      expect(getBuildingVisualTierName(type, 10)).toBeNull();
       expect(getNextVisualTierLevel(type, 1)).toBeNull();
     }
   });
@@ -235,11 +243,12 @@ describe('visual tiers (LVL3)', () => {
   it('names each house tier and reports when the next one arrives', () => {
     expect(getBuildingVisualTierCount('HOUSE')).toBe(5);
     expect(getBuildingVisualTierName('HOUSE', 1)).toBe('Thatched Hut');
-    expect(getBuildingVisualTierName('HOUSE', 5)).toBe('Stone Cottage');
-    expect(getBuildingVisualTierName('HOUSE', 25)).toBe('Manor');
+    expect(getBuildingVisualTierName('HOUSE', 4)).toBe('Stone Cottage');
+    expect(getBuildingVisualTierName('HOUSE', 8)).toBe('Manor');
     expect(getNextVisualTierLevel('HOUSE', 1)).toBe(2);
-    expect(getNextVisualTierLevel('HOUSE', 4)).toBe(5);
-    expect(getNextVisualTierLevel('HOUSE', 100)).toBeNull();
+    expect(getNextVisualTierLevel('HOUSE', 3)).toBe(4);
+    // The fifth shape arrives at level 8, inside the ten-level cap.
+    expect(getNextVisualTierLevel('HOUSE', 10)).toBeNull();
   });
 
   it('names a tier by index so a degraded sprite keeps an honest label', () => {

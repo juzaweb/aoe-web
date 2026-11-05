@@ -11,6 +11,7 @@ import {
   RESOURCE_REGROW_MS,
   TERRAIN_KINGDOM,
   UNIT_BLUEPRINTS,
+  INITIAL_POPULATION_CAP,
   getBuildingLevelStats,
   isDirtRoadTile,
   isPlazaTile,
@@ -1693,6 +1694,18 @@ describe('starter base levels (LVL)', () => {
 });
 
 describe('building upgrades (LVL)', () => {
+  /**
+   * The Town Center gate now asks for the Town Center's own level on every
+   * step, so any test that upgrades a Town Center has to start with the four
+   * pillars already built.
+   */
+  function addGatePillars(room: WorldRoom, level = 1) {
+    for (const type of ['HOUSE', 'BARRACKS', 'FARM', 'TOWER']) {
+      const pillar = addBuilding(room, { id: `b_${type}`, ownerId: 'player-a', type });
+      pillar.level = level;
+    }
+  }
+
   it('charges the next level, ticks, and applies HP + population', () => {
     const room = createRoom();
     const player = addPlayer(room, 'player-a', {
@@ -1701,10 +1714,17 @@ describe('building upgrades (LVL)', () => {
       gold: 5000,
       stone: 5000
     });
+    addGatePillars(room);
     const townCenter = addBuilding(room, { id: 'b_1', ownerId: 'player-a' });
     const client = createClient('player-a');
     const cost = getBuildingUpgradeCost('TOWN_CENTER', 1);
     const duration = getBuildingUpgradeTimeMs('TOWN_CENTER', 1);
+    // The gate pillars include a House, so the cap is the initial allowance plus
+    // the Town Center and that House — not just the Town Center's own number.
+    const populationBefore =
+      INITIAL_POPULATION_CAP +
+      getBuildingLevelStats('TOWN_CENTER', 1).populationProvided +
+      getBuildingLevelStats('HOUSE', 1).populationProvided;
 
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_1' });
 
@@ -1722,12 +1742,13 @@ describe('building upgrades (LVL)', () => {
     expect(townCenter.hp).toBe(expected.maxHp);
     expect(townCenter.upgradeProgressMs).toBe(0);
     expect(townCenter.upgradeTimeMs).toBe(0);
-    expect(player.populationCap).toBe(10 + expected.populationProvided);
+    expect(player.populationCap).toBe(populationBefore + 1);
   });
 
   it('keeps missing HP missing when the upgrade lands', () => {
     const room = createRoom();
     addPlayer(room, 'player-a', { wood: 5000, stone: 5000 });
+    addGatePillars(room);
     const townCenter = addBuilding(room, { id: 'b_1', ownerId: 'player-a' });
     townCenter.hp = townCenter.maxHp - 500;
     const duration = getBuildingUpgradeTimeMs('TOWN_CENTER', 1);
@@ -1779,6 +1800,7 @@ describe('building upgrades (LVL)', () => {
   it('rejects an upgrade the player cannot afford', () => {
     const room = createRoom();
     const player = addPlayer(room, 'player-a', { wood: 0, stone: 0 });
+    addGatePillars(room);
     addBuilding(room, { id: 'b_1', ownerId: 'player-a' });
     const client = createClient('player-a');
 
@@ -1798,6 +1820,7 @@ describe('building upgrades (LVL)', () => {
       gold: 5000,
       stone: 5000
     });
+    addGatePillars(room);
     const townCenter = addBuilding(room, { id: 'b_1', ownerId: 'player-a' });
     const client = createClient('player-a');
     const cost = getBuildingUpgradeCost('TOWN_CENTER', 1);
@@ -1842,19 +1865,19 @@ describe('progression gate and slots (LVL2)', () => {
     return building;
   }
 
-  it('blocks the Town Center until the four pillars reach the step', () => {
+  it('blocks the Town Center until the four pillars reach its level', () => {
     const room = createRoom();
     addPlayer(room, 'player-a', RICH);
     const townCenter = addBuilding(room, { id: 'b_tc', ownerId: 'player-a' });
-    townCenter.level = 10;
+    townCenter.level = 4;
     const client = createClient('player-a');
 
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_tc' });
 
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
       message:
-        'Town Center upgrade requires House level 10 (have 0), Barracks level 10 (have 0), ' +
-        'Farm level 10 (have 0), Watch Tower level 10 (have 0)',
+        'Town Center upgrade requires House level 4 (have 0), Barracks level 4 (have 0), ' +
+        'Farm level 4 (have 0), Watch Tower level 4 (have 0)',
       code: RejectCode.PREREQUISITE
     });
     expect(townCenter.upgradeTimeMs).toBe(0);
@@ -1864,17 +1887,17 @@ describe('progression gate and slots (LVL2)', () => {
     const room = createRoom();
     addPlayer(room, 'player-a', RICH);
     const townCenter = addBuilding(room, { id: 'b_tc', ownerId: 'player-a' });
-    townCenter.level = 10;
+    townCenter.level = 9;
     for (const type of ['HOUSE', 'BARRACKS', 'FARM', 'TOWER']) {
-      addCore(room, type, 10);
+      addCore(room, type, 9);
     }
     const client = createClient('player-a');
 
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_tc' });
 
     expect(client.send).not.toHaveBeenCalled();
-    expect(townCenter.upgradeTimeMs).toBe(getBuildingUpgradeTimeMs('TOWN_CENTER', 10));
-    expect(townCenter.upgradeTimeMs).toBe(2_420_158);
+    expect(townCenter.upgradeTimeMs).toBe(getBuildingUpgradeTimeMs('TOWN_CENTER', 9));
+    expect(townCenter.upgradeTimeMs).toBe(49_207_500);
   });
 
   it('does not count a core foundation towards the gate', () => {
@@ -1882,7 +1905,7 @@ describe('progression gate and slots (LVL2)', () => {
     addPlayer(room, 'player-a', RICH);
     const townCenter = addBuilding(room, { id: 'b_tc', ownerId: 'player-a' });
     townCenter.level = 5;
-    // Level 5 only requires level 5, and the House here is still a foundation.
+    // The gate now asks for level 5, and this House is still a foundation.
     addCore(room, 'HOUSE', 5, false);
     addCore(room, 'BARRACKS', 5);
     addCore(room, 'FARM', 5);
@@ -1897,17 +1920,22 @@ describe('progression gate and slots (LVL2)', () => {
     expect(townCenter.upgradeTimeMs).toBe(0);
   });
 
-  it('asks for nothing while the Town Center is below level 5', () => {
+  it('gates the very first Town Center upgrade on level-1 pillars', () => {
     const room = createRoom();
     addPlayer(room, 'player-a', RICH);
     const townCenter = addBuilding(room, { id: 'b_tc', ownerId: 'player-a' });
-    townCenter.level = 4;
+    townCenter.level = 1;
     const client = createClient('player-a');
 
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_tc' });
 
-    expect(client.send).not.toHaveBeenCalled();
-    expect(townCenter.upgradeTimeMs).toBe(getBuildingUpgradeTimeMs('TOWN_CENTER', 4));
+    expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message:
+        'Town Center upgrade requires House level 1 (have 0), Barracks level 1 (have 0), ' +
+        'Farm level 1 (have 0), Watch Tower level 1 (have 0)',
+      code: RejectCode.PREREQUISITE
+    });
+    expect(townCenter.upgradeTimeMs).toBe(0);
   });
 
   it('allows two upgrades at a time and frees a slot when one is cancelled', () => {
@@ -1936,11 +1964,11 @@ describe('progression gate and slots (LVL2)', () => {
     expect(houses[2].upgradeTimeMs).toBeGreaterThan(0);
   });
 
-  it('stops core buildings at level 100', () => {
+  it('stops core buildings at level 10', () => {
     const room = createRoom();
     addPlayer(room, 'player-a', RICH);
     const house = addBuilding(room, { id: 'b_house', ownerId: 'player-a', type: 'HOUSE' });
-    house.level = 100;
+    house.level = 10;
     const client = createClient('player-a');
 
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_house' });
@@ -1954,7 +1982,7 @@ describe('progression gate and slots (LVL2)', () => {
     const room = createRoom();
     addPlayer(room, 'player-a', RICH);
     const house = addBuilding(room, { id: 'b_house', ownerId: 'player-a', type: 'HOUSE' });
-    house.level = 90;
+    house.level = 8;
     const client = createClient('player-a');
 
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_house' });
@@ -1998,6 +2026,21 @@ describe('progression gate and slots (LVL2)', () => {
     restoreBuildingUpgrade(house, Number.NaN, 10_000);
     expect(house.upgradeProgressMs).toBe(0);
     expect(house.upgradeTimeMs).toBe(10_000);
+  });
+
+  it('drops a timer saved for a building the new cap already maxed', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', RICH);
+    const house = addBuilding(room, { id: 'b_house', ownerId: 'player-a', type: 'HOUSE' });
+    // A save written under the old 100-level cap: level clamped to 10 on load,
+    // but the upgrade row still says the building was climbing.
+    house.level = getBuildingMaxLevel('HOUSE');
+
+    restoreBuildingUpgrade(house, 1_000, 20_000);
+
+    expect(house.level).toBe(10);
+    expect(house.upgradeProgressMs).toBe(0);
+    expect(house.upgradeTimeMs).toBe(0);
   });
 });
 

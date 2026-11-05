@@ -125,9 +125,9 @@ describe('house visual tiers', () => {
   const TIERS: { target: string; level: number; tier: number }[] = [
     { target: 'building.house', level: 1, tier: 1 },
     { target: 'building.house-2', level: 2, tier: 2 },
-    { target: 'building.house-3', level: 5, tier: 3 },
-    { target: 'building.house-4', level: 10, tier: 4 },
-    { target: 'building.house-5', level: 25, tier: 5 }
+    { target: 'building.house-3', level: 4, tier: 3 },
+    { target: 'building.house-4', level: 6, tier: 4 },
+    { target: 'building.house-5', level: 8, tier: 5 }
   ];
 
   it('ships every sheet the tier table names', () => {
@@ -159,22 +159,22 @@ describe('house visual tiers', () => {
     // Only the level-1 sheet survived a bad deploy. Every level must still
     // resolve to a texture the renderer can draw.
     const onlyTier1 = (key: string) => key === 'building_HOUSE';
-    for (const level of [1, 2, 5, 10, 25, 100]) {
+    for (const level of [1, 2, 4, 6, 8, 10]) {
       expect(buildingArt('HOUSE', onlyTier1, level).textureKey).toBe('building_HOUSE');
     }
   });
 
   it('walks down tier by tier when only the low sheets loaded', () => {
     const upToTier3 = (key: string) => /^building_HOUSE(_[23])?$/.test(key);
-    expect(buildingArt('HOUSE', upToTier3, 25).textureKey).toBe('building_HOUSE_3');
-    expect(buildingArt('HOUSE', upToTier3, 10).textureKey).toBe('building_HOUSE_3');
+    expect(buildingArt('HOUSE', upToTier3, 8).textureKey).toBe('building_HOUSE_3');
+    expect(buildingArt('HOUSE', upToTier3, 6).textureKey).toBe('building_HOUSE_3');
   });
 
   it('reports the shape actually drawn when a sheet is missing', () => {
     // Declared tier 5, but only tiers 1-3 loaded: the panel must not claim the
-    // manor is on screen, and must not promise a level-25 change it cannot draw.
+    // manor is on screen, and must not promise a level-8 change it cannot draw.
     const upToTier3 = (key: string) => /^building_HOUSE(_[23])?$/.test(key);
-    expect(buildingTierInfo('HOUSE', 25, upToTier3)).toEqual({
+    expect(buildingTierInfo('HOUSE', 8, upToTier3)).toEqual({
       tier: 3,
       count: 5,
       name: 'Stone Cottage',
@@ -189,7 +189,7 @@ describe('house visual tiers', () => {
       name: 'Thatched Hut',
       nextLevel: 2
     });
-    expect(buildingTierInfo('HOUSE', 25)).toEqual({
+    expect(buildingTierInfo('HOUSE', 8)).toEqual({
       tier: 5,
       count: 5,
       name: 'Manor',

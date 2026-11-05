@@ -4,30 +4,32 @@ import type { BuildingType, Resources, UnitType } from '../types/index.js';
 /**
  * Stat growth is linear in the level number: level 1 is the blueprint's
  * baseline, and every level above it adds a fixed share of that baseline. No
- * compounding, so the numbers in the UI stay predictable at level 100.
+ * compounding, so the numbers in the UI stay predictable at the level cap.
  *
- * Price and duration are the exception and compound in their second phase (see
- * {@link timeScale} / {@link costScale}): stats may stay readable, the climb
- * itself must not run out of road.
+ * Price and duration compound instead (see {@link timeScale} /
+ * {@link costScale}): stats may stay readable, the climb itself must cost.
  */
 export const BUILDING_STAT_GROWTH_PER_LEVEL = 0.02;
 export const UNIT_STAT_GROWTH_PER_LEVEL = 0.05;
 
-/** Drop-off buildings still stop at ten levels. */
+/**
+ * Every upgradable building stops at ten levels.
+ *
+ * The ladder is short on purpose: ten levels with a gate on every Town Center
+ * step is a real campaign, while a hundred levels turned the late game into a
+ * timer nobody could reach. The whole roster shares the cap, so a level-10
+ * House is the tallest House that will ever exist.
+ */
 export const MAX_BUILDING_LEVEL = 10;
-export const MAX_TOWN_CENTER_LEVEL = 100;
-/** Core buildings climb alongside the Town Center, so they share its cap. */
-export const MAX_CORE_BUILDING_LEVEL = 100;
 export const MAX_UNIT_LEVEL = 10;
 
 /**
  * The four buildings that gate the Town Center (LVL2).
  *
- * A Town Center may not pull ahead of them: every {@link CORE_LEVEL_STEP}
- * levels it demands the same level from all four, which turns "wait for the
- * timer" into "build the base that supports the Town Center". `LUMBER_CAMP`,
- * `MILL` and `MINING_CAMP` are drop-offs and stay capped at
- * {@link MAX_BUILDING_LEVEL}; they are deliberately not part of the gate.
+ * A Town Center may not pull ahead of them: raising it from `L` to `L + 1`
+ * demands level `L` from all four, so every Town Center level has to be earned
+ * by a base that already supports it. `LUMBER_CAMP`, `MILL` and `MINING_CAMP`
+ * are drop-offs and stay out of the gate.
  */
 export const CORE_BUILDING_TYPES: readonly BuildingType[] = [
   'HOUSE',
@@ -35,9 +37,6 @@ export const CORE_BUILDING_TYPES: readonly BuildingType[] = [
   'FARM',
   'TOWER'
 ];
-
-/** How many Town Center levels one core-level step covers. */
-export const CORE_LEVEL_STEP = 5;
 
 /**
  * How many of a player's buildings may upgrade at the same time (LVL-09).
@@ -65,17 +64,17 @@ export const UNIT_UPGRADE_ORDER: readonly UnitType[] = [
 /**
  * Level milestones where a building's artwork changes (LVL3).
  *
- * A building has one sprite per "visual tier". The house climbs to level 100,
- * which is far too many drawings to ship, so the shape changes at four points:
- * a hut, a cottage, a timber house, a stone house and finally a manor. The
- * tiers are a pure function of the level, so the server never has to replicate
- * anything and a client that reconnects redraws the same shape.
+ * A building has one sprite per "visual tier". With a ten-level ladder the
+ * house changes shape four times: a hut, a cottage, a timber house, a stone
+ * house and finally a manor. The tiers are a pure function of the level, so the
+ * server never has to replicate anything and a client that reconnects redraws
+ * the same shape.
  *
  * Element `i` is the first level of tier `i + 1`: level 1 is tier 1, level 2
- * tier 2, level 5 tier 3, level 10 tier 4 and level 25 tier 5, and every level
- * above 25 stays on the last tier.
+ * tier 2, level 4 tier 3, level 6 tier 4 and level 8 tier 5, so every tier is
+ * reachable inside the cap.
  */
-export const HOUSE_VISUAL_TIER_LEVELS: readonly number[] = [1, 2, 5, 10, 25];
+export const HOUSE_VISUAL_TIER_LEVELS: readonly number[] = [1, 2, 4, 6, 8];
 
 /** Display names of the house tiers, index-aligned with the milestones. */
 export const HOUSE_VISUAL_TIER_NAMES: readonly string[] = [
@@ -106,16 +105,16 @@ export interface CoreLevelGap {
   met: boolean;
 }
 
-export function getBuildingMaxLevel(type: BuildingType): number {
-  if (type === 'TOWN_CENTER') return MAX_TOWN_CENTER_LEVEL;
-  if (CORE_BUILDING_TYPES.includes(type)) return MAX_CORE_BUILDING_LEVEL;
+export function getBuildingMaxLevel(_type: BuildingType): number {
+  // Every type shares one cap now, so the parameter only keeps the call sites
+  // readable at the point where they ask "how high may this one go?".
   return MAX_BUILDING_LEVEL;
 }
 
 /**
  * Which visual tier's artwork a building shows at `rawLevel` (LVL3).
  *
- * Returns a 1-based tier index clamped to the milestone table, so a level-100
+ * Returns a 1-based tier index clamped to the milestone table, so a maxed-out
  * House keeps the last drawing instead of asking for a sprite that does not
  * exist. Types without their own tier table always stay on tier 1.
  */
@@ -163,7 +162,7 @@ export function getBuildingVisualTierName(type: BuildingType, rawLevel: number):
 /**
  * The level at which the next shape appears, or `null` at the last tier.
  *
- * The UI reads this to tell the player "shape changes at level 5" without
+ * The UI reads this to tell the player "shape changes at level 6" without
  * duplicating the milestone table.
  */
 export function getNextVisualTierLevel(type: BuildingType, rawLevel: number): number | null {
@@ -183,12 +182,13 @@ function visualTierLevels(type: BuildingType): readonly number[] | null {
  * The level all four core buildings must reach before the Town Center may go
  * from `townCenterLevel` to `townCenterLevel + 1` (LVL2/D5).
  *
- * It only steps up every {@link CORE_LEVEL_STEP} levels, so the first four
- * upgrades are free and a level-50 Town Center demands level-45 pillars.
+ * The gate steps on **every** Town Center level: a level-7 Town Center demands
+ * four level-7 pillars, so the capital can never outrun the base that feeds it.
+ * The first upgrade already demands level-1 pillars, which means all four
+ * buildings have to exist before the Town Center grows at all.
  */
 export function getRequiredCoreLevel(townCenterLevel: number): number {
-  const level = clampLevel(townCenterLevel, MAX_TOWN_CENTER_LEVEL);
-  return Math.floor(level / CORE_LEVEL_STEP) * CORE_LEVEL_STEP;
+  return clampLevel(townCenterLevel, MAX_BUILDING_LEVEL);
 }
 
 /**
@@ -335,27 +335,27 @@ export function getUnitUpgradeTimeMs(type: UnitType, rawLevel: number): number {
 }
 
 /**
- * Two-phase upgrade duration scale (LVL2/D1).
+ * Upgrade duration scale (LVL2/D1, retuned for the ten-level ladder).
  *
- * Levels 1-10 are minutes: `7.5s` for the Town Center at 1, `40m` at 10, which
- * is where the player learns the mechanic. From 11 the ramp restarts at exactly
- * one hour for the Town Center and compounds by 5% per level, ending at 73.2h
- * for the last step. Both branches are multiplied by the blueprint's build time.
+ * One curve for the whole climb: `0.5` of the blueprint's build time at level 1
+ * (`7.5s` for the Town Center) compounding by 3x per level. The last step
+ * (9 → 10) is `13h40`, and the whole Town Center ladder is `20h30`. There is no
+ * branch at level 11 any more: with a cap of ten levels the player reaches the
+ * top long before a second phase would mean anything.
  */
 function timeScale(level: number): number {
-  return level <= 10 ? 0.5 * Math.pow(1.9, level - 1) : 240 * Math.pow(1.05, level - 11);
+  return 0.5 * Math.pow(3, level - 1);
 }
 
 /**
- * Two-phase upgrade price scale (LVL2/D2).
+ * Upgrade price scale (LVL2/D2).
  *
- * Same shape as {@link timeScale} but slightly steeper in the second phase
- * (8%), so resources stay a secondary wall behind time instead of replacing it.
+ * Gentler than {@link timeScale} (30% per level) so resources stay a secondary
+ * wall behind time instead of replacing it: the last Town Center step costs
+ * about 1.1k wood against 13h40 of waiting.
  */
 function costScale(level: number): number {
-  return level <= 10
-    ? 0.5 * Math.pow(1.07, level - 1)
-    : 0.5 * Math.pow(1.07, 9) * Math.pow(1.08, level - 10);
+  return 0.5 * Math.pow(1.3, level - 1);
 }
 
 function clampLevel(level: number, maxLevel: number): number {

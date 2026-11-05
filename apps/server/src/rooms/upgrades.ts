@@ -67,18 +67,25 @@ export function countActiveBuildingUpgrades(state: WorldState, ownerId: string):
 /**
  * Restores an in-flight upgrade from the persisted columns (LVL2/D7).
  *
- * The timer only advances while the player is online, so a 73-hour last level is
+ * The timer only advances while the player is online, so the 13h40 last step is
  * spread over many sessions: progress is continued from the saved value instead
  * of restarting. A row with a timer but no progress is treated as "just started".
+ *
+ * A maxed building never resumes a timer. Saves written under the old 100-level
+ * cap can carry a building whose stored level was just clamped down to the new
+ * ten-level maximum *and* an upgrade row for it; restoring that timer would tick
+ * to completion and apply nothing, so the row is dropped instead.
  */
 export function restoreBuildingUpgrade(
   building: BuildingState,
   progressMs: number | null | undefined,
   timeMs: number | null | undefined
 ): void {
+  const maxLevel = getBuildingMaxLevel(building.type as BuildingType);
   const time = Number(timeMs ?? 0);
-  building.upgradeTimeMs = Number.isFinite(time) && time > 0 ? time : 0;
-  if (building.upgradeTimeMs === 0) {
+  const resumable = Number.isFinite(time) && time > 0 && building.level < maxLevel;
+  building.upgradeTimeMs = resumable ? time : 0;
+  if (!resumable) {
     building.upgradeProgressMs = 0;
     return;
   }

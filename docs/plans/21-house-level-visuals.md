@@ -2,16 +2,16 @@
 
 Status: **SPEC ĐÃ SỬA — code chưa cập nhật theo; bản đang chạy vẫn đổi hình theo cấp của
 chính căn nhà**
-Ngày: 2026-11-05 (rev. đổi nguồn cấp sang Nhà chính)
+Ngày: 2026-11-05 (rev. đổi nguồn cấp sang Nhà chính + hạ cap toàn bộ xuống 10)
 
 ## 1. Mục tiêu
 
-Công trình `HOUSE` leo tới cấp 100 nhưng chỉ có **một** sprite. Phase này cho nhà đổi
+Công trình `HOUSE` leo tới cấp 10 nhưng chỉ có **một** sprite. Phase này cho nhà đổi
 **hình dạng** theo cấp: 5 bậc, mỗi bậc một PNG riêng. Chỉ số, giá và thời gian nâng cấp
 không đổi — phase này thuần visual.
 
 **Nguồn cấp là Nhà chính, không phải cấp của chính nhà đó.** Một `HOUSE` cấp 1 vẫn hiện
-Manor khi Nhà chính của chủ sở hữu đã đạt cấp 25. Nhờ vậy cả vương quốc đổi diện mạo cùng
+Manor khi Nhà chính của chủ sở hữu đã đạt cấp 8. Nhờ vậy cả vương quốc đổi diện mạo cùng
 lúc với Nhà chính, và người chơi không phải nâng từng căn nhà để thấy thay đổi.
 
 Hệ quả: bậc không còn là hàm thuần của `BuildingState.level`. Nó là hàm của
@@ -28,7 +28,7 @@ rộng sau chỉ cần thêm art + một dòng mốc).
 | Phạm vi | Chỉ `HOUSE`; 4 trụ cột còn lại giữ 1 sprite |
 | Cách đổi hình | Thêm PNG riêng cho từng bậc (không scale, không tint, không ghép Graphic) |
 | Số bậc | 5 |
-| Mốc cấp | `1 / 2 / 5 / 10 / 25` áp lên **cấp Nhà chính**; từ cấp 25 trở lên giữ bậc cuối |
+| Mốc cấp | `1 / 2 / 4 / 6 / 8` áp lên **cấp Nhà chính**; từ cấp 8 trở lên giữ bậc cuối |
 | Cấp dùng để tra bậc | `level` của `TOWN_CENTER` cùng `ownerId`; **không** dùng `level` của chính căn nhà |
 | Nguồn art | Series Medieval Building của Bleed trên OpenGameArt (CC-BY 3.0) + hovel hiện tại cho bậc 1 |
 | Nguồn sự thật mốc bậc | `packages/shared/src/utils/levels.ts` (`HOUSE_VISUAL_TIER_LEVELS`) |
@@ -40,13 +40,15 @@ rộng sau chỉ cần thêm art + một dòng mốc).
 | Bậc | Cấp Nhà chính | Tên | File | Canvas |
 | --- | --- | --- | --- | --- |
 | 1 | 1 | Thatched Hut | `house.png` (hovel `60000`, giữ nguyên) | 256×220 |
-| 2 | 2–4 | Timber Cottage | `house_2.png` | 318×232 |
-| 3 | 5–9 | Stone Cottage | `house_3.png` | 341×256 |
-| 4 | 10–24 | Town House | `house_4.png` | 379×280 |
-| 5 | 25+ | Manor | `house_5.png` | 405×304 |
+| 2 | 2–3 | Timber Cottage | `house_2.png` | 318×232 |
+| 3 | 4–5 | Stone Cottage | `house_3.png` | 341×256 |
+| 4 | 6–7 | Town House | `house_4.png` | 379×280 |
+| 5 | 8–10 | Manor | `house_5.png` | 405×304 |
+
+Cả năm bậc đều nằm trong cap 10 của Nhà chính, nên không bậc nào là art chết.
 
 Tên hiển thị ở panel là tiếng Anh (cùng quy ước với `BUILDING_BLUEPRINTS`); nhãn UI
-("Hình 3/5 · …", "đổi ở Lv 10") là tiếng Việt.
+("Hình 3/5 · …", "đổi ở Lv 6") là tiếng Việt.
 
 ## 4. Asset pipeline
 
@@ -160,8 +162,8 @@ pnpm --filter @chien-quoc/client test
 pnpm --filter @chien-quoc/server test
 ```
 
-Kết quả lần cuối: `asset check OK: 33 targets, 11 sources, 50 legacy`;
-client 418 test xanh; server 189 test xanh; cả hai `tsc --noEmit` sạch.
+Kết quả lần cuối (sau khi hạ cap xuống 10): `asset check OK: 33 targets, 11 sources, 50 legacy`;
+client 422 test xanh; server 209 test xanh; cả hai `tsc --noEmit` sạch.
 
 Đã kiểm chứng test bằng mutation: đổi `for (let candidate = tier; …)` thành
 `candidate = 1` làm 5 test bậc fail, rồi khôi phục — nên các test mới thực sự bắt lỗi
@@ -172,8 +174,8 @@ Kiểm tra tay:
 1. Đặt một House → hình nhà tranh, không badge.
 2. Nâng **Nhà chính** lên Lv 2 → mọi House của mình đổi sang Timber Cottage ngay khi tick
    xong; badge của House vẫn là `Lv 1` (badge đọc cấp của nhà, hình đọc cấp Nhà chính).
-3. Nâng Nhà chính tiếp Lv 5 / 10 / 25 → đổi hình đúng bậc; panel của House hiện `Hình N/5`
-   và mốc kế tiếp ghi rõ "(Nhà chính)".
+3. Nâng Nhà chính tiếp Lv 4 / 6 / 8 → đổi hình đúng bậc; panel của House hiện `Hình N/5`
+   và mốc kế tiếp ghi rõ "(Nhà chính)". Cap 10 nên bậc cuối đạt được trước khi hết cấp.
 4. Nâng một House riêng lẻ → **không** đổi hình, chỉ đổi badge.
 5. Hai người chơi cùng map, Nhà chính lệch cấp → nhà mỗi bên theo Nhà chính bên đó.
 6. Chủ chưa dựng Nhà chính → House của họ ở bậc 1.
