@@ -1,13 +1,22 @@
-# Phase 19 — Nhà đổi hình dạng theo cấp (visual tiers)
+# Phase 19 — Nhà đổi hình dạng theo cấp Nhà chính (visual tiers)
 
-Status: **IMPLEMENTED — chờ verify tay trong game**
-Ngày: 2026-11-05
+Status: **SPEC ĐÃ SỬA — code chưa cập nhật theo; bản đang chạy vẫn đổi hình theo cấp của
+chính căn nhà**
+Ngày: 2026-11-05 (rev. đổi nguồn cấp sang Nhà chính)
 
 ## 1. Mục tiêu
 
 Công trình `HOUSE` leo tới cấp 100 nhưng chỉ có **một** sprite. Phase này cho nhà đổi
 **hình dạng** theo cấp: 5 bậc, mỗi bậc một PNG riêng. Chỉ số, giá và thời gian nâng cấp
 không đổi — phase này thuần visual.
+
+**Nguồn cấp là Nhà chính, không phải cấp của chính nhà đó.** Một `HOUSE` cấp 1 vẫn hiện
+Manor khi Nhà chính của chủ sở hữu đã đạt cấp 25. Nhờ vậy cả vương quốc đổi diện mạo cùng
+lúc với Nhà chính, và người chơi không phải nâng từng căn nhà để thấy thay đổi.
+
+Hệ quả: bậc không còn là hàm thuần của `BuildingState.level`. Nó là hàm của
+`(ownerId, level Nhà chính của ownerId)` — client phải tra Nhà chính của **đúng chủ sở
+hữu** của từng căn nhà, kể cả nhà của người khác trong cùng map.
 
 Ngoài phạm vi: Barracks/Farm/Tower (bảng bậc viết dạng map theo `BuildingType` nên mở
 rộng sau chỉ cần thêm art + một dòng mốc).
@@ -19,15 +28,16 @@ rộng sau chỉ cần thêm art + một dòng mốc).
 | Phạm vi | Chỉ `HOUSE`; 4 trụ cột còn lại giữ 1 sprite |
 | Cách đổi hình | Thêm PNG riêng cho từng bậc (không scale, không tint, không ghép Graphic) |
 | Số bậc | 5 |
-| Mốc cấp | `1 / 2 / 5 / 10 / 25`; từ cấp 25 trở lên giữ bậc cuối |
+| Mốc cấp | `1 / 2 / 5 / 10 / 25` áp lên **cấp Nhà chính**; từ cấp 25 trở lên giữ bậc cuối |
+| Cấp dùng để tra bậc | `level` của `TOWN_CENTER` cùng `ownerId`; **không** dùng `level` của chính căn nhà |
 | Nguồn art | Series Medieval Building của Bleed trên OpenGameArt (CC-BY 3.0) + hovel hiện tại cho bậc 1 |
 | Nguồn sự thật mốc bậc | `packages/shared/src/utils/levels.ts` (`HOUSE_VISUAL_TIER_LEVELS`) |
-| Server | Không đổi. `BuildingState.level` đã replicate sẵn; bậc là hàm thuần của level |
+| Server | Không đổi. Chiều tra cứu là "cấp → bậc" của `HOUSE`; `TOWN_CENTER.level` đã replicate sẵn |
 | DB / protocol | Không đổi |
 
 ## 3. Bảng bậc
 
-| Bậc | Cấp | Tên | File | Canvas |
+| Bậc | Cấp Nhà chính | Tên | File | Canvas |
 | --- | --- | --- | --- | --- |
 | 1 | 1 | Thatched Hut | `house.png` (hovel `60000`, giữ nguyên) | 256×220 |
 | 2 | 2–4 | Timber Cottage | `house_2.png` | 318×232 |
@@ -68,18 +78,23 @@ Giới hạn đã biết: `iso_base` so góc trước với **tâm bbox**, nên 
 **`render/buildingArt.ts`**
 
 - `HOUSE_TIERS: TierArtSpec[]` lưu `canvasHeight` và `topInset` của sheet đã ship.
-- `buildingArt(type, hasTexture, level = 1)`: với bậc N > 1 thử `building_<TYPE>_<N>`,
-  lùi dần về N−1 khi thiếu, cuối cùng rơi về `building_<TYPE>` rồi texture procedural.
-  Nhờ vậy một sheet load lỗi làm nhà **giữ hình cũ**, không thành ô xanh.
+- `buildingArt(type, hasTexture, tier = 1)` nhận **bậc đã giải sẵn**, không nhận level
+  (nhận level sẽ mời gọi truyền nhầm cấp của căn nhà).
+  Với bậc N > 1 thử `building_<TYPE>_<N>`, lùi dần về N−1 khi thiếu, cuối cùng rơi về
+  `building_<TYPE>` rồi texture procedural. Nhờ vậy một sheet load lỗi làm nhà **giữ hình
+  cũ**, không thành ô xanh.
+- `buildingTierForLevel(townCenterLevel)` là **một** hàm duy nhất đổi cấp Nhà chính sang
+  bậc; cả sprite, panel và preload đều đi qua nó.
 - `drawnTier()` là **một** vòng lặp duy nhất quyết định bậc nào thực sự được vẽ; cả
   sprite lẫn panel dùng chung nó. Nếu PNG bậc 4 mất, cả hai cùng báo bậc 3 — không có
   chuyện nhà vẽ cottage mà nhãn ghi "Manor".
 - `buildingVisualTierCount(type)` đếm **sheet art** có thật, tách hẳn khỏi
   `getBuildingVisualTierCount` của shared (đếm **mốc game**). Preload và panel đọc bản
   art, nên một mốc mới trong shared chưa có ảnh sẽ không làm preload 404.
-- `buildingTierInfo(type, level, hasTexture)` trả `{tier, count, name, nextLevel}` trong
-  một lần gọi, để panel không phải clamp lại từng trường.
-- `buildingHpBarY(type, level = 1)` suy ra `offsetY − canvasHeight/2 + topInset − 8` cho
+- `buildingTierInfo(type, townCenterLevel, hasTexture)` trả `{tier, count, name, nextLevel}`
+  trong một lần gọi, để panel không phải clamp lại từng trường. `nextLevel` là cấp **Nhà
+  chính** kế tiếp, không phải cấp của căn nhà.
+- `buildingHpBarY(type, tier = 1)` suy ra `offsetY − canvasHeight/2 + topInset − 8` cho
   type có bảng bậc; type khác giữ bảng `HP_BAR_Y` cũ.
 - `offsetY = 40 − canvasHeight/2`, công thức này tái tạo đúng `−70` của sheet 220 px.
 
@@ -87,16 +102,25 @@ Giới hạn đã biết: `iso_base` so góc trước với **tâm bbox**, nên 
 
 - `preload()` nạp `building_HOUSE_2..5` bằng vòng lặp trên `buildingVisualTierCount('HOUSE')`
   (số sheet art, không phải số mốc game); cache-buster `v` từ `v=9` lên `v=10`.
+- `townCenterLevelFor(ownerId)` tra `TOWN_CENTER` **của đúng chủ sở hữu** trong
+  `room.state.buildings`, trả `0` khi chủ đó chưa có Nhà chính (bậc 1).
 - `SelectedEntityData` thêm `visualTier`, `visualTierCount`, `visualTierName`,
-  `nextVisualTierLevel`; `resolveSelectedEntity` điền từ `buildingTierInfo`.
+  `nextVisualTierLevel`; `resolveSelectedEntity` điền từ `buildingTierInfo` với
+  `townCenterLevelFor(building.ownerId)`.
 
 **`render/EntityRenderer.ts`**
 
+- `createBuildingSprite` và `applyBuildingTier` đều đọc cấp Nhà chính qua
+  `scene.townCenterLevelFor(building.ownerId)` rồi mới gọi `buildingArt`.
 - `applyBuildingTier(container, building)` chạy trong `cb.onChange`: nếu **texture key**
   khác key đang vẽ thì `setTexture` + `setY(offsetY)` + `setScale` + dời `levelBadge` +
   cập nhật `visualCenterY` (hit-test đọc key này). Texture key là cache: nó phản ánh cả
   "vừa lên bậc" lẫn "sheet thiếu nên đã lùi", nên patch HP/tài nguyên là no-op.
-- `updateBuildingBar` dùng `buildingHpBarY(type, level)`.
+- **Mọi căn nhà của một chủ nghe `level` của Nhà chính chủ đó**, không chỉ nghe `level`
+  của chính nó. Thêm listener trên `TOWN_CENTER.level` gọi `applyBuildingTier` cho toàn
+  bộ `HOUSE` cùng `ownerId` — thiếu bước này, nhà chỉ đổi hình khi có patch đụng vào nó.
+- `updateBuildingBar` dùng `buildingHpBarY(type, tier)` với `tier` lấy từ cùng phép giải
+  bậc, để thanh HP không lơ lửng khi Nhà chính lên cấp.
 
 **`input/SelectionController.ts`**
 
@@ -106,19 +130,23 @@ Giới hạn đã biết: `iso_base` so góc trước với **tâm bbox**, nên 
 
 **`components/UpgradePanels.tsx` + `EntityDetails.tsx`**
 
-- Dòng `Hình N/5 · <Tier name>` và "đổi ở Lv M" khi `visualTierCount > 1`. Type một hình
-  không render block này.
+- Dòng `Hình N/5 · <Tier name>` và "đổi ở Lv M (Nhà chính)" khi `visualTierCount > 1`.
+  Type một hình không render block này. `M` là cấp **Nhà chính**, nên nhãn phải ghi rõ
+  "Nhà chính" — nếu không người chơi sẽ tưởng phải nâng căn nhà đang chọn.
 
 ## 6. Test
 
 - `apps/server/src/rooms/upgrades.test.ts` → `describe('visual tiers (LVL3)')`: mốc bậc,
   clamp cấp 0/âm/100000, type khác luôn bậc 1, tên bậc và mốc kế tiếp, `getBuildingVisualTierNameForTier`
-  (index ngoài range → `null`).
+  (index ngoài range → `null`). Bảng mốc vẫn là hàm thuần của số cấp; phép "cấp nào" do
+  client chọn, nên shared không cần biết về Nhà chính.
 - `apps/client/src/game/render/assetManifest.test.ts` → `describe('house visual tiers')`:
-  mỗi `building.house*` phải có trong lock, đúng texture key theo cấp, HP bar tính lại
-  từ `canvas[1]`/`topInset` của chính sheet đó, bottom-anchored ≤ 3 px, và **hai case
-  mất sheet**: lùi từng bậc một, không bao giờ trả key không tồn tại, và panel báo đúng
-  bậc đang vẽ.
+  mỗi `building.house*` phải có trong lock, đúng texture key theo **cấp Nhà chính** (nhà
+  cấp 1 ở mọi mốc vẫn đổi hình), HP bar tính lại từ `canvas[1]`/`topInset` của chính sheet
+  đó, bottom-anchored ≤ 3 px, và **hai case mất sheet**: lùi từng bậc một, không bao giờ
+  trả key không tồn tại, và panel báo đúng bậc đang vẽ.
+- Case mới: hai chủ có Nhà chính lệch cấp trong cùng map → nhà của chủ A vẽ bậc theo Nhà
+  chính A, nhà của chủ B theo Nhà chính B; chủ chưa có Nhà chính → bậc 1.
 - `portalArt.test.ts` giữ nguyên hình dạng object trả về (`BuildingArt` không thêm field).
 
 ## 7. Kiểm chứng
@@ -142,16 +170,27 @@ chứ không chỉ chạy qua.
 Kiểm tra tay:
 
 1. Đặt một House → hình nhà tranh, không badge.
-2. Nâng lên Lv 2 → đổi sang Timber Cottage ngay khi tick xong; badge `Lv 2`.
-3. Nâng tiếp Lv 5 / 10 / 25 → đổi hình đúng bậc; panel hiện `Hình N/5` và mốc kế tiếp.
-4. Thanh HP và badge luôn nằm trên đỉnh mái của **sheet đang vẽ**, không lơ lửng.
-5. Click vào phần mái cao của nhà bậc 4–5 → vẫn chọn trúng.
-6. F5 giữa lúc nâng → vào lại đúng hình theo level đã lưu.
-7. Ghost đặt nhà và thumbnail trong Build Menu vẫn là bậc 1.
+2. Nâng **Nhà chính** lên Lv 2 → mọi House của mình đổi sang Timber Cottage ngay khi tick
+   xong; badge của House vẫn là `Lv 1` (badge đọc cấp của nhà, hình đọc cấp Nhà chính).
+3. Nâng Nhà chính tiếp Lv 5 / 10 / 25 → đổi hình đúng bậc; panel của House hiện `Hình N/5`
+   và mốc kế tiếp ghi rõ "(Nhà chính)".
+4. Nâng một House riêng lẻ → **không** đổi hình, chỉ đổi badge.
+5. Hai người chơi cùng map, Nhà chính lệch cấp → nhà mỗi bên theo Nhà chính bên đó.
+6. Chủ chưa dựng Nhà chính → House của họ ở bậc 1.
+7. Thanh HP và badge luôn nằm trên đỉnh mái của **sheet đang vẽ**, không lơ lửng.
+8. Click vào phần mái cao của nhà bậc 4–5 → vẫn chọn trúng.
+9. F5 giữa lúc nâng Nhà chính → vào lại đúng hình theo cấp Nhà chính đã lưu.
+10. Ghost đặt nhà và thumbnail trong Build Menu vẫn là bậc 1.
+11. Nhà chủ khác lên bậc khi mình đang xem → chỉ nhà của họ đổi, không đổi nhà mình.
 
 ## 8. Rủi ro đã xử lý
 
 - **Sheet thiếu/load lỗi** → `buildingArt` lùi bậc, không bao giờ trả key không tồn tại.
+- **Nhà đổi hình sai lúc** → `applyBuildingTier` nghe `TOWN_CENTER.level` của đúng chủ sở
+  hữu; nếu chỉ nghe `level` của chính căn nhà, hình sẽ đứng yên tới lần patch sau.
+- **Nhà chủ khác đổi theo Nhà chính của mình** → chiều tra là `(ownerId, cấp Nhà chính
+  của ownerId)`; không dùng "Nhà chính đầu tiên tìm thấy" trong `room.state.buildings`.
+- **Chủ chưa có Nhà chính** → `townCenterLevelFor` trả `0`, rơi về bậc 1 thay vì `NaN`.
 - **HP bar lơ lửng khi art đổi chiều cao** → bar suy ra từ `canvasHeight` + `topInset`
   của chính sheet, bị test chặn nếu lệch.
 - **Badge neo sai** → `applyBuildingTier` dời badge theo `displayHeight` sau `setTexture`.
