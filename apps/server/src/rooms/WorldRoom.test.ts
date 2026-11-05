@@ -727,6 +727,20 @@ describe('farm gathering (ECO-01)', () => {
     expect(farm.resourceCapacity).toBe(BUILDING_BLUEPRINTS.FARM.gatherCapacity);
   });
 
+  it('re-sows a levelled field to its own capacity, not the blueprint baseline', () => {
+    const { room, player, farm } = farmScenario({ farmFood: 5, wood: 60 });
+    farm.level = 4;
+    const capacity = getBuildingLevelStats('FARM', 4).gatherCapacity;
+    farm.resourceCapacity = capacity;
+
+    internals(room).update(1000);
+
+    expect(player.wood).toBe(0);
+    expect(farm.resourceAmount).toBe(capacity);
+    expect(farm.resourceCapacity).toBe(capacity);
+    expect(capacity).toBeGreaterThan(BUILDING_BLUEPRINTS.FARM.gatherCapacity ?? 0);
+  });
+
   it('stop working a field it cannot re-sow, but keeps the load', () => {
     const { room, player, farm, unit } = farmScenario({ farmFood: 5, wood: 0 });
 
@@ -1758,6 +1772,46 @@ describe('building upgrades (LVL)', () => {
 
     expect(townCenter.maxHp).toBe(getBuildingLevelStats('TOWN_CENTER', 2).maxHp);
     expect(townCenter.hp).toBe(townCenter.maxHp - 500);
+  });
+
+  it('grows a farm harvest capacity when its upgrade lands', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 5000, stone: 5000 });
+    const farm = addBuilding(room, { id: 'b_farm', ownerId: 'player-a', type: 'FARM' });
+    farm.level = 1;
+    farm.resourceCapacity = BUILDING_BLUEPRINTS.FARM.gatherCapacity ?? 0;
+    farm.resourceAmount = 100;
+    const duration = getBuildingUpgradeTimeMs('FARM', 1);
+
+    internals(room).commands.handleUpgradeBuilding(createClient('player-a'), {
+      buildingId: 'b_farm'
+    });
+    internals(room).update(duration);
+
+    const before = BUILDING_BLUEPRINTS.FARM.gatherCapacity ?? 0;
+    const after = getBuildingLevelStats('FARM', 2).gatherCapacity;
+    expect(farm.level).toBe(2);
+    expect(farm.resourceCapacity).toBe(after);
+    // The upgrade adds capacity without refilling what was already harvested.
+    expect(farm.resourceAmount).toBe(100 + (after - before));
+  });
+
+  it('does not refill a fallow farm when its upgrade lands', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 5000, stone: 5000 });
+    const farm = addBuilding(room, { id: 'b_farm', ownerId: 'player-a', type: 'FARM' });
+    farm.resourceAmount = 0;
+    farm.resourceCapacity = BUILDING_BLUEPRINTS.FARM.gatherCapacity ?? 0;
+    const duration = getBuildingUpgradeTimeMs('FARM', 1);
+
+    internals(room).commands.handleUpgradeBuilding(createClient('player-a'), {
+      buildingId: 'b_farm'
+    });
+    internals(room).update(duration);
+
+    // Empty stays empty: the bigger field still has to be re-sown for its cost.
+    expect(farm.resourceAmount).toBe(0);
+    expect(farm.resourceCapacity).toBe(getBuildingLevelStats('FARM', 2).gatherCapacity);
   });
 
   it('rejects foundations, foreign buildings, max level and a second upgrade', () => {

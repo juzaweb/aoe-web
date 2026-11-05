@@ -17,7 +17,7 @@ import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { approachPointOutsideFootprint } from './construction.js';
 import { distanceToFootprint } from './geometry.js';
-import { gatheredType } from './gatherables.js';
+import { gatheredCapacity, gatheredType } from './gatherables.js';
 import { ownerIdOf } from './identity.js';
 
 /**
@@ -389,7 +389,8 @@ export class EconomySystem {
    */
   private resowFarm(farm: BuildingState): boolean {
     const blueprint = BUILDING_BLUEPRINTS[farm.type as BuildingType];
-    if (!blueprint?.gatheredResource || !blueprint.gatherCapacity) return false;
+    const capacity = gatheredCapacity(farm);
+    if (!blueprint?.gatheredResource || !capacity) return false;
 
     const player = this.state.players.get(farm.ownerId);
     if (!player) return false;
@@ -409,8 +410,8 @@ export class EconomySystem {
     player.gold -= cost.gold;
     player.stone -= cost.stone;
 
-    farm.resourceAmount = blueprint.gatherCapacity;
-    farm.resourceCapacity = blueprint.gatherCapacity;
+    farm.resourceAmount = capacity;
+    farm.resourceCapacity = capacity;
     return true;
   }
 

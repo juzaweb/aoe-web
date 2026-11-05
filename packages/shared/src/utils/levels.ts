@@ -13,6 +13,15 @@ export const BUILDING_STAT_GROWTH_PER_LEVEL = 0.02;
 export const UNIT_STAT_GROWTH_PER_LEVEL = 0.05;
 
 /**
+ * Extra field capacity per level for gatherable buildings (ECO-01).
+ *
+ * Faster than the generic building growth: a farm's harvest is the whole point
+ * of levelling it, so 10%/level turns a 250-food field into 475 at the cap
+ * instead of the 295 a 2% ramp would give.
+ */
+export const BUILDING_GATHER_CAPACITY_GROWTH_PER_LEVEL = 0.1;
+
+/**
  * Every upgradable building stops at ten levels.
  *
  * The ladder is short on purpose: ten levels with a gate on every Town Center
@@ -89,6 +98,8 @@ export interface BuildingLevelStats {
   maxHp: number;
   attackPower: number;
   populationProvided: number;
+  /** Harvest capacity for gatherable types; 0 for everything else. */
+  gatherCapacity: number;
 }
 export interface UnitLevelStats {
   maxHp: number;
@@ -238,11 +249,14 @@ export function getBuildingLevelStats(
   rawLevel: number
 ): BuildingLevelStats {
   const blueprint = BUILDING_BLUEPRINTS[type];
-  if (!blueprint) return { maxHp: 0, attackPower: 0, populationProvided: 0 };
+  if (!blueprint) {
+    return { maxHp: 0, attackPower: 0, populationProvided: 0, gatherCapacity: 0 };
+  }
 
   const level = clampLevel(rawLevel, getBuildingMaxLevel(type));
   const steps = level - 1;
   const multiplier = 1 + BUILDING_STAT_GROWTH_PER_LEVEL * steps;
+  const gatherMultiplier = 1 + BUILDING_GATHER_CAPACITY_GROWTH_PER_LEVEL * steps;
 
   return {
     maxHp: Math.round(blueprint.maxHp * multiplier),
@@ -250,7 +264,8 @@ export function getBuildingLevelStats(
     populationProvided:
       type === 'TOWN_CENTER'
         ? blueprint.populationProvided + steps
-        : Math.round(blueprint.populationProvided * multiplier)
+        : Math.round(blueprint.populationProvided * multiplier),
+    gatherCapacity: Math.round((blueprint.gatherCapacity ?? 0) * gatherMultiplier)
   };
 }
 

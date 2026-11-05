@@ -22,9 +22,9 @@ trực tiếp từ blueprint theo `type`.
 | Phạm vi | Mọi công trình đều nâng được; lính nâng tại trại lính |
 | Cấp tối đa | Mọi công trình **10** (Nhà chính, 4 trụ cột lẫn nhà phụ); lính 10 |
 | Tăng chỉ số | Công trình +2%/cấp; lính +5%/cấp (tuyến tính, không lũy kế) |
-| Dân số / sức chứa | Nhà chính +1 dân/cấp; nhà ở tăng 2%/cấp (làm tròn); dân làng +5% sức chứa/cấp |
+| Dân số / sức chứa | Nhà chính +1 dân/cấp; nhà ở tăng 2%/cấp (làm tròn); dân làng +5% sức chứa/cấp; ruộng +10% trữ lượng/cấp |
 | Cơ chế thời gian | Nâng cấp/nghiên cứu chạy theo tick, không cần dân làng đứng xây; huỷ được và hoàn 100% |
-| Ngoài phạm vi | Tốc độ di chuyển, thời gian train/xây, sức chứa ruộng, tech tree nhiều tầng |
+| Ngoài phạm vi | Tốc độ di chuyển, thời gian train/xây, tech tree nhiều tầng |
 
 ## 3. Công thức
 
@@ -76,7 +76,8 @@ Toàn bộ số liệu nằm trong `packages/shared/src/utils/levels.ts` để c
 - Hoàn tất nâng cấp công trình: giữ nguyên lượng máu đã mất (`hp += delta maxHp`), không hồi full.
 - Hoàn tất research: cập nhật `level`, `maxHp`, `hp` cho **mọi unit cùng loại đang tồn tại**; unit
   train sau đó spawn ở cấp mới.
-- Damage lính/tháp và sức chứa dân làng đọc chỉ số theo cấp; dân số TC/nhà ở tính lại khi hoàn tất.
+- Damage lính/tháp, sức chứa dân làng và trữ lượng ruộng đọc chỉ số theo cấp; dân số TC/nhà ở tính lại khi hoàn tất.
+- Trữ lượng ruộng (`getBuildingLevelStats().gatherCapacity`) tăng 10%/cấp. Khi nâng cấp xong, phần chênh lệch được **cộng thêm** vào lượng còn lại (không hồi đầy); ruộng đang cạn vẫn cạn và phải gieo lại bằng chi phí của ruộng. Lần gieo lại dùng mức trữ lượng của cấp hiện tại.
 - Research tạm dừng khi người chơi offline (PlayerState bị xoá khỏi room), giống hàng đợi train.
 - Nâng cấp công trình cũng chỉ chạy khi online, nhưng tiến trình **cộng dồn qua phiên**: hai cột
   `upgrade_progress_ms`/`upgrade_time_ms` được ghi lúc autosave/leave và nạp lại bằng

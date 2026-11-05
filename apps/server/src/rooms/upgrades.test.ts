@@ -36,7 +36,8 @@ describe('level stats', () => {
     expect(getBuildingLevelStats('TOWN_CENTER', 1)).toEqual({
       maxHp: BUILDING_BLUEPRINTS.TOWN_CENTER.maxHp,
       attackPower: BUILDING_BLUEPRINTS.TOWN_CENTER.attackPower,
-      populationProvided: BUILDING_BLUEPRINTS.TOWN_CENTER.populationProvided
+      populationProvided: BUILDING_BLUEPRINTS.TOWN_CENTER.populationProvided,
+      gatherCapacity: 0
     });
     expect(getUnitLevelStats('SPEARMAN', 1)).toEqual({
       maxHp: UNIT_BLUEPRINTS.SPEARMAN.maxHp,
@@ -68,6 +69,16 @@ describe('level stats', () => {
     expect(getBuildingLevelStats('HOUSE', 5).populationProvided).toBe(5);
     expect(getBuildingLevelStats('HOUSE', 6).populationProvided).toBe(6);
     expect(getBuildingLevelStats('HOUSE', 10).populationProvided).toBe(6);
+  });
+
+  it('grows a farm harvest capacity by 10% per level', () => {
+    const base = BUILDING_BLUEPRINTS.FARM.gatherCapacity ?? 0;
+    expect(getBuildingLevelStats('FARM', 1).gatherCapacity).toBe(base);
+    expect(getBuildingLevelStats('FARM', 10).gatherCapacity).toBe(Math.round(base * 1.9));
+    expect(getBuildingLevelStats('FARM', 999).gatherCapacity).toBe(Math.round(base * 1.9));
+    // Only gatherable types hold a harvest.
+    expect(getBuildingLevelStats('HOUSE', 10).gatherCapacity).toBe(0);
+    expect(getBuildingLevelStats('TOWER', 5).gatherCapacity).toBe(0);
   });
 
   it('scales unit HP, attack and carry capacity', () => {

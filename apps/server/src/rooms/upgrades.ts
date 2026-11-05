@@ -14,6 +14,7 @@ import type { PlayerState } from '../schema/PlayerState.js';
 import type { UnitState } from '../schema/UnitState.js';
 import type { WorldState } from '../schema/WorldState.js';
 import { parseUnitLevels } from '../services/playerLevels.js';
+import { growGatheredCapacity } from './gatherables.js';
 
 /** Replaces a player's replicated level array with the persisted values. */
 export function loadPlayerLevels(
@@ -102,7 +103,11 @@ export function restoreBuildingUpgrade(
 export function applyBuildingUpgrade(building: BuildingState): void {
   const oldMaxHp = building.maxHp;
   const maxLevel = getBuildingMaxLevel(building.type as BuildingType);
-  building.level = Math.min(maxLevel, Math.max(1, building.level) + 1);
+  const previousLevel = Math.max(1, building.level);
+  building.level = Math.min(maxLevel, previousLevel + 1);
+
+  // ECO-01: a field's harvest grows with its level, same as its HP.
+  growGatheredCapacity(building, previousLevel, building.level);
 
   const stats = getBuildingLevelStats(building.type as BuildingType, building.level);
   building.maxHp = stats.maxHp;

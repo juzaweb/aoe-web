@@ -94,7 +94,8 @@ export interface BuildingBlueprint {
    */
   gatheredResource?: ResourceType;
   /**
-   * ECO-01: units of `gatheredResource` the building holds when it is finished.
+   * ECO-01: units of `gatheredResource` the building holds at level 1. Each
+   * level above adds 10% (see `getBuildingLevelStats().gatherCapacity`).
    * Re-planting a depleted farm costs the building's own `cost` again.
    */
   gatherCapacity?: number;
