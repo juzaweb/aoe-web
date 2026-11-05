@@ -1500,6 +1500,12 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         this.economy.updateUnit(unit, deltaTime);
       }
     });
+
+    // MOV-02: units have no blocking collision, so a squad ordered onto one tile
+    // (or trained at the same door) would stand on identical coordinates and draw
+    // as a single figure. The shove runs after every order has set a position, so
+    // it can never fight the movement step, and it does not touch orders.
+    this.movement.separateUnits(dtSeconds);
   }
 
   /**

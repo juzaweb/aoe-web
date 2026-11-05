@@ -2521,3 +2521,35 @@ describe('resource regrow (RES-02)', () => {
     expect(respawnAt.has('res_gone')).toBe(false);
   });
 });
+
+describe('unit separation (MOV-02)', () => {
+  /**
+   * The rule itself is covered by `unitSeparation.test.ts`; what a room test has
+   * to prove is that the tick actually runs it, after every order has set a
+   * position and before the next tick reads one.
+   */
+  it('runs the separation pass as part of the tick', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    const a = addUnit(room, { id: 'u_1', ownerId: 'player-a', x: 30, y: 30 });
+    const b = addUnit(room, { id: 'u_2', ownerId: 'player-a', x: 30, y: 30 });
+
+    internals(room).update(50);
+
+    expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeGreaterThan(0);
+  });
+
+  it('does not turn a walking unit around or drop its order', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    const unit = addUnit(room, { id: 'u_1', ownerId: 'player-a', x: 30, y: 30, actionState: 'MOVING' });
+    unit.targetX = 50;
+    unit.targetY = 30;
+    addUnit(room, { id: 'u_2', ownerId: 'player-a', x: 30, y: 30 });
+
+    internals(room).update(50);
+
+    expect(unit.actionState).toBe('MOVING');
+    expect(unit.targetX).toBe(50);
+  });
+});

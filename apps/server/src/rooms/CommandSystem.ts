@@ -45,6 +45,7 @@ import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { getBuildApproachPoint } from './construction.js';
 import { ownerIdOf } from './identity.js';
+import { UNIT_SEPARATION } from './unitSeparation.js';
 import {
   clearUnitResearch,
   collectCoreLevels,
@@ -77,8 +78,12 @@ export interface CommandPorts {
   updatePlayerPopulation(ownerId: string): void;
 }
 
-/** Distance between formation cells, in tiles. Wide enough to keep rings apart. */
-const FORMATION_SPACING = 0.6;
+/**
+ * Distance between formation cells, in tiles. Shared with the anti-overlap pass:
+ * a squad laid out at exactly one separation arrives already legal, so the pass
+ * has nothing to undo and the two rules can never drift apart.
+ */
+const FORMATION_SPACING = UNIT_SEPARATION;
 
 /**
  * CMD-04b refund rule. AoE returns everything for a foundation that was only

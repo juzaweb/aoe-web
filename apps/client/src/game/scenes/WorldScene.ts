@@ -503,6 +503,10 @@ export class WorldScene extends Phaser.Scene {
     for (const { key, url } of decorPreloadList('v=1')) {
       this.load.image(key, url);
     }
+
+    // CTL-06 rally-point banner. Derived from the `order` cursor artwork and
+    // regenerated offline; bump the query string whenever the PNG changes.
+    this.load.image('rally_flag', '/assets/markers/rally_flag.png?v=1');
   }
 
   create() {

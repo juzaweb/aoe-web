@@ -98,6 +98,8 @@ export class CommandController {
   private shiftKey: Phaser.Input.Keyboard.Key | null = null;
   private waypointGraphics!: Phaser.GameObjects.Graphics;
   private rallyGraphics!: Phaser.GameObjects.Graphics;
+  /** CTL-06: one banner sprite standing on each rally point, rebuilt with the lines. */
+  private rallyFlags: Phaser.GameObjects.Image[] = [];
   /** Signature of the last drawn rally layer, so identical frames skip the redraw. */
   private rallySignature = '';
 
@@ -778,8 +780,8 @@ export class CommandController {
   }
 
   /**
-   * CTL-06: draws a flag on every own building's rally point plus a faint line
-   * back to the building it belongs to.
+   * CTL-06: draws a rally banner on every own building's rally point plus a
+   * faint line back to the building it belongs to.
    *
    * Runs from update(), so the frame-to-frame cost is what matters: the flags are
    * collected first and only redrawn when the collected signature actually
@@ -805,6 +807,8 @@ export class CommandController {
     this.rallySignature = signature;
 
     this.rallyGraphics.clear();
+    this.rallyFlags.forEach((banner) => banner.destroy());
+    this.rallyFlags = [];
 
     markers.forEach((m) => {
       const container = scene.buildingSprites.get(m.id);
@@ -819,11 +823,12 @@ export class CommandController {
       marker.fillStyle(0x0f172a, 0.55);
       marker.fillEllipse(flag.x, flag.y, 22, 11);
 
-      // Pole and a triangle pennant pointing left.
-      marker.lineStyle(2, 0xe2e8f0, 0.9);
-      marker.lineBetween(flag.x, flag.y, flag.x, flag.y - 34);
-      marker.fillStyle(0x38bdf8, 0.95);
-      marker.fillTriangle(flag.x, flag.y - 34, flag.x, flag.y - 20, flag.x - 16, flag.y - 27);
+      // Banner artwork standing on the rally point, pole tip at ground level.
+      const banner = scene.add.image(flag.x, flag.y, 'rally_flag');
+      banner.setOrigin(0.5, 1);
+      banner.setScale(0.8);
+      banner.setDepth(999990);
+      this.rallyFlags.push(banner);
     });
   }
 

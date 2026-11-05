@@ -3,6 +3,7 @@ import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { Pathfinder } from '../services/Pathfinder.js';
+import { UnitSeparation } from './unitSeparation.js';
 
 /**
  * SIM-01: how many path requests one tick may compute. A 220x220 corner-to-
@@ -57,6 +58,12 @@ export class MovementSystem {
   private pendingPathIds: Set<string> = new Set();
   /** Last obstacle-triggered re-route per unit, for `REPATH_COOLDOWN_MS`. */
   private readonly lastRepathAt: Map<string, number> = new Map();
+
+  /** MOV-02: anti-overlap pass; owns its scratch buffers. */
+  private readonly separation = new UnitSeparation();
+
+  /** Bound once so the per-tick separation pass does not allocate a closure. */
+  private readonly isBlockedTileTest = (x: number, y: number) => this.isBlockedTile(x, y);
 
   constructor(private readonly state: WorldState) {}
 
@@ -140,6 +147,23 @@ export class MovementSystem {
     if (!this.advanceQueuedWaypoint(unit)) {
       unit.actionState = 'IDLE';
     }
+  }
+
+  /**
+   * Pushes overlapping units apart so a squad reads as N figures, not one.
+   *
+   * Units do not block each other, so a group ordered onto a single point would
+   * otherwise stand on identical coordinates and draw as one soldier. Delegates to
+   * {@link UnitSeparation}, which owns the rule and its buffers.
+   */
+  separateUnits(dtSeconds: number) {
+    this.separation.separate(
+      this.state.units,
+      dtSeconds,
+      this.state.mapWidth,
+      this.state.mapHeight,
+      this.isBlockedTileTest
+    );
   }
 
   /**
