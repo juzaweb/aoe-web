@@ -9,10 +9,11 @@ import { WorldState } from '../schema/WorldState.js';
  * stay free of per-room data. Everything that needs "is this tile a road"
  * (movement speed, building placement, portal search) goes through here.
  *
- * The grid is one byte per tile and is rebuilt only when the road count
- * changes, the same strategy `MovementSystem` uses for its blocked grid: a
- * kingdom is 12,100 cells, and rebuilding that per query would show up in the
- * tick budget.
+ * The grid is one byte per tile and is rebuilt only when the road count changes
+ * or a writer calls {@link invalidate}: a kingdom is 12,100 cells, and
+ * rebuilding that per query would show up in the tick budget. The count alone is
+ * not enough (one stroke can remove a tile and add another inside the same
+ * tick), which is why every mutation invalidates explicitly.
  */
 export class RoadGrid {
   private grid: Uint8Array | null = null;
@@ -35,8 +36,6 @@ export class RoadGrid {
   }
 
   private getGrid(): Uint8Array {
-    // The count check is the cheap signal: the only writer is the command
-    // handler, which changes the map size on every add and remove.
     if (this.grid && this.builtCount === this.state.roads.size) return this.grid;
 
     const { mapWidth, mapHeight } = this.state;

@@ -100,6 +100,9 @@ export class DatabaseService {
     // MAPS: the same additive treatment for zones and travel transfers.
     await this.ensureZoneColumns();
 
+    // ROADS: a globally unique tile id collides across kingdoms.
+    await this.ensureRoadPrimaryKey();
+
     // MAPS-V2: kingdoms shrank from 220x220 to 110x110. Old coordinates cannot be
     // remapped without overlaps, so the layout is reset once (see the method).
     await this.resetLegacyKingdoms();
@@ -147,6 +150,58 @@ export class DatabaseService {
     for (const statement of DATABASE_INDEX_STATEMENTS) {
       await prisma.$executeRawUnsafe(statement);
     }
+  }
+
+  /**
+   * Road identity migration: `world_roads` originally keyed on `id` alone, so
+   * two kingdoms could not both own the tile at (20,20). The table is rebuilt
+   * with (zone, id) as the primary key; the rows themselves are kept, because a
+   * player's painted network is not regenerable.
+   *
+   * `CREATE TABLE IF NOT EXISTS` cannot change a primary key, so this inspects
+   * the existing table and only rebuilds when it is the old shape.
+   */
+  private static async ensureRoadPrimaryKey() {
+    const tables = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'world_roads'`
+    );
+    if (tables.length === 0) return;
+
+    const columns = await prisma.$queryRawUnsafe<Array<{ name: string; pk: bigint | number }>>(
+      `PRAGMA table_info("world_roads")`
+    );
+    // SQLite reports `pk` as the 1-based position inside the primary key (and
+    // Prisma hands the value back as a BigInt), so a composite key shows pk 1
+    // and 2 on two different columns.
+    const keyed = columns
+      .filter((column) => Number(column.pk) > 0)
+      .sort((a, b) => Number(a.pk) - Number(b.pk));
+    const alreadyComposite = keyed.length === 2 && keyed[0].name === 'zone';
+    if (alreadyComposite) return;
+
+    await prisma.$executeRawUnsafe(`ALTER TABLE "world_roads" RENAME TO "world_roads_legacy"`);
+    await prisma.$executeRawUnsafe(
+      `CREATE TABLE "world_roads" (
+        "id" TEXT NOT NULL,
+        "zone" TEXT NOT NULL DEFAULT 'world',
+        "owner_id" TEXT NOT NULL,
+        "grid_x" INTEGER NOT NULL,
+        "grid_y" INTEGER NOT NULL,
+        "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY ("zone", "id")
+      )`
+    );
+    await prisma.$executeRawUnsafe(
+      `INSERT OR IGNORE INTO "world_roads" ("id", "zone", "owner_id", "grid_x", "grid_y", "created_at")
+       SELECT "id", "zone", "owner_id", "grid_x", "grid_y", "created_at" FROM "world_roads_legacy"`
+    );
+    await prisma.$executeRawUnsafe(`DROP TABLE "world_roads_legacy"`);
+    // The old table's index went with it, and `ensureSchema` already ran this
+    // boot, so the replacement has to be created here.
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "world_roads_zone_idx" ON "world_roads"("zone")`
+    );
+    console.log('🗄️  [DatabaseService] Rebuilt world_roads with a (zone, id) primary key.');
   }
 
   /**
@@ -485,6 +540,8 @@ export class DatabaseService {
     roads: Array<{ id: string; ownerId: string; gridX: number; gridY: number }>,
     stmts?: { n: number }
   ) {
+    // Read the (zone, id) composite: `id` alone is only unique inside a zone,
+    // so a bare `where: { id: { in } }` would sweep another kingdom's rows.
     const existing = await prisma.worldRoad.findMany({ where: { zone }, select: { id: true } });
     if (stmts) stmts.n++;
     const known = new Set(existing.map((row) => row.id));
@@ -504,6 +561,9 @@ export class DatabaseService {
     }
 
     if (stmts) stmts.n++;
+    // `zone` is part of the predicate on purpose: `id` is only unique inside a
+    // zone, so an unscoped `notIn` would delete every other kingdom's roads that
+    // happen to share a tile coordinate.
     await prisma.worldRoad.deleteMany({
       where: { zone, id: { notIn: roads.map((road) => road.id) } }
     });

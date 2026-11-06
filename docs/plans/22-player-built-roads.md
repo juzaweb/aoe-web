@@ -18,6 +18,7 @@ Quyết định đã chốt:
 | Hạng mục | Giá trị |
 | --- | --- |
 | Phạm vi | `kingdom` only |
+| Khoá lưu trữ | `(zone, id)`; `id = "gx,gy"` unique trong zone |
 | Cách xây | drag paint (Bresenham giữa 2 pointer sample) |
 | Chi phí | 2 gỗ / ô (`ROAD_COST_PER_TILE`) |
 | Hiệu ứng | `ROAD_SPEED_MULTIPLIER = 1.3` |
@@ -71,7 +72,11 @@ roadTileKey(gx, gy) // "<gx>,<gy>"
 
 ## 4. Persistence
 
-- `prisma/schema.prisma`: model `WorldRoad` (`@@unique([zone, gridX, gridY])`, `@@index([zone])`).
+- `prisma/schema.prisma`: model `WorldRoad` với khoá chính **`(zone, id)`** (`@@id([zone, id])`,
+  `@@index([zone])`). `id` là `"gx,gy"` nên chỉ unique **trong một zone**: mọi kingdom đều có ô
+  (20,20) riêng, và một PK toàn cục sẽ làm autosave của kingdom thứ hai ném lỗi unique constraint.
+- `DatabaseService.ensureRoadPrimaryKey()`: migration idempotent cho DB cũ (PK đơn trên `id`) —
+  rebuild bảng, giữ nguyên dữ liệu, vì đường đã vẽ không tái tạo được.
 - `databaseSchema.ts`: DDL `world_roads` + unique/index idempotent.
 - `DatabaseService.loadRoads(zone)`, `saveZoneRoads(zone, roads, stmts)` — diff insert/delete,
   không update (một ô là có hoặc không).
@@ -89,8 +94,9 @@ roadTileKey(gx, gy) // "<gx>,<gy>"
   `Minimap.tsx` cache ground theo signature `size:hash` (giới hạn 8 entry).
 - `apps/client/src/game/input/roadPaint.ts`: `lineTiles` (Bresenham, chặn input non-finite),
   `appendTiles`, `batchTiles` — thuần, có test.
-- `RoadController`: mode `build` / `erase`, stroke tích luỹ khi kéo, ghost hình thoi xanh/đỏ,
-  commit chia batch `MAX_ROAD_TILES_PER_MESSAGE`.
+- `RoadController`: mode `build` / `erase`, stroke tích luỹ khi kéo (cap
+  `MAX_ROAD_TILES_PER_MESSAGE` mỗi stroke), ghost hình thoi xanh/đỏ; lúc thả chuột cắt stroke
+  xuống số ô trả được bằng gỗ hiện có rồi chia batch.
 - `WorldScene`: `setRoadMode` / `cancelRoadMode` / `roadMode`; nhánh road đứng trước placement
   và box-select ở pointer down/move/up, touch press/tap/drag, và `resetForNewWorld`.
 - `CommandController`: hotkey `X` bật/tắt (chỉ kingdom, cần villager selected trừ khi đang mở);
@@ -105,6 +111,9 @@ roadTileKey(gx, gy) // "<gx>,<gy>"
 - `WorldRoom.roads.test.ts`: giá gỗ, thiếu gỗ, battlefield, cap message, cap zone, bỏ ô bị chiếm,
   input rác, chặn xây nhà đè đường, xoá chỉ đường của mình, không hoàn gỗ, tốc độ trên đường.
 - `roadPaint.test.ts`: Bresenham, dedupe, batch, input non-finite.
+- `DatabaseService.test.ts` (`saveZoneRoads`): hai kingdom lưu cùng `(20,20)`; sweep chỉ trong
+  zone của mình; không ghi lại tile đã có.
+- `WorldRoom.roads.test.ts`: margin biên, chỉ tính gỗ cho ô thực sự vẽ.
 - `minimapArt.test.ts`: kingdom mặc định không có pixel đường; có `roads` thì đổi màu.
 
 ## 7. Ghi chú

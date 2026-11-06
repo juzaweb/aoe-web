@@ -1,7 +1,10 @@
 import {
+  MAP_BUILD_MARGIN_TILES,
   MAX_ROAD_TILES_PER_MESSAGE,
   NetworkMessage,
   ROAD_COST_PER_TILE,
+  TILE_HEIGHT,
+  TILE_WIDTH,
   gridToScreen
 } from '@chien-quoc/shared';
 import type * as Phaser from 'phaser';
@@ -88,7 +91,10 @@ export class RoadController {
     this.drawing = false;
     this.lastTile = null;
 
-    const tiles = this.validTiles();
+    // Trim to what the player can actually pay for: a stroke longer than the
+    // wood on hand would otherwise be rejected tile-by-tile by the server, and
+    // the player would get one toast per batch instead of a partial road.
+    const tiles = this.affordableStroke();
     this.pending = [];
     this.pendingKeys.clear();
     this.redraw();
@@ -128,6 +134,10 @@ export class RoadController {
     this.lastTile = tile;
 
     for (const next of segment) {
+      // The stroke is bounded by one message's worth of tiles. A drag across the
+      // whole map would otherwise hold thousands of queued tiles and redraw one
+      // diamond each per frame, while the server accepts 200 at a time anyway.
+      if (this.pending.length >= MAX_ROAD_TILES_PER_MESSAGE) break;
       const key = `${next.x},${next.y}`;
       if (this.pendingKeys.has(key)) continue;
       this.pendingKeys.add(key);
@@ -141,7 +151,7 @@ export class RoadController {
     const room = this.scene.room;
     if (!room) return [];
 
-    const margin = 6;
+    const margin = MAP_BUILD_MARGIN_TILES;
     const state = room.state as any;
     const roads: { has: (key: string) => boolean; get: (key: string) => any } | undefined = state?.roads;
     const buildings: { forEach: (cb: (b: any) => void) => void } | undefined = state?.buildings;
@@ -173,6 +183,22 @@ export class RoadController {
     return valid;
   }
 
+  /**
+   * The stroke cut down to what this player can pay for.
+   *
+   * The server charges per tile and rejects a batch it cannot afford, so the
+   * client must not promise more road than the wood covers. Erasing is free.
+   */
+  private affordableStroke(): RoadTile[] {
+    const valid = this.validTiles();
+    if (this.mode === 'erase') return valid;
+
+    const room = this.scene.room as any;
+    const wood = Number(room?.state?.players?.get?.(this.scene.myOwnerId)?.wood ?? 0);
+    const affordableTiles = Math.floor(wood / ROAD_COST_PER_TILE);
+    return affordableTiles >= valid.length ? valid : valid.slice(0, affordableTiles);
+  }
+
   /** Wood the player would have left after painting the current stroke. */
   private remainingWoodAfterStroke(validCount: number): number {
     const room = this.scene.room as any;
@@ -202,8 +228,8 @@ export class RoadController {
 
   private drawDiamond(gx: number, gy: number, color: number, alpha: number) {
     const center = gridToScreen(gx, gy);
-    const halfW = 64;
-    const halfH = 32;
+    const halfW = TILE_WIDTH / 2;
+    const halfH = TILE_HEIGHT / 2;
     this.overlay.fillStyle(color, alpha);
     this.overlay.lineStyle(1, color, 0.9);
     this.overlay.beginPath();

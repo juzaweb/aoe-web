@@ -8,6 +8,7 @@ import {
   MAX_POPULATION_LIMIT,
   MAX_UNIT_LEVEL,
   MapTerrain,
+  MAP_BUILD_MARGIN_TILES,
   MAX_TRAVEL_UNITS,
   NetworkMessage,
   TravelPayload,
@@ -294,6 +295,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       this.commands.handlePlaceBuilding(client, message);
     });
 
+    // A road is walkable, so it never invalidates a route; only the step size
+    // in `updateUnitMovement` reads it.
     this.onMessage(NetworkMessage.PLACE_ROAD, (client, message: PlaceRoadPayload) => {
       this.commands.handlePlaceRoad(client, message);
     });
@@ -604,7 +607,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    * returning player can still claim their deterministic spot.
    */
   private isFootprintFree(gx: number, gy: number, sizeX: number, sizeY: number): boolean {
-    const margin = 6;
+    const margin = MAP_BUILD_MARGIN_TILES;
     const { mapWidth: width, mapHeight: height } = this.state;
     if (gx < margin || gy < margin) return false;
     if (gx + sizeX > width - margin || gy + sizeY > height - margin) return false;
@@ -1157,10 +1160,17 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       await this.refreshForeignBaseline(player);
     }
 
-    await DatabaseService.saveFullWorldState(this.state, this.zoneId, {
-      skipIfBusy: true,
-      resourceRespawnAt: this.resourceRespawnAt
-    });
+    try {
+      await DatabaseService.saveFullWorldState(this.state, this.zoneId, {
+        skipIfBusy: true,
+        resourceRespawnAt: this.resourceRespawnAt
+      });
+    } catch (err) {
+      // The 30s clock callback does not await this promise, so a throw here is an
+      // unhandled rejection that takes the process down. One failed autosave (a
+      // locked file, a unique-constraint clash) must not kill every live room.
+      console.error(`❌ [WorldRoom] Autosave failed for ${this.zoneId}:`, err);
+    }
   }
 
   /**

@@ -3,6 +3,7 @@ import {
   KINGDOM_MAP_SIZE,
   MAX_ROAD_TILES_PER_MESSAGE,
   MAX_ROADS_PER_ZONE,
+  MAP_BUILD_MARGIN_TILES,
   ROAD_COST_PER_TILE,
   ROAD_SPEED_MULTIPLIER,
   RejectCode,
@@ -215,6 +216,37 @@ describe('handlePlaceRoad', () => {
 
     expect(room.state.roads.size).toBe(1);
     expect(room.state.roads.has(roadTileKey(20, 20))).toBe(true);
+  });
+
+  it('keeps the edge margin clear, matching the building footprint rule', () => {
+    const room = createRoom();
+    addPlayer(room, 'owner', 100);
+    const client = createClient();
+
+    placeRoad(room, client, [
+      { x: MAP_BUILD_MARGIN_TILES - 1, y: 30 },
+      { x: MAP_BUILD_MARGIN_TILES, y: 30 },
+      { x: 30, y: MAP_BUILD_MARGIN_TILES - 1 },
+      { x: 30, y: MAP_BUILD_MARGIN_TILES }
+    ]);
+
+    const x = MAP_BUILD_MARGIN_TILES;
+    expect(room.state.roads.has(roadTileKey(x - 1, 30))).toBe(false);
+    expect(room.state.roads.has(roadTileKey(x, 30))).toBe(true);
+    expect(room.state.roads.has(roadTileKey(30, x - 1))).toBe(false);
+    expect(room.state.roads.has(roadTileKey(30, x))).toBe(true);
+  });
+
+  it('charges only the tiles it actually paints', () => {
+    const room = createRoom();
+    const player = addPlayer(room, 'owner', 100);
+    addBuilding(room, 'b1', 20, 20, 2, 2);
+    const client = createClient();
+
+    placeRoad(room, client, [{ x: 20, y: 20 }, { x: 30, y: 30 }]);
+
+    expect(room.state.roads.size).toBe(1);
+    expect(player.wood).toBe(100 - ROAD_COST_PER_TILE);
   });
 
   it('blocks building a house on top of a road', () => {

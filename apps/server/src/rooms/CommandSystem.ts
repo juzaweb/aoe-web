@@ -20,6 +20,7 @@ import {
   PlaceBuildingPayload,
   PlaceRoadPayload,
   RemoveRoadPayload,
+  MAP_BUILD_MARGIN_TILES,
   ROAD_COST_PER_TILE,
   roadTileKey,
   zoneKindOf,
@@ -380,7 +381,7 @@ export class CommandSystem {
 
   /** Whether one road tile may be painted: inside the margin, empty of everything else. */
   private isRoadTileBuildable(tile: { x: number; y: number }, roads: RoadGrid): boolean {
-    const margin = 6;
+    const margin = MAP_BUILD_MARGIN_TILES;
     if (tile.x < margin || tile.y < margin) return false;
     if (tile.x >= this.state.mapWidth - margin || tile.y >= this.state.mapHeight - margin) return false;
 

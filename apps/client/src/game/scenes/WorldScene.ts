@@ -353,6 +353,12 @@ export class WorldScene extends Phaser.Scene {
   /** A road tile was added or removed; rebuild the terrain pool once per frame. */
   private roadsDirty = false;
   /**
+   * Bumped on every road add/remove. The minimap rasterises the road set, and a
+   * stroke that removes one tile and adds another leaves the count unchanged, so
+   * a counter is the only cheap signal that the tile set really changed.
+   */
+  public roadsVersion = 0;
+  /**
    * ECO-02: published whenever the number of this player's idle villagers
    * changes, so the HUD can show the AoE idle-counter without scanning state.
    */
@@ -734,6 +740,9 @@ export class WorldScene extends Phaser.Scene {
    * coordinates and reuses one image pool, so a long drag does not allocate.
    */
   public refreshPlayerRoads() {
+    // Anything that rebuilds the visual road set (bind, patch, reset) also
+    // invalidates the minimap raster, which reads the same tiles.
+    this.roadsVersion++;
     const roads = (this.room?.state as { roads?: { forEach: (cb: (road: any) => void) => void } } | null)
       ?.roads;
     const tiles: Array<{ gridX: number; gridY: number }> = [];
@@ -982,9 +991,11 @@ export class WorldScene extends Phaser.Scene {
     // the frame instead of running once per patch (which would be O(n^2)).
     cb.onAdd('roads', () => {
       this.roadsDirty = true;
+      this.roadsVersion++;
     });
     cb.onRemove('roads', () => {
       this.roadsDirty = true;
+      this.roadsVersion++;
     });
 
     // 1. Synchronize Resource Nodes
@@ -1338,17 +1349,19 @@ export class WorldScene extends Phaser.Scene {
    *   the pointer coordinates then point at the panel, not at the world.
    */
   private handlePointerUp(pointer: Phaser.Input.Pointer, outside = false) {
+    // MOB-02: a finger release is resolved by the gesture layer (tap, end of a
+    // box drag, or the tail of a pinch); there is no button state to inspect.
+    // This runs first even for a road stroke: the gesture must be reset here, and
+    // `endTouchDrag` commits the stroke on the way through.
+    if (pointer.wasTouch) {
+      this.touch.end(pointer, outside);
+      return;
+    }
+
     // A stroke is committed on release, even off-canvas: the tiles were already
     // painted on screen, so dropping them would read as a lost drag.
     if (this.roadController?.isDrawing) {
       this.roadController.end();
-      return;
-    }
-
-    // MOB-02: a finger release is resolved by the gesture layer (tap, end of a
-    // box drag, or the tail of a pinch); there is no button state to inspect.
-    if (pointer.wasTouch) {
-      this.touch.end(pointer, outside);
       return;
     }
 
@@ -1577,11 +1590,11 @@ export class WorldScene extends Phaser.Scene {
    * move order, because on a phone that is the whole point of tapping the map (D5).
    */
   public touchTapPointer(pointer: Phaser.Input.Pointer) {
-    // A tap with the road tool is one tile; a drag was already extended by the
-    // gesture layer and committed on release.
+    // A tap with the road tool is one tile: `TouchController.begin` already
+    // started the stroke on press, so this only commits it. Starting one here
+    // would paint the tile under the release instead of the one pressed.
     if (this.roadController?.active) {
-      if (!this.roadController.isDrawing) this.roadController.begin(pointer);
-      this.roadController.end();
+      if (this.roadController.isDrawing) this.roadController.end();
       return;
     }
 
@@ -1627,6 +1640,9 @@ export class WorldScene extends Phaser.Scene {
    * behave exactly as a right click would.
    */
   public touchLongPressPointer(pointer: Phaser.Input.Pointer) {
+    // A long press while the road tool owns the glass is part of the same
+    // stroke: firing a contextual order here would move the army mid-road.
+    if (this.roadController?.isDrawing) return;
     if (this.buildingToPlace) return;
 
     if (this.commands.pendingOrder || this.commands.contextualArmed) {

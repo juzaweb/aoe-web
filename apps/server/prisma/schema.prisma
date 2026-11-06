@@ -109,8 +109,9 @@ model Unit {
 /// Roads belong to a zone, not to a player row, so there is no relation: a
 /// kingdom keeps its roads while its owner is offline on the battlefield.
 model WorldRoad {
-  /// `"<gridX>,<gridY>"` — the coordinate pair is the identity.
-  id        String   @id
+  /// `"<gridX>,<gridY>"`, unique **within** a zone: every kingdom has its own
+  /// road at (20,20). The primary key is therefore (zone, id), not id alone.
+  id        String
   /// Map this tile belongs to ("kingdom:<id>"). Battlefield roads are terrain.
   zone      String   @default("world")
   ownerId   String   @map("owner_id")
@@ -118,7 +119,7 @@ model WorldRoad {
   gridY     Int      @map("grid_y")
   createdAt DateTime @default(now()) @map("created_at")
 
-  @@unique([zone, gridX, gridY])
+  @@id([zone, id])
   @@index([zone])
   @@map("world_roads")
 }

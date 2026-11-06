@@ -29,6 +29,7 @@ beforeEach(async () => {
   await prisma.building.deleteMany();
   await prisma.player.deleteMany();
   await prisma.worldResourceNode.deleteMany();
+  await prisma.worldRoad.deleteMany();
   await prisma.travelTransfer.deleteMany();
 });
 
@@ -133,6 +134,42 @@ describe('saveZoneResources', () => {
     expect(byId.res_keep).toBe(4);
     expect(byId.res_new).toBe(2);
     expect(byId.res_drop).toBeUndefined();
+  });
+});
+
+describe('saveZoneRoads', () => {
+  function road(id: string, ownerId: string, gx = 20, gy = 20) {
+    return { id, ownerId, gridX: gx, gridY: gy };
+  }
+
+  it('D1 stores a tile per zone under the same coordinate id', async () => {
+    await (DatabaseService as any).saveZoneRoads('kingdom:a', [road('20,20', 'a')]);
+    await (DatabaseService as any).saveZoneRoads('kingdom:b', [road('20,20', 'b')]);
+
+    const rows = await prisma.worldRoad.findMany({ orderBy: { zone: 'asc' } });
+    expect(rows.map((row: any) => row.zone)).toEqual(['kingdom:a', 'kingdom:b']);
+    expect(rows.every((row: any) => row.id === '20,20')).toBe(true);
+  });
+
+  it('D2 removes only the tiles of its own zone', async () => {
+    await (DatabaseService as any).saveZoneRoads('kingdom:a', [road('20,20', 'a')]);
+    await (DatabaseService as any).saveZoneRoads('kingdom:b', [road('20,20', 'b')]);
+
+    await (DatabaseService as any).saveZoneRoads('kingdom:a', []);
+
+    const rows = await prisma.worldRoad.findMany();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].zone).toBe('kingdom:b');
+  });
+
+  it('D3 does not rewrite a tile that is already stored', async () => {
+    await (DatabaseService as any).saveZoneRoads('kingdom:a', [road('20,20', 'a')]);
+    const stmts = { n: 0 };
+    await (DatabaseService as any).saveZoneRoads('kingdom:a', [road('20,20', 'a')], stmts);
+
+    // One read, one delete sweep, no insert.
+    expect(stmts.n).toBe(2);
+    expect(await prisma.worldRoad.count()).toBe(1);
   });
 });
 

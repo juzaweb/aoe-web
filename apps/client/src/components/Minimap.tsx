@@ -72,19 +72,23 @@ let clusterCache: { key: string; clusters: MinimapCluster[]; layer: HTMLCanvasEl
  */
 let roadCache: {
   roads: unknown;
-  size: number;
+  version: number;
   tiles: Array<{ gridX: number; gridY: number }>;
   signature: string;
-} = { roads: null, size: -1, tiles: [], signature: '0:0' };
+} = { roads: null, version: -1, tiles: [], signature: '0:0' };
 
-function roadsOf(room: Room | null): {
+function roadsOf(
+  room: Room | null,
+  version: number
+): {
   tiles: Array<{ gridX: number; gridY: number }>;
   signature: string;
 } {
   const roads = (room?.state as any)?.roads;
-  // Walking a 4000-tile map every animation frame is wasted work: the size is
-  // enough of a change signal, because a stroke either adds or removes.
-  if (roads && roadCache.roads === roads && roadCache.size === roads.size) {
+  // Walking a 4000-tile map every animation frame is wasted work, and the tile
+  // count is not a change signal (a stroke can remove one tile and add another).
+  // The scene already sees every add/remove, so its version counter is the key.
+  if (roads && roadCache.roads === roads && roadCache.version === version) {
     return { tiles: roadCache.tiles, signature: roadCache.signature };
   }
 
@@ -95,7 +99,7 @@ function roadsOf(room: Room | null): {
     signature = (signature + road.gridX * 73856093 + road.gridY * 19349663) | 0;
   });
   const result = { tiles, signature: `${tiles.length}:${signature}` };
-  roadCache = { roads: roads ?? null, size: roads?.size ?? -1, ...result };
+  roadCache = { roads: roads ?? null, version, ...result };
   return result;
 }
 
@@ -193,7 +197,7 @@ export const Minimap: React.FC<MinimapProps> = ({
 
       // 1. Terrain: real grass and road tiles, no hand-drawn hatching. The
       // signature covers player-painted kingdom roads, which change at runtime.
-      const roadState = roadsOf(room);
+      const roadState = roadsOf(room, sceneRef?.current?.roadsVersion ?? 0);
       ctx.putImageData(groundFor(zoneId, width, height, roadState.tiles, roadState.signature), 0, 0);
 
       // 2. Forest as clusters: 892 battlefield trees are ~77 clumps, so drawing

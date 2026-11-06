@@ -136,6 +136,15 @@ export const MAX_SELECTION = 120;
 // ---------------------------------------------------------------------------
 
 /**
+ * Margin, in tiles, that every player-built structure keeps from the map edge.
+ *
+ * Shared because three places must agree: the server's footprint check, the
+ * server's road tile check, and the client's ghost. Drifting apart here means a
+ * ghost that looks placeable and a server that rejects it (or the reverse).
+ */
+export const MAP_BUILD_MARGIN_TILES = 6;
+
+/**
  * Wood one road tile costs. A painted road has no blueprint, so its price lives
  * here instead of in `BUILDING_BLUEPRINTS`.
  */
