@@ -23,6 +23,7 @@ import { buildingTierInfo, buildingVisualTierCount } from '../render/buildingArt
 import { CommandController } from '../input/CommandController.js';
 import { CursorController } from '../input/CursorController.js';
 import { PlacementController } from '../input/PlacementController.js';
+import { RoadController, type RoadMode } from '../input/RoadController.js';
 import { SelectionController } from '../input/SelectionController.js';
 import type { BoxSelectFilter } from '../input/SelectionController.js';
 import { applyEdgeScroll, installCanvasPresence } from '../input/cameraInput.js';
@@ -345,6 +346,13 @@ export class WorldScene extends Phaser.Scene {
    */
   public onBuildingHotkey: ((type: BuildingType) => void) | null = null;
   /**
+   * The road tool was entered or left from the map itself (right-click backs
+   * out). React mirrors this so the HUD button and the map never disagree.
+   */
+  public onRoadModeChange: ((mode: RoadMode | null) => void) | null = null;
+  /** A road tile was added or removed; rebuild the terrain pool once per frame. */
+  private roadsDirty = false;
+  /**
    * ECO-02: published whenever the number of this player's idle villagers
    * changes, so the HUD can show the AoE idle-counter without scanning state.
    */
@@ -374,6 +382,8 @@ export class WorldScene extends Phaser.Scene {
   public selection!: SelectionController;
   public cursor!: CursorController;
   public placement!: PlacementController;
+  /** Road paint tool; only enters a mode in a kingdom. */
+  public roadController!: RoadController;
   public commands!: CommandController;
   /** MOB-02: gestures, camera pan/pinch and the touch order dispatch. */
   public touch!: TouchController;
@@ -533,6 +543,9 @@ export class WorldScene extends Phaser.Scene {
     // 2. Building placement ghost
     this.placement = new PlacementController(this);
     this.placement.create();
+
+    // 2b. Road paint tool (kingdom only)
+    this.roadController = new RoadController(this);
 
     // 3. Drag selection box graphics
     this.dragSelectionGraphics = this.add.graphics();
@@ -714,6 +727,23 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Pushes the room's current road set into the terrain layer.
+   *
+   * Called on bind and on every add/remove. `TerrainLayer` keeps only the tile
+   * coordinates and reuses one image pool, so a long drag does not allocate.
+   */
+  public refreshPlayerRoads() {
+    const roads = (this.room?.state as { roads?: { forEach: (cb: (road: any) => void) => void } } | null)
+      ?.roads;
+    const tiles: Array<{ gridX: number; gridY: number }> = [];
+    roads?.forEach((road: any) => {
+      tiles.push({ gridX: road.gridX, gridY: road.gridY });
+    });
+    this.terrain?.setPlayerRoads(tiles);
+    this.decor?.invalidateViewport();
+  }
+
   /** Freezes the last rendered frame while a travel swaps rooms. */
   public pauseWorld() {
     this.worldFrozen = true;
@@ -798,6 +828,11 @@ export class WorldScene extends Phaser.Scene {
     this.commands?.resetControlGroups();
     this.commands?.cancelPendingOrder();
     this.placement?.cancel();
+    this.roadController?.cancel();
+    // The new map may have no roads at all (a battlefield always does not), so
+    // the painted quads of the previous map must not survive the switch.
+    this.terrain?.setPlayerRoads([]);
+    this.onRoadModeChange?.(null);
     this.cameraControl?.resetBookmarks();
     // The pool is repositioned only when the viewport moves; a new map can start
     // at a very different corner, so force the next frame to repaint it.
@@ -938,6 +973,19 @@ export class WorldScene extends Phaser.Scene {
     this.roomCallbacks = cb;
     this.pendingResources = [];
     this.pendingResourceKeys.clear();
+
+    // 0. Player-painted roads: a kingdom's entire network arrives as state, so
+    // the terrain layer is rebuilt from the map whenever a tile appears or goes.
+    this.roadsDirty = false;
+    this.refreshPlayerRoads();
+    // A loaded kingdom arrives one tile at a time, so the rebuild is deferred to
+    // the frame instead of running once per patch (which would be O(n^2)).
+    cb.onAdd('roads', () => {
+      this.roadsDirty = true;
+    });
+    cb.onRemove('roads', () => {
+      this.roadsDirty = true;
+    });
 
     // 1. Synchronize Resource Nodes
     cb.onAdd('resourceNodes', (node: any, key: any) => {
@@ -1146,6 +1194,14 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
+    // A road stroke owns the pointer while it is down; the ghost is redrawn by
+    // the controller itself.
+    if (this.roadController?.isDrawing) {
+      this.roadController.drag(pointer);
+      this.cursor.refresh();
+      return;
+    }
+
     // Placement ghost follows the pointer while the mode is active
     this.placement.updateGhost(hoverGridCoord.gridX, hoverGridCoord.gridY);
 
@@ -1200,6 +1256,22 @@ export class WorldScene extends Phaser.Scene {
 
     this.touchMode = false;
     const native = pointer.event as MouseEvent | undefined;
+
+    // A road tool owns the drag: left button starts a stroke, right button
+    // backs out of the tool (same gesture as leaving placement mode).
+    if (this.roadController?.active) {
+      if (pointer.rightButtonDown() && !native?.ctrlKey) {
+        this.cancelRoadMode();
+        this.onRoadModeChange?.(null);
+        return;
+      }
+      if (pointer.leftButtonDown()) {
+        native?.preventDefault();
+        this.roadController.begin(pointer);
+        return;
+      }
+    }
+
     // macOS: Phaser rewrites Ctrl+left-click into a right-click to match the OS
     // convention (see Pointer#down). Ctrl+click is our same-type-selection
     // modifier and the canvas context menu is disabled, so read the native
@@ -1266,6 +1338,13 @@ export class WorldScene extends Phaser.Scene {
    *   the pointer coordinates then point at the panel, not at the world.
    */
   private handlePointerUp(pointer: Phaser.Input.Pointer, outside = false) {
+    // A stroke is committed on release, even off-canvas: the tiles were already
+    // painted on screen, so dropping them would read as a lost drag.
+    if (this.roadController?.isDrawing) {
+      this.roadController.end();
+      return;
+    }
+
     // MOB-02: a finger release is resolved by the gesture layer (tap, end of a
     // box drag, or the tail of a pinch); there is no button state to inspect.
     if (pointer.wasTouch) {
@@ -1342,11 +1421,30 @@ export class WorldScene extends Phaser.Scene {
   }
 
   public setBuildingMode(type: BuildingType) {
+    // The two tools are mutually exclusive: a click cannot mean both.
+    if (this.roadController?.active) this.cancelRoadMode();
     this.placement.enter(type);
   }
 
   public cancelBuildingPlacement() {
     this.placement.cancel();
+  }
+
+  /** Enters the road paint tool. Only meaningful on a kingdom map. */
+  public setRoadMode(mode: RoadMode) {
+    if (!this.roadController) return;
+    if (this.terrainLayout.kind !== 'kingdom') return;
+    if (this.buildingToPlace) this.placement.cancel();
+    this.roadController.enter(mode);
+    this.cursor.refresh();
+  }
+
+  public cancelRoadMode() {
+    this.roadController?.cancel();
+  }
+
+  public get roadMode(): RoadMode | null {
+    return this.roadController?.active ?? null;
   }
 
   public commandMoveTo(gridX: number, gridY: number) {
@@ -1459,6 +1557,12 @@ export class WorldScene extends Phaser.Scene {
    */
   public touchPressPointer(pointer: Phaser.Input.Pointer) {
     this.touchMode = true;
+    // A road tool takes the finger: the press starts a one-tile stroke and a
+    // drag extends it, instead of panning the camera.
+    if (this.roadController?.active) {
+      this.roadController.begin(pointer);
+      return;
+    }
     if (!this.buildingToPlace) return;
 
     const grid = pointerWorldGrid(this.cameras.main, pointer);
@@ -1473,6 +1577,14 @@ export class WorldScene extends Phaser.Scene {
    * move order, because on a phone that is the whole point of tapping the map (D5).
    */
   public touchTapPointer(pointer: Phaser.Input.Pointer) {
+    // A tap with the road tool is one tile; a drag was already extended by the
+    // gesture layer and committed on release.
+    if (this.roadController?.active) {
+      if (!this.roadController.isDrawing) this.roadController.begin(pointer);
+      this.roadController.end();
+      return;
+    }
+
     // A tap in armed box mode is a back-out, not a selection: the player picked a
     // drag mode and tapped instead of dragging.
     if (this.boxSelectArmed) {
@@ -1532,6 +1644,13 @@ export class WorldScene extends Phaser.Scene {
    *   the caller pans the camera only when this is false.
    */
   public beginTouchDrag(pointer: Phaser.Input.Pointer): boolean {
+    // The road tool consumes the drag: returning true routes every subsequent
+    // pan sample into `updateTouchDrag` instead of the camera.
+    if (this.roadController?.active) {
+      this.roadController.begin(pointer);
+      return true;
+    }
+
     if (!this.boxSelectArmed) return false;
 
     this.touchBoxActive = true;
@@ -1544,12 +1663,20 @@ export class WorldScene extends Phaser.Scene {
   }
 
   public updateTouchDrag(pointer: Phaser.Input.Pointer) {
+    if (this.roadController?.isDrawing) {
+      this.roadController.drag(pointer);
+      return;
+    }
     if (!this.touchBoxActive) return;
     this.drawDragBox({ x: pointer.x, y: pointer.y });
   }
 
   /** MOB-04: finishes the armed box selection and disarms the mode (one shot). */
   public endTouchDrag(pointer: Phaser.Input.Pointer) {
+    if (this.roadController?.isDrawing) {
+      this.roadController.end();
+      return;
+    }
     if (!this.touchBoxActive) return;
 
     this.touchBoxActive = false;
@@ -1562,6 +1689,9 @@ export class WorldScene extends Phaser.Scene {
 
   /** MOB-04: a pinch took over, so the half-drawn rectangle is dropped unseen. */
   public cancelTouchDrag() {
+    // A pinch is a camera gesture: it drops the half-drawn stroke unseen, the
+    // same way it drops a box selection.
+    if (this.roadController?.isDrawing) this.roadController.abort();
     if (!this.touchBoxActive) return;
     this.touchBoxActive = false;
     this.isDragSelecting = false;
@@ -1694,6 +1824,11 @@ export class WorldScene extends Phaser.Scene {
     // synchronous burst right after a map switch.
     this.flushResourceSpawns();
 
+    if (this.roadsDirty) {
+      this.roadsDirty = false;
+      this.refreshPlayerRoads();
+    }
+
     this.terrain.render();
     this.decor.render();
     this.decor.update(time);
@@ -1731,6 +1866,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.commands.updateWaypointPreview();
     this.commands.updateRallyMarkers();
+    this.roadController?.render();
 
     this.updateUnitSprites(time, dtSeconds);
 

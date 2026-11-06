@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TERRAIN_KINGDOM, isDirtRoadTile, isPlazaTile } from '@chien-quoc/shared';
+import { TERRAIN_KINGDOM, isPlazaTile } from '@chien-quoc/shared';
 import { WorldState } from '../schema/WorldState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { generateWorldResources } from './worldGeneration.js';
@@ -80,7 +80,7 @@ describe('generateWorldResources - kingdom edge band', () => {
     generateWorldResources(state, TERRAIN_KINGDOM);
 
     for (const node of nodesOf(state)) {
-      expect(isDirtRoadTile(node.gridX, node.gridY, TERRAIN_KINGDOM)).toBe(false);
+      // A kingdom has no generated roads, so only the plaza can block a node.
       expect(isPlazaTile(node.gridX, node.gridY, TERRAIN_KINGDOM)).toBe(false);
     }
   });

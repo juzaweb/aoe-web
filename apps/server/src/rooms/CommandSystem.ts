@@ -14,8 +14,15 @@ import {
   MAX_CONCURRENT_BUILDING_UPGRADES,
   MAX_QUEUED_WAYPOINTS,
   MAX_SELECTION,
+  MAX_ROAD_TILES_PER_MESSAGE,
+  MAX_ROADS_PER_ZONE,
   MoveUnitsPayload,
   PlaceBuildingPayload,
+  PlaceRoadPayload,
+  RemoveRoadPayload,
+  ROAD_COST_PER_TILE,
+  roadTileKey,
+  zoneKindOf,
   Resources,
   SetRallyPointPayload,
   SetStancePayload,
@@ -39,11 +46,13 @@ import {
   getUnitUpgradeTimeMs
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
+import { RoadState } from '../schema/RoadState.js';
 import { PlayerState } from '../schema/PlayerState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { getBuildApproachPoint } from './construction.js';
+import { RoadGrid } from './roads.js';
 import { ownerIdOf } from './identity.js';
 import { UNIT_SEPARATION } from './unitSeparation.js';
 import {
@@ -76,6 +85,8 @@ export interface CommandPorts {
   allocateEntityId(): number;
   /** Recomputed whenever a unit or building is added. */
   updatePlayerPopulation(ownerId: string): void;
+  /** Cached road lookup for this room; invalidated by the road handlers. */
+  roadGrid(): RoadGrid;
 }
 
 /**
@@ -92,6 +103,45 @@ const FORMATION_SPACING = UNIT_SEPARATION;
  */
 const CANCEL_BUILDING_FULL_REFUND_BELOW = 10; // construction progress %
 const CANCEL_BUILDING_PARTIAL_REFUND_RATIO = 0.5;
+
+/** One integer tile coordinate, after validation. */
+interface RoadTile {
+  x: number;
+  y: number;
+}
+
+/**
+ * Normalises an untrusted road payload into unique integer tiles.
+ *
+ * Anything that is not a finite integer is dropped, and the list is capped so
+ * one message can never expand into unbounded work. The map bounds are not
+ * checked here: `isRoadTileBuildable` already rejects the margin, and a remove
+ * needs the same coordinate shape for tiles that may sit anywhere.
+ */
+function sanitizeRoadTiles(
+  raw: unknown,
+  mapWidth: number,
+  mapHeight: number
+): RoadTile[] {
+  if (!Array.isArray(raw)) return [];
+
+  const seen = new Set<string>();
+  const tiles: RoadTile[] = [];
+  for (const entry of raw) {
+    if (tiles.length >= MAX_ROAD_TILES_PER_MESSAGE) break;
+    if (!entry || typeof entry !== 'object') continue;
+    const { x, y } = entry as { x?: unknown; y?: unknown };
+    if (!Number.isInteger(x) || !Number.isInteger(y)) continue;
+    const gx = x as number;
+    const gy = y as number;
+    if (gx < 0 || gy < 0 || gx >= mapWidth || gy >= mapHeight) continue;
+    const id = roadTileKey(gx, gy);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    tiles.push({ x: gx, y: gy });
+  }
+  return tiles;
+}
 
 /**
  * Lays a squad out as a centred square block around its destination.
@@ -202,6 +252,14 @@ export class CommandSystem {
       return;
     }
 
+    // A road is walkable, not an obstacle, but a building on top of it would
+    // silently drop the movement bonus for that stretch. Rough terrain is
+    // rejected the same way the client's ghost is painted red.
+    if (this.footprintTouchesRoad(payload.gridX, payload.gridY, blueprint.sizeX, blueprint.sizeY)) {
+      this.ports.rejectCommand(client, 'Cannot build on top of a road', RejectCode.PLACEMENT);
+      return;
+    }
+
     // Deduct resources
     player.wood -= blueprint.cost.wood;
     player.food -= blueprint.cost.food;
@@ -234,6 +292,132 @@ export class CommandSystem {
     // learns the foundation's id, so a follow-up BUILD_TARGET would need a
     // second click on a site it cannot address yet.
     this.assignBuildersToSite(this.collectBuilders(client, payload.unitIds), building);
+  }
+
+  /**
+   * Paints roads on the sender's own kingdom.
+   *
+   * Every tile is 1x1 and priced individually, so the whole batch is validated
+   * before anything is charged: a payload that is half valid still commits its
+   * valid half, but only if the player can afford it. Tiles already holding a
+   * road, a building or a resource node are dropped silently — the client
+   * painted them red already, and failing the drag on one bad neighbour would
+   * make a long stroke unusable.
+   */
+  handlePlaceRoad(client: Client, payload: PlaceRoadPayload) {
+    const ownerId = ownerIdOf(client);
+    const player = this.state.players.get(ownerId);
+    if (!player) return;
+
+    if (zoneKindOf(this.state.zoneId) !== 'kingdom') {
+      this.ports.rejectCommand(client, 'Roads can only be built in a kingdom', RejectCode.PLACEMENT);
+      return;
+    }
+
+    const tiles = sanitizeRoadTiles(
+      payload?.tiles,
+      this.state.mapWidth,
+      this.state.mapHeight
+    );
+    if (tiles.length === 0) {
+      this.ports.rejectCommand(client, 'No buildable road tiles', RejectCode.PLACEMENT);
+      return;
+    }
+
+    const roads = this.ports.roadGrid();
+    const buildable = tiles.filter((tile) => this.isRoadTileBuildable(tile, roads));
+    if (buildable.length === 0) {
+      this.ports.rejectCommand(client, 'Those tiles are already occupied', RejectCode.PLACEMENT);
+      return;
+    }
+
+    if (this.state.roads.size + buildable.length > MAX_ROADS_PER_ZONE) {
+      this.ports.rejectCommand(client, 'This kingdom has reached its road limit', RejectCode.LIMIT);
+      return;
+    }
+
+    const cost = buildable.length * ROAD_COST_PER_TILE;
+    if (player.wood < cost) {
+      this.ports.rejectCommand(client, 'Not enough wood to build that road', RejectCode.RESOURCE);
+      return;
+    }
+
+    player.wood -= cost;
+    for (const tile of buildable) {
+      const road = new RoadState();
+      road.id = roadTileKey(tile.x, tile.y);
+      road.ownerId = ownerId;
+      road.gridX = tile.x;
+      road.gridY = tile.y;
+      this.state.roads.set(road.id, road);
+    }
+    // A stroke can add and remove tiles within one tick, which leaves the count
+    // unchanged; the cached grid must not trust the size alone.
+    roads.invalidate();
+  }
+
+  /** Removes the sender's own road tiles; never refunds the wood. */
+  handleRemoveRoad(client: Client, payload: RemoveRoadPayload) {
+    const ownerId = ownerIdOf(client);
+    if (!this.state.players.get(ownerId)) return;
+
+    if (zoneKindOf(this.state.zoneId) !== 'kingdom') {
+      this.ports.rejectCommand(client, 'Roads can only be removed in a kingdom', RejectCode.PLACEMENT);
+      return;
+    }
+
+    const tiles = sanitizeRoadTiles(payload?.tiles, this.state.mapWidth, this.state.mapHeight);
+    for (const tile of tiles) {
+      const id = roadTileKey(tile.x, tile.y);
+      const road = this.state.roads.get(id);
+      // Only the owner may erase a tile: a shared room must never let one
+      // player take apart another player's network.
+      if (!road || road.ownerId !== ownerId) continue;
+      this.state.roads.delete(id);
+    }
+    this.ports.roadGrid().invalidate();
+  }
+
+  /** Whether one road tile may be painted: inside the margin, empty of everything else. */
+  private isRoadTileBuildable(tile: { x: number; y: number }, roads: RoadGrid): boolean {
+    const margin = 6;
+    if (tile.x < margin || tile.y < margin) return false;
+    if (tile.x >= this.state.mapWidth - margin || tile.y >= this.state.mapHeight - margin) return false;
+
+    if (roads.isRoad(tile.x, tile.y)) return false;
+    if (this.state.roads.has(roadTileKey(tile.x, tile.y))) return false;
+
+    let occupied = false;
+    this.state.buildings.forEach((building: BuildingState) => {
+      if (occupied) return;
+      if (
+        tile.x >= building.gridX &&
+        tile.x < building.gridX + building.sizeX &&
+        tile.y >= building.gridY &&
+        tile.y < building.gridY + building.sizeY
+      ) {
+        occupied = true;
+      }
+    });
+    if (occupied) return false;
+
+    this.state.resourceNodes.forEach((node: ResourceNodeState) => {
+      if (occupied) return;
+      if (node.gridX === tile.x && node.gridY === tile.y) occupied = true;
+    });
+
+    return !occupied;
+  }
+
+  /** Whether any tile of a footprint is a road. */
+  private footprintTouchesRoad(gx: number, gy: number, sizeX: number, sizeY: number): boolean {
+    const roads = this.ports.roadGrid();
+    for (let y = gy; y < gy + sizeY; y++) {
+      for (let x = gx; x < gx + sizeX; x++) {
+        if (roads.isRoad(x, y)) return true;
+      }
+    }
+    return false;
   }
 
   handleMoveUnits(client: Client, payload: MoveUnitsPayload) {

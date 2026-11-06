@@ -1,6 +1,9 @@
 # Phase 09 — Asset đường đất và cổng ra chiến trường (AI-generated)
 
 Status: **IMPLEMENTED** (2026-11-03). Automated gates green; §7.2 vẫn cần verify tay.
+
+> Cập nhật phase 22: art stamp đường dưới đây giờ **chỉ** dùng cho battlefield. Kingdom không
+> còn đường sinh tự động — người chơi tự kéo vẽ (xem `22-player-built-roads.md`).
 Phạm vi: `apps/client` + `scripts/`. **Không** đổi server, `packages/shared`, schema, protocol hay DB.
 
 Nguồn: 2 ảnh AI gen tại `/Users/dev/Downloads/games/{cong,duong}.png`, prompt ở

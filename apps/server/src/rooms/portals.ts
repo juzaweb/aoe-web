@@ -1,4 +1,4 @@
-import { BUILDING_BLUEPRINTS, isDirtRoadTile, zoneKindOf } from '@chien-quoc/shared';
+import { BUILDING_BLUEPRINTS, isDirtRoadTile, roadTileKey, zoneKindOf } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { WorldState } from '../schema/WorldState.js';
@@ -43,7 +43,11 @@ function hashOwner(ownerId: string): number {
 }
 
 interface FreeSpotOptions {
-  /** The fixed kingdom gateway may sit on a road/resource tile. */
+  /**
+   * The fixed kingdom gateway may sit on a road/resource tile. This covers the
+   * deterministic battlefield roads and the player-painted kingdom roads alike:
+   * a gateway is server infrastructure, not a build order.
+   */
   ignoreRoads?: boolean;
   ignoreResources?: boolean;
   /** The portal being re-positioned must not block its own target spot. */
@@ -76,6 +80,7 @@ function isPortalFootprintFree(
     for (let x = gx; x < gx + sizeX; x++) {
       for (let y = gy; y < gy + sizeY; y++) {
         if (isDirtRoadTile(x, y, terrain)) return false;
+        if (state.roads.has(roadTileKey(x, y))) return false;
       }
     }
   }

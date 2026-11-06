@@ -463,6 +463,53 @@ export class DatabaseService {
   }
 
   // ---------------------------------------------------------------------------
+  // Roads
+  // ---------------------------------------------------------------------------
+
+  /** Loads the player-painted road tiles of one map. */
+  public static async loadRoads(zone: string) {
+    await this.initialize();
+    return await prisma.worldRoad.findMany({ where: { zone } });
+  }
+
+  /**
+   * Upserts and sweeps the road tiles of exactly one zone.
+   *
+   * Roads change one small stroke at a time, so the same diff strategy as the
+   * resource nodes applies: read the known ids once, insert the new ones in one
+   * statement, delete everything the room no longer holds. Rows never change
+   * after creation (a tile is either there or gone), so there is no update pass.
+   */
+  private static async saveZoneRoads(
+    zone: string,
+    roads: Array<{ id: string; ownerId: string; gridX: number; gridY: number }>,
+    stmts?: { n: number }
+  ) {
+    const existing = await prisma.worldRoad.findMany({ where: { zone }, select: { id: true } });
+    if (stmts) stmts.n++;
+    const known = new Set(existing.map((row) => row.id));
+
+    const created = roads.filter((road) => !known.has(road.id));
+    if (created.length > 0) {
+      if (stmts) stmts.n++;
+      await prisma.worldRoad.createMany({
+        data: created.map((road) => ({
+          id: road.id,
+          zone,
+          ownerId: road.ownerId,
+          gridX: road.gridX,
+          gridY: road.gridY
+        }))
+      });
+    }
+
+    if (stmts) stmts.n++;
+    await prisma.worldRoad.deleteMany({
+      where: { zone, id: { notIn: roads.map((road) => road.id) } }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // Players and entities
   // ---------------------------------------------------------------------------
 
@@ -760,6 +807,12 @@ export class DatabaseService {
           stmts,
           respawnAtOf: options.resourceRespawnAt
         });
+
+        const roads: Array<{ id: string; ownerId: string; gridX: number; gridY: number }> = [];
+        state.roads.forEach((road) => {
+          roads.push({ id: road.id, ownerId: road.ownerId, gridX: road.gridX, gridY: road.gridY });
+        });
+        await this.saveZoneRoads(zone, roads, stmts);
 
         const elapsedMs = Math.round(performance.now() - started);
         console.log(

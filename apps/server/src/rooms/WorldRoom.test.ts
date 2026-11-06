@@ -13,7 +13,6 @@ import {
   UNIT_BLUEPRINTS,
   INITIAL_POPULATION_CAP,
   getBuildingLevelStats,
-  isDirtRoadTile,
   isPlazaTile,
   getBuildingMaxLevel,
   getBuildingUpgradeCost,
@@ -49,7 +48,8 @@ vi.mock('../services/DatabaseService.js', () => ({
     saveFullWorldState: vi.fn().mockResolvedValue(undefined),
     loadForeignBaseline: vi.fn().mockResolvedValue({ unitCount: 0, buildings: [] }),
     consumeTravelTransfers: vi.fn().mockResolvedValue([]),
-    commitTravel: vi.fn().mockResolvedValue(undefined)
+    commitTravel: vi.fn().mockResolvedValue(undefined),
+    loadRoads: vi.fn().mockResolvedValue([])
   }
 }));
 
@@ -2491,7 +2491,6 @@ describe('kingdom map layout (MAPS-V2)', () => {
     room.state.resourceNodes.forEach((node: ResourceNodeState) => {
       count++;
       expect(isPlazaTile(node.gridX, node.gridY, TERRAIN_KINGDOM)).toBe(false);
-      expect(isDirtRoadTile(node.gridX, node.gridY, TERRAIN_KINGDOM)).toBe(false);
       expect(node.gridX).toBeGreaterThanOrEqual(0);
       expect(node.gridX).toBeLessThan(KINGDOM_MAP_SIZE.width);
       expect(node.gridY).toBeGreaterThanOrEqual(0);

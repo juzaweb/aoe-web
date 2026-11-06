@@ -8,6 +8,7 @@ import {
   type ArmedOrder
 } from './scenes/WorldScene.js';
 import { BuildingType } from '@chien-quoc/shared';
+import type { RoadMode } from './input/RoadController.js';
 
 interface PhaserGameProps {
   room: Room | null;
@@ -24,6 +25,8 @@ interface PhaserGameProps {
   onArmedOrderChange: (armed: ArmedOrder | null) => void;
   /** MOB-04: the one-shot box-selection mode was armed or consumed. */
   onBoxSelectChange: (armed: boolean) => void;
+  /** The road tool was entered or left from the map itself. */
+  onRoadModeChange: (mode: RoadMode | null) => void;
   /** ATK-05: raised when the player's entities lose HP. */
   onUnderAttack: () => void;
   gameRef: React.MutableRefObject<Phaser.Game | null>;
@@ -40,6 +43,7 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
   onControlGroupsChange,
   onArmedOrderChange,
   onBoxSelectChange,
+  onRoadModeChange,
   onUnderAttack,
   gameRef,
   sceneRef
@@ -53,6 +57,7 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
   const onControlGroupsRef = useRef(onControlGroupsChange);
   const onArmedOrderRef = useRef(onArmedOrderChange);
   const onBoxSelectRef = useRef(onBoxSelectChange);
+  const onRoadModeRef = useRef(onRoadModeChange);
   const onUnderAttackRef = useRef(onUnderAttack);
   playerNameRef.current = playerName;
   roomRef.current = room;
@@ -61,6 +66,7 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
   onControlGroupsRef.current = onControlGroupsChange;
   onArmedOrderRef.current = onArmedOrderChange;
   onBoxSelectRef.current = onBoxSelectChange;
+  onRoadModeRef.current = onRoadModeChange;
   onUnderAttackRef.current = onUnderAttack;
 
   useEffect(() => {
@@ -136,6 +142,7 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
         scene.onControlGroupsChange = (groups) => onControlGroupsRef.current(groups);
         scene.onArmedOrderChange = (armed) => onArmedOrderRef.current(armed);
         scene.onBoxSelectChange = (armed) => onBoxSelectRef.current(armed);
+        scene.onRoadModeChange = (mode) => onRoadModeRef.current(mode);
         scene.onUnderAttack = () => onUnderAttackRef.current();
 
         // Dev-only handle so browser tests can inspect state that the React HUD

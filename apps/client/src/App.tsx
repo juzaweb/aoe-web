@@ -24,6 +24,7 @@ import {
 import { PhaserGame } from './game/PhaserGame.js';
 import { HUD } from './components/HUD.js';
 import { BuildMenu } from './components/BuildMenu.js';
+import type { RoadMode } from './game/input/RoadController.js';
 import { EntityDetails } from './components/EntityDetails.js';
 import { Minimap } from './components/Minimap.js';
 import { ControlGroups } from './components/ControlGroups.js';
@@ -128,6 +129,8 @@ export const App: React.FC = () => {
   // Selection & Placement
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntityData | null>(null);
   const [activeBuildingType, setActiveBuildingType] = useState<BuildingType | null>(null);
+  /** Kingdom-only road paint tool; null when the tool is not open. */
+  const [roadMode, setRoadMode] = useState<RoadMode | null>(null);
 
   // Notifications
   const [notification, setNotification] = useState<{ message: string; code: RejectCode | null } | null>(null);
@@ -526,6 +529,11 @@ export const App: React.FC = () => {
   // things it owns: the selection and the building being placed.
 
   const handleSelectBuilding = (type: BuildingType) => {
+    // The two tools are mutually exclusive: one click cannot mean both.
+    if (roadMode) {
+      setRoadMode(null);
+      sceneRef.current?.cancelRoadMode();
+    }
     setActiveBuildingType(type);
     if (sceneRef.current) {
       sceneRef.current.setBuildingMode(type);
@@ -536,6 +544,19 @@ export const App: React.FC = () => {
     setActiveBuildingType(null);
     if (sceneRef.current) {
       sceneRef.current.cancelBuildingPlacement();
+    }
+  };
+
+  /** Opens or closes the road tool. Picking the active mode again closes it. */
+  const handleSelectRoad = (mode: RoadMode) => {
+    const next = roadMode === mode ? null : mode;
+    setRoadMode(next);
+    if (!sceneRef.current) return;
+    if (next) {
+      setActiveBuildingType(null);
+      sceneRef.current.setRoadMode(next);
+    } else {
+      sceneRef.current.cancelRoadMode();
     }
   };
 
@@ -638,6 +659,7 @@ export const App: React.FC = () => {
           onControlGroupsChange={setControlGroups}
           onArmedOrderChange={setArmedOrder}
           onBoxSelectChange={setBoxSelectArmed}
+          onRoadModeChange={setRoadMode}
           gameRef={gameRef}
           sceneRef={sceneRef}
           onUnderAttack={triggerUnderAttack}
@@ -734,6 +756,9 @@ export const App: React.FC = () => {
                   activeBuildingType={activeBuildingType}
                   onSelectBuilding={handleSelectBuilding}
                   onCancelBuilding={handleCancelBuilding}
+                  showRoadTools={zoneKind === 'kingdom'}
+                  roadMode={roadMode}
+                  onSelectRoad={handleSelectRoad}
                 />
               )}
             </div>
@@ -771,6 +796,9 @@ export const App: React.FC = () => {
                 activeBuildingType={activeBuildingType}
                 onSelectBuilding={handleSelectBuilding}
                 onCancelBuilding={handleCancelBuilding}
+                showRoadTools={zoneKind === 'kingdom'}
+                roadMode={roadMode}
+                onSelectRoad={handleSelectRoad}
               />
             )}
           </div>

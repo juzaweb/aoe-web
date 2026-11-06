@@ -9,6 +9,7 @@ vi.mock('../services/DatabaseService.js', () => ({
     loadResources: vi.fn(),
     clearAllResources: vi.fn().mockResolvedValue(undefined),
     saveAllResources: vi.fn().mockResolvedValue(undefined),
+    loadRoads: vi.fn().mockResolvedValue([]),
     loadZoneEntities: vi.fn().mockResolvedValue([])
   }
 }));
@@ -32,6 +33,7 @@ describe('WorldRoom.initializeWorldPersistence', () => {
     (DatabaseService as any).loadResources.mockResolvedValue([]);
     (DatabaseService as any).clearAllResources.mockResolvedValue(undefined);
     (DatabaseService as any).saveAllResources.mockResolvedValue(undefined);
+    (DatabaseService as any).loadRoads.mockResolvedValue([]);
     (DatabaseService as any).loadZoneEntities.mockResolvedValue([]);
   });
 

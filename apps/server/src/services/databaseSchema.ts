@@ -80,6 +80,15 @@ export const DATABASE_TABLE_STATEMENTS: readonly string[] = [
     CONSTRAINT "units_owner_id_fkey" FOREIGN KEY ("owner_id") REFERENCES "players" ("id") ON DELETE CASCADE ON UPDATE CASCADE
   );`,
 
+  `CREATE TABLE IF NOT EXISTS "world_roads" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "zone" TEXT NOT NULL DEFAULT 'world',
+    "owner_id" TEXT NOT NULL,
+    "grid_x" INTEGER NOT NULL,
+    "grid_y" INTEGER NOT NULL,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );`,
+
   `CREATE TABLE IF NOT EXISTS "world_resource_nodes" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "zone" TEXT NOT NULL DEFAULT 'world',
@@ -119,5 +128,7 @@ export const DATABASE_INDEX_STATEMENTS: readonly string[] = [
   `CREATE INDEX IF NOT EXISTS "buildings_owner_id_idx" ON "buildings"("owner_id");`,
   `CREATE INDEX IF NOT EXISTS "units_owner_id_idx" ON "units"("owner_id");`,
   `CREATE INDEX IF NOT EXISTS "world_resource_nodes_grid_x_grid_y_idx" ON "world_resource_nodes"("grid_x", "grid_y");`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "world_roads_zone_grid_x_grid_y_key" ON "world_roads"("zone", "grid_x", "grid_y");`,
+  `CREATE INDEX IF NOT EXISTS "world_roads_zone_idx" ON "world_roads"("zone");`,
   `CREATE INDEX IF NOT EXISTS "travel_transfers_owner_id_to_zone_idx" ON "travel_transfers"("owner_id", "to_zone");`
 ];

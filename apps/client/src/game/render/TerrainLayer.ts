@@ -8,7 +8,7 @@ import {
 } from '@chien-quoc/shared';
 import type * as Phaser from 'phaser';
 import { MAP_APRON_TILES } from './decorScatter.js';
-import { grassTextureIndex, grassTint, roadStampLook } from './visualVariation.js';
+import { grassTextureIndex, grassTint, hash2, roadStampLook } from './visualVariation.js';
 
 /**
  * Grass tiles and dirt-road stamps, drawn from pools.
@@ -25,6 +25,13 @@ export class TerrainLayer {
   /** Smaller, fainter stamps that widen the worn edge of a road. */
   private roadShoulderPool: Phaser.GameObjects.Image[] = [];
   private allRoadPoints: RoadSplinePoint[] = [];
+  /**
+   * Player-painted road tiles of the current room, as `gx,gy` keys. A kingdom
+   * has no baked road spline, so these are drawn as one dirt quad per tile.
+   */
+  private playerRoads = new Set<string>();
+  private playerRoadTiles: Array<{ gridX: number; gridY: number }> = [];
+  private playerRoadPool: Phaser.GameObjects.Image[] = [];
   private terrain: MapTerrain = TERRAIN_BATTLEFIELD;
   private lastViewportX = -999999;
   private lastViewportY = -999999;
@@ -43,6 +50,11 @@ export class TerrainLayer {
     }
 
     this.allRoadPoints = getRoadSplinePoints(this.terrain);
+
+    // One quad per painted tile. The pool grows on demand and is repositioned
+    // with the rest of the terrain, so a long road costs only the tiles on
+    // screen instead of one object per tile in the map.
+    this.playerRoadPool = [];
 
     this.roadStampPool = [];
     for (let i = 0; i < 700; i++) {
@@ -73,6 +85,25 @@ export class TerrainLayer {
   setTerrain(terrain: MapTerrain) {
     this.terrain = terrain;
     this.allRoadPoints = getRoadSplinePoints(terrain);
+    this.invalidateViewport();
+  }
+
+  /**
+   * Replaces the player-painted road set.
+   *
+   * The scene calls this whenever the room's `roads` map changes. Only the
+   * keys are kept: the renderer derives the texture variant from the tile
+   * coordinates, so nothing else has to be replicated.
+   */
+  setPlayerRoads(tiles: Iterable<{ gridX: number; gridY: number }>) {
+    this.playerRoads.clear();
+    this.playerRoadTiles = [];
+    for (const tile of tiles) {
+      const key = `${tile.gridX},${tile.gridY}`;
+      if (this.playerRoads.has(key)) continue;
+      this.playerRoads.add(key);
+      this.playerRoadTiles.push(tile);
+    }
     this.invalidateViewport();
   }
 
@@ -163,6 +194,39 @@ export class TerrainLayer {
     const totalPooled = this.tilePool.length;
     while (poolIdx < totalPooled) {
       this.tilePool[poolIdx++].setVisible(false);
+    }
+
+    // Player-painted road quads sit on the ground layer, under the baked
+    // battlefield stamps. A kingdom's whole road network comes through here.
+    let playerRoadIdx = 0;
+    for (const tile of this.playerRoadTiles) {
+      if (tile.gridX < minGx || tile.gridX > maxGx || tile.gridY < minGy || tile.gridY > maxGy) continue;
+
+      let image = this.playerRoadPool[playerRoadIdx];
+      if (!image) {
+        image = this.scene.add.image(0, 0, 'tile_dirt');
+        image.setDepth(-99995);
+        image.setVisible(false);
+        this.playerRoadPool.push(image);
+      }
+      playerRoadIdx++;
+
+      const variant = (Math.floor(hash2(tile.gridX, tile.gridY, 0x7a11) * 3) % 3) + 1;
+      const texKey = this.scene.textures.exists(`tile_dirt_${variant}`)
+        ? `tile_dirt_${variant}`
+        : 'tile_dirt';
+      if (image.texture.key !== texKey) image.setTexture(texKey);
+
+      const pos = gridToScreen(tile.gridX, tile.gridY);
+      image.setPosition(pos.x, pos.y);
+      // A slight per-tile tint variation keeps a long straight road from
+      // reading as one repeated stamp.
+      const shade = 232 + Math.floor(hash2(tile.gridX, tile.gridY, 0x5b3c) * 23);
+      image.setTint((shade << 16) | (shade << 8) | shade);
+      image.setVisible(true);
+    }
+    for (let i = playerRoadIdx; i < this.playerRoadPool.length; i++) {
+      this.playerRoadPool[i].setVisible(false);
     }
 
     // Render continuous organic AoE dirt roads over seamless grass (zero diamond stair-steps)

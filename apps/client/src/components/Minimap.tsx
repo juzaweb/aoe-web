@@ -54,22 +54,73 @@ function zoneOf(room: Room | null): string {
 // reused until the zone changes. Clusters are rebuilt only when the number of
 // standing trees changes (depletion), not every frame.
 const groundCache = new Map<string, { pixels: Uint8ClampedArray<ArrayBuffer>; image: ImageData }>();
+/** Upper bound on cached ground rasters; a stroke adds one entry. */
+const MAX_GROUND_CACHE = 8;
 let clusterCache: { key: string; clusters: MinimapCluster[]; layer: HTMLCanvasElement | null } = {
   key: '',
   clusters: [],
   layer: null
 };
 
-function groundFor(zoneId: string, width: number, height: number): ImageData {
-  const key = `${zoneId}:${width}x${height}`;
+/**
+ * Road tiles of the current room, plus a signature that changes whenever one is
+ * added or removed.
+ *
+ * A kingdom's roads are painted state, so the raster cannot be cached by zone
+ * alone. The signature is a cheap sum of the tile coordinates: a repaint only
+ * happens while the player is drawing, not every frame.
+ */
+let roadCache: {
+  roads: unknown;
+  size: number;
+  tiles: Array<{ gridX: number; gridY: number }>;
+  signature: string;
+} = { roads: null, size: -1, tiles: [], signature: '0:0' };
+
+function roadsOf(room: Room | null): {
+  tiles: Array<{ gridX: number; gridY: number }>;
+  signature: string;
+} {
+  const roads = (room?.state as any)?.roads;
+  // Walking a 4000-tile map every animation frame is wasted work: the size is
+  // enough of a change signal, because a stroke either adds or removes.
+  if (roads && roadCache.roads === roads && roadCache.size === roads.size) {
+    return { tiles: roadCache.tiles, signature: roadCache.signature };
+  }
+
+  const tiles: Array<{ gridX: number; gridY: number }> = [];
+  let signature = 0;
+  roads?.forEach((road: any) => {
+    tiles.push({ gridX: road.gridX, gridY: road.gridY });
+    signature = (signature + road.gridX * 73856093 + road.gridY * 19349663) | 0;
+  });
+  const result = { tiles, signature: `${tiles.length}:${signature}` };
+  roadCache = { roads: roads ?? null, size: roads?.size ?? -1, ...result };
+  return result;
+}
+
+function groundFor(
+  zoneId: string,
+  width: number,
+  height: number,
+  roads: Array<{ gridX: number; gridY: number }>,
+  roadSignature: string
+): ImageData {
+  const key = `${zoneId}:${width}x${height}:${roadSignature}`;
   let entry = groundCache.get(key);
   if (!entry) {
     // Width/height come from the room, not only from the zone constant: the
     // server owns the map size, and the raster must cover exactly what the
     // minimap scales against.
-    const pixels = buildGroundPixels({ ...terrainForZone(zoneId), width, height });
+    const pixels = buildGroundPixels({ ...terrainForZone(zoneId), width, height }, roads);
     entry = { pixels, image: new ImageData(pixels, MINIMAP_SIZE, MINIMAP_SIZE) };
     groundCache.set(key, entry);
+    // The cache is keyed by the road signature now, so a long editing session
+    // would otherwise leak one 78k-pixel buffer per stroke.
+    if (groundCache.size > MAX_GROUND_CACHE) {
+      const oldest = groundCache.keys().next().value;
+      if (oldest !== undefined) groundCache.delete(oldest);
+    }
   }
   return entry.image;
 }
@@ -140,8 +191,10 @@ export const Minimap: React.FC<MinimapProps> = ({
       const zoneId = zoneOf(room);
       const scale = MINIMAP_SIZE / width;
 
-      // 1. Terrain: real grass and road tiles, no hand-drawn hatching.
-      ctx.putImageData(groundFor(zoneId, width, height), 0, 0);
+      // 1. Terrain: real grass and road tiles, no hand-drawn hatching. The
+      // signature covers player-painted kingdom roads, which change at runtime.
+      const roadState = roadsOf(room);
+      ctx.putImageData(groundFor(zoneId, width, height, roadState.tiles, roadState.signature), 0, 0);
 
       // 2. Forest as clusters: 892 battlefield trees are ~77 clumps, so drawing
       // one blip per tree only produced a smear. A light rim carries the

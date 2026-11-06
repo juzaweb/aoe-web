@@ -180,6 +180,7 @@ export class DecorLayer {
       | {
           resourceNodes?: { forEach: (cb: (node: any) => void) => void };
           buildings?: { forEach: (cb: (node: any) => void) => void };
+          roads?: { forEach: (cb: (road: any) => void) => void };
         }
       | null
       | undefined;

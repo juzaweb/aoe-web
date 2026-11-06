@@ -45,23 +45,12 @@ function battlefieldAxisX(gy: number, width: number): number {
   return width / 2 + 22 * Math.sin(gy * 0.045) + 9 * Math.cos(gy * 0.09) + 4 * Math.sin(gy * 0.16);
 }
 
-/** Kingdom: northwest - southeast diagonal through the plaza. */
-function kingdomDiagonalY(gx: number): number {
-  return gx + 3 * Math.sin(gx * 0.09);
-}
-
-/** Kingdom: northeast - southwest diagonal through the plaza. */
-function kingdomCounterDiagonalY(gx: number, height: number): number {
-  return height - 1 - gx + 3 * Math.sin(gx * 0.07);
-}
-
 /**
  * True inside the kingdom's central plaza.
  *
- * The Town Center is placed dead centre and the spawn footprint check rejects
- * road tiles, so a road through the centre would push the base off centre. The
- * plaza also keeps generated resource nodes out of the starting build area; the
- * roads still radiate from it as four arms.
+ * The Town Center is placed dead centre, so the plaza keeps generated resource
+ * nodes out of the starting build area. A kingdom starts with no roads at all:
+ * the player paints their own (see `roadTileKey` and the PLACE_ROAD handler).
  */
 export function isPlazaTile(gx: number, gy: number, terrain: MapTerrain): boolean {
   if (terrain.kind !== 'kingdom') return false;
@@ -75,15 +64,9 @@ export function isPlazaTile(gx: number, gy: number, terrain: MapTerrain): boolea
  * Used to build the cached grid for a layout.
  */
 function computeIsDirtRoadTile(gx: number, gy: number, terrain: MapTerrain): boolean {
-  if (terrain.kind === 'kingdom') {
-    if (isPlazaTile(gx, gy, terrain)) return false;
-    const inRange = gx >= 4 && gx < terrain.width - 4;
-    if (!inRange) return false;
-
-    if (Math.abs(gy - kingdomDiagonalY(gx)) <= 1.15) return true;
-    if (Math.abs(gy - kingdomCounterDiagonalY(gx, terrain.height)) <= 1.15) return true;
-    return false;
-  }
+  // A kingdom has no generated roads: every road there is painted by the
+  // player and lives in the room state, not in this deterministic layout.
+  if (terrain.kind === 'kingdom') return false;
 
   // 1. East-West Grand Imperial Highway
   const ewCenterY = battlefieldHighwayY(gx, terrain.height);
@@ -149,46 +132,43 @@ export function getRoadSplinePoints(terrain: MapTerrain = TERRAIN_BATTLEFIELD): 
   const step = 0.35;
 
   if (terrain.kind === 'kingdom') {
-    // A pair of diagonals crossing under the plaza: the Town Center sits in the
-    // gap, and the roads leave it as four arms instead of cutting it in half.
-    for (let gx = 4; gx < width - 4; gx += step) {
-      addPoint(gx, kingdomDiagonalY(gx), gx * 7.13);
-    }
-    for (let gx = 4; gx < width - 4; gx += step) {
-      addPoint(gx, kingdomCounterDiagonalY(gx, height), gx * 5.41);
-    }
-  } else {
-    // 1. East-West Grand Imperial Highway
-    for (let gx = 0; gx < width; gx += step) {
-      addPoint(gx, battlefieldHighwayY(gx, height), gx * 7.13);
-    }
+    // A kingdom starts with no roads; the player paints them (see the
+    // PLACE_ROAD handler and `RoadState`). The cached empty list keeps the
+    // battlefield and kingdom on the same code path.
+    roadSplineCache.set(key, points);
+    return points;
+  }
 
-    // 2. North-South Royal Silk Axis
-    for (let gy = 0; gy < height; gy += step) {
-      addPoint(battlefieldAxisX(gy, width), gy, gy * 5.41);
-    }
+  // 1. East-West Grand Imperial Highway
+  for (let gx = 0; gx < width; gx += step) {
+    addPoint(gx, battlefieldHighwayY(gx, height), gx * 7.13);
+  }
 
-    // 3. Northwest - Southeast Diagonal Route
-    for (let s = 5; s < width - 5; s += step) {
-      const meander = 12 * Math.sin(s * 0.07);
-      addPoint(s + meander / 2, s - meander / 2, s * 9.27);
-    }
+  // 2. North-South Royal Silk Axis
+  for (let gy = 0; gy < height; gy += step) {
+    addPoint(battlefieldAxisX(gy, width), gy, gy * 5.41);
+  }
 
-    // 4. Northeast - Southwest Diagonal Route
-    for (let s = 5; s < width - 5; s += step) {
-      const meander = 12 * Math.sin((s - (height - s)) * 0.035);
-      addPoint(s, height - s + meander, s * 3.82);
-    }
+  // 3. Northwest - Southeast Diagonal Route
+  for (let s = 5; s < width - 5; s += step) {
+    const meander = 12 * Math.sin(s * 0.07);
+    addPoint(s + meander / 2, s - meander / 2, s * 9.27);
+  }
 
-    // 5. Central Crossroads Hub Plaza
-    const hubX = width / 2;
-    const hubY = height / 2;
-    for (let r = 0.8; r <= 3.8; r += 1.0) {
-      const count = Math.round(r * 8);
-      for (let i = 0; i < count; i++) {
-        const angle = (i / count) * Math.PI * 2;
-        addPoint(hubX + r * Math.cos(angle), hubY + r * Math.sin(angle), i * 4.1);
-      }
+  // 4. Northeast - Southwest Diagonal Route
+  for (let s = 5; s < width - 5; s += step) {
+    const meander = 12 * Math.sin((s - (height - s)) * 0.035);
+    addPoint(s, height - s + meander, s * 3.82);
+  }
+
+  // 5. Central Crossroads Hub Plaza
+  const hubX = width / 2;
+  const hubY = height / 2;
+  for (let r = 0.8; r <= 3.8; r += 1.0) {
+    const count = Math.round(r * 8);
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      addPoint(hubX + r * Math.cos(angle), hubY + r * Math.sin(angle), i * 4.1);
     }
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TERRAIN_BATTLEFIELD, TERRAIN_KINGDOM, isDirtRoadTile } from '@chien-quoc/shared';
+import { TERRAIN_BATTLEFIELD, TERRAIN_KINGDOM } from '@chien-quoc/shared';
 import {
   MINIMAP_COLORS,
   MINIMAP_SIZE,
@@ -38,15 +38,19 @@ describe('ground raster', () => {
     for (let i = 0; i < a.length; i += 997) expect(a[i]).toBe(b[i]);
   });
 
-  it('paints road tiles differently from grass', () => {
-    const pixels = buildGroundPixels(TERRAIN_KINGDOM);
+  it('paints player-built road tiles differently from grass', () => {
+    // A kingdom has no generated roads any more: the only road pixels on its
+    // ground raster are the tiles the player painted.
+    const roads = [] as Array<{ gridX: number; gridY: number }>;
+    for (let i = 20; i < 40; i++) roads.push({ gridX: i, gridY: 30 });
+    const pixels = buildGroundPixels(TERRAIN_KINGDOM, roads);
     const scale = TERRAIN_KINGDOM.width / MINIMAP_SIZE;
     let checked = 0;
     for (let py = 0; py < MINIMAP_SIZE && checked < 5; py += 3) {
       for (let px = 0; px < MINIMAP_SIZE && checked < 5; px += 3) {
         const gx = Math.min(TERRAIN_KINGDOM.width - 1, Math.floor(px * scale));
         const gy = Math.min(TERRAIN_KINGDOM.height - 1, Math.floor(py * scale));
-        if (!isDirtRoadTile(gx, gy, TERRAIN_KINGDOM)) continue;
+        if (gx < 20 || gx >= 40 || gy !== 30) continue;
         const index = (py * MINIMAP_SIZE + px) * 4;
         expect([pixels[index], pixels[index + 1], pixels[index + 2]]).toEqual([
           MINIMAP_COLORS.road[0],
@@ -57,6 +61,17 @@ describe('ground raster', () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
+  });
+
+  it('leaves the kingdom raster free of roads when none are painted', () => {
+    const pixels = buildGroundPixels(TERRAIN_KINGDOM);
+    for (let i = 0; i < pixels.length; i += 4) {
+      const isRoadColor =
+        pixels[i] === MINIMAP_COLORS.road[0] &&
+        pixels[i + 1] === MINIMAP_COLORS.road[1] &&
+        pixels[i + 2] === MINIMAP_COLORS.road[2];
+      expect(isRoadColor).toBe(false);
+    }
   });
 
   it('handles both map sizes', () => {

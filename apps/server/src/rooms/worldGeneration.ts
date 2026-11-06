@@ -1,4 +1,4 @@
-import { MapTerrain, isDirtRoadTile, isPlazaTile } from '@chien-quoc/shared';
+import { MapTerrain, isPlazaTile } from '@chien-quoc/shared';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { entityIds } from '../services/EntityIdAllocator.js';
@@ -92,7 +92,9 @@ export function generateWorldResources(state: WorldState, terrain: MapTerrain): 
     amount: number
   ) => {
     if (gx < 5 || gx >= width - 5 || gy < 5 || gy >= height - 5) return;
-    if (terrain.kind === 'kingdom' && (isDirtRoadTile(gx, gy, terrain) || isPlazaTile(gx, gy, terrain))) {
+    // A kingdom has no generated roads, so only the plaza has to stay clear
+    // here. Player-painted roads are dropped by the room's own road layer.
+    if (terrain.kind === 'kingdom' && isPlazaTile(gx, gy, terrain)) {
       return;
     }
     const key = `${gx},${gy}`;

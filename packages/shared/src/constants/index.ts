@@ -131,6 +131,46 @@ export function gatherIntervalMs(resourceType: string): number {
  */
 export const MAX_SELECTION = 120;
 
+// ---------------------------------------------------------------------------
+// Player-built roads
+// ---------------------------------------------------------------------------
+
+/**
+ * Wood one road tile costs. A painted road has no blueprint, so its price lives
+ * here instead of in `BUILDING_BLUEPRINTS`.
+ */
+export const ROAD_COST_PER_TILE = 2;
+
+/**
+ * Movement multiplier while a unit stands on a road tile. Kept modest: a road
+ * is a convenience for base logistics, not a teleport.
+ */
+export const ROAD_SPEED_MULTIPLIER = 1.3;
+
+/**
+ * Upper bound on tiles one PLACE_ROAD/REMOVE_ROAD message may carry. A long
+ * drag is split into batches client-side; the cap keeps a single hostile
+ * message from forcing unbounded per-tick work.
+ */
+export const MAX_ROAD_TILES_PER_MESSAGE = 200;
+
+/**
+ * Upper bound on road tiles one zone may hold. Roads are replicated state and
+ * persisted rows, so an unbounded map is both a bandwidth and a disk problem.
+ */
+export const MAX_ROADS_PER_ZONE = 4000;
+
+/**
+ * Stable id of the road tile at `gx, gy`.
+ *
+ * Roads are 1x1 and addressed by position, so the coordinate pair *is* the id:
+ * it makes the primary key deterministic, keeps two placements of the same tile
+ * from duplicating, and lets the client address a tile it has not seen yet.
+ */
+export function roadTileKey(gx: number, gy: number): string {
+  return `${gx},${gy}`;
+}
+
 /**
  * Upper bound on how many future waypoints one unit may hold. Shift+right click
  * appends without bound otherwise, and every waypoint is replicated state that

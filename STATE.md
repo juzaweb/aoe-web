@@ -61,7 +61,7 @@ Không việc nào ở đây được ghi `candidate`: agent không có đườn
 
 | Việc | Vì sao chặn |
 | --- | --- |
-| 8 asset thiếu nguồn: Farm, Watch Tower, Gold Mine, Stone Mine, Berry Bush, Cavalry, Icon HUD 64×64, cursor 32×32 (phase 06 §5) | Cần art, và AGENTS.md cấm tự vẽ. Portal + road đã xong ở phase 09. |
+| 8 asset thiếu nguồn: Farm, Watch Tower, Gold Mine, Stone Mine, Berry Bush, Cavalry, Icon HUD 64×64, cursor 32×32 (phase 06 §5) | Cần art, và AGENTS.md cấm tự vẽ. Portal + road art đã xong ở phase 09 (road stamp giờ chỉ dùng cho battlefield). Kingdom: người chơi tự kéo vẽ đường, phase 22. |
 | Verify tay phase 03 §9, 04 §10, 05 §12.4, 06 §16.4, 07 §7, 08 §10, 09 §7.2 | Cần nhìn UI thật; 60 checkbox `- [ ]` chưa tick trong `docs/plans/`. |
 | Verify phase 11 trên iOS Safari thật (§11.4) | Page-zoom, safe-area, reconnect sau khoá màn hình. |
 | `SAVE-07` | Cần số đo thật sinh ra từ `SAVE-01` + `SAVE-06` trên máy bạn. |

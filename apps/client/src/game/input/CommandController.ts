@@ -122,6 +122,7 @@ export class CommandController {
     this.bindCancelKey(keyboard);
     this.bindOrderKeys(keyboard);
     this.bindStanceKey(keyboard);
+    this.bindRoadKey(keyboard);
     this.bindBuildingKeys(keyboard);
     this.bindZoomKeys(keyboard);
     this.bindCameraBookmarkKeys(keyboard);
@@ -270,6 +271,40 @@ export class CommandController {
   }
 
   /**
+   * `X` toggles the road paint tool in a kingdom.
+   *
+   * Same ownership rules as the building hotkeys: no modifiers, nothing while a
+   * placement is active, and no key when a building or an army is selected.
+   */
+  private bindRoadKey(keyboard: Phaser.Input.Keyboard.KeyboardPlugin) {
+    keyboard.on(
+      'keydown-X',
+      guardKey((event: KeyboardEvent) => {
+        if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return false;
+        if (this.scene.terrainLayout.kind !== 'kingdom') return false;
+        if (this.scene.buildingToPlace) {
+          event.preventDefault();
+          this.scene.cancelBuildingPlacement();
+          this.scene.setRoadMode('build');
+          this.scene.onRoadModeChange?.('build');
+          return true;
+        }
+        if (!this.scene.hasVillagerSelected() && this.scene.roadMode === null) return false;
+
+        event.preventDefault();
+        if (this.scene.roadMode) {
+          this.scene.cancelRoadMode();
+          this.scene.onRoadModeChange?.(null);
+        } else {
+          this.scene.setRoadMode('build');
+          this.scene.onRoadModeChange?.('build');
+        }
+        return true;
+      })
+    );
+  }
+
+  /**
    * `Escape` gives up placement first, then the selection — the order the React
    * listener used before it moved here.
    *
@@ -284,6 +319,16 @@ export class CommandController {
 
       const now = performance.now();
       if (now - this.lastEscapeAt < CANCEL_KEY_DEBOUNCE_MS) return;
+
+      // The road tool is the most recent mode, so it backs out before the
+      // placement ghost and the selection under it.
+      if (this.scene.roadMode) {
+        this.lastEscapeAt = now;
+        event.preventDefault();
+        this.scene.cancelRoadMode();
+        this.scene.onRoadModeChange?.(null);
+        return;
+      }
 
       if (this.scene.buildingToPlace) {
         this.lastEscapeAt = now;

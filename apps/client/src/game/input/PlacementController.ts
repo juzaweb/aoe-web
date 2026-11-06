@@ -50,6 +50,18 @@ export class PlacementController {
       if (overlapX && overlapY) blocked = true;
     });
 
+    // The server rejects a footprint that covers a player-painted road, so the
+    // ghost has to refuse the same tiles instead of promising a placement that
+    // will come back as a rejection.
+    const roads = (scene.room.state as any).roads as
+      | { get: (key: string) => any }
+      | undefined;
+    for (let x = gx; x < gx + blueprint.sizeX && !blocked; x++) {
+      for (let y = gy; y < gy + blueprint.sizeY && !blocked; y++) {
+        if (roads?.get(`${x},${y}`)) blocked = true;
+      }
+    }
+
     scene.room.state.resourceNodes.forEach((res: any) => {
       if (
         res.gridX >= gx &&

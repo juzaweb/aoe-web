@@ -13,6 +13,9 @@ import {
   TravelPayload,
   TravelReadyPayload,
   PlaceBuildingPayload,
+  PlaceRoadPayload,
+  RemoveRoadPayload,
+  ROAD_SPEED_MULTIPLIER,
   MoveUnitsPayload,
   TrainUnitPayload,
   AttackTargetPayload,
@@ -58,6 +61,8 @@ import { accountSaves, accountSessions } from './AccountSessions.js';
 import { zonePersistence } from './ZonePersistence.js';
 import { arrivalPoint, ensurePortalFor, findOwnPortal } from './portals.js';
 import { terrainOf } from './mapLayout.js';
+import { RoadGrid } from './roads.js';
+import { RoadState } from '../schema/RoadState.js';
 import { generateWorldResources } from './worldGeneration.js';
 import { isOneOffResourceNode, regrowDelayMs, starterResourceId } from './resources.js';
 import { isTravelCoolingDown, markTravel } from './travelCooldowns.js';
@@ -122,6 +127,21 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   private readonly resourceRespawnAt = new Map<string, number>();
   private lastRespawnScanAt = 0;
   /**
+   * Player-painted road lookup for this room, built lazily because `state` only
+   * exists after `onCreate` (or the unit-test harness) calls `setState`. The
+   * grid inside is rebuilt only when the road count changes, so movement and
+   * placement can query it freely.
+   */
+  private roadGridInstance: RoadGrid | null = null;
+  private roadGridState: WorldState | null = null;
+  private get roads(): RoadGrid {
+    if (!this.roadGridInstance || this.roadGridState !== this.state) {
+      this.roadGridInstance = new RoadGrid(this.state);
+      this.roadGridState = this.state;
+    }
+    return this.roadGridInstance;
+  }
+  /**
    * Combat rules (damage, cooldowns, target resolution) and their transient
    * maps. Built on first use for the same reason as {@link economySystem}.
    */
@@ -152,7 +172,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       forgetBuilding: (buildingId) => this.combat.forgetBuilding(buildingId),
       harvestOrder: (client, payload) => this.economy.handleHarvestOrder(client, payload),
       allocateEntityId: () => entityIds.nextId(),
-      updatePlayerPopulation: (ownerId) => this.updatePlayerPopulation(ownerId)
+      updatePlayerPopulation: (ownerId) => this.updatePlayerPopulation(ownerId),
+      roadGrid: () => this.roads
     });
     return this.commandSystem;
   }
@@ -271,6 +292,14 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     // Setup network message listeners
     this.onMessage(NetworkMessage.PLACE_BUILDING, (client, message: PlaceBuildingPayload) => {
       this.commands.handlePlaceBuilding(client, message);
+    });
+
+    this.onMessage(NetworkMessage.PLACE_ROAD, (client, message: PlaceRoadPayload) => {
+      this.commands.handlePlaceRoad(client, message);
+    });
+
+    this.onMessage(NetworkMessage.REMOVE_ROAD, (client, message: RemoveRoadPayload) => {
+      this.commands.handleRemoveRoad(client, message);
     });
 
     this.onMessage(NetworkMessage.MOVE_UNITS, (client, message: MoveUnitsPayload) => {
@@ -412,6 +441,25 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         this.state.resourceNodes.forEach((node: ResourceNodeState) => resArray.push(node));
         await DatabaseService.saveAllResources(resArray, this.zoneId);
         console.log(`✨ [WorldRoom] Saved ${resArray.length} fresh resource clusters.`);
+      }
+
+      // 1b. Restore the player-painted roads of this map. They are zone-wide, so
+      // they load even for a kingdom whose owner is still offline.
+      const savedRoads = await DatabaseService.loadRoads(this.zoneId);
+      for (const row of savedRoads) {
+        if (!this.fitsMap(row.gridX, row.gridY)) {
+          droppedOutOfBounds++;
+          continue;
+        }
+        const road = new RoadState();
+        road.id = row.id;
+        road.ownerId = row.ownerId;
+        road.gridX = row.gridX;
+        road.gridY = row.gridY;
+        this.state.roads.set(road.id, road);
+      }
+      if (savedRoads.length > 0) {
+        console.log(`🛣️ [WorldRoom] Restored ${savedRoads.length} road tiles for ${this.zoneId}.`);
       }
 
       // 2. Restore this map's empires. A kingdom loads only its owner; the
@@ -1449,7 +1497,12 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         const stopDist = unit.actionState === 'ATTACKING' ? attackRange : 0.15;
 
         if (dist > stopDist) {
-          const moveStep = Math.min(dist, unit.speed * dtSeconds);
+          // A painted road speeds the unit up while it stands on one. The
+          // multiplier is applied here, not stored on the unit, so the
+          // replicated `speed` stays the blueprint value the client animates.
+          const onRoad = this.roads.isRoad(unit.x, unit.y);
+          const speed = onRoad ? unit.speed * ROAD_SPEED_MULTIPLIER : unit.speed;
+          const moveStep = Math.min(dist, speed * dtSeconds);
           unit.x += (dx / dist) * moveStep;
           unit.y += (dy / dist) * moveStep;
         } else if (unit.actionState !== 'ATTACKING' && unit.pathX.length > 0) {

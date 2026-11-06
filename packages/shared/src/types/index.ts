@@ -307,8 +307,33 @@ export interface TravelReadyPayload {
   roomName: WorldRoomName;
 }
 
+/**
+ * One tile of a player-painted road. Roads are 1x1 and addressed by position,
+ * so a payload carries bare coordinates instead of entity ids.
+ */
+export interface RoadTilePayload {
+  x: number;
+  y: number;
+}
+
+/**
+ * Paints roads on the sender's own kingdom. Every tile costs
+ * `ROAD_COST_PER_TILE` wood; tiles that already hold a road, a building or a
+ * resource node are ignored rather than failing the whole drag.
+ */
+export interface PlaceRoadPayload {
+  tiles: RoadTilePayload[];
+}
+
+/** Removes the sender's own road tiles. Never refunds the wood. */
+export interface RemoveRoadPayload {
+  tiles: RoadTilePayload[];
+}
+
 export enum NetworkMessage {
   PLACE_BUILDING = 'PLACE_BUILDING',
+  PLACE_ROAD = 'PLACE_ROAD',
+  REMOVE_ROAD = 'REMOVE_ROAD',
   MOVE_UNITS = 'MOVE_UNITS',
   TRAIN_UNIT = 'TRAIN_UNIT',
   CANCEL_TRAIN = 'CANCEL_TRAIN',
