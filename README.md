@@ -25,10 +25,15 @@ chien-quoc/
 
 ## 🎮 Gameplay Features
 
-- **Persistent Isometric 2.5D World:** per-account kingdom (110x110) plus a shared battlefield
-  (220x220), with natural forests (Wood), gold deposits (Gold), stone quarries (Stone), and berry
-  bushes (Food). A kingdom's clusters ring the map border, leaving the centre open for the Town
-  Center.
+- **Persistent Isometric 2.5D World:** one private, safe kingdom per account (110x110) with
+  natural forests (Wood), gold deposits (Gold), stone quarries (Stone), and berry bushes (Food).
+  A kingdom's clusters ring the map border, leaving the centre open for the Town Center.
+- **World Map & Raids:** a hexagonal world map lists every empire within ±5 Town Center levels.
+  Choose an army, pick a neighbour and attack instantly: your troops fight inside their kingdom,
+  the defender can fight back live, and the raid ends when their Town Center drops to 25% HP,
+  your army is wiped, or you retreat through your gate. A win loots 20% of each resource (capped);
+  a loss locks that target for three days, and every defender gets a 72-hour shield afterwards.
+  Town Centers cannot be destroyed.
 - **Regrowing Resources:** a depleted node on the border ring refills to full after a per-type
   delay (wood 60 s, food 90 s, stone 150 s, gold 240 s). The deadline is stored in SQLite, so a
   restart resumes the wait instead of refilling the map. The starter woodline and berry patch

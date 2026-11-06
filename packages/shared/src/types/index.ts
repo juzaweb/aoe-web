@@ -307,6 +307,51 @@ export interface TravelReadyPayload {
   roomName: WorldRoomName;
 }
 
+// ---------------------------------------------------------------------------
+// Raids (Phase 23)
+// ---------------------------------------------------------------------------
+
+/** How a raid ended. `ACTIVE` is only ever a database status, never a result. */
+export type RaidOutcome = 'ATTACKER_WON' | 'DEFENDER_WON' | 'RETREATED';
+
+/**
+ * One empire on the world map, already filtered to the caller's ±5 Town Center
+ * levels. `canAttack` is computed server-side: the client renders the button
+ * from it and never decides eligibility itself.
+ */
+export interface WorldMapEntry {
+  userId: string;
+  name: string;
+  color: string;
+  townCenterLevel: number;
+  /** Epoch ms until which nobody may raid this empire; 0 when unshielded. */
+  shieldUntil: number;
+  /** Epoch ms until which *this caller* may not raid it again; 0 when unlocked. */
+  lockedUntil: number;
+  canAttack: boolean;
+  /** Localized reason `canAttack` is false. */
+  blockReason?: string;
+}
+
+export interface WorldMapPayload {
+  self: { userId: string; townCenterLevel: number };
+  neighbors: WorldMapEntry[];
+}
+
+/** Ack for a committed raid; the client joins `roomName` with `{ ownerId, raidId }`. */
+export interface RaidStartResponse {
+  raidId: string;
+  defenderId: string;
+  roomName: 'kingdom_room';
+}
+
+/** Sent to both sides when a raid closes; the attacker leaves the defender's room. */
+export interface RaidEndedPayload {
+  outcome: RaidOutcome;
+  loot: Resources;
+  returnRoom: 'kingdom_room';
+}
+
 /**
  * One tile of a player-painted road. Roads are 1x1 and addressed by position,
  * so a payload carries bare coordinates instead of entity ids.
@@ -352,6 +397,10 @@ export enum NetworkMessage {
   SET_STANCE = 'SET_STANCE',
   TRAVEL = 'TRAVEL',
   TRAVEL_READY = 'TRAVEL_READY',
+  /** The attacker walks out through their retreat gate; the raid is settled. */
+  RAID_RETREAT = 'RAID_RETREAT',
+  /** Server → both sides: the raid is closed, with its outcome and loot. */
+  RAID_ENDED = 'RAID_ENDED',
   ERROR_NOTIFICATION = 'ERROR_NOTIFICATION',
   SYSTEM_ANNOUNCEMENT = 'SYSTEM_ANNOUNCEMENT'
 }

@@ -88,6 +88,14 @@ export interface CommandPorts {
   updatePlayerPopulation(ownerId: string): void;
   /** Cached road lookup for this room; invalidated by the road handlers. */
   roadGrid(): RoadGrid;
+  /**
+   * Whether `ownerId` may issue economy/building orders on this map.
+   *
+   * A raider standing in someone else's kingdom may only fight: building,
+   * upgrading, training and harvesting there would let them colonise the map
+   * (Phase 23/R14).
+   */
+  canManageZone(ownerId: string): boolean;
 }
 
 /**
@@ -189,7 +197,26 @@ export class CommandSystem {
     private readonly ports: CommandPorts
   ) {}
 
+  /**
+   * Blocks economy/building orders from anyone who does not own this map.
+   *
+   * Returns false after telling the client why, so a handler can `return`
+   * immediately. Military orders deliberately skip this check: a raider has to
+   * be able to fight.
+   */
+  private ensureZoneManager(client: Client): boolean {
+    const ownerId = ownerIdOf(client);
+    if (this.ports.canManageZone(ownerId)) return true;
+    this.ports.rejectCommand(
+      client,
+      'Bạn chỉ có thể ra lệnh chiến đấu trong vương quốc này.',
+      RejectCode.FORBIDDEN
+    );
+    return false;
+  }
+
   handlePlaceBuilding(client: Client, payload: PlaceBuildingPayload) {
+    if (!this.ensureZoneManager(client)) return;
     const ownerId = ownerIdOf(client);
     const player = this.state.players.get(ownerId);
     if (!player) return;
@@ -306,6 +333,7 @@ export class CommandSystem {
    * make a long stroke unusable.
    */
   handlePlaceRoad(client: Client, payload: PlaceRoadPayload) {
+    if (!this.ensureZoneManager(client)) return;
     const ownerId = ownerIdOf(client);
     const player = this.state.players.get(ownerId);
     if (!player) return;
@@ -359,6 +387,7 @@ export class CommandSystem {
 
   /** Removes the sender's own road tiles; never refunds the wood. */
   handleRemoveRoad(client: Client, payload: RemoveRoadPayload) {
+    if (!this.ensureZoneManager(client)) return;
     const ownerId = ownerIdOf(client);
     if (!this.state.players.get(ownerId)) return;
 
@@ -469,6 +498,7 @@ export class CommandSystem {
   }
 
   handleTrainUnit(client: Client, payload: TrainUnitPayload) {
+    if (!this.ensureZoneManager(client)) return;
     const ownerId = ownerIdOf(client);
     const player = this.state.players.get(ownerId);
     const building = this.state.buildings.get(payload.buildingId);
@@ -519,6 +549,7 @@ export class CommandSystem {
    * been produced yet, the player only loses the elapsed time.
    */
   handleCancelTrain(client: Client, payload: CancelTrainPayload) {
+    if (!this.ensureZoneManager(client)) return;
     const player = this.state.players.get(ownerIdOf(client));
     if (!player) return;
 
@@ -554,6 +585,7 @@ export class CommandSystem {
    * misclicked hotkey would be unrecoverable.
    */
   handleCancelBuilding(client: Client, payload: CancelBuildingPayload) {
+        if (!this.ensureZoneManager(client)) return;
     const player = this.state.players.get(ownerIdOf(client));
     if (!player) return;
 
@@ -588,6 +620,7 @@ export class CommandSystem {
    * finish it.
    */
   handleUpgradeBuilding(client: Client, payload: UpgradeBuildingPayload) {
+    if (!this.ensureZoneManager(client)) return;
     const player = this.state.players.get(ownerIdOf(client));
     if (!player) return;
 
@@ -651,6 +684,7 @@ export class CommandSystem {
 
   /** Cancels a building upgrade and returns its full price. */
   handleCancelBuildingUpgrade(client: Client, payload: CancelBuildingUpgradePayload) {
+    if (!this.ensureZoneManager(client)) return;
     const player = this.state.players.get(ownerIdOf(client));
     if (!player) return;
 
@@ -679,6 +713,7 @@ export class CommandSystem {
    * silently cancel the investment.
    */
   handleUpgradeUnitType(client: Client, payload: UpgradeUnitTypePayload) {
+    if (!this.ensureZoneManager(client)) return;
     const ownerId = ownerIdOf(client);
     const player = this.state.players.get(ownerId);
     if (!player) return;
@@ -717,6 +752,7 @@ export class CommandSystem {
 
   /** Cancels the single in-flight unit research and returns its full price. */
   handleCancelUnitUpgrade(client: Client, payload: CancelUnitUpgradePayload) {
+    if (!this.ensureZoneManager(client)) return;
     const player = this.state.players.get(ownerIdOf(client));
     if (!player) return;
 
@@ -854,6 +890,7 @@ export class CommandSystem {
    * never disagree about who builds or where they stand.
    */
   handleBuildTarget(client: Client, payload: BuildTargetPayload) {
+    if (!this.ensureZoneManager(client)) return;
     if (!payload?.unitIds || payload.unitIds.length === 0) return;
     if (payload.unitIds.length > MAX_SELECTION) {
       this.ports.rejectCommand(client, 'Too many units in one command', RejectCode.LIMIT);
@@ -881,6 +918,7 @@ export class CommandSystem {
   }
 
   handleHarvestResource(client: Client, payload: HarvestResourcePayload) {
+    if (!this.ensureZoneManager(client)) return;
     this.ports.harvestOrder(client, payload);
   }
 
@@ -965,6 +1003,7 @@ export class CommandSystem {
    * can never keep.
    */
   handleSetRallyPoint(client: Client, payload: SetRallyPointPayload) {
+    if (!this.ensureZoneManager(client)) return;
     const building = this.requireOwnedBuilding(client, payload?.buildingId);
     if (!building) return;
 

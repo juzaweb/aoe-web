@@ -695,18 +695,16 @@ export class CommandController {
       return;
     }
 
-    // MAPS: right-clicking your own portal while units are selected carries
-    // that selection to the other map. Checked before foundations/resources so
-    // a portal click never becomes a walk order under its footprint.
+    // Phase 23: a portal is only a retreat gate now. Right-clicking your own
+    // one asks the server to settle the raid and bring the army home. Checked
+    // before foundations/resources so the click never becomes a walk order
+    // under its footprint.
     const ownBuildingId = findBuildingAt(scene, targetGrid, scene.myOwnerId);
     if (ownBuildingId) {
       const building = scene.room.state.buildings.get(ownBuildingId);
       if (building?.type === 'PORTAL') {
-        scene.room.send(NetworkMessage.TRAVEL, {
-          portalId: ownBuildingId,
-          unitIds: Array.from(scene.selectedUnitIds)
-        });
-        this.showFeedback(worldPoint.x, worldPoint.y, 0xa855f7);
+        scene.room.send(NetworkMessage.RAID_RETREAT, {});
+        this.showFeedback(worldPoint.x, worldPoint.y, 0xef4444);
         return;
       }
     }

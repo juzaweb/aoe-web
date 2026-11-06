@@ -8,12 +8,13 @@ import {
   INITIAL_POPULATION_CAP,
   MapZoneKind,
   NetworkMessage,
+  RaidEndedPayload,
   RejectCode,
   ErrorNotificationPayload,
   Resources,
   SESSION_REPLACED_CLOSE,
-  TravelReadyPayload,
-  UnitType
+  UnitType,
+  WorldMapEntry
 } from '@chien-quoc/shared';
 import {
   WorldScene,
@@ -30,6 +31,7 @@ import { Minimap } from './components/Minimap.js';
 import { ControlGroups } from './components/ControlGroups.js';
 import { AuthScreen } from './components/AuthScreen.js';
 import { SessionBlocked } from './components/SessionBlocked.js';
+import { WorldMapOverlay } from './components/WorldMapOverlay.js';
 import { OrientationGate } from './components/mobile/OrientationGate.js';
 import { MobileCommandBar } from './components/mobile/MobileCommandBar.js';
 import { useInputMode, useIsPortrait } from './device/useInputMode.js';
@@ -41,7 +43,9 @@ import {
   fetchCurrentUser,
   getServerUrl,
   getStoredToken,
-  isAuthRejection
+  isAuthRejection,
+  retreatRaid,
+  startRaid
 } from './auth/api.js';
 import { AlertCircle, Coins, MapPin, Lock, Clock, XCircle, AlertTriangle, ShieldBan, Users } from 'lucide-react';
 import { getRejectVisual } from './game/alerts/rejectVisuals.js';
@@ -70,15 +74,14 @@ function lastZoneKey(userId: string): string {
   return `${LAST_ZONE_PREFIX}:${userId}`;
 }
 
-/** Where this account was last playing; a refresh rejoins the same map. */
-function getStoredZone(userId: string): MapZoneKind {
-  try {
-    return localStorage.getItem(lastZoneKey(userId)) === 'battlefield'
-      ? 'battlefield'
-      : 'kingdom';
-  } catch {
-    return 'kingdom';
-  }
+/**
+ * Where this account was last playing.
+ *
+ * Phase 23 retired the battlefield, so every account belongs in its own
+ * kingdom; a stored `battlefield` from an older build is quietly ignored.
+ */
+function getStoredZone(_userId: string): MapZoneKind {
+  return 'kingdom';
 }
 
 function storeZone(userId: string, zone: MapZoneKind): void {
@@ -89,6 +92,46 @@ function storeZone(userId: string, zone: MapZoneKind): void {
   }
 }
 
+const RAID_SESSION_PREFIX = 'cq_raid';
+
+function raidSessionKey(userId: string): string {
+  return `${RAID_SESSION_PREFIX}:${userId}`;
+}
+
+/** A raid in flight, kept so F5 drops the player back into the fight. */
+export interface RaidSession {
+  raidId: string;
+  defenderId: string;
+}
+
+function getStoredRaid(userId: string): RaidSession | null {
+  try {
+    const raw = localStorage.getItem(raidSessionKey(userId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<RaidSession>;
+    if (typeof parsed.raidId !== 'string' || typeof parsed.defenderId !== 'string') return null;
+    return { raidId: parsed.raidId, defenderId: parsed.defenderId };
+  } catch {
+    return null;
+  }
+}
+
+function storeRaid(userId: string, raid: RaidSession): void {
+  try {
+    localStorage.setItem(raidSessionKey(userId), JSON.stringify(raid));
+  } catch {
+    // A failed write only costs the F5 convenience.
+  }
+}
+
+function clearStoredRaid(userId: string): void {
+  try {
+    localStorage.removeItem(raidSessionKey(userId));
+  } catch {
+    // Ignore.
+  }
+}
+
 export const App: React.FC = () => {
   const [room, setRoom] = useState<Room | null>(null);
   const [isConnected, setIsConnected] = useState<boolean>(false);
@@ -96,9 +139,16 @@ export const App: React.FC = () => {
   const [isRestoringSession, setIsRestoringSession] = useState<boolean>(true);
   const [isJoining, setIsJoining] = useState<boolean>(false);
   const [isJoined, setIsJoined] = useState<boolean>(false);
-  /** Which map the live room simulates; drives labels and the portal button. */
+  /** Which map the live room simulates; Phase 23 keeps it at `kingdom`. */
   const [zoneKind, setZoneKind] = useState<MapZoneKind>('kingdom');
-  /** MAPS: a travel ack is being applied (leave + join the other room). */
+  /** The live raid this account is attacking with, if any. */
+  const [raidSession, setRaidSession] = useState<RaidSession | null>(null);
+  const raidSessionRef = useRef<RaidSession | null>(null);
+  /** The world map overlay is open. */
+  const [worldMapOpen, setWorldMapOpen] = useState<boolean>(false);
+  /** A raid order is being committed to the server. */
+  const [raidBusy, setRaidBusy] = useState<boolean>(false);
+  /** MAPS: a room switch is being applied (enter a raid, or go home). */
   const [isSwitchingZone, setIsSwitchingZone] = useState<boolean>(false);
   const [switchError, setSwitchError] = useState<string | null>(null);
   /** SESS-06: the account is in use elsewhere, or another device took it over. */
@@ -151,10 +201,10 @@ export const App: React.FC = () => {
    */
   const clientRef = useRef<Client | null>(null);
   const roomRef = useRef<Room | null>(null);
-  /** True while a travel ack is being applied; suppresses the leave banner. */
+  /** True while a room switch is being applied; suppresses the leave banner. */
   const switchingRef = useRef<boolean>(false);
-  /** The ack being applied, kept so a failed switch can be retried. */
-  const pendingTravelRef = useRef<TravelReadyPayload | null>(null);
+  /** The switch being applied (null = going home), kept so a failure can be retried. */
+  const pendingRaidRef = useRef<RaidSession | null>(null);
   /** MOB-08: one resume join at a time; two sockets for one account is a conflict. */
   const resumingRef = useRef(false);
 
@@ -195,8 +245,21 @@ export const App: React.FC = () => {
       .then((user) => {
         if (cancelled || !user) return;
         setAuthUser(user);
-        // Session is still valid: go straight back to the map they were on.
-        void connectToZone(user, { zone: getStoredZone(user.id) });
+        // Session is still valid. A raid in flight is resumed first: the
+        // server still has the army in the defender's kingdom until it ends.
+        const raid = getStoredRaid(user.id);
+        if (raid) {
+          raidSessionRef.current = raid;
+          setRaidSession(raid);
+        }
+        void connectToZone(user, { raid }).then((joined) => {
+          if (joined || !raid) return;
+          // The raid had already ended: drop the stale session and go home.
+          clearStoredRaid(user.id);
+          raidSessionRef.current = null;
+          setRaidSession(null);
+          void connectToZone(user, { quiet: true });
+        });
       })
       .finally(() => {
         if (!cancelled) setIsRestoringSession(false);
@@ -209,12 +272,13 @@ export const App: React.FC = () => {
   }, []);
 
   /**
-   * Joins one map's room.
+   * Joins the kingdom room.
    *
-   * A kingdom room is addressed by `ownerId` (the server filters its matchmaker
-   * cache by it and re-validates it against the token); the battlefield is one
-   * shared room. Returns false instead of throwing so a travel switch can retry
-   * without unwinding its own overlay.
+   * Phase 23 has two entry paths into the same room: the player's own kingdom
+   * (`ownerId` = self) and a raid on somebody else's (`ownerId` = defender plus
+   * `raidId`). The server verifies the raid against the database, so the
+   * options here are only a hint. Returns false instead of throwing so a room
+   * switch can retry without unwinding its own overlay.
    */
   const connectToZone = async (
     user: AuthUser,
@@ -223,6 +287,8 @@ export const App: React.FC = () => {
       force?: boolean;
       attempt?: number;
       quiet?: boolean;
+      /** Join the defender's kingdom as the attacker of this live raid. */
+      raid?: RaidSession | null;
       /**
        * MOB-08: how many times a "session in use" refusal is retried before the
        * takeover screen appears. A phone coming back from a lock screen races the
@@ -246,13 +312,13 @@ export const App: React.FC = () => {
       // Sent as `_authToken` on the room socket; the room's `onAuth` verifies it.
       client.auth.token = token;
 
-      const roomName = zone === 'kingdom' ? 'kingdom_room' : 'battlefield_room';
+      const roomName = 'kingdom_room';
       // SESS-06/D2: `force` is only ever true after the player pressed the
-      // takeover button, never as an automatic retry.
-      const options =
-        zone === 'kingdom'
-          ? { ownerId: user.id, force: opts.force === true }
-          : { force: opts.force === true };
+      // takeover button, never as an automatic retry. A raid join names the
+      // defender instead and carries the raid id the server verifies.
+      const options = opts.raid
+        ? { ownerId: opts.raid.defenderId, raidId: opts.raid.raidId }
+        : { ownerId: user.id, force: opts.force === true };
 
       const joinedRoom = await client.joinOrCreate(roomName, options);
 
@@ -262,18 +328,30 @@ export const App: React.FC = () => {
       setIsJoined(true);
       setSessionTaken(false);
       setZoneKind(zone);
-      storeZone(user.id, zone);
+      storeZone(user.id, 'kingdom');
 
       // Listen to room error messages
       joinedRoom.onMessage(NetworkMessage.ERROR_NOTIFICATION, (data: ErrorNotificationPayload) => {
         showNotification(data.message, data.code);
       });
 
-      // A travel ack is the only signal that the server already moved the units
-      // to SQLite, so the room may only be left now.
-      joinedRoom.onMessage(NetworkMessage.TRAVEL_READY, (data: TravelReadyPayload) => {
-        pendingTravelRef.current = data;
-        void switchZone(data, user);
+      // The defender's side of a raid: the server announces the result here
+      // (loot taken, attack repelled, retreat).
+      joinedRoom.onMessage(
+        NetworkMessage.SYSTEM_ANNOUNCEMENT,
+        (data: { message?: string }) => {
+          if (data?.message) showNotification(data.message);
+        }
+      );
+
+      // A raid that closes while this client is in the fight: leave the
+      // defender's kingdom and go home. The server has already moved the army.
+      joinedRoom.onMessage(NetworkMessage.RAID_ENDED, (data: RaidEndedPayload) => {
+        clearStoredRaid(user.id);
+        raidSessionRef.current = null;
+        setRaidSession(null);
+        showNotification(raidResultText(data));
+        void switchToRoom(user, null);
       });
 
       const cb = Callbacks.get(joinedRoom);
@@ -359,55 +437,64 @@ export const App: React.FC = () => {
   };
 
   /**
-   * Applies a travel ack: leave the current room (the server has already saved
-   * the remaining state by the time `leave()` resolves), then join the target
-   * map. Units are safe in `travel_transfers` between the two steps, so a failed
-   * join can be retried without losing them.
+   * Leaves the current room and joins another one.
+   *
+   * Used for both directions of a raid: entering the defender's kingdom
+   * (`raid` set) and going home after the fight (`raid` null). The army is
+   * already safe in SQLite by the time this runs — `/raid/start` moved it, and
+   * `settleRaid` moved it back — so a failed join can be retried without loss.
    */
-  const switchZone = async (travel: TravelReadyPayload, user: AuthUser) => {
+  const switchToRoom = async (user: AuthUser, raid: RaidSession | null) => {
     if (switchingRef.current) return;
     switchingRef.current = true;
     setIsSwitchingZone(true);
     setSwitchError(null);
-    // Freeze the old map instead of clearing it; the user keeps seeing the
-    // battlefield/kingdom they clicked from while the destination syncs.
+    pendingRaidRef.current = raid;
+    // Freeze the old map instead of clearing it, so the player keeps seeing the
+    // map they left while the destination syncs.
     sceneRef.current?.pauseWorld();
 
     try {
       const current = roomRef.current;
       if (current) {
-        // Do not wait for the old room to finish leaving. The travel commit has
-        // already persisted the units and the account row, and the destination
-        // join carries the hand-off token, so it can take the account over
-        // immediately. Waiting here used to keep the dark switch overlay up for
-        // as long as the server's save queue was busy (often ~15s).
+        // Do not wait for the leave: the raid commit already persisted the army,
+        // so the destination join may take the account over immediately.
         void current.leave().catch((err) => {
-          console.warn('[MAPS] Old room leave failed; the hand-off join continues.', err);
+          console.warn('[RAID] Old room leave failed; the hand-off join continues.', err);
         });
       }
       roomRef.current = null;
-      // Keep the old Room bound (and its last frame paused) until the new room
-      // arrives. Detaching it immediately was what left a blank/dark canvas for
-      // the whole join.
 
       let joined = false;
       for (let attempt = 0; attempt < 3 && !joined; attempt++) {
         if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 500));
-        joined = await connectToZone(user, { zone: travel.destination, quiet: true });
+        joined = await connectToZone(user, { quiet: true, raid });
       }
 
       if (joined) {
-        pendingTravelRef.current = null;
+        pendingRaidRef.current = null;
+        if (raid) {
+          raidSessionRef.current = raid;
+          setRaidSession(raid);
+          storeRaid(user.id, raid);
+          setWorldMapOpen(false);
+        } else {
+          raidSessionRef.current = null;
+          setRaidSession(null);
+          clearStoredRaid(user.id);
+        }
       } else {
         setRoom(null);
         setIsJoined(false);
         setIsConnected(false);
         setSwitchError(
-          'Không thể vào bản đồ đích. Quân của bạn đang chờ ở cổng; hãy thử lại.'
+          raid
+            ? 'Không thể vào vương quốc địch. Quân của bạn đang chờ; hãy thử lại.'
+            : 'Không thể về vương quốc. Quân của bạn đã được giữ an toàn; hãy thử lại.'
         );
       }
     } catch (err) {
-      console.error('Failed to switch maps:', err);
+      console.error('Failed to switch rooms:', err);
       setRoom(null);
       setSwitchError('Không thể chuyển bản đồ. Vui lòng thử lại.');
     } finally {
@@ -419,11 +506,54 @@ export const App: React.FC = () => {
     }
   };
 
-  /** Retries the pending travel join without re-sending TRAVEL. */
+  /** Retries the pending room switch without re-sending the raid order. */
   const retrySwitchZone = () => {
-    const travel = pendingTravelRef.current;
-    if (!travel || !authUser || switchingRef.current) return;
-    void switchZone(travel, authUser);
+    if (!authUser || switchingRef.current) return;
+    void switchToRoom(authUser, pendingRaidRef.current);
+  };
+
+  /**
+   * Commits a raid and enters the defender's kingdom.
+   *
+   * The HTTP call is the only place an army is moved before the room switch; if
+   * it fails nothing has left the player's kingdom.
+   */
+  const handleAttack = async (entry: WorldMapEntry, unitIds: string[]) => {
+    if (!authUser || raidBusy) return;
+    setRaidBusy(true);
+    try {
+      const result = await startRaid(entry.userId, unitIds);
+      await switchToRoom(authUser, {
+        raidId: result.raidId,
+        defenderId: result.defenderId
+      });
+    } catch (err) {
+      showNotification((err as Error).message);
+      // The map may have been blocked by another raid in the meantime.
+      setWorldMapOpen(true);
+    } finally {
+      setRaidBusy(false);
+    }
+  };
+
+  /**
+   * Retreats from the current raid.
+   *
+   * The room message is the primary path (the server settles and answers with
+   * `RAID_ENDED`); the HTTP fallback covers a client whose socket is already
+   * gone, so the army is never stranded.
+   */
+  const handleRetreat = () => {
+    const raid = raidSessionRef.current;
+    if (!raid || !authUser) return;
+
+    if (roomRef.current) {
+      roomRef.current.send(NetworkMessage.RAID_RETREAT, {});
+      return;
+    }
+    void retreatRaid(raid.raidId)
+      .then(() => switchToRoom(authUser, null))
+      .catch((err: Error) => showNotification(err.message));
   };
 
   /**
@@ -456,7 +586,7 @@ export const App: React.FC = () => {
       const user = authUser;
       resumingRef.current = true;
       void connectToZone(user, {
-        zone: zoneKind,
+        raid: raidSessionRef.current,
         quiet: true,
         tolerateTakenAttempts: RESUME_ATTEMPTS - 1
       }).finally(() => {
@@ -474,23 +604,21 @@ export const App: React.FC = () => {
   /** MOB-08: manual retry from the disconnect panel (no tolerated refusals). */
   const handleReconnect = () => {
     if (!authUser || isJoining) return;
-    void connectToZone(authUser, { zone: zoneKind });
+    void connectToZone(authUser, { raid: raidSessionRef.current });
   };
 
-  /** Solo portal interaction from the entity panel; right-click carries units. */
-  const handleTravel = (portalId: string) => {
-    roomRef.current?.send(NetworkMessage.TRAVEL, { portalId, unitIds: [] });
-  };
+  /** Opens or closes the world map overlay. */
+  const handleToggleWorldMap = () => setWorldMapOpen((open) => !open);
 
   const handleAuthenticated = (user: AuthUser) => {
     setAuthUser(user);
-    void connectToZone(user, { zone: getStoredZone(user.id) });
+    void connectToZone(user, { raid: getStoredRaid(user.id) });
   };
 
   /** SESS-06/D2: the player explicitly chose to take the account over. */
   const handleTakeoverSession = () => {
     setSessionTaken(false);
-    if (authUser) void connectToZone(authUser, { force: true, zone: zoneKind });
+    if (authUser) void connectToZone(authUser, { force: true, raid: raidSessionRef.current });
   };
 
   /** SESS-06: drop the stored token and fall back to the auth screen. */
@@ -529,6 +657,9 @@ export const App: React.FC = () => {
   // things it owns: the selection and the building being placed.
 
   const handleSelectBuilding = (type: BuildingType) => {
+    // A raider may only fight: the server rejects building orders there, so the
+    // hotkey must not even arm a ghost the player cannot place.
+    if (raidSessionRef.current) return;
     // The two tools are mutually exclusive: one click cannot mean both.
     if (roadMode) {
       setRoadMode(null);
@@ -671,7 +802,10 @@ export const App: React.FC = () => {
         <HUD
           playerName={playerName}
           playerColor={playerColor}
-          zoneLabel={zoneKind === 'battlefield' ? 'CHIẾN TRƯỜNG' : 'VƯƠNG QUỐC'}
+          zoneLabel={raidSession ? 'TẬP KÍCH' : 'VƯƠNG QUỐC'}
+          inRaid={raidSession !== null}
+          onOpenWorldMap={handleToggleWorldMap}
+          onRetreat={handleRetreat}
           wood={resources.wood}
           food={resources.food}
           gold={resources.gold}
@@ -705,7 +839,8 @@ export const App: React.FC = () => {
                   entity={selectedEntity}
                   playerResources={resources}
                   zoneKind={zoneKind}
-                  onTravel={handleTravel}
+                  inRaid={raidSession !== null}
+                  onRetreat={handleRetreat}
                   onTrainUnit={handleTrainUnit}
                   onCancelTrain={handleCancelTrain}
                   onCancelBuilding={handleCancelFoundation}
@@ -748,8 +883,9 @@ export const App: React.FC = () => {
                 />
               </div>
 
-              {(activeBuildingType !== null ||
-                selectedEntity?.villagerSelected === true) && (
+              {!raidSession &&
+                (activeBuildingType !== null ||
+                  selectedEntity?.villagerSelected === true) && (
                 <BuildMenu
                   compact
                   playerResources={resources}
@@ -775,7 +911,8 @@ export const App: React.FC = () => {
                 entity={selectedEntity}
                 playerResources={resources}
                 zoneKind={zoneKind}
-                onTravel={handleTravel}
+                inRaid={raidSession !== null}
+                onRetreat={handleRetreat}
                 onTrainUnit={handleTrainUnit}
                 onCancelTrain={handleCancelTrain}
                 onCancelBuilding={handleCancelFoundation}
@@ -789,8 +926,9 @@ export const App: React.FC = () => {
             {/* Right: Building Construction Dock — villagers only (UIX-06). Nothing
                 selected means no card at all, exactly like AoE, so the empty-state
                 placeholder is gone rather than being drawn as blank slots. */}
-            {(activeBuildingType !== null ||
-              selectedEntity?.villagerSelected === true) && (
+            {!raidSession &&
+              (activeBuildingType !== null ||
+                selectedEntity?.villagerSelected === true) && (
               <BuildMenu
                 playerResources={resources}
                 activeBuildingType={activeBuildingType}
@@ -954,9 +1092,31 @@ export const App: React.FC = () => {
         </div>
       )}
 
+      {/* Phase 23: world map + raid targeting. */}
+      <WorldMapOverlay
+        open={worldMapOpen}
+        selfName={playerName}
+        selectedUnitIds={sceneRef.current ? Array.from(sceneRef.current.selectedUnitIds) : []}
+        busy={raidBusy || isSwitchingZone}
+        onClose={() => setWorldMapOpen(false)}
+        onAttack={handleAttack}
+      />
+
       {/* MOB-02: landscape-only layout; the game keeps running behind the gate. */}
       <OrientationGate visible={showOrientationGate} />
     </div>
   );
 };
 
+
+/** One line for the end of a raid, shown as a normal notification. */
+function raidResultText(payload: RaidEndedPayload): string {
+  if (payload.outcome === 'ATTACKER_WON') {
+    const { wood, food, gold, stone } = payload.loot;
+    return `Thắng trận! Cướp được ${wood} gỗ, ${food} lương, ${gold} vàng, ${stone} đá.`;
+  }
+  if (payload.outcome === 'DEFENDER_WON') {
+    return 'Quân tập kích đã bị đánh bại.';
+  }
+  return 'Đã rút quân về vương quốc.';
+}

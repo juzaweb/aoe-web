@@ -43,6 +43,11 @@ model Player {
   researchProgressMs Float  @default(0) @map("research_progress_ms")
   researchTimeMs     Float  @default(0) @map("research_time_ms")
   isOnline      Boolean    @default(true) @map("is_online")
+  /// Epoch ms until which this empire cannot be raided. 0 = no shield.
+  shieldUntil   Float      @default(0) @map("shield_until")
+  /// Cached highest finished Town Center level, so the world map does not need
+  /// to join `buildings` for every account. 0 = no Town Center yet.
+  townCenterLevel Int      @default(1) @map("town_center_level")
   /// Zone the account was last seen in ("kingdom:<id>" or "battlefield").
   lastZone      String     @default("kingdom") @map("last_zone")
   lastSavedAt   DateTime   @default(now()) @updatedAt @map("last_saved_at")
@@ -167,5 +172,38 @@ model SchemaMeta {
   value String
 
   @@map("schema_meta")
+}
+
+/// One raid: an attacker's army standing in a defender's kingdom, or its result.
+///
+/// Only one row per defender may be `ACTIVE`; that is enforced by a partial
+/// unique index in the boot DDL (`raids_one_active_per_defender`), because
+/// Prisma cannot express a filtered unique index.
+model Raid {
+  id         String    @id
+  attackerId String    @map("attacker_id")
+  defenderId String    @map("defender_id")
+  /// ACTIVE | ATTACKER_WON | DEFENDER_WON | RETREATED
+  status     String
+  /// JSON array of TravelUnitSnapshot objects carried by the attacker.
+  units      String
+  /// JSON Resources actually looted; empty object until the raid is settled.
+  loot       String    @default("{}")
+  startedAt  DateTime  @default(now()) @map("started_at")
+  endedAt    DateTime? @map("ended_at")
+
+  @@index([attackerId, defenderId, status])
+  @@map("raids")
+}
+
+/// An attacker's cooldown against one defender after losing a raid.
+model RaidLock {
+  attackerId String @map("attacker_id")
+  defenderId String @map("defender_id")
+  /// Epoch ms at which the attacker may raid this defender again.
+  unlockAt   Float  @map("unlock_at")
+
+  @@id([attackerId, defenderId])
+  @@map("raid_locks")
 }
 

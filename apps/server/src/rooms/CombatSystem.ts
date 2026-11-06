@@ -4,6 +4,7 @@ import {
   UNIT_BLUEPRINTS,
   UnitBlueprint,
   UnitType,
+  clampRaidTownCenterHp,
   getBuildingLevelStats,
   getUnitLevelStats
 } from '@chien-quoc/shared';
@@ -288,6 +289,15 @@ export class CombatSystem {
       if (!this.isTargetInWeaponRange(unit, blueprint)) return;
 
       targetBuilding.hp -= levelStats.attackPower;
+
+      // Phase 23: the defender's Town Center is the raid objective, not a
+      // target to erase. Damage stops at the raid threshold so the room can
+      // settle the fight before the heart of an empire disappears.
+      if (targetBuilding.type === 'TOWN_CENTER') {
+        const floor = clampRaidTownCenterHp(targetBuilding.hp, targetBuilding.maxHp);
+        if (floor > targetBuilding.hp) targetBuilding.hp = floor;
+      }
+
       this.attackTimers.set(unit.id, blueprint.attackCooldownMs);
 
       if (targetBuilding.hp <= 0) {

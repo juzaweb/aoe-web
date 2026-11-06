@@ -100,6 +100,9 @@ export class DatabaseService {
     // MAPS: the same additive treatment for zones and travel transfers.
     await this.ensureZoneColumns();
 
+    // RAIDS: shield + cached Town Center level on an existing database.
+    await this.ensureRaidColumns();
+
     // ROADS: a globally unique tile id collides across kingdoms.
     await this.ensureRoadPrimaryKey();
 
@@ -226,6 +229,31 @@ export class DatabaseService {
       // Regrow: a depleted node keeps its refill timestamp so an empty map is
       // not refilled by a restart (see `WorldRoom.scanResourceRespawns`).
       ['world_resource_nodes', 'respawn_at', 'REAL NULL']
+    ];
+
+    for (const [table, column, definition] of columns) {
+      const existing = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+        `PRAGMA table_info("${table}")`
+      );
+      if (existing.some((row) => row.name === column)) continue;
+
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE "${table}" ADD COLUMN "${column}" ${definition}`
+      );
+      console.log(`🗄️  [DatabaseService] Added ${table}.${column} to an existing database.`);
+    }
+  }
+
+  /**
+   * RAIDS: columns a pre-Phase-23 database lacks.
+   *
+   * `town_center_level` starts at 1 and is corrected by the first autosave of
+   * each empire (`syncTownCenterLevel`), so no backfill pass is needed.
+   */
+  private static async ensureRaidColumns() {
+    const columns: Array<[table: string, column: string, definition: string]> = [
+      ['players', 'shield_until', 'REAL NOT NULL DEFAULT 0'],
+      ['players', 'town_center_level', 'INTEGER NOT NULL DEFAULT 1']
     ];
 
     for (const [table, column, definition] of columns) {
@@ -787,7 +815,12 @@ export class DatabaseService {
             actionState: u.actionState
           },
           update: {
-            zone,
+            // Phase 23: `zone` is deliberately not written here. A unit the
+            // home room still holds in memory may already have been moved to
+            // another zone by a raid commit (a raid or a return home), and
+            // re-stamping this zone would drag it back — duplicating an army or
+            // resurrecting a casualty. Zone changes belong to the raid/travel
+            // transactions only.
             x: u.x,
             y: u.y,
             level: u.level,

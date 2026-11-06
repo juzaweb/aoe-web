@@ -37,6 +37,8 @@ export const DATABASE_TABLE_STATEMENTS: readonly string[] = [
     "research_progress_ms" REAL NOT NULL DEFAULT 0,
     "research_time_ms" REAL NOT NULL DEFAULT 0,
     "is_online" BOOLEAN NOT NULL DEFAULT true,
+    "shield_until" REAL NOT NULL DEFAULT 0,
+    "town_center_level" INTEGER NOT NULL DEFAULT 1,
     "last_zone" TEXT NOT NULL DEFAULT 'kingdom',
     "last_saved_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -121,6 +123,26 @@ export const DATABASE_TABLE_STATEMENTS: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS "schema_meta" (
     "key" TEXT NOT NULL PRIMARY KEY,
     "value" TEXT NOT NULL
+  );`,
+
+  // Phase 23: raids. The partial unique index below is what stops two empires
+  // from raiding the same defender at the same time.
+  `CREATE TABLE IF NOT EXISTS "raids" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "attacker_id" TEXT NOT NULL,
+    "defender_id" TEXT NOT NULL,
+    "status" TEXT NOT NULL,
+    "units" TEXT NOT NULL,
+    "loot" TEXT NOT NULL DEFAULT '{}',
+    "started_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "ended_at" DATETIME NULL
+  );`,
+
+  `CREATE TABLE IF NOT EXISTS "raid_locks" (
+    "attacker_id" TEXT NOT NULL,
+    "defender_id" TEXT NOT NULL,
+    "unlock_at" REAL NOT NULL,
+    PRIMARY KEY ("attacker_id", "defender_id")
   );`
 ];
 
@@ -132,5 +154,9 @@ export const DATABASE_INDEX_STATEMENTS: readonly string[] = [
   `CREATE INDEX IF NOT EXISTS "units_owner_id_idx" ON "units"("owner_id");`,
   `CREATE INDEX IF NOT EXISTS "world_resource_nodes_grid_x_grid_y_idx" ON "world_resource_nodes"("grid_x", "grid_y");`,
   `CREATE INDEX IF NOT EXISTS "world_roads_zone_idx" ON "world_roads"("zone");`,
-  `CREATE INDEX IF NOT EXISTS "travel_transfers_owner_id_to_zone_idx" ON "travel_transfers"("owner_id", "to_zone");`
+  `CREATE INDEX IF NOT EXISTS "travel_transfers_owner_id_to_zone_idx" ON "travel_transfers"("owner_id", "to_zone");`,
+  // Phase 23: one live raid per defender. A partial index is the only reliable
+  // guard: two concurrent `/raid/start` calls must not both insert.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "raids_one_active_per_defender" ON "raids"("defender_id") WHERE "status" = 'ACTIVE';`,
+  `CREATE INDEX IF NOT EXISTS "raids_pair_idx" ON "raids"("attacker_id", "defender_id", "status");`
 ];

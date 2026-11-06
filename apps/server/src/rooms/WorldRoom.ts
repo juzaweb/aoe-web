@@ -174,7 +174,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       harvestOrder: (client, payload) => this.economy.handleHarvestOrder(client, payload),
       allocateEntityId: () => entityIds.nextId(),
       updatePlayerPopulation: (ownerId) => this.updatePlayerPopulation(ownerId),
-      roadGrid: () => this.roads
+      roadGrid: () => this.roads,
+      canManageZone: (ownerId) => this.canManageZone(ownerId)
     });
     return this.commandSystem;
   }
@@ -255,6 +256,44 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   protected async spawnZoneContent(ownerId: string): Promise<void> {
     this.spawnInitialBase(ownerId);
   }
+
+  /**
+   * Whether `ownerId` may issue building/economy orders on this map.
+   *
+   * True by default: a private kingdom is managed by its owner, and the legacy
+   * base room has no concept of guests. `KingdomRoom` narrows it during a raid.
+   */
+  protected canManageZone(_ownerId: string): boolean {
+    return true;
+  }
+
+  /**
+   * Runs after the simulation step. `KingdomRoom` uses it to evaluate the live
+   * raid without making the base room aware of raids at all.
+   */
+  protected afterTick(): void {}
+
+  /** Called when a finished building completes an upgrade. */
+  protected onBuildingUpgraded(_building: BuildingState): void {}
+
+  /**
+   * Which accounts' entities this room restores from SQLite.
+   *
+   * `null` means "everyone in this zone" — the battlefield's rule, where an
+   * offline forward base must stay attackable. A kingdom narrows it to its
+   * owner, and a raided kingdom widens it to the raider as well.
+   */
+  protected async entityOwnersToLoad(): Promise<string[] | null> {
+    return this.ownerScope ? [this.ownerScope] : null;
+  }
+
+  /**
+   * Runs once the map is restored and before any client may join it.
+   *
+   * `KingdomRoom` uses it to pick up a raid that survived a restart and to
+   * place the retreat gate.
+   */
+  protected async onWorldReady(): Promise<void> {}
 
   /**
    * Whether this room still owns its zone. A token of 0 means the room was
@@ -375,8 +414,11 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       }
     );
 
-    this.onMessage(NetworkMessage.TRAVEL, (client, message: TravelPayload) => {
-      void this.handleTravel(client, message);
+    // Phase 23: the battlefield is retired, so the old travel order is now a
+    // clear rejection instead of a silent no-op. Clients from before the update
+    // get an explanation rather than a stuck portal.
+    this.onMessage(NetworkMessage.TRAVEL, (client) => {
+      this.rejectCommand(client, 'Chiến trường đã đóng. Hãy dùng bản đồ thế giới để tập kích.', RejectCode.FORBIDDEN);
     });
 
     // Run authoritative tick loop
@@ -465,66 +507,22 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         console.log(`🛣️ [WorldRoom] Restored ${savedRoads.length} road tiles for ${this.zoneId}.`);
       }
 
-      // 2. Restore this map's empires. A kingdom loads only its owner; the
-      // battlefield loads every participant, including offline ones whose
-      // forward base must stay attackable.
-      const savedPlayers = await DatabaseService.loadZoneEntities(
-        this.zoneId,
-        this.ownerScope ?? undefined
-      );
-      for (const p of savedPlayers) {
-        for (const b of p.buildings) {
-          if (!this.fitsMap(b.gridX, b.gridY, b.sizeX, b.sizeY)) {
-            droppedOutOfBounds++;
-            continue;
-          }
-          const building = new BuildingState();
-          building.id = b.id;
-          building.ownerId = p.id;
-          building.type = b.type;
-          building.gridX = b.gridX;
-          building.gridY = b.gridY;
-          building.sizeX = b.sizeX;
-          building.sizeY = b.sizeY;
-          building.level = clampStoredLevel(b.level, getBuildingMaxLevel(b.type as BuildingType));
-          // LVL2/D7: a 73 h upgrade is spread over many sessions, so the saved
-          // progress is restored instead of restarting the timer.
-          restoreBuildingUpgrade(building, b.upgradeProgressMs, b.upgradeTimeMs);
-          const levelStats = getBuildingLevelStats(b.type as BuildingType, building.level);
-          building.maxHp = levelStats.maxHp;
-          building.hp = Math.min(b.hp, levelStats.maxHp);
-          building.isConstructed = b.isConstructed;
-          building.constructionProgress = b.constructionProgress;
-
-          // ECO-01: restored as a finished building, so a field comes back full
-          // instead of permanently barren (see `seedGatheredBuilding`).
-          if (b.isConstructed) seedGatheredBuilding(building);
-
-          this.state.buildings.set(b.id, building);
-        }
-
-        for (const u of p.units) {
-          if (!this.fitsMap(u.x, u.y)) {
-            droppedOutOfBounds++;
-            continue;
-          }
-          const unit = new UnitState();
-          unit.id = u.id;
-          unit.ownerId = p.id;
-          unit.type = u.type;
-          unit.x = u.x;
-          unit.y = u.y;
-          unit.targetX = u.x;
-          unit.targetY = u.y;
-          unit.speed = u.speed;
-          unit.level = clampStoredLevel(u.level, MAX_UNIT_LEVEL);
-          const levelStats = getUnitLevelStats(u.type as UnitType, unit.level);
-          unit.maxHp = levelStats.maxHp;
-          unit.hp = Math.min(u.hp, levelStats.maxHp);
-          unit.actionState = u.actionState;
-          this.state.units.set(u.id, unit);
-        }
-      }
+      // 2. Restore this map's empires. A kingdom loads only its owner (plus the
+      // raider, when Phase 23 has one standing in it); the battlefield loads
+      // every participant, including offline ones whose forward base must stay
+      // attackable.
+      const entityOwners = await this.entityOwnersToLoad();
+      const savedPlayers =
+        entityOwners === null
+          ? await DatabaseService.loadZoneEntities(this.zoneId)
+          : (
+              await Promise.all(
+                entityOwners.map((ownerId) =>
+                  DatabaseService.loadZoneEntities(this.zoneId, ownerId)
+                )
+              )
+            ).flat();
+      droppedOutOfBounds += this.restoreSavedEntities(savedPlayers);
       if (savedPlayers.length > 0) {
         console.log(`🏰 [WorldRoom] Restored bases for ${savedPlayers.length} empires from database.`);
       }
@@ -535,11 +533,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       }
 
       // Keep generated entity ids unique across restarts (avoid overwriting persisted rows)
-      this.state.resourceNodes.forEach((n) => this.bumpEntityId(n.id));
-      this.state.buildings.forEach((b) => this.bumpEntityId(b.id));
-      this.state.units.forEach((u) => this.bumpEntityId(u.id));
+      this.bumpEntityIdsFromState();
 
       this.zoneReady = true;
+      await this.onWorldReady();
       console.log(`✅ [WorldRoom] Zone ${this.zoneId} is ready.`);
     } catch (err) {
       // Record instead of rethrowing: a rejected readyPromise would surface as an
@@ -549,9 +546,93 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     }
   }
 
+
+  /**
+   * Puts rows read from SQLite into this room's state.
+   *
+   * Extracted from the room boot so a raider joining an already-live kingdom
+   * (Phase 23) can restore their army from the database through the same rules:
+   * level clamping, upgrade resume and the population cap all stay in one place.
+   *
+   * @returns how many rows were dropped for falling outside this map.
+   */
+  protected restoreSavedEntities(
+    savedPlayers: Awaited<ReturnType<typeof DatabaseService.loadZoneEntities>>
+  ): number {
+    let dropped = 0;
+
+    for (const p of savedPlayers) {
+      for (const b of p.buildings) {
+        if (!this.fitsMap(b.gridX, b.gridY, b.sizeX, b.sizeY)) {
+          dropped++;
+          continue;
+        }
+        const building = new BuildingState();
+        building.id = b.id;
+        building.ownerId = p.id;
+        building.type = b.type;
+        building.gridX = b.gridX;
+        building.gridY = b.gridY;
+        building.sizeX = b.sizeX;
+        building.sizeY = b.sizeY;
+        building.level = clampStoredLevel(b.level, getBuildingMaxLevel(b.type as BuildingType));
+        // LVL2/D7: a 73 h upgrade is spread over many sessions, so the saved
+        // progress is restored instead of restarting the timer.
+        restoreBuildingUpgrade(building, b.upgradeProgressMs, b.upgradeTimeMs);
+        const levelStats = getBuildingLevelStats(b.type as BuildingType, building.level);
+        building.maxHp = levelStats.maxHp;
+        building.hp = Math.min(b.hp, levelStats.maxHp);
+        building.isConstructed = b.isConstructed;
+        building.constructionProgress = b.constructionProgress;
+
+        // ECO-01: restored as a finished building, so a field comes back full
+        // instead of permanently barren (see `seedGatheredBuilding`).
+        if (b.isConstructed) seedGatheredBuilding(building);
+
+        this.state.buildings.set(b.id, building);
+      }
+
+      for (const u of p.units) {
+        if (!this.fitsMap(u.x, u.y)) {
+          dropped++;
+          continue;
+        }
+        const unit = new UnitState();
+        unit.id = u.id;
+        unit.ownerId = p.id;
+        unit.type = u.type;
+        unit.x = u.x;
+        unit.y = u.y;
+        unit.targetX = u.x;
+        unit.targetY = u.y;
+        unit.speed = u.speed;
+        unit.level = clampStoredLevel(u.level, MAX_UNIT_LEVEL);
+        const levelStats = getUnitLevelStats(u.type as UnitType, unit.level);
+        unit.maxHp = levelStats.maxHp;
+        unit.hp = Math.min(u.hp, levelStats.maxHp);
+        unit.actionState = u.actionState;
+        this.state.units.set(u.id, unit);
+      }
+    }
+
+    return dropped;
+  }
+
   /** Advances the process-wide id sequence past a persisted id. */
   private bumpEntityId(id: string) {
     entityIds.observe(id);
+  }
+
+  /**
+   * Advances the id sequence past every entity this room now holds.
+   *
+   * Called after a restore, so a newly minted id can never reuse one that is
+   * already a primary key somewhere in the database.
+   */
+  protected bumpEntityIdsFromState(): void {
+    this.state.resourceNodes.forEach((n) => this.bumpEntityId(n.id));
+    this.state.buildings.forEach((b) => this.bumpEntityId(b.id));
+    this.state.units.forEach((u) => this.bumpEntityId(u.id));
   }
 
   /**
@@ -1058,9 +1139,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       this.state.units.set(vId, villager);
     });
 
-    // Every kingdom needs its exit. The battlefield portal is created on join
-    // by `materializeTravel`; `ensurePortalFor` is idempotent for both.
-    ensurePortalFor(this.state, ownerId);
+    // Phase 23: a kingdom no longer has a gateway to a shared battlefield. The
+    // only portal that appears here belongs to a raider and is created on join.
 
     this.updatePlayerPopulation(ownerId);
   }
@@ -1336,9 +1416,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     }
   }
 
-  private update(deltaTime: number) {
+  protected update(deltaTime: number) {
     const dtSeconds = deltaTime / 1000;
-
     this.scanResourceRespawns(Date.now());
 
     // SIM-01: hand out a few routes before anyone moves. Units whose request is
@@ -1380,6 +1459,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           applyBuildingUpgrade(building);
           // Town Centers and Houses change the population ceiling.
           this.updatePlayerPopulation(building.ownerId);
+          // Phase 23: a Town Center level is what the world map filters on.
+          this.onBuildingUpgraded(building);
         }
       }
 
@@ -1569,6 +1650,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     // as a single figure. The shove runs after every order has set a position, so
     // it can never fight the movement step, and it does not touch orders.
     this.movement.separateUnits(dtSeconds);
+
+    // Phase 23: a raid is judged after combat has landed this tick's damage.
+    this.afterTick();
   }
 
   /**
@@ -1616,7 +1700,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.updatePlayerPopulation(ownerId);
   }
 
-  private updatePlayerPopulation(ownerId: string) {
+  protected updatePlayerPopulation(ownerId: string) {
     const player = this.state.players.get(ownerId);
     if (!player) return;
 

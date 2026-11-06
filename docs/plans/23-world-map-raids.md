@@ -1,6 +1,6 @@
 # Phase 23 — Bản đồ thế giới + tập kích vương quốc
 
-Status: **DRAFT** — chờ duyệt. Chưa có dòng code nào.
+Status: **IMPLEMENTED** (2026-11-06) — server + client + tests xanh; chờ verify tay trên UI.
 
 Phạm vi: `packages/shared`, `apps/server`, `apps/client`, DB. Không đụng art/terrain.
 
@@ -346,6 +346,34 @@ Chi tiết overlay:
 | RD-09 | Luồng client: tập kích, F5 nối lại, rút quân, banner | `feat(client): wire the raid flow from world map to battle` |
 | RD-10 | Dọn UI cổng cũ, ẩn build menu trong trận | `refactor(client): remove the battlefield gate UI` |
 | RD-11 | Plan này + index + README gốc | `docs: document the world map and raid phase` |
+
+## 9.1 Kết quả thực hiện
+
+| Task | Trạng thái |
+| --- | --- |
+| RD-01 | DONE — `packages/shared/src/utils/raid.ts`, hằng số `RAID_*`, type + 2 message |
+| RD-02 | DONE — `raids`, `raid_locks`, `players.shield_until`, `players.town_center_level`, `ensureRaidColumns()` |
+| RD-03 | DONE — `RaidService` + `RaidService.test.ts` (19 test) |
+| RD-04 | DONE — bỏ portal khỏi `spawnInitialBase`, `TRAVEL` bị từ chối, `battlefield_room` không còn `define` |
+| RD-05 | DONE — `KingdomRoom` cho raider, chặn quyền kinh tế, cổng rút, nạp quân muộn |
+| RD-06 | DONE — tick trận, guard Nhà chính, `RAID_ENDED`, timeout, `raidArmySeen` |
+| RD-07 | DONE — 3 route + rate limit + `raidRoutes.test.ts` (7 test) |
+| RD-08 | DONE — `WorldMapOverlay`, `worldMapArt` + 11 test |
+| RD-09 | DONE — luồng tập kích, F5 nối lại, rút quân, banner |
+| RD-10 | DONE — bỏ UI cổng cũ, ẩn build menu/hotkey trong trận |
+| RD-11 + RD-12 | DONE — plan này, index, README gốc |
+
+Đã verify:
+
+- `pnpm -r exec tsc --noEmit` sạch.
+- Server **316 test** xanh (22 file), client **440 test** xanh (24 file).
+- Smoke test thật với server + DB tạm:
+  - `GET /world-map` trả đúng nước ±5 cấp và lý do chặn.
+  - `POST /raid/start` chuyển 2 quân sang `kingdom:<defender>`, tạo raid `ACTIVE`,
+    bản đồ chặn mục tiêu bằng "Đang bị nước khác tấn công".
+  - `POST /raid/retreat` đưa quân về `kingdom:<attacker>`, raid `RETREATED`, khoá cặp
+    + khiên defender 72 h ghi đúng vào DB.
+  - Người không phải attacker gọi retreat: không settle (idempotent, không tác dụng phụ).
 
 ## 10. Kiểm thử
 

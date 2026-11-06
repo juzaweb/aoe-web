@@ -85,6 +85,57 @@ export const MAX_TRAVEL_UNITS = 120;
 /** Server-side cooldown between two travel orders from the same account. */
 export const TRAVEL_COOLDOWN_MS = 2000;
 
+// ---------------------------------------------------------------------------
+// Raids and the world map (Phase 23)
+// ---------------------------------------------------------------------------
+
+/**
+ * Units one raid order may carry. Reuses the travel bound so a raid is never a
+ * bigger transfer than the map switch used to be.
+ */
+export const RAID_MAX_UNITS = MAX_TRAVEL_UNITS;
+export const RAID_MIN_UNITS = 1;
+
+/**
+ * How many Town Center levels apart two empires may be and still see each other
+ * on the world map. The ladder caps at 10, so ±5 is effectively "everyone" —
+ * kept as a named constant so a later rebalance is a one-line change.
+ */
+export const RAID_LEVEL_RANGE = 5;
+
+/**
+ * Peace granted to the defender after any raid, so being attacked twice in a
+ * row is impossible while the owner is away. Three days matches the loss lock.
+ */
+export const RAID_SHIELD_MS = 72 * 60 * 60 * 1000;
+
+/**
+ * How long an attacker who lost must wait before raiding the same empire again.
+ * Without it a player with a bigger army could farm one neighbour forever.
+ */
+export const RAID_LOSS_LOCK_MS = 72 * 60 * 60 * 1000;
+
+/** Share of each resource the winner takes from the defender. */
+export const RAID_LOOT_PERCENT = 0.2;
+
+/** Absolute ceiling per resource, so one raid cannot empty a developed base. */
+export const RAID_LOOT_CAP_PER_RESOURCE = 2000;
+
+/**
+ * The defender's Town Center is not destructible: the raid ends as soon as it
+ * drops to this share of its maximum HP. Attacking the heart of an empire costs
+ * its owner a rebuild otherwise, which would be a griefing tool rather than a
+ * fight.
+ */
+export const RAID_TOWN_CENTER_HP_THRESHOLD = 0.25;
+
+/**
+ * A raid with no activity for this long is closed as a retreat. Covers both
+ * players losing their connection: without it the pair would stay locked and
+ * the defender's kingdom room would never dispose.
+ */
+export const RAID_RETREAT_TIMEOUT_MS = 30 * 60 * 1000;
+
 /**
  * How long a depleted resource node stays empty before it refills to
  * `maxAmount`.

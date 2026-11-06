@@ -7,7 +7,12 @@
  */
 
 import { ErrorCode } from '@colyseus/sdk';
-import { SESSION_ALREADY_ACTIVE, SESSION_BUSY } from '@chien-quoc/shared';
+import {
+  RaidStartResponse,
+  SESSION_ALREADY_ACTIVE,
+  SESSION_BUSY,
+  WorldMapPayload
+} from '@chien-quoc/shared';
 
 export interface AuthUser {
   id: string;
@@ -152,4 +157,52 @@ export async function fetchCurrentUser(): Promise<AuthUser | null> {
     // Keep the token: the server may just be temporarily down.
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// World map and raids (Phase 23)
+// ---------------------------------------------------------------------------
+
+/** `fetch` with the stored bearer token, throwing the server's message on 4xx. */
+async function authedJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = getStoredToken();
+  if (!token) throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+
+  let response: Response;
+  try {
+    response = await fetch(`${getServerUrl()}${path}`, {
+      ...init,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        ...(init.headers ?? {})
+      }
+    });
+  } catch {
+    throw new Error('Không thể kết nối đến máy chủ game.');
+  }
+
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as T;
+}
+
+/** Empires within ±5 Town Center levels, with the reason each one is blocked. */
+export function fetchWorldMap(): Promise<WorldMapPayload> {
+  return authedJson<WorldMapPayload>('/world-map');
+}
+
+/** Commits a raid server-side; the caller then joins `roomName` with `{ ownerId, raidId }`. */
+export function startRaid(defenderId: string, unitIds: string[]): Promise<RaidStartResponse> {
+  return authedJson<RaidStartResponse>('/raid/start', {
+    method: 'POST',
+    body: JSON.stringify({ defenderId, unitIds })
+  });
+}
+
+/** Fallback retreat for a client whose room socket is already gone. */
+export async function retreatRaid(raidId: string): Promise<void> {
+  await authedJson<{ ok: boolean }>('/raid/retreat', {
+    method: 'POST',
+    body: JSON.stringify({ raidId })
+  });
 }
