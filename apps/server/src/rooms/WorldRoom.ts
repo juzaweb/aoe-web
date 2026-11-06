@@ -115,7 +115,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   protected ownerScope: string | null = null;
   /** See `ZonePersistence`; a stale room must never flush over its successor. */
   private persistenceToken = 0;
-  private zoneReady = false;
+  protected zoneReady = false;
   /** Accounts with a travel transaction in flight; autosave waits for them. */
   private readonly travelingOwners = new Set<string>();
   /** Where an account is travelling to while its leave save runs. */

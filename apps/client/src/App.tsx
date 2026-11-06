@@ -6,7 +6,6 @@ import {
   BuildingType,
   INITIAL_PLAYER_RESOURCES,
   INITIAL_POPULATION_CAP,
-  MapZoneKind,
   NetworkMessage,
   RaidEndedPayload,
   RejectCode,
@@ -47,90 +46,15 @@ import {
   retreatRaid,
   startRaid
 } from './auth/api.js';
-import { AlertCircle, Coins, MapPin, Lock, Clock, XCircle, AlertTriangle, ShieldBan, Users } from 'lucide-react';
-import { getRejectVisual } from './game/alerts/rejectVisuals.js';
+import { AlertCircle } from 'lucide-react';
 import { playUnderAttackAlert } from './game/audio/alertSound.js';
-
-const REJECT_ICON_MAP: Record<string, any> = {
-  Coins,
-  MapPin,
-  Lock,
-  Clock,
-  XCircle,
-  AlertTriangle,
-  ShieldBan,
-  Users,
-  AlertCircle
-};
-
-function RejectIcon({ iconKey, className }: { iconKey: string; className: string }) {
-  const Icon = REJECT_ICON_MAP[iconKey] ?? AlertCircle;
-  return <Icon size={16} className={className} />;
-}
-
-const LAST_ZONE_PREFIX = 'cq_last_zone';
-
-function lastZoneKey(userId: string): string {
-  return `${LAST_ZONE_PREFIX}:${userId}`;
-}
-
-/**
- * Where this account was last playing.
- *
- * Phase 23 retired the battlefield, so every account belongs in its own
- * kingdom; a stored `battlefield` from an older build is quietly ignored.
- */
-function getStoredZone(_userId: string): MapZoneKind {
-  return 'kingdom';
-}
-
-function storeZone(userId: string, zone: MapZoneKind): void {
-  try {
-    localStorage.setItem(lastZoneKey(userId), zone);
-  } catch {
-    // Private-mode storage failures only cost the refresh convenience.
-  }
-}
-
-const RAID_SESSION_PREFIX = 'cq_raid';
-
-function raidSessionKey(userId: string): string {
-  return `${RAID_SESSION_PREFIX}:${userId}`;
-}
-
-/** A raid in flight, kept so F5 drops the player back into the fight. */
-export interface RaidSession {
-  raidId: string;
-  defenderId: string;
-}
-
-function getStoredRaid(userId: string): RaidSession | null {
-  try {
-    const raw = localStorage.getItem(raidSessionKey(userId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<RaidSession>;
-    if (typeof parsed.raidId !== 'string' || typeof parsed.defenderId !== 'string') return null;
-    return { raidId: parsed.raidId, defenderId: parsed.defenderId };
-  } catch {
-    return null;
-  }
-}
-
-function storeRaid(userId: string, raid: RaidSession): void {
-  try {
-    localStorage.setItem(raidSessionKey(userId), JSON.stringify(raid));
-  } catch {
-    // A failed write only costs the F5 convenience.
-  }
-}
-
-function clearStoredRaid(userId: string): void {
-  try {
-    localStorage.removeItem(raidSessionKey(userId));
-  } catch {
-    // Ignore.
-  }
-}
+import { RejectNotification } from './components/RejectNotification.js';
+import {
+  type RaidSession,
+  clearStoredRaid,
+  getStoredRaid,
+  storeRaid
+} from './game/raid/session.js';
 
 export const App: React.FC = () => {
   const [room, setRoom] = useState<Room | null>(null);
@@ -139,8 +63,6 @@ export const App: React.FC = () => {
   const [isRestoringSession, setIsRestoringSession] = useState<boolean>(true);
   const [isJoining, setIsJoining] = useState<boolean>(false);
   const [isJoined, setIsJoined] = useState<boolean>(false);
-  /** Which map the live room simulates; Phase 23 keeps it at `kingdom`. */
-  const [zoneKind, setZoneKind] = useState<MapZoneKind>('kingdom');
   /** The live raid this account is attacking with, if any. */
   const [raidSession, setRaidSession] = useState<RaidSession | null>(null);
   const raidSessionRef = useRef<RaidSession | null>(null);
@@ -283,7 +205,6 @@ export const App: React.FC = () => {
   const connectToZone = async (
     user: AuthUser,
     opts: {
-      zone?: MapZoneKind;
       force?: boolean;
       attempt?: number;
       quiet?: boolean;
@@ -304,7 +225,6 @@ export const App: React.FC = () => {
       return false;
     }
 
-    const zone = opts.zone ?? getStoredZone(user.id);
     setIsJoining(true);
     try {
       const client = clientRef.current ?? new Client(getServerUrl());
@@ -327,8 +247,6 @@ export const App: React.FC = () => {
       setIsConnected(true);
       setIsJoined(true);
       setSessionTaken(false);
-      setZoneKind(zone);
-      storeZone(user.id, 'kingdom');
 
       // Listen to room error messages
       joinedRoom.onMessage(NetworkMessage.ERROR_NOTIFICATION, (data: ErrorNotificationPayload) => {
@@ -599,7 +517,7 @@ export const App: React.FC = () => {
     // `connectToZone` is recreated on every render, so it is not a dep: every piece
     // of state it reads is listed instead, which re-registers the listener exactly
     // when the decision could change.
-  }, [authUser, isJoined, isJoining, sessionTaken, isSwitchingZone, switchError, zoneKind]);
+  }, [authUser, isJoined, isJoining, sessionTaken, isSwitchingZone, switchError]);
 
   /** MOB-08: manual retry from the disconnect panel (no tolerated refusals). */
   const handleReconnect = () => {
@@ -838,7 +756,6 @@ export const App: React.FC = () => {
                   interactionHint="long-press"
                   entity={selectedEntity}
                   playerResources={resources}
-                  zoneKind={zoneKind}
                   inRaid={raidSession !== null}
                   onRetreat={handleRetreat}
                   onTrainUnit={handleTrainUnit}
@@ -892,7 +809,7 @@ export const App: React.FC = () => {
                   activeBuildingType={activeBuildingType}
                   onSelectBuilding={handleSelectBuilding}
                   onCancelBuilding={handleCancelBuilding}
-                  showRoadTools={zoneKind === 'kingdom'}
+                  showRoadTools
                   roadMode={roadMode}
                   onSelectRoad={handleSelectRoad}
                 />
@@ -910,7 +827,6 @@ export const App: React.FC = () => {
               <EntityDetails
                 entity={selectedEntity}
                 playerResources={resources}
-                zoneKind={zoneKind}
                 inRaid={raidSession !== null}
                 onRetreat={handleRetreat}
                 onTrainUnit={handleTrainUnit}
@@ -934,7 +850,7 @@ export const App: React.FC = () => {
                 activeBuildingType={activeBuildingType}
                 onSelectBuilding={handleSelectBuilding}
                 onCancelBuilding={handleCancelBuilding}
-                showRoadTools={zoneKind === 'kingdom'}
+                showRoadTools
                 roadMode={roadMode}
                 onSelectRoad={handleSelectRoad}
               />
@@ -944,15 +860,9 @@ export const App: React.FC = () => {
       )}
 
       {/* In-game Notification Banner */}
-      {notification && (() => {
-        const visual = getRejectVisual(notification.code);
-        return (
-          <div className={visual.containerClass}>
-            <RejectIcon iconKey={visual.iconKey} className={visual.iconClass} />
-            <span>{notification.message}</span>
-          </div>
-        );
-      })()}
+      {notification && (
+        <RejectNotification message={notification.message} code={notification.code} />
+      )}
 
       {/* ATK-05: under-attack banner (separate from the error notification). */}
       {underAttack && (

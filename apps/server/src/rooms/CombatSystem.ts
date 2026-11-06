@@ -290,9 +290,10 @@ export class CombatSystem {
 
       targetBuilding.hp -= levelStats.attackPower;
 
-      // Phase 23: the defender's Town Center is the raid objective, not a
-      // target to erase. Damage stops at the raid threshold so the room can
-      // settle the fight before the heart of an empire disappears.
+      // Phase 23: a Town Center is never destructible, on any map. It is the
+      // raid's objective, scored by the HP threshold the room checks, so damage
+      // stops at that floor instead of erasing the heart of an empire and
+      // leaving its owner with nothing to rebuild from.
       if (targetBuilding.type === 'TOWN_CENTER') {
         const floor = clampRaidTownCenterHp(targetBuilding.hp, targetBuilding.maxHp);
         if (floor > targetBuilding.hp) targetBuilding.hp = floor;

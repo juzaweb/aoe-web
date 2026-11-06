@@ -70,11 +70,22 @@ export interface ActiveRaid {
   id: string;
   attackerId: string;
   defenderId: string;
+  /** ACTIVE or the final outcome; a caller must not assume it is live. */
+  status: string;
   units: Array<{ id: string; type: string; level: number; hp: number; maxHp: number; speed: number }>;
   startedAt: number;
 }
 
 const EMPTY_LOOT: Resources = { wood: 0, food: 0, gold: 0, stone: 0 };
+
+/**
+ * Upper bound on neighbours returned by one world-map call.
+ *
+ * The map is a full-screen grid, so an unbounded list would be both a heavy
+ * payload and an unreadable screen once the server has thousands of accounts.
+ * Every empire in range is still reachable by the level filter, not by paging.
+ */
+const MAX_WORLD_MAP_NEIGHBORS = 500;
 
 /**
  * Where an attacking army appears: a loose block just inside the defender's
@@ -125,7 +136,9 @@ export class RaidService {
 
     const candidates = await prisma.player.findMany({
       where: { id: { not: attackerId }, townCenterLevel: { gt: 0 } },
-      select: { id: true, name: true, color: true, townCenterLevel: true, shieldUntil: true }
+      select: { id: true, name: true, color: true, townCenterLevel: true, shieldUntil: true },
+      orderBy: { townCenterLevel: 'desc' },
+      take: MAX_WORLD_MAP_NEIGHBORS
     });
 
     const inRange = candidates.filter((p) => isRaidLevelInRange(selfLevel, p.townCenterLevel));
@@ -149,8 +162,12 @@ export class RaidService {
     const contestedDefenders = new Set(contested.map((row) => row.defenderId));
 
     const neighbors: WorldMapEntry[] = inRange.map((p) => {
-      const lockedUntil = Math.max(0, lockByDefender.get(p.id) ?? 0);
-      const shieldUntil = Math.max(0, p.shieldUntil ?? 0);
+      // An expired timestamp is reported as "not blocked" rather than as a
+      // zero-minute wait the overlay would still render.
+      const lockAt = lockByDefender.get(p.id) ?? 0;
+      const shieldAt = p.shieldUntil ?? 0;
+      const lockedUntil = lockAt > now ? lockAt : 0;
+      const shieldUntil = shieldAt > now ? shieldAt : 0;
 
       let blockReason: string | undefined;
       if (shieldUntil > now) blockReason = 'Đang được bảo vệ';
@@ -415,7 +432,8 @@ export class RaidService {
     });
   }
 
-  /** The live raid on a defender, if any. Used by the room when it boots. */  public static async findActiveRaidForDefender(defenderId: string): Promise<ActiveRaid | null> {
+  /** The live raid on a defender, if any. Used by the room when it boots. */
+  public static async findActiveRaidForDefender(defenderId: string): Promise<ActiveRaid | null> {
     await DatabaseService.initialize();
     const raid = await prisma.raid.findFirst({
       where: { defenderId, status: 'ACTIVE' },
@@ -427,6 +445,7 @@ export class RaidService {
       id: raid.id,
       attackerId: raid.attackerId,
       defenderId: raid.defenderId,
+      status: raid.status,
       units: parseUnits(raid.units),
       startedAt: raid.startedAt.getTime()
     };
@@ -442,6 +461,7 @@ export class RaidService {
       id: raid.id,
       attackerId: raid.attackerId,
       defenderId: raid.defenderId,
+      status: raid.status,
       units: parseUnits(raid.units),
       startedAt: raid.startedAt.getTime()
     };

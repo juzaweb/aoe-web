@@ -46,6 +46,9 @@ function createRoom(): KingdomRoom {
   const room = new KingdomRoom();
   room.setState(new WorldState());
   internals(room).ownerScope = 'defender';
+  // A real room only ticks after `initializeWorldPersistence` finished; the
+  // harness mirrors that so the restore guard does not hide every assertion.
+  internals(room).zoneReady = true;
   internals(room).zoneId = 'kingdom:defender';
   room.state.zoneId = 'kingdom:defender';
   room.state.mapWidth = 110;
@@ -167,6 +170,18 @@ describe('KingdomRoom raid access', () => {
 });
 
 describe('KingdomRoom raid settlement', () => {
+  it('never judges a raid before the map has been restored', async () => {
+    const room = createRoom();
+    internals(room).zoneReady = false;
+    addPlayer(room, 'attacker');
+    withRaid(room);
+
+    room['afterTick']();
+    await Promise.resolve();
+
+    expect(settleRaid).not.toHaveBeenCalled();
+  });
+
   it('declares the attacker the winner when the Town Center is breached', async () => {
     const room = createRoom();
     addPlayer(room, 'attacker');

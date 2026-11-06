@@ -366,7 +366,7 @@ Chi tiết overlay:
 Đã verify:
 
 - `pnpm -r exec tsc --noEmit` sạch.
-- Server **316 test** xanh (22 file), client **440 test** xanh (24 file).
+- Server **317 test** xanh (22 file), client **444 test** xanh (25 file).
 - Smoke test thật với server + DB tạm:
   - `GET /world-map` trả đúng nước ±5 cấp và lý do chặn.
   - `POST /raid/start` chuyển 2 quân sang `kingdom:<defender>`, tạo raid `ACTIVE`,
@@ -374,6 +374,20 @@ Chi tiết overlay:
   - `POST /raid/retreat` đưa quân về `kingdom:<attacker>`, raid `RETREATED`, khoá cặp
     + khiên defender 72 h ghi đúng vào DB.
   - Người không phải attacker gọi retreat: không settle (idempotent, không tác dụng phụ).
+
+### Review hậu triển khai (2026-11-06)
+
+Ba lỗi phát hiện khi review và đã sửa, mỗi lỗi có test hồi quy:
+
+| Lỗi | Hậu quả | Test |
+| --- | --- | --- |
+| Tick chạy trước khi `initializeWorldPersistence` xong | Nhà chính chưa restore → `DEFENDER_WON` → `survivingUnitIds` rỗng → **xoá sạch quân tấn công trong DB** | `never judges a raid before the map has been restored` |
+| Trả `ErrorCode.AUTH_FAILED` cho raid hết hạn | Client hiểu là token chết → **đăng xuất người chơi** | dùng `APPLICATION_ERROR` (hành vi) |
+| `raidArmySeen` thiếu | Tick đầu tiên kết thúc trận khi quân chưa kịp join | `waits for the army when the raid was committed before the attacker joined` |
+
+Dọn thêm: gộp 2 truy vấn raid thành 1 (`findRaid` trả `status`), hết hạn `shieldUntil`/`lockedUntil`
+trả 0 thay vì mốc đã qua, cap 500 nước/bản đồ, tách `RaidSession` storage và `RejectNotification`
+khỏi `App.tsx`.
 
 ## 10. Kiểm thử
 

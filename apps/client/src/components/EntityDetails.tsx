@@ -3,7 +3,6 @@ import { SelectedEntityData } from '../game/scenes/WorldScene.js';
 import {
   BUILDING_BLUEPRINTS,
   BuildingType,
-  MapZoneKind,
   Resources,
   UNIT_BLUEPRINTS,
   UnitType,
@@ -41,8 +40,6 @@ interface EntityDetailsProps {
    */
   entity: SelectedEntityData;
   playerResources: Resources;
-  /** Map the player is on, which decides the portal button's label. */
-  zoneKind: MapZoneKind;
   /** Phase 23: true while the player is attacking somebody else's kingdom. */
   inRaid?: boolean;
   /** Phase 23: leaves the raid through the retreat gate. */
@@ -72,7 +69,6 @@ interface EntityDetailsProps {
 export const EntityDetails: React.FC<EntityDetailsProps> = ({
   entity,
   playerResources,
-  zoneKind,
   inRaid = false,
   onRetreat,
   onTrainUnit,

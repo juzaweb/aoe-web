@@ -88,12 +88,17 @@ export class KingdomRoom extends WorldRoom {
       const raid = await RaidService.findRaid(raidId);
 
       // Three independent facts must hold: the raid is still live, this socket
-      // owns the attacking side, and the room is the one being defended.
+      // owns the attacking side, and the room is the one being defended. The
+      // status comes from the same row, so it cannot drift from the id check.
+      //
+      // APPLICATION_ERROR, not AUTH_FAILED: the token is fine, only the raid is
+      // stale. A client that saw an auth code would drop the player's session
+      // and send them back to the login screen.
       if (!raid || raid.attackerId !== auth?.userId || raid.defenderId !== defenderId) {
-        throw new ServerError(ErrorCode.AUTH_FAILED, 'Trận đánh này không còn hiệu lực.');
+        throw new ServerError(ErrorCode.APPLICATION_ERROR, 'Trận đánh này không còn hiệu lực.');
       }
-      if ((await RaidService.raidStatus(raidId)) !== 'ACTIVE') {
-        throw new ServerError(ErrorCode.AUTH_FAILED, 'Trận đánh này đã kết thúc.');
+      if (raid.status !== 'ACTIVE') {
+        throw new ServerError(ErrorCode.APPLICATION_ERROR, 'Trận đánh này đã kết thúc.');
       }
 
       this.raidId = raid.id;
@@ -174,6 +179,11 @@ export class KingdomRoom extends WorldRoom {
   }
 
   protected afterTick(): void {
+    // The simulation interval starts in `onCreate`, before the map has been
+    // restored from SQLite. Judging a raid against an empty state would look
+    // like a missing Town Center and settle it — deleting the attacker's army
+    // from the database. Wait for the restore.
+    if (!this.zoneReady) return;
     if (!this.raidId || this.raidSettling) return;
     void this.evaluateRaid();
   }
