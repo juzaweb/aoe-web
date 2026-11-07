@@ -15,6 +15,7 @@ import { UnitState } from '../schema/UnitState.js';
 import { arrivalPoint, ensurePortalFor, findOwnPortal } from './portals.js';
 import { claimSpectatorWatch } from './spectatorWatch.js';
 import { WorldRoom } from './WorldRoom.js';
+import { normalizeLocale, render, type Locale } from '../i18n/index.js';
 import type { RoomAuth } from './identity.js';
 
 /**
@@ -101,7 +102,7 @@ export class KingdomRoom extends WorldRoom {
     if (typeof ownerId !== 'string' || ownerId.length === 0 || ownerId !== auth.userId) {
       throw new ServerError(
         ErrorCode.AUTH_FAILED,
-        'Vương quốc này không thuộc tài khoản đang đăng nhập.'
+        'This kingdom belongs to a different account.'
       );
     }
 
@@ -110,6 +111,8 @@ export class KingdomRoom extends WorldRoom {
 
   onCreate(options: any) {
     super.onCreate(options);
+    // I18N: `SET_LOCALE` is registered in `WorldRoom.onCreate` and stored in the
+    // shared `localeBySession`, so this room is covered too.
 
     this.onCommandMessage(NetworkMessage.RAID_RETREAT, (client: Client) => {
       void this.handleRetreat(client);
@@ -117,6 +120,10 @@ export class KingdomRoom extends WorldRoom {
   }
 
   async onJoin(client: Client, options: any) {
+    // I18N: remember the language before the first possible throw, so both the
+    // raid and spectate paths can localize their refusals.
+    const locale = normalizeLocale(options?.locale);
+    if (locale) this.localeBySession.set(client.sessionId, locale);
     const raidId = typeof options?.raidId === 'string' ? options.raidId : '';
 
     // A watcher enters the same room as the defender, but takes no part in the
@@ -141,10 +148,16 @@ export class KingdomRoom extends WorldRoom {
       // stale. A client that saw an auth code would drop the player's session
       // and send them back to the login screen.
       if (!raid || raid.attackerId !== auth?.userId || raid.defenderId !== defenderId) {
-        throw new ServerError(ErrorCode.APPLICATION_ERROR, 'Trận đánh này không còn hiệu lực.');
+        throw new ServerError(
+          ErrorCode.APPLICATION_ERROR,
+          this.localizedFor(client, 'This raid is no longer valid.')
+        );
       }
       if (raid.status !== 'ACTIVE') {
-        throw new ServerError(ErrorCode.APPLICATION_ERROR, 'Trận đánh này đã kết thúc.');
+        throw new ServerError(
+          ErrorCode.APPLICATION_ERROR,
+          this.localizedFor(client, 'This raid has ended.')
+        );
       }
 
       this.raidId = raid.id;
@@ -178,12 +191,15 @@ export class KingdomRoom extends WorldRoom {
     const ownerId = typeof options?.ownerId === 'string' ? options.ownerId : '';
 
     if (!viewerId || !ownerId) {
-      throw new ServerError(ErrorCode.APPLICATION_ERROR, 'Không xác định được vương quốc cần xem.');
+      throw new ServerError(
+        ErrorCode.APPLICATION_ERROR,
+        this.localizedFor(client, 'The kingdom to watch could not be resolved.')
+      );
     }
     if (ownerId === viewerId) {
       throw new ServerError(
         ErrorCode.APPLICATION_ERROR,
-        'Bạn đang ở trong vương quốc của chính mình.'
+        this.localizedFor(client, 'You are already in your own kingdom.')
       );
     }
 
@@ -191,7 +207,7 @@ export class KingdomRoom extends WorldRoom {
     if (!target || target.townCenterLevel <= 0) {
       throw new ServerError(
         ErrorCode.APPLICATION_ERROR,
-        'Vương quốc này không tồn tại hoặc chưa có Nhà chính.'
+        this.localizedFor(client, 'This kingdom does not exist or has no Town Center.')
       );
     }
 
@@ -203,12 +219,15 @@ export class KingdomRoom extends WorldRoom {
       );
     }
     if (!this.isZoneOwner() || this.ownerScope !== ownerId) {
-      throw new ServerError(ErrorCode.APPLICATION_ERROR, 'Bản đồ này đã được thay thế. Hãy thử lại.');
+      throw new ServerError(
+        ErrorCode.APPLICATION_ERROR,
+        this.localizedFor(client, 'This map room has been replaced. Please rejoin.')
+      );
     }
     if (!this.townCenterOf(ownerId)) {
       throw new ServerError(
         ErrorCode.APPLICATION_ERROR,
-        'Vương quốc này không còn Nhà chính để xem.'
+        this.localizedFor(client, 'This kingdom no longer has a Town Center to watch.')
       );
     }
 
@@ -218,7 +237,7 @@ export class KingdomRoom extends WorldRoom {
     if (!claimSpectatorWatch(viewerId, client.sessionId)) {
       throw new ServerError(
         ErrorCode.APPLICATION_ERROR,
-        'Bạn đang quan sát một vương quốc khác. Hãy đóng cửa sổ đó trước.'
+        this.localizedFor(client, 'You are already watching another kingdom. Close that window first.')
       );
     }
 
@@ -403,7 +422,7 @@ export class KingdomRoom extends WorldRoom {
   private async handleRetreat(client: Client): Promise<void> {
     const ownerId = (client.auth as Partial<RoomAuth> | undefined)?.userId;
     if (!this.raidId || ownerId !== this.raidAttackerId) {
-      this.rejectCommand(client, 'Bạn không có quyền rút quân ở đây.', RejectCode.FORBIDDEN);
+      this.rejectCommand(client, 'You cannot retreat here.', RejectCode.FORBIDDEN);
       return;
     }
 
@@ -413,7 +432,7 @@ export class KingdomRoom extends WorldRoom {
     const portal =
       findOwnPortal(this.state, ownerId) ?? ensurePortalFor(this.state, ownerId);
     if (!portal) {
-      this.rejectCommand(client, 'Không tìm thấy cổng rút quân.', RejectCode.GONE);
+      this.rejectCommand(client, 'Retreat gate not found.', RejectCode.GONE);
       return;
     }
 
@@ -490,7 +509,7 @@ export class KingdomRoom extends WorldRoom {
 
       if (defenderId) {
         this.sendToOwner(defenderId, NetworkMessage.SYSTEM_ANNOUNCEMENT, {
-          message: this.announcementFor(settled.outcome, settled.loot)
+          message: this.announcementFor(settled.outcome, settled.loot, defenderId)
         });
       }
 
@@ -518,15 +537,36 @@ export class KingdomRoom extends WorldRoom {
     }
   }
 
-  private announcementFor(outcome: string, loot: Resources): string {
-    if (outcome === 'ATTACKER_WON') {
-      return (
-        'Vương quốc bị tập kích! Mất ' +
-        `${loot.wood} gỗ, ${loot.food} lương, ${loot.gold} vàng, ${loot.stone} đá.`
-      );
+  /**
+   * I18N: raid announcements are looked up by outcome key and localized for the
+   * defending side's session language; the English rendering is the fallback.
+   */
+  private announcementFor(outcome: string, loot: Resources, ownerId?: string): string {
+    let locale: Locale | null = null;
+    if (ownerId) {
+      this.clients.forEach((client) => {
+        if (locale) return;
+        const auth = client.auth as Partial<RoomAuth> | undefined;
+        if (auth?.userId === ownerId) locale = this.localeBySession.get(client.sessionId) ?? null;
+      });
     }
-    if (outcome === 'DEFENDER_WON') return 'Bạn đã đẩy lùi cuộc tập kích.';
-    return 'Quân tập kích đã rút lui.';
+    const fallback =
+      outcome === 'ATTACKER_WON'
+        ? `Your kingdom was raided! Lost ${loot.wood} wood, ${loot.food} food, ${loot.gold} gold, ${loot.stone} stone.`
+        : outcome === 'DEFENDER_WON'
+          ? 'You repelled the raid.'
+          : 'The raiding army has withdrawn.';
+    const key =
+      outcome === 'ATTACKER_WON'
+        ? 'raid.announce.attackerWon'
+        : outcome === 'DEFENDER_WON'
+          ? 'raid.announce.defenderWon'
+          : 'raid.announce.retreated';
+    return render(locale, {
+      key,
+      params: { wood: loot.wood, food: loot.food, gold: loot.gold, stone: loot.stone },
+      fallback
+    });
   }
 
   /** Sends a message to every socket of one account in this room. */

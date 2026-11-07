@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { prisma } from './DatabaseService.js';
+import { LocalizedSpec } from '../i18n/index.js';
 import { normalizeForComparison } from '../utils/normalizeName.js';
 
 const PASSWORD_KEY_LENGTH = 64;
@@ -45,11 +46,13 @@ interface UserRow {
  */
 export class AuthError extends Error {
   public readonly status: number;
+  readonly spec?: LocalizedSpec;
 
-  constructor(message: string, status = 400) {
+  constructor(message: string, status = 400, spec?: LocalizedSpec) {
     super(message);
     this.name = 'AuthError';
     this.status = status;
+    this.spec = spec;
   }
 }
 
@@ -77,7 +80,7 @@ export class AuthService {
 
     const existing = await this.findByUsername(username);
     if (existing) {
-      throw new AuthError('Tên đăng nhập đã được sử dụng.', 409);
+      throw new AuthError('That username is already taken.', 409);
     }
 
     // `Player.name` is the display name shown in-game and stays unique so two
@@ -92,14 +95,14 @@ export class AuthService {
       SELECT "name" FROM "players"
     `;
     if (existingPlayers.some((p) => normalizeForComparison(p.name) === displayNameKey)) {
-      throw new AuthError('Tên lãnh chúa này đã có người sử dụng.', 409);
+      throw new AuthError('That lord name is already taken.', 409);
     }
 
     const nameTaken = await prisma.$queryRaw<{ id: string }[]>`
       SELECT "id" FROM "users" WHERE "display_name_key" = ${displayNameKey} LIMIT 1
     `;
     if (nameTaken.length > 0) {
-      throw new AuthError('Tên lãnh chúa này đã có người sử dụng.', 409);
+      throw new AuthError('That lord name is already taken.', 409);
     }
 
     const id = crypto.randomUUID();
@@ -113,7 +116,7 @@ export class AuthService {
     } catch {
       // A unique index raced with another registration; report it as a conflict
       // rather than leaking the driver's error text.
-      throw new AuthError('Tên đăng nhập hoặc tên lãnh chúa đã được sử dụng.', 409);
+      throw new AuthError('That username or lord name is already taken.', 409);
     }
 
     const user: AuthUser = { id, username, displayName };
@@ -137,7 +140,7 @@ export class AuthService {
     const valid = await this.verifyPassword(password, storedHash);
 
     if (!row || !valid) {
-      throw new AuthError('Sai tên đăng nhập hoặc mật khẩu.', 401);
+      throw new AuthError('Wrong username or password.', 401);
     }
 
     await prisma.$executeRaw`
@@ -318,7 +321,7 @@ export class AuthService {
     const username = typeof value === 'string' ? value.trim().toLowerCase() : '';
     if (!USERNAME_PATTERN.test(username)) {
       throw new AuthError(
-        'Tên đăng nhập phải dài 3-24 ký tự, chỉ gồm chữ thường, số và _ . -',
+        'Usernames are 3-24 characters: lowercase letters, digits and _ . -',
         422
       );
     }
@@ -328,10 +331,13 @@ export class AuthService {
   private static validatePassword(value: unknown): string {
     const password = typeof value === 'string' ? value : '';
     if (password.length < MIN_PASSWORD_LENGTH || password.length > MAX_PASSWORD_LENGTH) {
-      throw new AuthError(
-        `Mật khẩu phải có từ ${MIN_PASSWORD_LENGTH} đến ${MAX_PASSWORD_LENGTH} ký tự.`,
-        422
-      );
+      // I18N: carry a key + params; the HTTP boundary renders the language.
+      const fallback = `The password must be ${MIN_PASSWORD_LENGTH} to ${MAX_PASSWORD_LENGTH} characters long.`;
+      throw new AuthError(fallback, 422, {
+        key: 'auth.passwordLength',
+        params: { min: MIN_PASSWORD_LENGTH, max: MAX_PASSWORD_LENGTH },
+        fallback
+      });
     }
     return password;
   }
@@ -343,7 +349,7 @@ export class AuthService {
     // silently rewritten to a space, hiding the fact that the player tried to
     // inject a log line. Reject it instead of guessing their intent.
     if (FORBIDDEN_NAME_CHARS.test(raw)) {
-      throw new AuthError('Tên lãnh chúa chứa ký tự không hợp lệ.', 422);
+      throw new AuthError('The lord name contains invalid characters.', 422);
     }
 
     // Collapse inner whitespace so "Đại  Việt" and "Đại Việt" cannot both exist
@@ -351,10 +357,13 @@ export class AuthService {
     const displayName = raw.replace(/\s+/g, ' ');
 
     if (displayName.length < 2 || displayName.length > MAX_DISPLAY_NAME_LENGTH) {
-      throw new AuthError(
-        `Tên lãnh chúa phải có từ 2 đến ${MAX_DISPLAY_NAME_LENGTH} ký tự.`,
-        422
-      );
+      // I18N: carry a key + params; the HTTP boundary renders the language.
+      const fallback = `The lord name must be 2 to ${MAX_DISPLAY_NAME_LENGTH} characters long.`;
+      throw new AuthError(fallback, 422, {
+        key: 'auth.displayNameLength',
+        params: { max: MAX_DISPLAY_NAME_LENGTH },
+        fallback
+      });
     }
 
     return displayName;

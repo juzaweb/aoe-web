@@ -14,6 +14,7 @@ import {
   zoneForOwner
 } from '@chien-quoc/shared';
 import { accountSessions } from '../rooms/AccountSessions.js';
+import { LocalizedSpec } from '../i18n/index.js';
 import { DatabaseService, prisma } from './DatabaseService.js';
 
 /**
@@ -35,12 +36,12 @@ export interface SpectateTarget {
 
 /** A rejection the HTTP layer can turn into a 4xx with a readable message. */
 export class RaidError extends Error {
-  constructor(
-    message: string,
-    readonly status: number = 400
-  ) {
+  readonly spec?: LocalizedSpec;
+
+  constructor(message: string, readonly status: number = 400, spec?: LocalizedSpec) {
     super(message);
     this.name = 'RaidError';
+    this.spec = spec;
   }
 }
 
@@ -178,9 +179,9 @@ export class RaidService {
       const shieldUntil = shieldAt > now ? shieldAt : 0;
 
       let blockReason: string | undefined;
-      if (shieldUntil > now) blockReason = 'Đang được bảo vệ';
-      else if (lockedUntil > now) blockReason = 'Bạn vừa thua nước này';
-      else if (contestedDefenders.has(p.id)) blockReason = 'Đang bị nước khác tấn công';
+      if (shieldUntil > now) blockReason = 'Protected';
+      else if (lockedUntil > now) blockReason = 'Recently defeated by you';
+      else if (contestedDefenders.has(p.id)) blockReason = 'Under attack by another empire';
 
       return {
         userId: p.id,
@@ -208,15 +209,22 @@ export class RaidService {
     await DatabaseService.initialize();
 
     const { attackerId, defenderId } = input;
-    if (!attackerId || !defenderId) throw new RaidError('Thiếu thông tin trận đánh.');
-    if (attackerId === defenderId) throw new RaidError('Không thể tấn công chính mình.');
+    if (!attackerId || !defenderId) throw new RaidError('Missing raid details.');
+    if (attackerId === defenderId) throw new RaidError('You cannot attack yourself.');
 
     const unitIds = Array.isArray(input.unitIds) ? [...new Set(input.unitIds)] : [];
     if (unitIds.length < RAID_MIN_UNITS) {
-      throw new RaidError('Hãy chọn ít nhất một đơn vị để tấn công.');
+      throw new RaidError('Select at least one unit to attack.');
     }
     if (unitIds.length > RAID_MAX_UNITS) {
-      throw new RaidError(`Chỉ được mang tối đa ${RAID_MAX_UNITS} đơn vị mỗi trận.`);
+      // I18N: the locale is unknown this deep, so carry a key + params and let
+      // the HTTP boundary render the active language.
+      const fallback = `At most ${RAID_MAX_UNITS} units can be brought per raid.`;
+      throw new RaidError(fallback, 400, {
+        key: 'raid.maxUnits',
+        params: { n: RAID_MAX_UNITS },
+        fallback
+      });
     }
 
     const [attacker, defender] = await Promise.all([
@@ -230,32 +238,32 @@ export class RaidService {
       })
     ]);
 
-    if (!attacker) throw new RaidError('Không tìm thấy nước của bạn.', 404);
-    if (!defender) throw new RaidError('Không tìm thấy nước cần tấn công.', 404);
-    if (attacker.townCenterLevel <= 0) throw new RaidError('Bạn chưa có Nhà chính.');
-    if (defender.townCenterLevel <= 0) throw new RaidError('Nước này chưa có Nhà chính.');
+    if (!attacker) throw new RaidError('Your empire could not be found.', 404);
+    if (!defender) throw new RaidError('The target empire could not be found.', 404);
+    if (attacker.townCenterLevel <= 0) throw new RaidError('You have no Town Center yet.');
+    if (defender.townCenterLevel <= 0) throw new RaidError('This target has no Town Center yet.');
 
     if (!isRaidLevelInRange(attacker.townCenterLevel, defender.townCenterLevel)) {
-      throw new RaidError('Chênh lệch cấp Nhà chính quá lớn để tập kích.');
+      throw new RaidError('The Town Center level difference is too large to raid.');
     }
 
     const now = Date.now();
     if ((defender.shieldUntil ?? 0) > now) {
-      throw new RaidError('Nước này đang được bảo vệ, hãy chọn mục tiêu khác.');
+      throw new RaidError('This empire is protected; pick another target.');
     }
 
     const lock = await prisma.raidLock.findUnique({
       where: { attackerId_defenderId: { attackerId, defenderId } }
     });
     if ((lock?.unlockAt ?? 0) > now) {
-      throw new RaidError('Bạn vừa thua nước này; phải chờ hết thời gian khoá.');
+      throw new RaidError('You just lost to this empire; wait for the lock to expire.');
     }
 
     const active = await prisma.raid.findFirst({
       where: { defenderId, status: 'ACTIVE' },
       select: { id: true }
     });
-    if (active) throw new RaidError('Nước này đang bị tấn công.');
+    if (active) throw new RaidError('This empire is already under attack.');
 
     const homeZone = zoneForOwner(attackerId);
     const units = await prisma.unit.findMany({
@@ -266,7 +274,7 @@ export class RaidService {
     // Stale or foreign ids are dropped, the same way every other group order
     // treats them; the raid still happens with whoever is left.
     if (units.length === 0) {
-      throw new RaidError('Không có đơn vị nào sẵn sàng để tấn công.');
+      throw new RaidError('No unit is ready to attack.');
     }
 
     const raidId = crypto.randomUUID();
@@ -304,7 +312,7 @@ export class RaidService {
     } catch (err: any) {
       // The partial unique index is the last line of defence against two
       // simultaneous raids on one defender.
-      if (err?.code === 'P2002') throw new RaidError('Nước này đang bị tấn công.');
+      if (err?.code === 'P2002') throw new RaidError('This empire is already under attack.');
       throw err;
     }
 

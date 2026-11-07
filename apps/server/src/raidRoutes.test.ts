@@ -128,7 +128,7 @@ describe('POST /raid/start', () => {
 
   it('maps a rule violation to its status and Vietnamese message', async () => {
     const { RaidError } = await import('./services/RaidService.js');
-    startRaid.mockRejectedValue(new RaidError('Nước này đang bị tấn công.'));
+    startRaid.mockRejectedValue(new RaidError('This empire is already under attack.'));
 
     const res = await fetch(`${baseUrl}/raid/start`, {
       method: 'POST',
@@ -137,7 +137,7 @@ describe('POST /raid/start', () => {
     });
 
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: 'Nước này đang bị tấn công.' });
+    expect(await res.json()).toEqual({ error: 'This empire is already under attack.' });
   });
 
   it('returns the raid id and the room to join', async () => {
@@ -199,7 +199,7 @@ describe('POST /raid/retreat', () => {
     });
 
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: 'Hãy rút quân trong trận đánh.' });
+    expect(await res.json()).toEqual({ error: 'Retreat from inside the raid.' });
     expect(retreatRaid).not.toHaveBeenCalled();
   });
 

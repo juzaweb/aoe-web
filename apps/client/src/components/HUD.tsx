@@ -1,6 +1,8 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Axe, Drumstick, Coins, Mountain, Users, ShieldCheck, Wifi, LogOut, Map as MapIcon, Swords } from 'lucide-react';
 import { MOBILE_MIN_TAP_PX } from '../device/inputMode.js';
+import { LanguageSwitcher } from '../i18n/LanguageSwitcher.js';
 
 interface HUDProps {
   playerName: string;
@@ -77,126 +79,133 @@ export const HUD: React.FC<HUDProps> = ({
   inRaid = false,
   onRetreat
 }) => {
-  const zoneIsBattle = zoneLabel !== 'VƯƠNG QUỐC';
+  const { t } = useTranslation();
+  const zoneIsBattle = inRaid;
 
   if (compact) {
-    return (
-      <div className="pointer-events-none absolute left-[calc(env(safe-area-inset-left)+0.5rem)] right-[calc(env(safe-area-inset-right)+0.5rem)] top-[calc(env(safe-area-inset-top)+0.25rem)] z-20 flex select-none items-center gap-1.5">
-        {/* Identity: a dot, a name short enough for a thumb-wide screen, and the
-            map colour as a dot so the zone chip's text can be dropped. */}
-        <div className="pointer-events-auto flex items-center gap-1.5 rounded-md border border-amber-600/70 bg-slate-900/90 px-2 py-1 shadow-lg backdrop-blur-sm">
-          <div
-            className="h-3 w-3 shrink-0 rounded-full border border-white/50"
-            style={{ backgroundColor: playerColor || '#3b82f6' }}
-          />
-          <span className="font-medieval max-w-[68px] truncate text-xs font-bold tracking-wide text-amber-300">
-            {playerName || 'Emperor'}
-          </span>
+    const compactContent = (
+    <>
+      {/* Identity: a dot, a name short enough for a thumb-wide screen, and the
+          map colour as a dot so the zone chip's text can be dropped. */}
+      <div className="pointer-events-auto flex items-center gap-1.5 rounded-md border border-amber-600/70 bg-slate-900/90 px-2 py-1 shadow-lg backdrop-blur-sm">
+        <div
+          className="h-3 w-3 shrink-0 rounded-full border border-white/50"
+          style={{ backgroundColor: playerColor || '#3b82f6' }}
+        />
+        <span className="font-medieval max-w-[68px] truncate text-xs font-bold tracking-wide text-amber-300">
+          {playerName || t('hud.emperor')}
+        </span>
+        <span
+          className={`h-2 w-2 shrink-0 rounded-full ${
+            zoneIsBattle ? 'bg-red-500' : 'bg-emerald-500'
+          }`}
+          title={zoneLabel}
+        />
+        {underAttack && (
           <span
-            className={`h-2 w-2 shrink-0 rounded-full ${
-              zoneIsBattle ? 'bg-red-500' : 'bg-emerald-500'
-            }`}
-            title={zoneLabel}
+            className="h-2 w-2 shrink-0 rounded-full bg-red-500 animate-pulse"
+            title={t('hud.underAttack')}
           />
-          {underAttack && (
-            <span
-              className="h-2 w-2 shrink-0 rounded-full bg-red-500 animate-pulse"
-              title="Đang bị tấn công"
-            />
-          )}
-        </div>
+        )}
+      </div>
 
-        {/* Resources: icon + number only, dividers instead of labels. */}
-        <div className="pointer-events-auto flex items-center gap-2 rounded-md border border-amber-700/80 bg-slate-950/90 px-2 py-1 shadow-2xl backdrop-blur-md">
-          <ResourceChip icon={<Axe size={13} className="text-amber-400" />} value={wood} label="Gỗ" />
-          <ResourceChip
-            icon={<Drumstick size={13} className="text-red-400" />}
-            value={food}
-            label="Lương thực"
-          />
-          <ResourceChip icon={<Coins size={13} className="text-yellow-400" />} value={gold} label="Vàng" />
-          <ResourceChip icon={<Mountain size={13} className="text-slate-400" />} value={stone} label="Đá" />
+      {/* Resources: icon + number only, dividers instead of labels. */}
+      <div className="pointer-events-auto flex items-center gap-2 rounded-md border border-amber-700/80 bg-slate-950/90 px-2 py-1 shadow-2xl backdrop-blur-md">
+        <ResourceChip icon={<Axe size={13} className="text-amber-400" />} value={wood} label={t('hud.wood')} />
+        <ResourceChip
+          icon={<Drumstick size={13} className="text-red-400" />}
+          value={food}
+          label={t('hud.food')}
+        />
+        <ResourceChip icon={<Coins size={13} className="text-yellow-400" />} value={gold} label={t('hud.gold')} />
+        <ResourceChip icon={<Mountain size={13} className="text-slate-400" />} value={stone} label={t('hud.stone')} />
 
-          <div className="h-3.5 w-px bg-slate-700" />
+        <div className="h-3.5 w-px bg-slate-700" />
 
-          <span className="flex items-center gap-1" title="Dân số">
-            <ShieldCheck size={13} className="text-sky-400" />
-            <span
-              className={`text-[11px] font-semibold tabular-nums ${
-                population >= populationCap ? 'text-red-400' : 'text-slate-100'
-              }`}
-            >
-              {population}/{populationCap}
-            </span>
-          </span>
-
-          <div className="h-3.5 w-px bg-slate-700" />
-
-          <button
-            type="button"
-            onClick={onSelectIdleVillager}
-            disabled={idleVillagers === 0}
-            data-idle-villagers={idleVillagers}
-            title="Nông dân đang rảnh"
-            style={{ minHeight: MOBILE_MIN_TAP_PX, minWidth: MOBILE_MIN_TAP_PX }}
-            className={`flex items-center justify-center gap-1 ${
-              idleVillagers > 0 ? 'cursor-pointer text-amber-300' : 'cursor-default text-slate-500'
+        <span className="flex items-center gap-1" title={t('hud.population')}>
+          <ShieldCheck size={13} className="text-sky-400" />
+          <span
+            className={`text-[11px] font-semibold tabular-nums ${
+              population >= populationCap ? 'text-red-400' : 'text-slate-100'
             }`}
           >
-            <Users size={13} className={idleVillagers > 0 ? 'animate-pulse' : ''} />
-            <span className="text-[11px] font-semibold tabular-nums">{idleVillagers}</span>
+            {population}/{populationCap}
+          </span>
+        </span>
+
+        <div className="h-3.5 w-px bg-slate-700" />
+
+        <button
+          type="button"
+          onClick={onSelectIdleVillager}
+          disabled={idleVillagers === 0}
+          data-idle-villagers={idleVillagers}
+          title={t('hud.idleVillagers')}
+          style={{ minHeight: MOBILE_MIN_TAP_PX, minWidth: MOBILE_MIN_TAP_PX }}
+          className={`flex items-center justify-center gap-1 ${
+            idleVillagers > 0 ? 'cursor-pointer text-amber-300' : 'cursor-default text-slate-500'
+          }`}
+        >
+          <Users size={13} className={idleVillagers > 0 ? 'animate-pulse' : ''} />
+          <span className="text-[11px] font-semibold tabular-nums">{idleVillagers}</span>
+        </button>
+      </div>
+
+      <div className="ml-auto pointer-events-auto flex items-center gap-1.5">
+        <LanguageSwitcher compact className="pointer-events-auto opacity-80" />
+        {inRaid ? (
+          <button
+            type="button"
+            onClick={onRetreat}
+            title={t('hud.retreat')}
+            aria-label={t('hud.retreat')}
+            style={{ minHeight: MOBILE_MIN_TAP_PX, minWidth: MOBILE_MIN_TAP_PX }}
+            className="flex items-center justify-center rounded-md border border-red-700 bg-red-950/80 px-2 text-red-200"
+          >
+            <Swords size={15} />
           </button>
-        </div>
-
-        <div className="ml-auto pointer-events-auto flex items-center gap-1.5">
-          {inRaid ? (
+        ) : (
+          onOpenWorldMap && (
             <button
               type="button"
-              onClick={onRetreat}
-              title="Rút quân"
-              aria-label="Rút quân"
+              onClick={onOpenWorldMap}
+              title={t('hud.worldMap')}
+              aria-label={t('hud.worldMap')}
               style={{ minHeight: MOBILE_MIN_TAP_PX, minWidth: MOBILE_MIN_TAP_PX }}
-              className="flex items-center justify-center rounded-md border border-red-700 bg-red-950/80 px-2 text-red-200"
+              className="flex items-center justify-center rounded-md border border-amber-700 bg-slate-900/90 px-2 text-amber-300"
             >
-              <Swords size={15} />
+              <MapIcon size={15} />
             </button>
-          ) : (
-            onOpenWorldMap && (
-              <button
-                type="button"
-                onClick={onOpenWorldMap}
-                title="Bản đồ thế giới"
-                aria-label="Bản đồ thế giới"
-                style={{ minHeight: MOBILE_MIN_TAP_PX, minWidth: MOBILE_MIN_TAP_PX }}
-                className="flex items-center justify-center rounded-md border border-amber-700 bg-slate-900/90 px-2 text-amber-300"
-              >
-                <MapIcon size={15} />
-              </button>
-            )
-          )}
-        </div>
+          )
+        )}
+      </div>
 
-        <div className="pointer-events-auto flex items-center gap-1.5 rounded-md border border-slate-700/80 bg-slate-900/90 px-2 py-1 backdrop-blur-sm">
-          <span
-            className={`h-2 w-2 rounded-full ${
-              isConnected ? 'bg-emerald-400' : 'animate-pulse bg-red-500'
-            }`}
-            title={isConnected ? 'ONLINE' : 'OFFLINE'}
-          />
-          <Wifi size={13} className={isConnected ? 'text-emerald-400' : 'text-red-500'} />
-          {onLeaveGame && (
-            <button
-              type="button"
-              onClick={onLeaveGame}
-              title="Đăng xuất"
-              aria-label="Đăng xuất"
-              style={{ minHeight: MOBILE_MIN_TAP_PX, minWidth: MOBILE_MIN_TAP_PX }}
-              className="ml-0.5 flex items-center justify-center rounded border border-slate-700 text-slate-300 active:border-amber-400"
-            >
-              <LogOut size={14} />
-            </button>
-          )}
-        </div>
+      <div className="pointer-events-auto flex items-center gap-1.5 rounded-md border border-slate-700/80 bg-slate-900/90 px-2 py-1 backdrop-blur-sm">
+        <span
+          className={`h-2 w-2 rounded-full ${
+            isConnected ? 'bg-emerald-400' : 'animate-pulse bg-red-500'
+          }`}
+          title={isConnected ? t('hud.online') : t('hud.offline')}
+        />
+        <Wifi size={13} className={isConnected ? 'text-emerald-400' : 'text-red-500'} />
+        {onLeaveGame && (
+          <button
+            type="button"
+            onClick={onLeaveGame}
+            title={t('hud.logout')}
+            aria-label={t('hud.logout')}
+            style={{ minHeight: MOBILE_MIN_TAP_PX, minWidth: MOBILE_MIN_TAP_PX }}
+            className="ml-0.5 flex items-center justify-center rounded border border-slate-700 text-slate-300 active:border-amber-400"
+          >
+            <LogOut size={14} />
+          </button>
+        )}
+      </div>
+    </>
+    )
+    return (
+      <div className="pointer-events-none absolute left-[calc(env(safe-area-inset-left)+0.5rem)] right-[calc(env(safe-area-inset-right)+0.5rem)] top-[calc(env(safe-area-inset-top)+0.25rem)] z-20 flex select-none items-center gap-1.5">
+        {compactContent}
       </div>
     );
   }
@@ -210,7 +219,7 @@ export const HUD: React.FC<HUDProps> = ({
           style={{ backgroundColor: playerColor || '#3b82f6' }}
         />
         <span className="font-medieval text-amber-300 font-bold tracking-wide text-base">
-          {playerName || 'Emperor'}
+          {playerName || t('hud.emperor')}
         </span>
         <span
           className={`text-[9px] font-bold tracking-widest px-1.5 py-0.5 rounded border ${
@@ -227,7 +236,7 @@ export const HUD: React.FC<HUDProps> = ({
             onClick={onRetreat}
             className="flex items-center gap-1 rounded border border-red-600/80 bg-red-950/60 px-2 py-1 text-[11px] font-semibold text-red-200 hover:border-red-400"
           >
-            <Swords size={13} /> Rút quân
+            <Swords size={13} /> {t('hud.retreat')}
           </button>
         ) : (
           <button
@@ -235,7 +244,7 @@ export const HUD: React.FC<HUDProps> = ({
             onClick={onOpenWorldMap}
             className="flex items-center gap-1 rounded border border-amber-600/80 bg-amber-950/40 px-2 py-1 text-[11px] font-semibold text-amber-200 hover:border-amber-400"
           >
-            <MapIcon size={13} /> Bản đồ thế giới
+            <MapIcon size={13} /> {t('hud.worldMap')}
           </button>
         )}
       </div>
@@ -243,11 +252,11 @@ export const HUD: React.FC<HUDProps> = ({
       {/* Central Resource Bar (AoE Classic Style) */}
       <div className="flex items-center gap-5 bg-slate-950/85 border-2 border-amber-700/80 rounded-lg px-6 py-2 shadow-2xl backdrop-blur-md pointer-events-auto">
         {/* Wood */}
-        <div className="flex items-center gap-2" title="Gỗ (Wood)">
+        <div className="flex items-center gap-2" title={t('hud.woodTitle')}>
           <div className="w-7 h-7 rounded bg-amber-950/70 border border-amber-600/50 flex items-center justify-center p-0.5 shadow-inner">
             <img
               src="/assets/icons/wood.png?v=3"
-              alt="Gỗ"
+              alt={t('hud.wood')}
               className="w-full h-full object-contain filter drop-shadow"
               onError={(e) => {
                 (e.target as HTMLElement).style.display = 'none';
@@ -258,11 +267,11 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
 
         {/* Food */}
-        <div className="flex items-center gap-2" title="Thực lương (Food)">
+        <div className="flex items-center gap-2" title={t('hud.foodTitle')}>
           <div className="w-7 h-7 rounded bg-red-950/70 border border-red-600/50 flex items-center justify-center p-0.5 shadow-inner">
             <img
               src="/assets/icons/food.png?v=3"
-              alt="Lương thực"
+              alt={t('hud.food')}
               className="w-full h-full object-contain filter drop-shadow"
               onError={(e) => {
                 (e.target as HTMLElement).style.display = 'none';
@@ -273,11 +282,11 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
 
         {/* Gold */}
-        <div className="flex items-center gap-2" title="Vàng (Gold)">
+        <div className="flex items-center gap-2" title={t('hud.goldTitle')}>
           <div className="w-7 h-7 rounded bg-yellow-950/70 border border-yellow-600/50 flex items-center justify-center p-0.5 shadow-inner">
             <img
               src="/assets/icons/gold.png?v=3"
-              alt="Vàng"
+              alt={t('hud.gold')}
               className="w-full h-full object-contain filter drop-shadow"
               onError={(e) => {
                 (e.target as HTMLElement).style.display = 'none';
@@ -288,11 +297,11 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
 
         {/* Stone */}
-        <div className="flex items-center gap-2" title="Đá (Stone)">
+        <div className="flex items-center gap-2" title={t('hud.stoneTitle')}>
           <div className="w-7 h-7 rounded bg-slate-800/70 border border-slate-500/50 flex items-center justify-center p-0.5 shadow-inner">
             <img
               src="/assets/icons/stone.png?v=3"
-              alt="Đá"
+              alt={t('hud.stone')}
               className="w-full h-full object-contain filter drop-shadow"
               onError={(e) => {
                 (e.target as HTMLElement).style.display = 'none';
@@ -306,11 +315,11 @@ export const HUD: React.FC<HUDProps> = ({
         <div className="h-5 w-px bg-slate-700" />
 
         {/* Population */}
-        <div className="flex items-center gap-2" title="Dân số (Population)">
+        <div className="flex items-center gap-2" title={t('hud.populationTitle')}>
           <div className="w-7 h-7 rounded bg-sky-950/70 border border-sky-600/50 flex items-center justify-center p-0.5 shadow-inner">
             <img
               src="/assets/icons/population.png?v=3"
-              alt="Dân số"
+              alt={t('hud.population')}
               className="w-full h-full object-contain filter drop-shadow"
               onError={(e) => {
                 (e.target as HTMLElement).style.display = 'none';
@@ -336,7 +345,7 @@ export const HUD: React.FC<HUDProps> = ({
           onClick={onSelectIdleVillager}
           disabled={idleVillagers === 0}
           data-idle-villagers={idleVillagers}
-          title="Nông dân đang rảnh (phím .)"
+          title={t('hud.idleVillagersTitle')}
           className={`flex items-center gap-1.5 transition-colors ${
             idleVillagers > 0
               ? 'text-amber-300 hover:text-amber-200 cursor-pointer'
@@ -352,13 +361,14 @@ export const HUD: React.FC<HUDProps> = ({
       <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-700/80 rounded-md px-3 py-2 text-xs backdrop-blur-sm pointer-events-auto">
         {underAttack && (
           <span className="text-xs font-bold text-red-200 border border-red-500/80 bg-red-950/80 px-1.5 py-0.5 rounded animate-pulse">
-            ĐANG BỊ TẤN CÔNG
+            {t('hud.underAttack')}
           </span>
         )}
         <Wifi size={14} className={isConnected ? 'text-emerald-400' : 'text-red-500 animate-pulse'} />
         <span className={isConnected ? 'text-emerald-400' : 'text-red-400'}>
-          {isConnected ? 'ONLINE' : 'OFFLINE'}
+          {isConnected ? t('hud.online') : t('hud.offline')}
         </span>
+        <LanguageSwitcher compact />
       </div>
     </div>
   );

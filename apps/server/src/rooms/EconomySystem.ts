@@ -1,4 +1,5 @@
 import { Client } from '@colyseus/core';
+import type { LocalizedSpec } from '../i18n/index.js';
 import {
   BUILDING_BLUEPRINTS,
   BuildingType,
@@ -32,7 +33,7 @@ export interface EconomyPorts {
   /** Falls back to the next queued waypoint, or IDLE. */
   resumeQueuedWaypoint(unit: UnitState): void;
   /** Sends an `ERROR_NOTIFICATION` to the client. */
-  rejectCommand(client: Client, message: string, code: RejectCode): void;
+  rejectCommand(client: Client, message: string | LocalizedSpec, code: RejectCode): void;
   /**
    * A node just ran dry. The room keeps the empty node in state (so the client
    * can hide it) and schedules its refill instead of deleting the row.

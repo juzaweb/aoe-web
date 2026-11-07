@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Map as MapIcon, X } from 'lucide-react';
 import { Room } from '@colyseus/sdk';
 import { MAP_GRID_HEIGHT, MAP_GRID_WIDTH, TILE_HEIGHT, TILE_WIDTH, screenToGrid, terrainForZone } from '@chien-quoc/shared';
@@ -156,6 +157,7 @@ export const Minimap: React.FC<MinimapProps> = ({
   onCommandAtGrid,
   compact = false
 }) => {
+  const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** MOB-06: compact only — the radar is collapsed behind its button by default. */
   const [open, setOpen] = useState(false);
@@ -447,7 +449,7 @@ export const Minimap: React.FC<MinimapProps> = ({
   };
 
   const zoneKind = (room?.state as MinimapState | undefined)?.zoneId;
-  const zoneLabel = zoneKind === 'battlefield' ? 'CHIẾN TRƯỜNG' : 'VƯƠNG QUỐC';
+  const zoneLabel = zoneKind === 'battlefield' ? t('minimap.battlefield') : t('minimap.kingdom');
 
   if (compact) {
     return (
@@ -460,7 +462,7 @@ export const Minimap: React.FC<MinimapProps> = ({
           type="button"
           onClick={() => setOpen((current) => !current)}
           aria-expanded={open}
-          title="Bản đồ"
+          title={t('minimap.map')}
           className={`flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-md border ${
             open
               ? 'border-amber-400 bg-amber-600/40 text-amber-100'
@@ -468,7 +470,7 @@ export const Minimap: React.FC<MinimapProps> = ({
           }`}
         >
           <MapIcon size={18} />
-          <span className="text-[9px] font-semibold leading-none">Bản đồ</span>
+          <span className="text-[9px] font-semibold leading-none">{t('minimap.map')}</span>
         </button>
 
         {open && (
@@ -484,8 +486,8 @@ export const Minimap: React.FC<MinimapProps> = ({
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                aria-label="Đóng bản đồ"
-                title="Đóng"
+                aria-label={t('minimap.closeMap')}
+                title={t('minimap.close')}
                 className="flex h-9 w-9 items-center justify-center rounded border border-slate-700 text-slate-300"
               >
                 <X size={13} />
@@ -504,7 +506,7 @@ export const Minimap: React.FC<MinimapProps> = ({
               style={{ width: MINIMAP_COMPACT_CSS_SIZE, height: MINIMAP_COMPACT_CSS_SIZE }}
             />
             <p className="mt-0.5 text-[8px] leading-tight text-slate-400">
-              Chạm: nhảy tới · Giữ lâu: điều quân
+              {t('minimap.hint')}
             </p>
           </div>
         )}
@@ -519,7 +521,7 @@ export const Minimap: React.FC<MinimapProps> = ({
           zoneKind === 'battlefield' ? 'text-red-400' : 'text-amber-400'
         }`}
       >
-        BẢN ĐỒ · {zoneLabel}
+        {t('minimap.title', { zone: zoneLabel })}
       </div>
       <canvas
         ref={canvasRef}

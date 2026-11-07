@@ -129,6 +129,12 @@ export interface SelectedEntityData {
   type: 'unit' | 'building' | 'resource';
   name: string;
   subType: string;
+  /**
+   * I18N: how many units share the publication. The scene networks the count —
+   * rather than baking it into `name` — so the detail card can label it in the
+   * active language and still show "(n)".
+   */
+  selectionCount?: number;
   hp?: number;
   maxHp?: number;
   /** LVL: current upgrade level and the cap for this entity's type. */
@@ -1900,6 +1906,7 @@ export class WorldScene extends Phaser.Scene {
           type: 'unit',
           name: `${unit.type} (${this.selectedUnitIds.size})`,
           subType: unit.type,
+          selectionCount: this.selectedUnitIds.size,
           hp: unit.hp,
           maxHp: unit.maxHp,
           level: unit.level,
@@ -1964,7 +1971,7 @@ export class WorldScene extends Phaser.Scene {
         this.onSelectionChange({
           id: road.id,
           type: 'building',
-          name: 'Đường (đang xây)',
+          name: 'Road (under construction)',
           subType: 'ROAD',
           hp: 1,
           maxHp: 1,
