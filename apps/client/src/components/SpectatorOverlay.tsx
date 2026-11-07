@@ -75,6 +75,7 @@ export const SpectatorOverlay: React.FC<SpectatorOverlayProps> = ({ room, target
           onPlacementCancelled={() => undefined}
           onBuildingHotkey={() => undefined}
           onIdleVillagersChange={() => undefined}
+          onCitadelStatusChange={() => undefined}
           onControlGroupsChange={() => undefined}
           onArmedOrderChange={() => undefined}
           onBoxSelectChange={() => undefined}

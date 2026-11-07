@@ -46,6 +46,8 @@ import {
   getEffectiveUnitMaxHp,
   getUnitLevelStats,
   getPlayerUnitLevel,
+  citadelLayoutFor,
+  citadelTownCenterFor,
   mapSizeForZone
 } from '@chien-quoc/shared';
 import { WorldState } from '../schema/WorldState.js';
@@ -63,6 +65,7 @@ import { ownerIdOf, RoomAuth } from './identity.js';
 import { accountSaves, accountSessions } from './AccountSessions.js';
 import { zonePersistence } from './ZonePersistence.js';
 import { arrivalPoint, ensurePortalFor, findOwnPortal } from './portals.js';
+import { spawnMissingCitadelBuildings } from './citadel.js';
 import { terrainOf } from './mapLayout.js';
 import { RoadGrid } from './roads.js';
 import { RoadState } from '../schema/RoadState.js';
@@ -1362,27 +1365,47 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     const tcBlueprint = BUILDING_BLUEPRINTS.TOWN_CENTER;
 
-    // MAPS-V2: the Town Center is the centre of the player's map. A kingdom is
-    // private and the plaza around the centre is kept off the road network, so
-    // the exact centre is normally free; the spiral is only a safety net for a
-    // snapshot that still has something parked there.
+    // MAPS-V2: a kingdom's citadel sits at the centre of its private map and
+    // faces east, with its only gate on the east wall. The legacy `world`
+    // harness keeps the historical centre placement without a citadel.
     const { mapWidth: width, mapHeight: height } = this.state;
-    const centreX = Math.floor(width / 2) - Math.floor(tcBlueprint.sizeX / 2);
-    const centreY = Math.floor(height / 2) - Math.floor(tcBlueprint.sizeY / 2);
+    const isKingdom = zoneKindOf(this.state.zoneId) === 'kingdom';
 
-    let spawnX = centreX;
-    let spawnY = centreY;
+    let spawnX = 0;
+    let spawnY = 0;
+    let citadelLayout: ReturnType<typeof citadelLayoutFor> | null = null;
 
-    if (!this.isSpawnAreaClear(centreX, centreY, tcBlueprint.sizeX, tcBlueprint.sizeY)) {
-      // A restored snapshot from the old layout can still bury a node here; drop
-      // those instead of moving the base off centre.
-      this.clearResourcesInFootprint(centreX, centreY, tcBlueprint.sizeX, tcBlueprint.sizeY);
-    }
+    if (isKingdom) {
+      const target = citadelTownCenterFor(width, height);
+      spawnX = target.gridX;
+      spawnY = target.gridY;
+      citadelLayout = citadelLayoutFor(spawnX, spawnY);
 
-    if (!this.isSpawnAreaClear(centreX, centreY, tcBlueprint.sizeX, tcBlueprint.sizeY)) {
-      const nearCentre = this.findSpawnNearCenter(tcBlueprint.sizeX, tcBlueprint.sizeY);
-      spawnX = nearCentre.x;
-      spawnY = nearCentre.y;
+      // Keep the whole compound free: generated nodes and a stray snapshot node
+      // must not sit under a wall, the stone floor or a building slot.
+      this.clearResourcesInFootprint(
+        citadelLayout.originX,
+        citadelLayout.originY,
+        citadelLayout.size,
+        citadelLayout.size
+      );
+    } else {
+      const centreX = Math.floor(width / 2) - Math.floor(tcBlueprint.sizeX / 2);
+      const centreY = Math.floor(height / 2) - Math.floor(tcBlueprint.sizeY / 2);
+      spawnX = centreX;
+      spawnY = centreY;
+
+      if (!this.isSpawnAreaClear(centreX, centreY, tcBlueprint.sizeX, tcBlueprint.sizeY)) {
+        // A restored snapshot from the old layout can still bury a node here;
+        // drop those instead of moving the base off centre.
+        this.clearResourcesInFootprint(centreX, centreY, tcBlueprint.sizeX, tcBlueprint.sizeY);
+      }
+
+      if (!this.isSpawnAreaClear(centreX, centreY, tcBlueprint.sizeX, tcBlueprint.sizeY)) {
+        const nearCentre = this.findSpawnNearCenter(tcBlueprint.sizeX, tcBlueprint.sizeY);
+        spawnX = nearCentre.x;
+        spawnY = nearCentre.y;
+      }
     }
 
     // Create Town Center
@@ -1406,16 +1429,30 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     this.state.buildings.set(tcId, townCenter);
 
-    // Spawn starter trees near Town Center (AoE starter woodline)
-    const starterTreeOffsets = [
-      { dx: -2, dy: -1 },
-      { dx: -2, dy: 0 },
-      { dx: -1, dy: -2 },
-      { dx: 0, dy: -2 }
-    ];
-    starterTreeOffsets.forEach((off) => {
-      const gridX = spawnX + off.dx;
-      const gridY = spawnY + off.dy;
+    // A kingdom is a walled citadel: two barracks and five houses join the Town
+    // Center. The layout is shared with the client, so both sides agree on where
+    // the compound, its stone floor and its walls are.
+    if (citadelLayout) {
+      // The compound is already clear of resources; add every missing building.
+      spawnMissingCitadelBuildings(this.state, ownerId, townCenter);
+    }
+
+    // Spawn starter trees near Town Center (AoE starter woodline). A citadel
+    // pushes them outside the east wall, in front of the gate.
+    const starterTreeSpots = citadelLayout
+      ? [
+          { gridX: citadelLayout.originX + citadelLayout.size + 1, gridY: citadelLayout.originY + 4 },
+          { gridX: citadelLayout.originX + citadelLayout.size + 1, gridY: citadelLayout.originY + 5 },
+          { gridX: citadelLayout.originX + citadelLayout.size + 2, gridY: citadelLayout.originY + 6 },
+          { gridX: citadelLayout.originX + citadelLayout.size + 2, gridY: citadelLayout.originY + 7 }
+        ]
+      : [
+          { gridX: spawnX - 2, gridY: spawnY - 1 },
+          { gridX: spawnX - 2, gridY: spawnY },
+          { gridX: spawnX - 1, gridY: spawnY - 2 },
+          { gridX: spawnX, gridY: spawnY - 2 }
+        ];
+    starterTreeSpots.forEach(({ gridX, gridY }) => {
       if (this.hasResourceAt(gridX, gridY)) return;
 
       const id = starterResourceId(entityIds.nextId());
@@ -1430,15 +1467,20 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       this.state.resourceNodes.set(id, node);
     });
 
-    // Spawn starter berry bushes near Town Center (AoE starter forage food)
-    const starterBerryOffsets = [
-      { dx: 5, dy: 1 },
-      { dx: 6, dy: 1 },
-      { dx: 5, dy: 2 }
-    ];
-    starterBerryOffsets.forEach((off) => {
-      const gridX = spawnX + off.dx;
-      const gridY = spawnY + off.dy;
+    // Spawn starter berry bushes near Town Center (AoE starter forage food).
+    // A citadel puts them east of the compound, in front of the single gate.
+    const starterBerrySpots = citadelLayout
+      ? [
+          { gridX: citadelLayout.originX + citadelLayout.size + 4, gridY: citadelLayout.originY + 7 },
+          { gridX: citadelLayout.originX + citadelLayout.size + 5, gridY: citadelLayout.originY + 7 },
+          { gridX: citadelLayout.originX + citadelLayout.size + 4, gridY: citadelLayout.originY + 8 }
+        ]
+      : [
+          { gridX: spawnX + 5, gridY: spawnY + 1 },
+          { gridX: spawnX + 6, gridY: spawnY + 1 },
+          { gridX: spawnX + 5, gridY: spawnY + 2 }
+        ];
+    starterBerrySpots.forEach(({ gridX, gridY }) => {
       if (this.hasResourceAt(gridX, gridY)) return;
 
       const id = starterResourceId(entityIds.nextId());
@@ -1455,13 +1497,21 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     // Spawn 3 starter villagers outside 4x4 Town Center. A returning player
     // whose empire was wiped keeps the villager research they already paid for.
+    // A citadel places the Town Center against the west wall, so the crew starts
+    // in the central walkway to its east rather than through the wall.
     const villagerLevel = getPlayerUnitLevel(player.unitLevels, 'VILLAGER');
     const villagerStats = getUnitLevelStats('VILLAGER', villagerLevel);
-    const villagerOffsets = [
-      { dx: 4, dy: 1 },
-      { dx: 1, dy: 4 },
-      { dx: 4, dy: 2 }
-    ];
+    const villagerOffsets = citadelLayout
+      ? [
+          { dx: 4, dy: 1 },
+          { dx: 5, dy: 2 },
+          { dx: 4, dy: 3 }
+        ]
+      : [
+          { dx: 4, dy: 1 },
+          { dx: 1, dy: 4 },
+          { dx: 4, dy: 2 }
+        ];
 
     villagerOffsets.forEach((off, idx) => {
       const vId = `u_${entityIds.nextId()}`;

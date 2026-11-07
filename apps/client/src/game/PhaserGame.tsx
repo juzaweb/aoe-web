@@ -9,6 +9,7 @@ import {
 } from './scenes/WorldScene.js';
 import { SpectatorScene } from './scenes/SpectatorScene.js';
 import { BuildingType } from '@chien-quoc/shared';
+import type { CitadelStatus } from '@chien-quoc/shared';
 import type { RoadMode } from './input/RoadController.js';
 
 interface PhaserGameProps {
@@ -29,6 +30,8 @@ interface PhaserGameProps {
   onBuildingHotkey: (type: BuildingType) => void;
   /** ECO-02: the number of this player's idle villagers changed. */
   onIdleVillagersChange: (count: number) => void;
+  /** Kingdom citadel health changed, or the map is not a kingdom (null). */
+  onCitadelStatusChange: (status: CitadelStatus | null) => void;
   /** UIX-03: the `Ctrl+1..9` rosters changed. */
   onControlGroupsChange: (groups: ControlGroupSummary[]) => void;
   /** MOB-05: the armed order changed (armed, committed or cancelled). */
@@ -52,6 +55,7 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
   onSelectionChange,
   onPlacementCancelled,
   onBuildingHotkey,
+  onCitadelStatusChange,
   onIdleVillagersChange,
   onControlGroupsChange,
   onArmedOrderChange,
@@ -66,6 +70,7 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
   const playerNameRef = useRef(playerName);
   const roomRef = useRef(room);
   const onBuildingHotkeyRef = useRef(onBuildingHotkey);
+  const onCitadelStatusRef = useRef(onCitadelStatusChange);
   const onIdleVillagersRef = useRef(onIdleVillagersChange);
   const onControlGroupsRef = useRef(onControlGroupsChange);
   const onArmedOrderRef = useRef(onArmedOrderChange);
@@ -79,6 +84,7 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
   roomRef.current = room;
   focusOwnerIdRef.current = focusOwnerId;
   ownerColorRef.current = ownerColor;
+  onCitadelStatusRef.current = onCitadelStatusChange;
   onBuildingHotkeyRef.current = onBuildingHotkey;
   onIdleVillagersRef.current = onIdleVillagersChange;
   onControlGroupsRef.current = onControlGroupsChange;
@@ -155,6 +161,7 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
         scene.onPlacementCancelled = onPlacementCancelled;
         // Read through a ref: the scene outlives every React render, and this
         // bootstrap closure only runs once.
+        scene.onCitadelStatusChange = (status) => onCitadelStatusRef.current(status);
         scene.onBuildingHotkey = (type) => onBuildingHotkeyRef.current(type);
         scene.onIdleVillagersChange = (count) => onIdleVillagersRef.current(count);
         scene.onControlGroupsChange = (groups) => onControlGroupsRef.current(groups);

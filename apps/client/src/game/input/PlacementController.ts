@@ -2,6 +2,8 @@ import {
   BUILDING_BLUEPRINTS,
   BuildingType,
   NetworkMessage,
+  citadelLayoutFor,
+  footprintTouchesWalls,
   gridToScreen
 } from '@chien-quoc/shared';
 import type * as Phaser from 'phaser';
@@ -95,6 +97,21 @@ export class PlacementController {
         blocked = true;
       }
     });
+
+    // Citadel walls are indestructible terrain derived from the Town Center, not
+    // buildings, so the server rejects them separately. The ghost must too.
+    if (scene.terrainLayout?.kind === 'kingdom') {
+      let townCenter: any = null;
+      scene.room.state.buildings?.forEach((b: any) => {
+        if (!townCenter && b.type === 'TOWN_CENTER') townCenter = b;
+      });
+      if (townCenter) {
+        const walls = citadelLayoutFor(townCenter.gridX, townCenter.gridY).walls;
+        blocked =
+          blocked ||
+          footprintTouchesWalls(walls, gx, gy, blueprint.sizeX, blueprint.sizeY);
+      }
+    }
 
     return !blocked;
   }
