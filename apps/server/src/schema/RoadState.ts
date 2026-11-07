@@ -13,4 +13,6 @@ export class RoadState extends Schema {
   @type('string') ownerId: string = '';
   @type('number') gridX: number = 0;
   @type('number') gridY: number = 0;
+  @type('boolean') isConstructed: boolean = true;
+  @type('number') constructionProgress: number = 100;
 }

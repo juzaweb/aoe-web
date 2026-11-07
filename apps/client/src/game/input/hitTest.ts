@@ -117,9 +117,16 @@ export function findBuildingAt(
  */
 export function findOwnFoundationAt(scene: HitTestScene, grid: GridPoint): string | null {
   const buildingId = findBuildingAt(scene, grid, scene.myOwnerId);
-  if (!buildingId) return null;
-  const building = scene.room?.state.buildings.get(buildingId);
-  return building && !building.isConstructed ? buildingId : null;
+  if (buildingId) {
+    const building = scene.room?.state.buildings.get(buildingId);
+    if (building && !building.isConstructed) return buildingId;
+  }
+  const roads = (scene.room?.state as any)?.roads;
+  const road = roads?.get(`${grid.gridX},${grid.gridY}`);
+  if (road && road.ownerId === scene.myOwnerId && road.isConstructed === false) {
+    return road.id;
+  }
+  return null;
 }
 
 /**

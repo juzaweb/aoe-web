@@ -95,6 +95,7 @@ function roadsOf(
   const tiles: Array<{ gridX: number; gridY: number }> = [];
   let signature = 0;
   roads?.forEach((road: any) => {
+    if (road.isConstructed === false) return;
     tiles.push({ gridX: road.gridX, gridY: road.gridY });
     signature = (signature + road.gridX * 73856093 + road.gridY * 19349663) | 0;
   });

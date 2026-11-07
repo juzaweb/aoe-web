@@ -805,6 +805,17 @@ export const App: React.FC = () => {
   // CMD-04b: tear down a foundation that is still under construction. Named
   // separately from handleCancelBuilding, which exits placement mode.
   const handleCancelFoundation = (buildingId: string) => {
+    if (sceneRef.current?.selectedRoadId === buildingId) {
+      const road = (room?.state as any)?.roads?.get(buildingId);
+      if (road) {
+        room?.send(NetworkMessage.REMOVE_ROAD, {
+          tiles: [{ x: road.gridX, y: road.gridY }]
+        });
+        sceneRef.current.selectedRoadId = null;
+        sceneRef.current.notifySelectionChange();
+        return;
+      }
+    }
     // FND-03: mark locally so the removal is not reported as an attack.
     sceneRef.current?.markFoundationCancelled(buildingId);
     if (room) {
