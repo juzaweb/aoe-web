@@ -102,12 +102,10 @@ const FALLBACK_ART: Partial<
  *
  * Index 0 is tier 1. `canvasHeight` and `topInset` are the shipped sheet's
  * measurements (see `scripts/assets/assets.lock.json`); everything else is
- * derived from them. The lift reproduces the existing `-70` for the level-1
- * house's 220 px canvas, and the bar stays the invariant the asset test
- * enforces, so a new tier cannot ship a floating health bar.
+ * derived from them.
  *
- * The milestones themselves live in `@chien-quoc/shared`
- * (`HOUSE_VISUAL_TIER_LEVELS`), so art and game rules cannot drift apart.
+ * Currently all buildings share a level-invariant silhouette; this table is
+ * preserved for when multi-tier visual assets are reintroduced.
  */
 interface TierArtSpec {
   canvasHeight: number;

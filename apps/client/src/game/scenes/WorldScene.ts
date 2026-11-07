@@ -21,7 +21,7 @@ import {
   terrainForZone
 } from '@chien-quoc/shared';
 import { generateProceduralTextures } from '../renderers/ProceduralSprites.js';
-import { buildingTierInfo, buildingVisualTierCount } from '../render/buildingArt.js';
+import { buildingTierInfo } from '../render/buildingArt.js';
 import { CommandController } from '../input/CommandController.js';
 import { CursorController } from '../input/CursorController.js';
 import { PlacementController } from '../input/PlacementController.js';
@@ -532,9 +532,6 @@ export class WorldScene extends Phaser.Scene {
     this.load.image('building_STABLE', `/assets/buildings/stable.png?${v}`);
     this.load.image('building_ARCHERY_RANGE', `/assets/buildings/archery_range.png?${v}`);
     this.load.image('building_HOUSE', `/assets/buildings/house.png?${v}`);
-    for (let tier = 2; tier <= buildingVisualTierCount('HOUSE'); tier++) {
-      this.load.image(`building_HOUSE_${tier}`, `/assets/buildings/house_${tier}.png?${v}`);
-    }
     this.load.image('building_FARM', `/assets/buildings/farm.png?${v}`);
     this.load.image('building_TOWER', `/assets/buildings/tower.png?${v}`);
     this.load.image('building_PORTAL', `/assets/buildings/portal.png?${v}`);
