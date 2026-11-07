@@ -234,9 +234,9 @@
     "building.house": {
       "author": "Bleed",
       "bbox": [
+        2,
         0,
-        0,
-        339,
+        341,
         256
       ],
       "bottomInset": 0,
@@ -249,7 +249,7 @@
       "out": "apps/client/public/assets/buildings/house.png",
       "page": "https://opengameart.org/content/medieval-building-06",
       "scale": 0.3133,
-      "sha256": "13e1c0dbbb7eb05319dffcba1e32aa0476f0c9f97c425c8bf028a1e251a2c371",
+      "sha256": "f52510a1b8bb390a506c67ce2e860337174a5d79ec33fb44c77f21b662d97455",
       "source": "oga.bleed-medieval-06",
       "sourceSha256": "d68dd009f1933aa85df24bdb9c57dc990ab4994a070161e1f6e620136d5239e0",
       "topInset": 0

@@ -177,7 +177,6 @@
       "op": {
         "alphaFloor": 96,
         "crop": "alpha",
-        "flip": "x",
         "fit": true,
         "matchLum": 107.3,
         "anchor": "bottom-center"
