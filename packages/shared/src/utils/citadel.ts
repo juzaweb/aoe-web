@@ -5,11 +5,12 @@ import { getBuildingLevelStats } from './levels.js';
 /**
  * Geometry and scoring rules for a kingdom's citadel.
  *
- * Every kingdom owns one citadel: a walled compound with a Town Center, two
- * barracks and five houses. The layout is a pure function of the Town Center's
- * top-left tile, so the server (which spawns the buildings and blocks movement
- * through the walls) and the client (which draws the stone floor and walls and
- * shows the aggregate health bar) cannot disagree without a round trip.
+ * Every kingdom owns one citadel: a walled compound with a Town Center, a
+ * barracks, an archery range and five houses. The layout is a pure function of
+ * the Town Center's top-left tile, so the server (which spawns the buildings and
+ * blocks movement through the walls) and the client (which draws the stone floor
+ * and walls and shows the aggregate health bar) cannot disagree without a round
+ * trip.
  *
  * The citadel's health is the sum of the health of its eight buildings. It is a
  * raid score, not a second building: when it falls to
@@ -82,15 +83,16 @@ interface SlotOffset {
  *
  * The citadel faces east: the single gate sits in the middle of the east wall
  * and a straight walkway runs west from it to the Town Center, which sits about
- * four tiles in from the rear (west) wall. Barracks line the north wall, while
- * the five houses are stacked one after another against the rear wall itself,
- * packed into the south-west corner at the lower end of the wall. The Town
- * Center is centred on the gate's rows so the avenue ends on its doors.
+ * four tiles in from the rear (west) wall. A barracks and an archery range line
+ * the north wall, while the five houses are stacked one after another against
+ * the rear wall itself, packed into the south-west corner at the lower end of
+ * the wall. The Town Center is centred on the gate's rows so the avenue ends on
+ * its doors.
  */
 const SLOT_OFFSETS: readonly SlotOffset[] = [
   { type: 'TOWN_CENTER', dx: 5, dy: 10 },
   { type: 'BARRACKS', dx: 5, dy: 1 },
-  { type: 'BARRACKS', dx: 18, dy: 1 },
+  { type: 'ARCHERY_RANGE', dx: 18, dy: 1 },
   // Five houses in one column against the west wall, filling the lower half of
   // the compound from the Town Center's last row down to the south wall.
   { type: 'HOUSE', dx: 1, dy: 15 },

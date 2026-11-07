@@ -63,11 +63,12 @@ function allBuildings(state: WorldState): BuildingState[] {
 }
 
 describe('citadel layout', () => {
-  it('places one Town Center, two barracks and five houses', () => {
+  it('places one Town Center, one barracks, one archery range and five houses', () => {
     const layout = citadelLayoutFor(TC_X, TC_Y);
     expect(layout.slots).toHaveLength(8);
     expect(layout.slots.filter((slot) => slot.type === 'TOWN_CENTER')).toHaveLength(1);
-    expect(layout.slots.filter((slot) => slot.type === 'BARRACKS')).toHaveLength(2);
+    expect(layout.slots.filter((slot) => slot.type === 'BARRACKS')).toHaveLength(1);
+    expect(layout.slots.filter((slot) => slot.type === 'ARCHERY_RANGE')).toHaveLength(1);
     expect(layout.slots.filter((slot) => slot.type === 'HOUSE')).toHaveLength(5);
     expect(layout.slots[0]).toMatchObject({ type: 'TOWN_CENTER', gridX: TC_X, gridY: TC_Y });
   });
@@ -87,12 +88,15 @@ describe('citadel layout', () => {
     }
   });
 
-  it('puts the barracks on the north wall and the houses on the west wall', () => {
+  it('puts the trainers on the north wall and the houses on the west wall', () => {
     const layout = citadelLayoutFor(TC_X, TC_Y);
-    const barracks = layout.slots.filter((slot) => slot.type === 'BARRACKS');
+    const trainers = layout.slots.filter(
+      (slot) => slot.type === 'BARRACKS' || slot.type === 'ARCHERY_RANGE'
+    );
     const houses = layout.slots.filter((slot) => slot.type === 'HOUSE');
 
-    for (const slot of barracks) {
+    expect(trainers).toHaveLength(2);
+    for (const slot of trainers) {
       expect(slot.gridY).toBe(layout.innerMinY);
     }
     for (const slot of houses) {
@@ -182,7 +186,8 @@ describe('citadel health', () => {
     const status = citadelStatus(allBuildings(state), TC_X, TC_Y);
     const expectedMax =
       getBuildingLevelStats('TOWN_CENTER', 1).maxHp +
-      2 * getBuildingLevelStats('BARRACKS', 1).maxHp +
+      getBuildingLevelStats('BARRACKS', 1).maxHp +
+      getBuildingLevelStats('ARCHERY_RANGE', 1).maxHp +
       5 * getBuildingLevelStats('HOUSE', 1).maxHp;
 
     expect(status.maxHp).toBe(expectedMax);
@@ -216,7 +221,7 @@ describe('citadel health', () => {
 });
 
 describe('citadel lifecycle', () => {
-  it('retrofits the barracks and houses onto a Town-Center-only save', () => {
+  it('retrofits the trainers and houses onto a Town-Center-only save', () => {
     const state = createKingdomState();
     addTownCenter(state);
 
@@ -224,8 +229,41 @@ describe('citadel lifecycle', () => {
 
     const types = allBuildings(state).map((building) => building.type);
     expect(types.filter((type) => type === 'TOWN_CENTER')).toHaveLength(1);
-    expect(types.filter((type) => type === 'BARRACKS')).toHaveLength(2);
+    expect(types.filter((type) => type === 'BARRACKS')).toHaveLength(1);
+    expect(types.filter((type) => type === 'ARCHERY_RANGE')).toHaveLength(1);
     expect(types.filter((type) => type === 'HOUSE')).toHaveLength(5);
+  });
+
+  it('turns the second barracks of a legacy save into an archery range', () => {
+    const state = createKingdomState();
+    const townCenter = addTownCenter(state);
+    spawnMissingCitadelBuildings(state, 'defender', townCenter);
+
+    // Saves written before the roster split field two barracks and no range.
+    const range = allBuildings(state).find((building) => building.type === 'ARCHERY_RANGE')!;
+    range.type = 'BARRACKS';
+
+    ensureCitadel(state, 'defender');
+
+    const military = allBuildings(state).filter(
+      (building) => building.type === 'BARRACKS' || building.type === 'ARCHERY_RANGE'
+    );
+    expect(military.filter((building) => building.type === 'BARRACKS')).toHaveLength(1);
+    expect(military.filter((building) => building.type === 'ARCHERY_RANGE')).toHaveLength(1);
+
+    const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+    for (const slot of layout.slots.filter(
+      (slot) => slot.type === 'BARRACKS' || slot.type === 'ARCHERY_RANGE'
+    )) {
+      expect(
+        military.some(
+          (building) =>
+            building.type === slot.type &&
+            building.gridX === slot.gridX &&
+            building.gridY === slot.gridY
+        )
+      ).toBe(true);
+    }
   });
 
   it('restores every building to full health after a raid', () => {
@@ -295,7 +333,8 @@ describe('citadel lifecycle', () => {
     expect(rightEdgeTc.gridY).toBe(target.gridY);
 
     const buildings = allBuildings(state);
-    expect(buildings.filter((building) => building.type === 'BARRACKS')).toHaveLength(2);
+    expect(buildings.filter((building) => building.type === 'BARRACKS')).toHaveLength(1);
+    expect(buildings.filter((building) => building.type === 'ARCHERY_RANGE')).toHaveLength(1);
     expect(buildings.filter((building) => building.type === 'HOUSE')).toHaveLength(5);
 
     const layout = citadelLayoutFor(target.gridX, target.gridY);
