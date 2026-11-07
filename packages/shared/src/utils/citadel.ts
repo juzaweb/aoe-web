@@ -133,6 +133,40 @@ export function citadelTownCenterFor(
   };
 }
 
+/**
+ * Whether a building is the empire's default/starter Town Center.
+ *
+ * In a kingdom (or any map centered around a citadel), the starter Town Center
+ * sits at `citadelTownCenterFor(mapWidth, mapHeight)`. Callers can also supply
+ * `townCenterCount` so that if a player only has a single Town Center, that
+ * single Town Center is also protected as the default/primary Town Center.
+ */
+export function isDefaultTownCenter(
+  building: { type: string; gridX: number; gridY: number },
+  mapWidth: number = 110,
+  mapHeight: number = 110,
+  townCenterCount?: number,
+  isKingdom: boolean = true
+): boolean {
+  if (building.type !== 'TOWN_CENTER') return false;
+
+  if (isKingdom) {
+    const target = citadelTownCenterFor(mapWidth, mapHeight);
+    if (
+      Math.round(building.gridX) === target.gridX &&
+      Math.round(building.gridY) === target.gridY
+    ) {
+      return true;
+    }
+  }
+
+  if (townCenterCount !== undefined && townCenterCount <= 1) {
+    return true;
+  }
+
+  return false;
+}
+
 /** Whether a building footprint covers any of the given wall tiles. */
 export function footprintTouchesWalls(
   walls: readonly CitadelTile[],

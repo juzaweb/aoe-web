@@ -173,6 +173,14 @@ export const TEMPLATES: Record<string, { vi: string; en: string }> = {
     vi: 'Cần Nhà chính cấp {{level}}',
     en: 'Requires Town Center level {{level}}'
   },
+  'command.cannotDeleteDefaultTownCenter': {
+    vi: 'Không thể xoá Nhà chính mặc định',
+    en: 'Cannot delete the default Town Center'
+  },
+  'command.cannotDeletePortal': {
+    vi: 'Không thể xoá Cổng dịch chuyển',
+    en: 'Portals cannot be deleted'
+  },
   'raid.announce.attackerWon': {
     vi: 'Vương quốc bị tập kích! Mất {{wood}} gỗ, {{food}} lương, {{gold}} vàng, {{stone}} đá.',
     en: 'Your kingdom was raided! Lost {{wood}} wood, {{food}} food, {{gold}} gold and {{stone}} stone.'

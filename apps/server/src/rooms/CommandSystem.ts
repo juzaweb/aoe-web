@@ -48,7 +48,8 @@ import {
   getUnitUpgradeCost,
   getUnitUpgradeTimeMs,
   isBuildingUnlocked,
-  buildingTypeForUnit
+  buildingTypeForUnit,
+  isDefaultTownCenter
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { RoadState } from '../schema/RoadState.js';
@@ -97,6 +98,8 @@ export interface CommandPorts {
   onRoadPlaced?(road: RoadState): void;
   /** Notifies when a road tile was removed or cancelled. */
   onRoadRemoved?(roadId: string): void;
+  /** Notifies when an existing building was removed. */
+  onBuildingRemoved?(building: BuildingState): void;
   /**
    * Whether `ownerId` may issue economy/building orders on this map.
    *
@@ -654,14 +657,14 @@ export class CommandSystem {
   }
 
   /**
-   * CMD-04b: removes a foundation that was placed but never finished.
+   * Removes a foundation or demolishes a completed building.
    *
-   * Completed buildings are rejected: this is a "cancel the build", not a
-   * demolish command, and silently deleting a finished Town Center on a
-   * misclicked hotkey would be unrecoverable.
+   * The default Town Center and map travel Portals cannot be deleted.
+   * Foundations return full or partial resources; completed buildings return 0
+   * resources (AoE standard), but any queued units and in-flight upgrades are refunded.
    */
   handleCancelBuilding(client: Client, payload: CancelBuildingPayload) {
-        if (!this.ensureZoneManager(client)) return;
+    if (!this.ensureZoneManager(client)) return;
     const player = this.state.players.get(ownerIdOf(client));
     if (!player) return;
 
@@ -692,26 +695,86 @@ export class CommandSystem {
       return;
     }
 
-    if (building.isConstructed) {
-      this.ports.rejectCommand(client, 'Cannot cancel a completed building', RejectCode.INVALID);
+    if (building.type === 'PORTAL') {
+      this.ports.rejectCommand(
+        client,
+        {
+          key: 'command.cannotDeletePortal',
+          fallback: 'Portals cannot be deleted'
+        },
+        RejectCode.FORBIDDEN
+      );
       return;
     }
 
-    const blueprint = BUILDING_BLUEPRINTS[building.type as BuildingType];
-    if (blueprint) {
-      // A foundation that has barely been worked on returns everything; once
-      // real progress went in, the player eats half the cost.
-      const ratio =
-        building.constructionProgress < CANCEL_BUILDING_FULL_REFUND_BELOW
-          ? 1
-          : CANCEL_BUILDING_PARTIAL_REFUND_RATIO;
-      this.refundResources(player, blueprint.cost, ratio);
+    let tcCount = 0;
+    this.state.buildings.forEach((b: BuildingState) => {
+      if (b.ownerId === building.ownerId && b.type === 'TOWN_CENTER') {
+        tcCount++;
+      }
+    });
+
+    if (
+      isDefaultTownCenter(
+        building,
+        this.state.mapWidth,
+        this.state.mapHeight,
+        tcCount,
+        zoneKindOf(this.state.zoneId) === 'kingdom'
+      )
+    ) {
+      this.ports.rejectCommand(
+        client,
+        {
+          key: 'command.cannotDeleteDefaultTownCenter',
+          fallback: 'Cannot delete the default Town Center'
+        },
+        RejectCode.FORBIDDEN
+      );
+      return;
+    }
+
+    if (!building.isConstructed) {
+      const blueprint = BUILDING_BLUEPRINTS[building.type as BuildingType];
+      if (blueprint) {
+        // A foundation that has barely been worked on returns everything; once
+        // real progress went in, the player eats half the cost.
+        const ratio =
+          building.constructionProgress < CANCEL_BUILDING_FULL_REFUND_BELOW
+            ? 1
+            : CANCEL_BUILDING_PARTIAL_REFUND_RATIO;
+        this.refundResources(player, blueprint.cost, ratio);
+      }
+    } else {
+      // Completed building: 0% refund on building cost.
+      // Refund any queued units in trainingQueue
+      while (building.trainingQueue.length > 0) {
+        const unitType = building.trainingQueue.shift() as UnitType;
+        const uBp = UNIT_BLUEPRINTS[unitType];
+        if (uBp) {
+          this.refundResources(player, uBp.cost, 1);
+        }
+      }
+      building.trainingProgressMs = 0;
+
+      // Refund in-flight upgrade if upgrading
+      if (building.upgradeTimeMs > 0) {
+        const upgradeCost = getBuildingUpgradeCost(
+          building.type as BuildingType,
+          building.level
+        );
+        this.refundResources(player, upgradeCost, 1);
+        building.upgradeProgressMs = 0;
+        building.upgradeTimeMs = 0;
+      }
     }
 
     // Units walking to or attacking the foundation resolve the missing target
     // on their next tick, so nothing has to be repointed here.
     this.state.buildings.delete(building.id);
     this.ports.forgetBuilding(building.id);
+    this.ports.updatePlayerPopulation(building.ownerId);
+    this.ports.onBuildingRemoved?.(building);
   }
 
   /**

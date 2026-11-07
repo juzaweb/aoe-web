@@ -18,7 +18,7 @@ import {
   townCenterAuraMultiplier,
   townCenterUnitAttackMultiplier
 } from '@chien-quoc/shared';
-import { Shield, UserPlus, Heart, Hammer, X, Boxes, Swords, Crosshair, Timer, Gauge } from 'lucide-react';
+import { Shield, UserPlus, Heart, Hammer, X, Trash2, Boxes, Swords, Crosshair, Timer, Gauge } from 'lucide-react';
 import { BuildingUpgradePanel, UnitResearchPanel } from './UpgradePanels.js';
 import { buildingThumbnail } from './buildingThumbnails.js';
 import { useTranslation } from 'react-i18next';
@@ -56,7 +56,7 @@ interface EntityDetailsProps {
   onTrainUnit: (buildingId: string, unitType: UnitType) => void;
   /** CMD-04a: drops the first unit in the training queue and refunds it. */
   onCancelTrain: (buildingId: string) => void;
-  /** CMD-04b: removes a foundation that is still under construction. */
+  /** Removes a foundation or demolishes a completed building. */
   onCancelBuilding: (buildingId: string) => void;
   /** LVL: starts upgrading one owned, finished building. */
   onUpgradeBuilding: (buildingId: string) => void;
@@ -588,6 +588,21 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
             onUpgradeUnitType={onUpgradeUnitType}
             onCancelResearch={onCancelUnitUpgrade}
           />
+        )}
+
+      {/* Delete completed building (except default Town Center and Portal) */}
+      {buildingIsOwnedAndFinished &&
+        !entity.isPortal &&
+        !entity.isDefaultTownCenter && (
+          <div className="border-t border-slate-800 pt-2">
+            <button
+              onClick={() => onCancelBuilding(entity.id)}
+              className="w-full px-2 py-1.5 rounded border border-red-800/70 bg-red-950/50 text-[10px] font-semibold text-red-300 hover:border-red-500 hover:bg-red-900/60 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+              title={t('details.deleteBuildingTitle')}
+            >
+              <Trash2 size={12} /> {t('details.deleteBuilding')}
+            </button>
+          </div>
         )}
     </div>
   );

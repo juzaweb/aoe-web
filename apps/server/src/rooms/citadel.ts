@@ -1,6 +1,7 @@
 import {
   BUILDING_BLUEPRINTS,
   BuildingType,
+  CITADEL_SIZE,
   CitadelSlot,
   citadelLayoutFor,
   citadelTownCenterFor,
@@ -177,20 +178,27 @@ function isCitadelCanonical(
     return false;
   }
 
-  const layout = citadelLayoutFor(target.gridX, target.gridY);
-  for (const slot of layout.slots) {
-    if (slot.type === 'TOWN_CENTER') continue;
-    let found = false;
-    state.buildings.forEach((building: BuildingState) => {
-      if (found || building.ownerId !== ownerId) return;
-      if (building.type !== slot.type) return;
-      if (Math.round(building.gridX) !== slot.gridX) return;
-      if (Math.round(building.gridY) !== slot.gridY) return;
-      found = true;
-    });
-    if (!found) return false;
-  }
-  return true;
+  // If the Town Center is centered, check if there are legacy compounds (e.g. right edge)
+  // holding orphan buildings that need to be cleaned up. Vacant slots from deliberately
+  // deleted buildings are allowed and must not trigger canonicalization reshuffle.
+  const rightEdgeOriginX = 110 - 6 - CITADEL_SIZE;
+  const rightEdgeOriginY = Math.floor((110 - CITADEL_SIZE) / 2);
+  let hasRightEdgeOrphans = false;
+  state.buildings.forEach((building: BuildingState) => {
+    if (hasRightEdgeOrphans || building.ownerId !== ownerId) return;
+    if (building.type === 'BARRACKS' || building.type === 'HOUSE') {
+      if (
+        building.gridX >= rightEdgeOriginX &&
+        building.gridX < rightEdgeOriginX + CITADEL_SIZE &&
+        building.gridY >= rightEdgeOriginY &&
+        building.gridY < rightEdgeOriginY + CITADEL_SIZE
+      ) {
+        hasRightEdgeOrphans = true;
+      }
+    }
+  });
+
+  return !hasRightEdgeOrphans;
 }
 
 /** Sorts by strength, moves the first N into the slots and drops the rest. */
@@ -352,9 +360,19 @@ export function ensureCitadel(state: WorldState, ownerId: string): void {
 
   rescueUnitsFromWalls(state, ownerId, townCenter);
   clearCitadelResources(state, townCenter);
-  const added = spawnMissingCitadelBuildings(state, ownerId, townCenter);
-  if (added > 0) {
-    console.log(`🏰 [Citadel] Restored ${added} missing building(s) for ${ownerId}.`);
+
+  // Retrofit missing compound buildings only if the empire was saved before
+  // citadels existed (Town-Center-only save). Existing empires that deleted a
+  // citadel building must not have it resurrected on every join.
+  let nonTownCenterCount = 0;
+  state.buildings.forEach((b: BuildingState) => {
+    if (b.ownerId === ownerId && b.type !== 'TOWN_CENTER') nonTownCenterCount++;
+  });
+  if (nonTownCenterCount === 0) {
+    const added = spawnMissingCitadelBuildings(state, ownerId, townCenter);
+    if (added > 0) {
+      console.log(`🏰 [Citadel] Restored ${added} missing building(s) for ${ownerId}.`);
+    }
   }
 }
 

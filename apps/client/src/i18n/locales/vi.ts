@@ -121,6 +121,8 @@ const vi = {
     underConstruction: 'Đang xây dựng',
     cancelBuilding: 'Huỷ công trình (Delete)',
     cancelBuildingTitle: 'Huỷ móng nhà, hoàn lại một phần tài nguyên',
+    deleteBuilding: 'Xoá công trình (Delete)',
+    deleteBuildingTitle: 'Phá huỷ công trình này (không hoàn trả tài nguyên)',
     trainingTitle: 'HUẤN LUYỆN QUÂN ĐỘI',
     queue: 'Đang chờ: {{count}}',
     cancelTrainTitle: 'Huỷ đơn vị đang huấn luyện, hoàn lại toàn bộ tài nguyên',

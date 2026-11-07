@@ -244,7 +244,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       onRoadPlaced: (road) => this.unconstructedRoadIds.add(road.id),
       onRoadRemoved: (roadId) => this.unconstructedRoadIds.delete(roadId),
       canManageZone: (ownerId) => this.canManageZone(ownerId),
-      townCenterLevelOf: (ownerId) => this.townCenterLevelOf(ownerId)
+      townCenterLevelOf: (ownerId) => this.townCenterLevelOf(ownerId),
+      onBuildingRemoved: (building) =>
+        this.invalidateBuildingLevel(building.ownerId, building.type as BuildingType)
     });
     return this.commandSystem;
   }

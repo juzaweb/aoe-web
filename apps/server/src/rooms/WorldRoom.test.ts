@@ -3142,4 +3142,106 @@ describe('building level effects (LVL4)', () => {
       Math.round(UNIT_BLUEPRINTS.VILLAGER.trainTimeMs * 0.82)
     );
   });
+
+  describe('building demolition', () => {
+    it('rejects deleting the default Town Center', () => {
+      const room = createRoom();
+      addPlayer(room, 'player-a');
+      const client = createClient('player-a');
+      const tc = addBuilding(room, {
+        id: 'tc-default',
+        ownerId: 'player-a',
+        type: 'TOWN_CENTER',
+        gridX: 48,
+        gridY: 53
+      });
+
+      internals(room).commands.handleCancelBuilding(client, { buildingId: tc.id });
+
+      expect(room.state.buildings.has(tc.id)).toBe(true);
+      expect(client.send).toHaveBeenCalledWith(
+        NetworkMessage.ERROR_NOTIFICATION,
+        expect.objectContaining({
+          message: expect.stringContaining('Cannot delete the default Town Center'),
+          code: RejectCode.FORBIDDEN
+        })
+      );
+    });
+
+    it('rejects deleting a portal', () => {
+      const room = createRoom();
+      addPlayer(room, 'player-a');
+      const client = createClient('player-a');
+      const portal = addBuilding(room, {
+        id: 'portal-1',
+        ownerId: 'player-a',
+        type: 'PORTAL',
+        gridX: 10,
+        gridY: 10
+      });
+
+      internals(room).commands.handleCancelBuilding(client, { buildingId: portal.id });
+
+      expect(room.state.buildings.has(portal.id)).toBe(true);
+      expect(client.send).toHaveBeenCalledWith(
+        NetworkMessage.ERROR_NOTIFICATION,
+        expect.objectContaining({
+          message: expect.stringContaining('Portals cannot be deleted'),
+          code: RejectCode.FORBIDDEN
+        })
+      );
+    });
+
+    it('deletes a completed non-TC building without refunding building cost, while refunding queue & upgrade', () => {
+      const room = createRoom();
+      const player = addPlayer(room, 'player-a', { wood: 100, food: 100, gold: 100, stone: 100 });
+      const client = createClient('player-a');
+      const barracks = addBuilding(room, {
+        id: 'barracks-1',
+        ownerId: 'player-a',
+        type: 'BARRACKS',
+        gridX: 20,
+        gridY: 20
+      });
+      barracks.trainingQueue.push('SPEARMAN');
+      barracks.upgradeTimeMs = 10000;
+      barracks.upgradeProgressMs = 2000;
+      barracks.level = 1;
+
+      const upgradeCost = getBuildingUpgradeCost('BARRACKS', 1);
+      const spearmanCost = UNIT_BLUEPRINTS.SPEARMAN.cost;
+
+      internals(room).commands.handleCancelBuilding(client, { buildingId: barracks.id });
+
+      expect(room.state.buildings.has(barracks.id)).toBe(false);
+      // Food and wood refunded for spearman & upgrade, but 0 refund for barracks itself
+      expect(player.food).toBe(100 + spearmanCost.food + upgradeCost.food);
+      expect(player.wood).toBe(100 + spearmanCost.wood + upgradeCost.wood);
+    });
+
+    it('allows deleting a secondary Town Center when player owns multiple TCs', () => {
+      const room = createRoom();
+      addPlayer(room, 'player-a');
+      const client = createClient('player-a');
+      const tc1 = addBuilding(room, {
+        id: 'tc-main',
+        ownerId: 'player-a',
+        type: 'TOWN_CENTER',
+        gridX: 48,
+        gridY: 53
+      });
+      const tc2 = addBuilding(room, {
+        id: 'tc-secondary',
+        ownerId: 'player-a',
+        type: 'TOWN_CENTER',
+        gridX: 10,
+        gridY: 10
+      });
+
+      internals(room).commands.handleCancelBuilding(client, { buildingId: tc2.id });
+
+      expect(room.state.buildings.has(tc2.id)).toBe(false);
+      expect(room.state.buildings.has(tc1.id)).toBe(true);
+    });
+  });
 });

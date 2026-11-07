@@ -249,6 +249,31 @@ describe('citadel lifecycle', () => {
       ).toBe(true);
     }
   });
+
+  it('does not resurrect or reshuffle deleted citadel buildings on ensureCitadel', () => {
+    const state = createKingdomState();
+    const target = citadelTownCenterFor(110, 110);
+    const townCenter = addTownCenter(state);
+    townCenter.gridX = target.gridX;
+    townCenter.gridY = target.gridY;
+    spawnMissingCitadelBuildings(state, 'defender', townCenter);
+
+    const houses = allBuildings(state).filter((b) => b.type === 'HOUSE');
+    expect(houses).toHaveLength(5);
+    const houseToDelete = houses[0];
+    const otherHouse = houses[1];
+    const originalX = otherHouse.gridX;
+    const originalY = otherHouse.gridY;
+
+    state.buildings.delete(houseToDelete.id);
+
+    ensureCitadel(state, 'defender');
+
+    expect(state.buildings.has(houseToDelete.id)).toBe(false);
+    expect(allBuildings(state).filter((b) => b.type === 'HOUSE')).toHaveLength(4);
+    expect(otherHouse.gridX).toBe(originalX);
+    expect(otherHouse.gridY).toBe(originalY);
+  });
 });
 
 describe('citadel walls', () => {

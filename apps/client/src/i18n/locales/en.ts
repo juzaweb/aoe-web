@@ -118,6 +118,8 @@ const en = {
     underConstruction: 'Under construction',
     cancelBuilding: 'Cancel building (Delete)',
     cancelBuildingTitle: 'Cancel the foundation and refund part of the cost',
+    deleteBuilding: 'Delete building (Delete)',
+    deleteBuildingTitle: 'Demolish this building (no refund)',
     trainingTitle: 'TRAIN ARMY',
     queue: 'Queued: {{count}}',
     cancelTrainTitle: 'Cancel the unit being trained and refund its full cost',

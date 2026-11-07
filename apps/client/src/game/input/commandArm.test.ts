@@ -166,3 +166,118 @@ describe('CommandController armed orders', () => {
     expect(commands.pendingOrder).toBeNull();
   });
 });
+
+describe('cancelSelectedFoundation', () => {
+  let scene: ReturnType<typeof fakeScene> & {
+    selectedRoadId?: string | null;
+    myOwnerId?: string;
+    room?: any;
+    markFoundationCancelled?: ReturnType<typeof vi.fn>;
+    townCenterCountFor?: (ownerId: string) => number;
+    notifySelectionChange?: ReturnType<typeof vi.fn>;
+  };
+  let commands: CommandController;
+
+  beforeEach(() => {
+    const baseScene = fakeScene();
+    scene = {
+      ...baseScene,
+      selectedRoadId: null,
+      myOwnerId: 'player-a',
+      room: {
+        send: vi.fn(),
+        state: {
+          buildings: new Map<string, any>(),
+          roads: new Map<string, any>(),
+          mapWidth: 110,
+          mapHeight: 110,
+          zoneId: 'kingdom'
+        }
+      },
+      markFoundationCancelled: vi.fn(),
+      townCenterCountFor: (ownerId: string) => {
+        let count = 0;
+        scene.room.state.buildings.forEach((b: any) => {
+          if (b.ownerId === ownerId && b.type === 'TOWN_CENTER') count++;
+        });
+        return count;
+      },
+      notifySelectionChange: vi.fn()
+    };
+    commands = new CommandController(scene as never);
+  });
+
+  it('rejects deleting the default Town Center', () => {
+    scene.selectedBuildingId = 'tc-1';
+    scene.room.state.buildings.set('tc-1', {
+      id: 'tc-1',
+      ownerId: 'player-a',
+      type: 'TOWN_CENTER',
+      gridX: 48,
+      gridY: 53,
+      isConstructed: true
+    });
+
+    const result = commands.cancelSelectedFoundation();
+    expect(result).toBe(false);
+    expect(scene.room.send).not.toHaveBeenCalled();
+  });
+
+  it('rejects deleting a Portal', () => {
+    scene.selectedBuildingId = 'portal-1';
+    scene.room.state.buildings.set('portal-1', {
+      id: 'portal-1',
+      ownerId: 'player-a',
+      type: 'PORTAL',
+      gridX: 10,
+      gridY: 10,
+      isConstructed: true
+    });
+
+    const result = commands.cancelSelectedFoundation();
+    expect(result).toBe(false);
+    expect(scene.room.send).not.toHaveBeenCalled();
+  });
+
+  it('deletes a completed house and sends CANCEL_BUILDING', () => {
+    scene.selectedBuildingId = 'house-1';
+    scene.room.state.buildings.set('house-1', {
+      id: 'house-1',
+      ownerId: 'player-a',
+      type: 'HOUSE',
+      gridX: 20,
+      gridY: 20,
+      isConstructed: true
+    });
+
+    const result = commands.cancelSelectedFoundation();
+    expect(result).toBe(true);
+    expect(scene.markFoundationCancelled).toHaveBeenCalledWith('house-1');
+    expect(scene.room.send).toHaveBeenCalledWith('CANCEL_BUILDING', { buildingId: 'house-1' });
+  });
+
+  it('allows deleting a secondary Town Center', () => {
+    scene.room.state.buildings.set('tc-1', {
+      id: 'tc-1',
+      ownerId: 'player-a',
+      type: 'TOWN_CENTER',
+      gridX: 48,
+      gridY: 53,
+      isConstructed: true
+    });
+    scene.room.state.buildings.set('tc-2', {
+      id: 'tc-2',
+      ownerId: 'player-a',
+      type: 'TOWN_CENTER',
+      gridX: 10,
+      gridY: 10,
+      isConstructed: true
+    });
+    scene.selectedBuildingId = 'tc-2';
+
+    const result = commands.cancelSelectedFoundation();
+    expect(result).toBe(true);
+    expect(scene.markFoundationCancelled).toHaveBeenCalledWith('tc-2');
+    expect(scene.room.send).toHaveBeenCalledWith('CANCEL_BUILDING', { buildingId: 'tc-2' });
+  });
+});

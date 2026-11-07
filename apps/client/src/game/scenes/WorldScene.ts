@@ -17,8 +17,10 @@ import {
   getBuildingMaxLevel,
   getIsoDepth,
   gridToScreen,
+  isDefaultTownCenter,
   screenToGrid,
-  terrainForZone
+  terrainForZone,
+  zoneKindOf
 } from '@chien-quoc/shared';
 import { generateProceduralTextures } from '../renderers/ProceduralSprites.js';
 import { buildingTierInfo } from '../render/buildingArt.js';
@@ -155,6 +157,8 @@ export interface SelectedEntityData {
   isOwner?: boolean;
   /** MAPS: an owned portal renders the travel panel. */
   isPortal?: boolean;
+  /** Whether this building is the empire's default/starter Town Center. */
+  isDefaultTownCenter?: boolean;
   trainingQueue?: string[];
   /** LVL: building upgrade timer; `upgradeTimeMs = 0` means idle. */
   upgradeProgressMs?: number;
@@ -1017,6 +1021,16 @@ export class WorldScene extends Phaser.Scene {
       }
     });
     return target;
+  }
+
+  /** Number of Town Centers owned by `ownerId` in this room. */
+  public townCenterCountFor(ownerId: string): number {
+    if (!ownerId || !this.room?.state?.buildings) return 0;
+    let count = 0;
+    this.room.state.buildings.forEach((b: any) => {
+      if (b.ownerId === ownerId && b.type === 'TOWN_CENTER') count++;
+    });
+    return count;
   }
 
   /** Own portal, used as the camera anchor when the map has no Town Center. */
@@ -1998,6 +2012,15 @@ export class WorldScene extends Phaser.Scene {
             : {}),
           isOwner: b.ownerId === this.myOwnerId,
           isPortal: b.type === 'PORTAL',
+          isDefaultTownCenter:
+            b.type === 'TOWN_CENTER' &&
+            isDefaultTownCenter(
+              b,
+              this.room?.state?.mapWidth ?? 110,
+              this.room?.state?.mapHeight ?? 110,
+              this.townCenterCountFor(b.ownerId),
+              zoneKindOf(this.room?.state?.zoneId ?? '') === 'kingdom'
+            ),
           trainingQueue: Array.from(b.trainingQueue),
           ownerTownCenterLevel: this.townCenterLevelFor(b.ownerId),
           isConstructed: b.isConstructed,

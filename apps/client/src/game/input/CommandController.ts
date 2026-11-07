@@ -4,7 +4,9 @@ import {
   canTrainUnitsAt,
   gridToScreen,
   isBuildingUnlocked,
-  nextUnitStance
+  isDefaultTownCenter,
+  nextUnitStance,
+  zoneKindOf
 } from '@chien-quoc/shared';
 import * as Phaser from 'phaser';
 import type { ControlGroupSummary, WorldScene } from '../scenes/WorldScene.js';
@@ -537,7 +539,9 @@ export class CommandController {
   }
 
   /**
-   * Sends CANCEL_BUILDING for the selected building.
+   * Sends CANCEL_BUILDING for the selected building (foundation or completed).
+   *
+   * Completed buildings can be deleted, except the default Town Center and Portals.
    *
    * @returns true when a command was actually sent, so the caller can swallow
    * the key event only when it did something.
@@ -545,7 +549,7 @@ export class CommandController {
   cancelSelectedFoundation(): boolean {
     const scene = this.scene;
     if (scene.readOnly) return false;
-    if (!scene.room || !scene.selectedBuildingId) return false;
+    if (!scene.room) return false;
 
     if (scene.selectedRoadId) {
       const road = (scene.room.state as any)?.roads?.get(scene.selectedRoadId);
@@ -564,8 +568,22 @@ export class CommandController {
     const building = scene.room.state.buildings.get(scene.selectedBuildingId);
     if (!building) return false;
     if (building.ownerId !== scene.myOwnerId) return false;
-    if (building.isConstructed) return false;
+    if (building.type === 'PORTAL') return false;
 
+    const tcCount = scene.townCenterCountFor(scene.myOwnerId);
+    if (
+      isDefaultTownCenter(
+        building,
+        scene.room.state.mapWidth ?? 110,
+        scene.room.state.mapHeight ?? 110,
+        tcCount,
+        zoneKindOf(scene.room.state.zoneId ?? '') === 'kingdom'
+      )
+    ) {
+      return false;
+    }
+
+    scene.markFoundationCancelled(scene.selectedBuildingId);
     scene.room.send(NetworkMessage.CANCEL_BUILDING, { buildingId: scene.selectedBuildingId });
     return true;
   }
