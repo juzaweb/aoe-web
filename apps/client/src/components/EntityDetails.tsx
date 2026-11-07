@@ -11,6 +11,10 @@ import {
   getEffectiveUnitMaxHp,
   getPlayerUnitLevel,
   getUnitMaxLevel,
+  dropOffGatherMultiplier,
+  dropOffRange,
+  trainerSpeedMultiplier,
+  trainerUnitBuffMultiplier,
   townCenterAuraMultiplier,
   townCenterUnitAttackMultiplier
 } from '@chien-quoc/shared';
@@ -102,6 +106,25 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
 
   const buildingIsOwnedAndFinished =
     entity.type === 'building' && entity.isOwner === true && entity.isConstructed === true;
+
+  // Phase 26: level effects belong to the selected building itself. Trainers
+  // speed up and strengthen their own line; camps speed gathering and widen
+  // their unload ring. The Town Center keeps its phase-25 aura panel.
+  const selectedType = entity.type === 'building' ? (entity.subType as BuildingType) : null;
+  const selectedBlueprint = selectedType ? BUILDING_BLUEPRINTS[selectedType] : null;
+  const isTrainerBuilding =
+    selectedType === 'BARRACKS' ||
+    selectedType === 'STABLE' ||
+    selectedType === 'ARCHERY_RANGE';
+  const isDropOffCamp =
+    selectedType !== null &&
+    selectedType !== 'TOWN_CENTER' &&
+    (selectedBlueprint?.dropOffs.length ?? 0) > 0;
+  const buildingLevel = entity.level ?? 1;
+  const trainerSpeedPercent = Math.round((1 - trainerSpeedMultiplier(buildingLevel)) * 100);
+  const trainerBuffPercent = Math.round((trainerUnitBuffMultiplier(buildingLevel) - 1) * 100);
+  const gatherPercent = Math.round((dropOffGatherMultiplier(buildingLevel) - 1) * 100);
+  const unloadRadius = dropOffRange(buildingLevel);
 
   return (
     <div
@@ -215,6 +238,46 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
           <div className="flex justify-between text-[10px] text-slate-300">
             <span>Thời gian huấn luyện</span>
             <span className="font-mono text-sky-300">-{auraPercent}%</span>
+          </div>
+        </div>
+      )}
+
+      {buildingIsOwnedAndFinished && isTrainerBuilding && (
+        <div className="border-t border-slate-800 pt-2 space-y-1" data-trainer-effects>
+          <span className="text-[10px] font-bold tracking-wider text-amber-300">
+            HIỆU ỨNG NHÀ HUẤN LUYỆN · Lv {buildingLevel}
+          </span>
+          <div className="flex justify-between text-[10px] text-slate-300">
+            <span>Thời gian huấn luyện</span>
+            <span className="font-mono text-sky-300" data-trainer-speed>
+              -{trainerSpeedPercent}%
+            </span>
+          </div>
+          <div className="flex justify-between text-[10px] text-slate-300">
+            <span>HP &amp; tấn công lính</span>
+            <span className="font-mono text-emerald-300" data-trainer-buff>
+              +{trainerBuffPercent}%
+            </span>
+          </div>
+        </div>
+      )}
+
+      {buildingIsOwnedAndFinished && isDropOffCamp && (
+        <div className="border-t border-slate-800 pt-2 space-y-1" data-camp-effects>
+          <span className="text-[10px] font-bold tracking-wider text-amber-300">
+            HIỆU ỨNG CAMP · Lv {buildingLevel}
+          </span>
+          <div className="flex justify-between text-[10px] text-slate-300">
+            <span>Tốc độ gom</span>
+            <span className="font-mono text-emerald-300" data-gather-bonus>
+              +{gatherPercent}%
+            </span>
+          </div>
+          <div className="flex justify-between text-[10px] text-slate-300">
+            <span>Bán kính dỡ hàng</span>
+            <span className="font-mono text-sky-300" data-unload-radius>
+              {unloadRadius.toFixed(2)} tile
+            </span>
           </div>
         </div>
       )}
@@ -360,11 +423,17 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
               const unitAttack = getEffectiveUnitAttackPower(
                 uType,
                 unitLevel,
-                ownerTownCenterLevel
+                ownerTownCenterLevel,
+                buildingLevel
               );
-              const unitMaxHp = getEffectiveUnitMaxHp(uType, unitLevel, ownerTownCenterLevel);
+              const unitMaxHp = getEffectiveUnitMaxHp(
+                uType,
+                unitLevel,
+                ownerTownCenterLevel,
+                buildingLevel
+              );
               const effectiveTrainSeconds =
-                getEffectiveTrainTimeMs(uType, ownerTownCenterLevel) / 1000;
+                getEffectiveTrainTimeMs(uType, ownerTownCenterLevel, buildingLevel) / 1000;
 
               return (
                 <div key={uType} className="relative group/train">
