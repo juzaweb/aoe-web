@@ -122,10 +122,10 @@ export const RAID_LOOT_PERCENT = 0.2;
 export const RAID_LOOT_CAP_PER_RESOURCE = 2000;
 
 /**
- * The defender's Town Center is not destructible: the raid ends as soon as it
- * drops to this share of its maximum HP. Attacking the heart of an empire costs
- * its owner a rebuild otherwise, which would be a griefing tool rather than a
- * fight.
+ * The defender's Town Center is not destructible: damage stops at this share of
+ * its maximum HP. The raid itself is scored on the whole citadel (see
+ * `CITADEL_HP_THRESHOLD`); this floor only keeps the heart of an empire from
+ * being erased, which would be a griefing tool rather than a fight.
  */
 export const RAID_TOWN_CENTER_HP_THRESHOLD = 0.25;
 

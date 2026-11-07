@@ -13,6 +13,7 @@ import { BuildingState } from '../schema/BuildingState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { CorpseState } from '../schema/CorpseState.js';
+import { isCitadelBuilding } from './citadel.js';
 import { distanceToFootprint } from './geometry.js';
 
 /**
@@ -335,6 +336,11 @@ export class CombatSystem {
       if (targetBuilding.type === 'TOWN_CENTER') {
         const floor = clampRaidTownCenterHp(targetBuilding.hp, targetBuilding.maxHp);
         if (floor > targetBuilding.hp) targetBuilding.hp = floor;
+      } else if (isCitadelBuilding(this.state, targetBuilding) && targetBuilding.hp < 1) {
+        // The rest of the citadel is raid score too: it can be ground down to its
+        // last hit point, but never removed, so an upgrade the defender paid for
+        // cannot disappear in a single raid.
+        targetBuilding.hp = 1;
       }
 
       this.attackTimers.set(unit.id, blueprint.attackCooldownMs);

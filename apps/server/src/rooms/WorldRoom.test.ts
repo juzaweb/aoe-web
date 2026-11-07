@@ -12,6 +12,7 @@ import {
   TERRAIN_KINGDOM,
   UNIT_BLUEPRINTS,
   INITIAL_POPULATION_CAP,
+  citadelTownCenterFor,
   getBuildingLevelStats,
   getEffectiveBuildingMaxHp,
   getEffectiveTrainTimeMs,
@@ -2772,7 +2773,7 @@ describe('kingdom map layout (MAPS-V2)', () => {
     return room;
   }
 
-  it('spawns the Town Center at the centre of the 110x110 kingdom', () => {
+  it('spawns the Town Center inside the centred citadel', () => {
     const room = createKingdomRoom();
     addPlayer(room, 'player-a');
 
@@ -2782,9 +2783,11 @@ describe('kingdom map layout (MAPS-V2)', () => {
       (b: BuildingState) => b.type === 'TOWN_CENTER'
     );
     expect(townCenter).toBeDefined();
-    // Town Center is 4x4, centred on the 110x110 map.
-    expect(townCenter!.gridX).toBe(53);
-    expect(townCenter!.gridY).toBe(53);
+    // The compound is centred on the 110x110 kingdom; its Town Center sits at
+    // the west end, with the single gate on the east wall.
+    const anchor = citadelTownCenterFor(KINGDOM_MAP_SIZE.width, KINGDOM_MAP_SIZE.height);
+    expect(townCenter!.gridX).toBe(anchor.gridX);
+    expect(townCenter!.gridY).toBe(anchor.gridY);
 
     // Phase 23: a kingdom has no gateway to a shared battlefield any more. The
     // only portal that may appear is a raider's retreat gate, created on join.
@@ -2813,17 +2816,18 @@ describe('kingdom map layout (MAPS-V2)', () => {
     expect(count).toBeLessThan(700);
   });
 
-  it('reclaims the centre tile from a restored resource node', () => {
+  it('reclaims the citadel anchor tile from a restored resource node', () => {
     const room = createKingdomRoom();
     addPlayer(room, 'player-a');
+    const anchor = citadelTownCenterFor(KINGDOM_MAP_SIZE.width, KINGDOM_MAP_SIZE.height);
 
-    // A node saved on the old layout can sit exactly where the Town Center goes.
+    // A node saved from an older layout can sit exactly where the Town Center goes.
     const node = new ResourceNodeState();
     node.id = 'res_buried';
     node.type = 'TREE';
     node.resourceType = 'wood';
-    node.gridX = 54;
-    node.gridY = 54;
+    node.gridX = anchor.gridX;
+    node.gridY = anchor.gridY;
     node.remainingAmount = 200;
     node.maxAmount = 200;
     room.state.resourceNodes.set(node.id, node);
@@ -2833,9 +2837,9 @@ describe('kingdom map layout (MAPS-V2)', () => {
     const townCenter = Array.from(room.state.buildings.values()).find(
       (b: BuildingState) => b.type === 'TOWN_CENTER'
     );
-    // The base stays dead centre instead of being pushed off by the node.
-    expect(townCenter!.gridX).toBe(53);
-    expect(townCenter!.gridY).toBe(53);
+    // The base keeps its anchor instead of being pushed off by the node.
+    expect(townCenter!.gridX).toBe(anchor.gridX);
+    expect(townCenter!.gridY).toBe(anchor.gridY);
     expect(room.state.resourceNodes.has('res_buried')).toBe(false);
   });
 
@@ -2920,15 +2924,16 @@ describe('resource regrow (RES-02)', () => {
   it('fells a legacy starter node by its plaza position', () => {
     const room = createRoom();
     // A save from before the starter prefix existed: the node sits in the
-    // kingdom plaza, which the generator never populates.
+    // citadel clearing, which the generator never populates.
     room.state.zoneId = 'kingdom:player-a';
     internals(room).zoneId = 'kingdom:player-a';
     room.state.mapWidth = KINGDOM_MAP_SIZE.width;
     room.state.mapHeight = KINGDOM_MAP_SIZE.height;
+    const anchor = citadelTownCenterFor(KINGDOM_MAP_SIZE.width, KINGDOM_MAP_SIZE.height);
 
     const node = addNode(room, 'res_legacy', 'TREE', 'wood');
-    node.gridX = 54;
-    node.gridY = 54;
+    node.gridX = anchor.gridX;
+    node.gridY = anchor.gridY;
     node.remainingAmount = 0;
 
     internals(room).scheduleResourceRespawn(node);

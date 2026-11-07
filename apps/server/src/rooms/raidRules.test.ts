@@ -9,8 +9,7 @@ import {
   hexGridSize,
   hexPositionOf,
   hexTileAt,
-  isRaidLevelInRange,
-  isRaidTownCenterBreached
+  isRaidLevelInRange
 } from '@chien-quoc/shared';
 
 describe('raid level range', () => {
@@ -62,20 +61,7 @@ describe('raid loot', () => {
   });
 });
 
-describe('raid town center threshold', () => {
-  it('is breached at or below the configured share', () => {
-    expect(isRaidTownCenterBreached(100, 100)).toBe(false);
-    expect(isRaidTownCenterBreached(26, 100)).toBe(false);
-    expect(isRaidTownCenterBreached(25, 100)).toBe(true);
-    expect(isRaidTownCenterBreached(1, 100)).toBe(true);
-  });
-
-  it('does not report a destroyed building as a breach', () => {
-    // Zero means "gone", which the room handles as a defender win instead.
-    expect(isRaidTownCenterBreached(0, 100)).toBe(false);
-    expect(isRaidTownCenterBreached(10, 0)).toBe(false);
-  });
-
+describe('raid town center damage floor', () => {
   it('clamps damage at the threshold, never below it', () => {
     const floor = Math.ceil(1000 * RAID_TOWN_CENTER_HP_THRESHOLD);
     expect(clampRaidTownCenterHp(10, 1000)).toBe(floor);

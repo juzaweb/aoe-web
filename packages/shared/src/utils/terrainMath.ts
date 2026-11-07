@@ -1,5 +1,6 @@
 import { BATTLEFIELD_MAP_SIZE, KINGDOM_MAP_SIZE, zoneKindOf } from '../constants/index.js';
 import type { MapZoneKind } from '../types/index.js';
+import { CITADEL_SIZE, citadelOriginFor } from './citadel.js';
 
 /** Everything the terrain generator needs to know about one map. */
 export interface MapTerrain {
@@ -11,8 +12,8 @@ export interface MapTerrain {
 export const TERRAIN_BATTLEFIELD: MapTerrain = { ...BATTLEFIELD_MAP_SIZE, kind: 'battlefield' };
 export const TERRAIN_KINGDOM: MapTerrain = { ...KINGDOM_MAP_SIZE, kind: 'kingdom' };
 
-/** Kingdom layouts keep this radius around the Town Center free of roads. */
-export const KINGDOM_PLAZA_RADIUS = 7;
+/** Tiles of clear ground kept around the citadel before resources may spawn. */
+export const CITADEL_CLEAR_MARGIN = 2;
 
 /** Terrain layout of the map `zone` lives on. */
 export function terrainForZone(zone: string): MapTerrain {
@@ -20,15 +21,21 @@ export function terrainForZone(zone: string): MapTerrain {
 }
 
 /**
- * True inside the kingdom's central plaza.
+ * True inside the kingdom's citadel clearing.
  *
- * The Town Center is placed dead centre, so the plaza keeps generated resource
- * nodes out of the starting build area. A kingdom starts with no roads at all:
- * the player paints their own (see `roadTileKey` and the PLACE_ROAD handler).
+ * The compound sits at the centre of the map, so the generator must keep
+ * resources out of that area: a tree inside a wall would be buried the moment
+ * the base spawns. A small margin around the wall keeps the gate usable.
  */
 export function isPlazaTile(gx: number, gy: number, terrain: MapTerrain): boolean {
   if (terrain.kind !== 'kingdom') return false;
-  const cx = terrain.width / 2;
-  const cy = terrain.height / 2;
-  return Math.hypot(gx - cx, gy - cy) <= KINGDOM_PLAZA_RADIUS;
+
+  const { originX, originY } = citadelOriginFor(terrain.width, terrain.height);
+
+  return (
+    gx >= originX - CITADEL_CLEAR_MARGIN &&
+    gx < originX + CITADEL_SIZE + CITADEL_CLEAR_MARGIN &&
+    gy >= originY - CITADEL_CLEAR_MARGIN &&
+    gy < originY + CITADEL_SIZE + CITADEL_CLEAR_MARGIN
+  );
 }

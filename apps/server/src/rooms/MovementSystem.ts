@@ -3,6 +3,7 @@ import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { Pathfinder } from '../services/Pathfinder.js';
+import { citadelWallTileSet } from './citadel.js';
 import { UnitSeparation } from './unitSeparation.js';
 
 /**
@@ -297,6 +298,16 @@ export class MovementSystem {
       if (node.gridX >= mapWidth || node.gridY >= mapHeight) return;
       grid[node.gridY * mapWidth + node.gridX] = 1;
     });
+
+    // Citadel walls are indestructible terrain derived from the Town Center, not
+    // building entities, so they are stamped in here. Gate tiles are absent from
+    // the set, which is what keeps the compound walkable.
+    for (const key of citadelWallTileSet(this.state)) {
+      const [x, y] = key.split(',').map(Number);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      if (x < 0 || y < 0 || x >= mapWidth || y >= mapHeight) continue;
+      grid[y * mapWidth + x] = 1;
+    }
 
     this.blockedGrid = grid;
     this.blockedGridBuildingCount = buildingCount;

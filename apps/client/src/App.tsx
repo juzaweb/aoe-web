@@ -13,7 +13,8 @@ import {
   Resources,
   SESSION_REPLACED_CLOSE,
   UnitType,
-  WorldMapEntry
+  WorldMapEntry,
+  type CitadelStatus
 } from '@chien-quoc/shared';
 import {
   WorldScene,
@@ -107,6 +108,8 @@ export const App: React.FC = () => {
   const myPlayerIdRef = useRef<string | null>(null);
   const [population, setPopulation] = useState<number>(0);
   const [populationCap, setPopulationCap] = useState<number>(INITIAL_POPULATION_CAP);
+  /** Aggregate health of the player's kingdom citadel, or null off-kingdom. */
+  const [citadelStatus, setCitadelStatus] = useState<CitadelStatus | null>(null);
   /** ECO-02: idle villagers, published by the scene when the count changes. */
   const [idleVillagers, setIdleVillagers] = useState<number>(0);
   /** UIX-03: `Ctrl+1..9` rosters, published by the scene on every change. */
@@ -912,6 +915,7 @@ export const App: React.FC = () => {
           onPlacementCancelled={() => setActiveBuildingType(null)}
           onBuildingHotkey={handleSelectBuilding}
           onIdleVillagersChange={setIdleVillagers}
+          onCitadelStatusChange={setCitadelStatus}
           onControlGroupsChange={setControlGroups}
           onArmedOrderChange={setArmedOrder}
           onBoxSelectChange={setBoxSelectArmed}
@@ -936,6 +940,7 @@ export const App: React.FC = () => {
           gold={resources.gold}
           stone={resources.stone}
           population={population}
+          citadelStatus={citadelStatus}
           populationCap={populationCap}
           isConnected={isConnected}
           idleVillagers={idleVillagers}

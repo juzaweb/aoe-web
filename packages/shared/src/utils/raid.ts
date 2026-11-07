@@ -46,19 +46,12 @@ export function computeRaidLoot(defender: Resources): Resources {
   };
 }
 
-/** Whether a defender's Town Center has been reduced far enough to end the raid. */
-export function isRaidTownCenterBreached(hp: number, maxHp: number): boolean {
-  if (!Number.isFinite(hp) || !Number.isFinite(maxHp) || maxHp <= 0) return false;
-  if (hp <= 0) return false;
-  return hp / maxHp <= RAID_TOWN_CENTER_HP_THRESHOLD;
-}
-
 /**
  * Lowest HP a defender's Town Center may reach during a raid.
  *
  * Damage is clamped here instead of letting the building die, because the raid
- * is decided by the threshold and destroying the heart of an empire would be a
- * punishment the owner cannot undo.
+ * is decided by the citadel's aggregate threshold and destroying the heart of an
+ * empire would be a punishment the owner cannot undo.
  */
 export function clampRaidTownCenterHp(hp: number, maxHp: number): number {
   const floor = Math.ceil(maxHp * RAID_TOWN_CENTER_HP_THRESHOLD);
