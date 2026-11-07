@@ -198,6 +198,13 @@ function addBuilding(
   return building;
 }
 
+/** Snapshot of the room's buildings, in insertion order. */
+function listedBuildings(room: WorldRoom): BuildingState[] {
+  const buildings: BuildingState[] = [];
+  room.state.buildings.forEach((b: BuildingState) => buildings.push(b));
+  return buildings;
+}
+
 function addResource(
   room: WorldRoom,
   options: { id: string; resourceType?: string; gridX?: number; gridY?: number; remainingAmount?: number }
@@ -487,6 +494,95 @@ describe('handlePlaceBuilding', () => {
 
     expect(room.state.buildings.size).toBe(1);
     expect(villager.actionState).toBe('IDLE');
+  });
+
+  it('queues a shift-placed foundation behind the site a crew already builds', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 500 });
+    const villager = addUnit(room, { id: 'u_1', ownerId: 'player-a', x: 30, y: 30 });
+    const clientA = createClient('player-a');
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 40, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const first = listedBuildings(room)[0];
+    expect(villager.targetEntityId).toBe(first.id);
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 44, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const second = listedBuildings(room).find((b) => b.id !== first.id)!;
+
+    // The crew stays on the first site; the second waits behind it.
+    expect(villager.targetEntityId).toBe(first.id);
+    expect(second.isConstructed).toBe(false);
+
+    // Finishing the first site hands the villager the queued foundation.
+    first.isConstructed = true;
+    internals(room).update(16);
+
+    expect(villager.actionState).toBe('BUILDING');
+    expect(villager.targetEntityId).toBe(second.id);
+  });
+
+  it('skips a queued foundation that was cancelled before the crew reached it', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 500 });
+    const villager = addUnit(room, { id: 'u_1', ownerId: 'player-a', x: 30, y: 30 });
+    const clientA = createClient('player-a');
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 40, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const first = listedBuildings(room)[0];
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 44, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const second = listedBuildings(room).find((b) => b.id !== first.id)!;
+    room.state.buildings.delete(second.id);
+
+    first.isConstructed = true;
+    internals(room).update(16);
+
+    // The vanished entry is dropped instead of stranding the villager on it.
+    expect(villager.actionState).toBe('IDLE');
+    expect(villager.targetEntityId).toBe('');
+  });
+
+  it('lets a plain drop replace the crew order and clear its build queue', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 500 });
+    const villager = addUnit(room, { id: 'u_1', ownerId: 'player-a', x: 30, y: 30 });
+    const clientA = createClient('player-a');
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 40, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const first = listedBuildings(room)[0];
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 44, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const queued = listedBuildings(room).find((b) => b.id !== first.id)!;
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 48, gridY: 40, unitIds: ['u_1']
+    });
+    const replacement = listedBuildings(room).find(
+      (b) => b.id !== first.id && b.id !== queued.id
+    )!;
+
+    expect(villager.targetEntityId).toBe(replacement.id);
+
+    // The stale queue entry must not pull the crew away once the first site is done.
+    first.isConstructed = true;
+    internals(room).update(16);
+    expect(villager.targetEntityId).toBe(replacement.id);
+
+    replacement.isConstructed = true;
+    internals(room).update(16);
+    expect(villager.actionState).toBe('IDLE');
+    expect(villager.targetEntityId).toBe('');
   });
 });
 
@@ -1134,6 +1230,151 @@ describe('tower combat (SIM-03)', () => {
   });
 });
 
+describe('unit auto-engagement', () => {
+  it('lets an idle soldier pick up an enemy inside its aggro radius', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const soldier = addUnit(room, {
+      id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN', x: 10, y: 10
+    });
+    const enemy = addUnit(room, { id: 'u_2', ownerId: 'player-b', type: 'VILLAGER', x: 14, y: 10 });
+
+    internals(room).update(100);
+
+    expect(soldier.actionState).toBe('ATTACKING');
+    expect(soldier.targetEntityId).toBe(enemy.id);
+    expect(soldier.targetEntityType).toBe('unit');
+    // Out of weapon range this tick: it acquired the target, but did not hit.
+    expect(enemy.hp).toBe(UNIT_BLUEPRINTS.VILLAGER.maxHp);
+  });
+
+  it('prefers an enemy soldier over a closer villager', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const soldier = addUnit(room, {
+      id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN', x: 10, y: 10
+    });
+    addUnit(room, { id: 'u_2', ownerId: 'player-b', type: 'VILLAGER', x: 11, y: 10 });
+    const enemySoldier = addUnit(room, {
+      id: 'u_3', ownerId: 'player-b', type: 'SPEARMAN', x: 14, y: 10
+    });
+
+    internals(room).update(100);
+
+    expect(soldier.targetEntityId).toBe(enemySoldier.id);
+  });
+
+  it('prefers a villager over a nearer building', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const soldier = addUnit(room, {
+      id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN', x: 10, y: 10
+    });
+    addBuilding(room, {
+      id: 'b_1', ownerId: 'player-b', type: 'HOUSE', gridX: 11, gridY: 9
+    });
+    const villager = addUnit(room, {
+      id: 'u_2', ownerId: 'player-b', type: 'VILLAGER', x: 14, y: 10
+    });
+
+    internals(room).update(100);
+
+    expect(soldier.targetEntityId).toBe(villager.id);
+  });
+
+  it('falls back to an enemy building when no unit is in range', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const soldier = addUnit(room, {
+      id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN', x: 10, y: 10
+    });
+    const building = addBuilding(room, {
+      id: 'b_1', ownerId: 'player-b', type: 'HOUSE', gridX: 12, gridY: 10
+    });
+
+    internals(room).update(100);
+
+    expect(soldier.targetEntityId).toBe(building.id);
+    expect(soldier.targetEntityType).toBe('building');
+  });
+
+  it('never auto-acquires the portal', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const soldier = addUnit(room, {
+      id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN', x: 10, y: 10
+    });
+    addBuilding(room, {
+      id: 'b_1', ownerId: 'player-b', type: 'PORTAL', gridX: 12, gridY: 10
+    });
+
+    internals(room).update(100);
+
+    expect(soldier.actionState).toBe('IDLE');
+    expect(soldier.targetEntityId).toBe('');
+  });
+
+  it('spares friendly units and buildings', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    const soldier = addUnit(room, {
+      id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN', x: 10, y: 10
+    });
+    addUnit(room, { id: 'u_2', ownerId: 'player-a', type: 'VILLAGER', x: 11, y: 10 });
+    addBuilding(room, {
+      id: 'b_1', ownerId: 'player-a', type: 'HOUSE', gridX: 12, gridY: 10
+    });
+
+    internals(room).update(100);
+
+    expect(soldier.actionState).toBe('IDLE');
+    expect(soldier.targetEntityId).toBe('');
+  });
+
+  it('keeps villagers out of fights they were not ordered into', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const villager = addUnit(room, {
+      id: 'u_1', ownerId: 'player-a', type: 'VILLAGER', x: 10, y: 10
+    });
+    addUnit(room, { id: 'u_2', ownerId: 'player-b', type: 'SPEARMAN', x: 12, y: 10 });
+
+    internals(room).update(100);
+
+    expect(villager.actionState).toBe('IDLE');
+    expect(villager.targetEntityId).toBe('');
+  });
+
+  it('resumes a plain move after the auto-acquired fight ends', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const soldier = addUnit(room, {
+      id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN', x: 10, y: 10, actionState: 'MOVING'
+    });
+    soldier.targetX = 40;
+    soldier.targetY = 10;
+    const enemy = addUnit(room, { id: 'u_2', ownerId: 'player-b', type: 'VILLAGER', x: 12, y: 10 });
+
+    internals(room).update(100);
+    expect(soldier.actionState).toBe('ATTACKING');
+    expect(soldier.targetEntityId).toBe(enemy.id);
+
+    room.state.units.delete(enemy.id);
+    internals(room).update(100);
+
+    expect(soldier.actionState).toBe('MOVING');
+    expect(soldier.targetX).toBe(40);
+    expect(soldier.x).toBeGreaterThan(10);
+  });
+});
+
 describe('combat cooldown bookkeeping', () => {
   it('resumes the stored order on the tick its target dies', () => {
     const room = createRoom();
@@ -1162,6 +1403,9 @@ describe('combat cooldown bookkeeping', () => {
     const enemy = addUnit(room, {
       id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN', x: 10, y: 10
     });
+    // Keep the idle soldier from auto-acquiring the villager: this test is about
+    // the villager's cooldown being dropped, not about auto-engagement.
+    enemy.stance = 'NO_ATTACK';
     const victim = addUnit(room, {
       id: 'u_2', ownerId: 'player-b', type: 'VILLAGER', x: 11, y: 10, actionState: 'ATTACKING'
     });

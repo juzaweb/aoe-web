@@ -159,6 +159,15 @@ export interface PlaceBuildingPayload {
    * drops everything that is not the player's own builder and caps the list.
    */
   unitIds?: string[];
+  /**
+   * Shift-placement: append the new foundation to each builder's build queue
+   * instead of taking the crew off whatever site it is working on. A plain drop
+   * (no Shift) is a fresh order and replaces the current one.
+   *
+   * Optional and untrusted, like `unitIds`: a queue entry only ever points at a
+   * foundation the same player just created.
+   */
+  queue?: boolean;
 }
 
 export interface MoveUnitsPayload {

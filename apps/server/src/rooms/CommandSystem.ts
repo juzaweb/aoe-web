@@ -114,6 +114,13 @@ const FORMATION_SPACING = UNIT_SEPARATION;
 const CANCEL_BUILDING_FULL_REFUND_BELOW = 10; // construction progress %
 const CANCEL_BUILDING_PARTIAL_REFUND_RATIO = 0.5;
 
+/**
+ * How many foundations one villager may queue behind the site it is currently
+ * building. A shift-placement chain is meant for a handful of houses; the cap
+ * stops a client from growing a single unit's queue without bound.
+ */
+const MAX_QUEUED_BUILD_SITES = 10;
+
 /** One integer tile coordinate, after validation. */
 interface RoadTile {
   x: number;
@@ -193,6 +200,15 @@ function computeFormationOffsets(count: number, spacing: number): Array<{ x: num
  * and grid coordinates are all resolved against `state`, never taken as truth.
  */
 export class CommandSystem {
+  /**
+   * Foundations waiting behind a villager's current site, in placement order.
+   *
+   * Kept off the schema on purpose: the queue is server-side order state the
+   * client neither renders nor persists, and a WeakMap frees it together with
+   * the unit, so a dead or departed villager cannot leave an orphan behind.
+   */
+  private readonly queuedBuilds = new WeakMap<UnitState, string[]>();
+
   constructor(
     private readonly state: WorldState,
     private readonly ports: CommandPorts
@@ -320,7 +336,11 @@ export class CommandSystem {
     // straight to work. It has to happen in this handler: the client never
     // learns the foundation's id, so a follow-up BUILD_TARGET would need a
     // second click on a site it cannot address yet.
-    this.assignBuildersToSite(this.collectBuilders(client, payload.unitIds), building);
+    this.assignBuildersToSite(
+      this.collectBuilders(client, payload.unitIds),
+      building,
+      payload.queue === true
+    );
   }
 
   /**
@@ -1090,34 +1110,113 @@ export class CommandSystem {
   }
 
   /**
-   * Walks a resolved crew to a foundation, one stand point per builder.
+   * Signs a crew up to a foundation, or queues that foundation behind the site
+   * each unit is already building.
    *
-   * The unit fields are the whole order — the tick reads them — so this is where
-   * the previous order (a move route, a harvest queue) is cancelled. Nothing is
-   * checked here: both callers resolve the crew and the foundation first.
+   * `queue` is the shift-placement flag. Without it the order replaces whatever
+   * the unit was doing, which is the single-drop behaviour. With it, a builder
+   * that is already on a foundation keeps working there and walks to the new
+   * site when that one finishes; the queue lives in {@link queuedBuilds}.
    */
-  private assignBuildersToSite(builders: UnitState[], building: BuildingState) {
+  private assignBuildersToSite(builders: UnitState[], building: BuildingState, queue = false) {
     builders.forEach((unit, idx) => {
-      const approach = getBuildApproachPoint(
-        unit,
-        building,
-        idx,
-        builders.length,
-        this.state.mapWidth,
-        this.state.mapHeight
-      );
+      if (queue && this.currentBuildSite(unit)) {
+        this.enqueueBuild(unit, building.id);
+        return;
+      }
 
-      unit.queueTargetX.clear();
-      unit.queueTargetY.clear();
-      unit.targetEntityId = building.id;
-      unit.targetEntityType = 'building';
-      unit.previousActionState = '';
-      this.ports.setWalkTarget(unit, approach.x, approach.y);
-      unit.actionState = 'BUILDING';
-      // Leaving a woodline for a build site must not leave a stale retarget type
-      // behind, or a later depleted node would pull the villager back to it.
-      this.ports.clearHarvestOrder(unit.id);
+      // A fresh order always drops a stale queue: whatever the unit was going
+      // to build next is no longer what the player asked for.
+      this.queuedBuilds.delete(unit);
+      this.sendBuilderToSite(unit, building, idx, builders.length);
     });
+  }
+
+  /** The unconstructed, own foundation this unit is currently working on. */
+  private currentBuildSite(unit: UnitState): BuildingState | null {
+    if (unit.actionState !== 'BUILDING' || !unit.targetEntityId) return null;
+    const site = this.state.buildings.get(unit.targetEntityId);
+    if (!site || site.isConstructed || site.ownerId !== unit.ownerId) return null;
+    return site;
+  }
+
+  /** Appends `buildingId` to a unit's build queue, up to the per-unit cap. */
+  private enqueueBuild(unit: UnitState, buildingId: string) {
+    const queue = this.queuedBuilds.get(unit) ?? [];
+    if (queue.length >= MAX_QUEUED_BUILD_SITES) return;
+    if (queue[queue.length - 1] === buildingId) return;
+    queue.push(buildingId);
+    this.queuedBuilds.set(unit, queue);
+  }
+
+  /**
+   * Moves an idle-after-completion builder onto the next queued foundation.
+   *
+   * Called by the tick when the unit's current site is finished or gone. Entries
+   * that no longer resolve to an unconstructed foundation of the same owner are
+   * dropped here rather than needing a removal path for every cancel, destroy
+   * and refund order.
+   *
+   * @returns true when a site was found and the unit is now walking to it.
+   */
+  advanceBuildQueue(unit: UnitState): boolean {
+    const queue = this.queuedBuilds.get(unit);
+    if (!queue) return false;
+
+    while (queue.length > 0) {
+      const buildingId = queue.shift() as string;
+      const building = this.state.buildings.get(buildingId);
+      if (!building || building.isConstructed || building.ownerId !== unit.ownerId) continue;
+
+      const heading = this.countUnitsHeadingTo(building.id);
+      this.sendBuilderToSite(unit, building, heading, heading + 1);
+      if (queue.length === 0) this.queuedBuilds.delete(unit);
+      return true;
+    }
+
+    this.queuedBuilds.delete(unit);
+    return false;
+  }
+
+  /** Units already ordered to this site, used only to fan out approach points. */
+  private countUnitsHeadingTo(buildingId: string): number {
+    let count = 0;
+    this.state.units.forEach((unit) => {
+      if (unit.actionState === 'BUILDING' && unit.targetEntityId === buildingId) count++;
+    });
+    return count;
+  }
+
+  /**
+   * Points one unit at one foundation: approach ring, build order, and the
+   * previous order cancelled. Shared by placement, queued continuation and the
+   * right-click `BUILD_TARGET` path so they cannot disagree.
+   */
+  private sendBuilderToSite(
+    unit: UnitState,
+    building: BuildingState,
+    index: number,
+    count: number
+  ) {
+    const approach = getBuildApproachPoint(
+      unit,
+      building,
+      index,
+      count,
+      this.state.mapWidth,
+      this.state.mapHeight
+    );
+
+    unit.queueTargetX.clear();
+    unit.queueTargetY.clear();
+    unit.targetEntityId = building.id;
+    unit.targetEntityType = 'building';
+    unit.previousActionState = '';
+    this.ports.setWalkTarget(unit, approach.x, approach.y);
+    unit.actionState = 'BUILDING';
+    // Leaving a woodline for a build site must not leave a stale retarget type
+    // behind, or a later depleted node would pull the villager back to it.
+    this.ports.clearHarvestOrder(unit.id);
   }
 
   /**

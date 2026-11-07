@@ -1375,9 +1375,11 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   private processUnitBuilding(unit: UnitState) {
     const building = this.state.buildings.get(unit.targetEntityId);
 
-    // Cancelled, destroyed or finished: there is nothing left to build, so fall
-    // back to a queued waypoint (the site may have been a detour) or go idle.
+    // Cancelled, destroyed or finished: hand the villager the next foundation
+    // queued by a shift-placement chain; otherwise fall back to a queued
+    // waypoint (the site may have been a detour) or go idle.
     if (!building || building.isConstructed || building.ownerId !== unit.ownerId) {
+      if (this.commands.advanceBuildQueue(unit)) return;
       this.movement.resumeQueuedWaypoint(unit);
       return;
     }
@@ -1520,8 +1522,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       const blueprint = UNIT_BLUEPRINTS[unit.type as UnitType];
       if (!blueprint) return;
 
-      // CMD-01: before taking a step, an attack-moving or patrolling unit checks
-      // for the closest enemy inside its aggro radius.
+      // CMD-01: before taking a step, an idle or moving soldier checks for the
+      // best enemy inside its aggro radius (soldiers, then villagers, then
+      // buildings). Attack-move and patrol use the same acquisition.
       this.combat.acquireAggroTarget(unit, blueprint.aggroRadius);
 
       // A fight whose target was destroyed, killed by someone else or simply
