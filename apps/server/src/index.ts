@@ -5,6 +5,7 @@ import { Server } from '@colyseus/core';
 import { Encoder } from '@colyseus/schema';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { KingdomRoom } from './rooms/KingdomRoom.js';
+import { accountSessions } from './rooms/AccountSessions.js';
 import { DatabaseService } from './services/DatabaseService.js';
 import { AuthError, AuthService } from './services/AuthService.js';
 import { RaidError, RaidService } from './services/RaidService.js';
@@ -166,6 +167,14 @@ app.post('/raid/retreat', async (req, res) => {
     const { raidId } = (req.body ?? {}) as { raidId?: unknown };
     if (typeof raidId !== 'string') {
       res.status(400).json({ error: 'Dữ liệu rút quân không hợp lệ.' });
+      return;
+    }
+
+    // With a live room socket the army must physically march to the gate; this
+    // endpoint exists only for a client that can no longer send messages, and
+    // letting a connected client call it would skip the march entirely.
+    if (accountSessions.hasLiveSession(account.id)) {
+      res.status(409).json({ error: 'Hãy rút quân trong trận đánh.' });
       return;
     }
 

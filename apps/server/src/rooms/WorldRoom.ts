@@ -272,6 +272,24 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    */
   protected afterTick(): void {}
 
+  /**
+   * Sends one unit to a point, replacing every order it had in flight.
+   *
+   * Subclasses use it for server-driven moves such as the raid retreat: the
+   * client never sends the destination, so it must go through the same route
+   * queue as a normal move command. Queued waypoints are dropped because they
+   * belong to the order being replaced.
+   */
+  protected moveUnitTo(unit: UnitState, targetX: number, targetY: number): void {
+    unit.queueTargetX.clear();
+    unit.queueTargetY.clear();
+    unit.targetEntityId = '';
+    unit.targetEntityType = '';
+    unit.previousActionState = '';
+    this.movement.setWalkTarget(unit, targetX, targetY);
+    unit.actionState = 'MOVING';
+  }
+
   /** Called when a finished building completes an upgrade. */
   protected onBuildingUpgraded(_building: BuildingState): void {}
 

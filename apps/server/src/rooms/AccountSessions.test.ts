@@ -57,6 +57,18 @@ describe('AccountSessionCoordinator', () => {
 
     expect(accountSessions.activeSession('user-1')).toBe('session-2');
   });
+
+  it('reports a live session only while its room says it is alive', () => {
+    expect(accountSessions.hasLiveSession('user-1')).toBe(false);
+
+    accountSessions.activate('user-1', 'session-1', 'kingdom:user-1', () => undefined, alive);
+    expect(accountSessions.hasLiveSession('user-1')).toBe(true);
+
+    accountSessions.activate('user-1', 'session-2', 'battlefield', () => undefined, dead);
+    expect(accountSessions.hasLiveSession('user-1')).toBe(false);
+    // A stale entry is dropped so a later join does not see a dead owner.
+    expect(accountSessions.activeSession('user-1')).toBeUndefined();
+  });
 });
 
 describe('accountSaves', () => {

@@ -12,9 +12,19 @@ import { DatabaseService } from '../services/DatabaseService.js';
 import { RaidService } from '../services/RaidService.js';
 import { BuildingState } from '../schema/BuildingState.js';
 import { UnitState } from '../schema/UnitState.js';
-import { ensurePortalFor } from './portals.js';
+import { arrivalPoint, ensurePortalFor, findOwnPortal } from './portals.js';
 import { WorldRoom } from './WorldRoom.js';
 import type { RoomAuth } from './identity.js';
+
+/**
+ * How close a unit must stand to its assigned point below the retreat gate to
+ * count as withdrawn.
+ *
+ * Matches the movement step's own 0.15 arrival tolerance with room for the
+ * separation shove, so a unit that has just arrived is never held back by a
+ * few hundredths of a tile.
+ */
+const RETREAT_ARRIVAL_TOLERANCE = 0.35;
 
 /**
  * One private map per account, plus an optional raid in progress.
@@ -46,6 +56,25 @@ export class KingdomRoom extends WorldRoom {
    * the raid as a defender win.
    */
   private raidArmySeen = false;
+  /**
+   * Whether the attacker has ordered a retreat and their army is walking to
+   * the gate.
+   *
+   * A retreat is no longer an instant teleport: every surviving unit gets a
+   * move order to the retreat gate, and the raid only closes once the whole
+   * army stands there. This flag keeps the tick from settling early.
+   */
+  private raidRetreating = false;
+  /**
+   * The gate slot each retreating unit was ordered to.
+   *
+   * The unit's own `targetX/targetY` is not enough: a player can issue another
+   * move after clicking retreat, and once that order finishes the target equals
+   * the unit's position even though it is far from the gate. Keeping the slot
+   * here means "at the gate" stays a question about the gate, not the last
+   * order the unit received.
+   */
+  private readonly raidRetreatPoints = new Map<string, { x: number; y: number }>();
 
   static async onAuth(
     token: string | undefined,
@@ -265,19 +294,61 @@ export class KingdomRoom extends WorldRoom {
       return;
     }
 
+    // The whole army must reach the gate before it can leave; a single unit
+    // still fighting or walking home keeps the raid open.
+    if (this.raidRetreating && this.hasReachedRetreatGate(attackerId)) {
+      await this.settle(raidId, 'RETREATED');
+      return;
+    }
+
     if (Date.now() - this.raidStartedAt > RAID_RETREAT_TIMEOUT_MS) {
       await this.settle(raidId, 'RETREATED');
     }
   }
 
-  /** `RAID_RETREAT` from the attacker's own retreat gate. */
+  /**
+   * `RAID_RETREAT` from the attacker's own retreat gate.
+   *
+   * This only issues the march: every surviving unit walks to a slot below the
+   * gate, and `evaluateRaid` closes the raid once the last one arrives. The
+   * army is never deleted from a single click.
+   */
   private async handleRetreat(client: Client): Promise<void> {
     const ownerId = (client.auth as Partial<RoomAuth> | undefined)?.userId;
     if (!this.raidId || ownerId !== this.raidAttackerId) {
       this.rejectCommand(client, 'Bạn không có quyền rút quân ở đây.', RejectCode.FORBIDDEN);
       return;
     }
-    await this.settle(this.raidId, 'RETREATED');
+
+    const units = this.unitsOf(ownerId);
+    if (units.length === 0) return;
+
+    const portal =
+      findOwnPortal(this.state, ownerId) ?? ensurePortalFor(this.state, ownerId);
+    if (!portal) {
+      this.rejectCommand(client, 'Không tìm thấy cổng rút quân.', RejectCode.GONE);
+      return;
+    }
+
+    this.raidRetreating = true;
+    this.raidRetreatPoints.clear();
+    units.forEach((unit, index) => {
+      const point = arrivalPoint(portal, index, this.state);
+      this.raidRetreatPoints.set(unit.id, point);
+      this.moveUnitTo(unit, point.x, point.y);
+    });
+  }
+
+  /** True when every surviving attacker unit stands at its gate slot. */
+  private hasReachedRetreatGate(ownerId: string): boolean {
+    const units = this.unitsOf(ownerId);
+    if (units.length === 0) return false;
+
+    return units.every((unit) => {
+      const point = this.raidRetreatPoints.get(unit.id);
+      if (!point) return false;
+      return Math.hypot(unit.x - point.x, unit.y - point.y) <= RETREAT_ARRIVAL_TOLERANCE;
+    });
   }
 
   /**
@@ -308,6 +379,8 @@ export class KingdomRoom extends WorldRoom {
 
       this.raidId = null;
       this.raidAttackerId = null;
+      this.raidRetreating = false;
+      this.raidRetreatPoints.clear();
 
       if (!settled) {
         // Another path (the HTTP retreat fallback) already closed the raid and
@@ -348,6 +421,8 @@ export class KingdomRoom extends WorldRoom {
       // every tick. The boot reconciler closes the row later if it is stuck.
       this.raidId = null;
       this.raidAttackerId = null;
+      this.raidRetreating = false;
+      this.raidRetreatPoints.clear();
     } finally {
       this.raidSettling = false;
     }

@@ -457,8 +457,9 @@ export const App: React.FC = () => {
   /**
    * Retreats from the current raid.
    *
-   * The room message is the primary path (the server settles and answers with
-   * `RAID_ENDED`); the HTTP fallback covers a client whose socket is already
+   * The room message is the primary path: the server orders the army to march
+   * back to the retreat gate and answers with `RAID_ENDED` once the whole army
+   * has arrived. The HTTP fallback covers a client whose socket is already
    * gone, so the army is never stranded.
    */
   const handleRetreat = () => {
