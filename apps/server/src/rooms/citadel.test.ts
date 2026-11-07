@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUILDING_BLUEPRINTS,
+  CITADEL_HEIGHT,
   CITADEL_HP_THRESHOLD,
-  CITADEL_SIZE,
+  CITADEL_WIDTH,
   citadelLayoutFor,
   citadelStatus,
   citadelTownCenterFor,
@@ -64,14 +65,15 @@ describe('citadel layout', () => {
 
   it('rings the compound with walls except at the single east gate', () => {
     const layout = citadelLayoutFor(TC_X, TC_Y);
-    expect(layout.size).toBe(CITADEL_SIZE);
-    // 17x17 perimeter minus the three-tile gate in the east wall.
-    expect(layout.walls).toHaveLength(CITADEL_SIZE * 4 - 4 - 3);
+    expect(layout.sizeX).toBe(CITADEL_WIDTH);
+    expect(layout.sizeY).toBe(CITADEL_HEIGHT);
+    // Square perimeter minus the three-tile gate in the east wall.
+    expect(layout.walls).toHaveLength(2 * (CITADEL_WIDTH + CITADEL_HEIGHT) - 4 - 3);
     expect(layout.gates).toHaveLength(3);
 
     const wallKeys = new Set(layout.walls.map((tile) => `${tile.gridX},${tile.gridY}`));
     for (const gate of layout.gates) {
-      expect(gate.gridX).toBe(layout.originX + layout.size - 1);
+      expect(gate.gridX).toBe(layout.originX + layout.sizeX - 1);
       expect(wallKeys.has(`${gate.gridX},${gate.gridY}`)).toBe(false);
     }
   });
@@ -92,6 +94,10 @@ describe('citadel layout', () => {
     }
   });
 
+  it('stays a square after scaling up', () => {
+    expect(CITADEL_WIDTH).toBe(CITADEL_HEIGHT);
+  });
+
   it('keeps every building slot inside the inner courtyard', () => {
     const layout = citadelLayoutFor(TC_X, TC_Y);
     for (const slot of layout.slots) {
@@ -102,13 +108,49 @@ describe('citadel layout', () => {
     }
   });
 
+  it('keeps the Town Center taller than wide and the houses on the south wall', () => {
+    const layout = citadelLayoutFor(TC_X, TC_Y);
+    const townCenter = layout.slots.find((slot) => slot.type === 'TOWN_CENTER')!;
+    expect(townCenter.sizeX).toBe(BUILDING_BLUEPRINTS.TOWN_CENTER.sizeX);
+    expect(townCenter.sizeY).toBe(BUILDING_BLUEPRINTS.TOWN_CENTER.sizeY);
+    expect(townCenter.sizeY).toBeGreaterThan(townCenter.sizeX);
+
+    for (const house of layout.slots.filter((slot) => slot.type === 'HOUSE')) {
+      // Last row of the house footprint sits on the last inner row.
+      expect(house.gridY + house.sizeY - 1).toBe(layout.innerMaxY);
+    }
+  });
+
+  it('packs the five houses side by side at the rear of the compound', () => {
+    const layout = citadelLayoutFor(TC_X, TC_Y);
+    const houses = layout.slots
+      .filter((slot) => slot.type === 'HOUSE')
+      .sort((a, b) => a.gridX - b.gridX);
+
+    expect(houses[0].gridX).toBe(layout.innerMinX);
+    for (let index = 1; index < houses.length; index++) {
+      expect(houses[index].gridX).toBe(houses[index - 1].gridX + houses[index - 1].sizeX);
+      expect(houses[index].gridY).toBe(houses[0].gridY);
+    }
+  });
+
+  it('keeps the Town Center about four tiles from the rear wall', () => {
+    const layout = citadelLayoutFor(TC_X, TC_Y);
+    const townCenter = layout.slots.find((slot) => slot.type === 'TOWN_CENTER')!;
+
+    // `innerMinX` is the first interior tile, one step in from the west wall.
+    // Four empty tiles sit between that wall and the Town Center's west edge.
+    expect(townCenter.gridX - layout.innerMinX).toBe(4);
+  });
+
   it('centres the compound in the middle of the map', () => {
     const target = citadelTownCenterFor(110, 110);
     const layout = citadelLayoutFor(target.gridX, target.gridY);
 
-    const centredOrigin = Math.round((110 - CITADEL_SIZE) / 2);
-    expect(layout.originX).toBe(centredOrigin);
-    expect(layout.originY).toBe(centredOrigin);
+    const centredOriginX = Math.round((110 - CITADEL_WIDTH) / 2);
+    const centredOriginY = Math.round((110 - CITADEL_HEIGHT) / 2);
+    expect(layout.originX).toBe(centredOriginX);
+    expect(layout.originY).toBe(centredOriginY);
   });
 });
 
@@ -196,8 +238,8 @@ describe('citadel lifecycle', () => {
     rightEdgeTc.id = 'b-right-tc';
     rightEdgeTc.ownerId = 'defender';
     rightEdgeTc.type = 'TOWN_CENTER';
-    rightEdgeTc.gridX = 110 - 6 - CITADEL_SIZE + 12;
-    rightEdgeTc.gridY = Math.floor((110 - CITADEL_SIZE) / 2) + 6;
+    rightEdgeTc.gridX = 110 - 6 - CITADEL_WIDTH + 12;
+    rightEdgeTc.gridY = Math.floor((110 - CITADEL_HEIGHT) / 2) + 6;
     rightEdgeTc.sizeX = BUILDING_BLUEPRINTS.TOWN_CENTER.sizeX;
     rightEdgeTc.sizeY = BUILDING_BLUEPRINTS.TOWN_CENTER.sizeY;
     rightEdgeTc.hp = stats.maxHp;

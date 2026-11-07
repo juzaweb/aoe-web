@@ -322,7 +322,9 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     type: 'TOWN_CENTER',
     name: 'Town Center',
     sizeX: 4,
-    sizeY: 4,
+    // The Town Center is the landmark of a kingdom, so it is taller than it is
+    // wide; the extra rows give its roof room to read above the citadel walls.
+    sizeY: 6,
     cost: { wood: 275, food: 0, gold: 0, stone: 100 },
     buildTimeMs: 15000,
     maxHp: 2400,
