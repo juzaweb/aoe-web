@@ -19,14 +19,6 @@ export class PlacementController {
   private ghostImage!: Phaser.GameObjects.Image;
 
   /**
-   * Whether this placement session already sent the selected villagers to a
-   * site. A shift-chain can drop several foundations, and every drop carrying
-   * the same `unitIds` would re-point the crew at the newest one and leave the
-   * earlier sites unattended — so the crew is claimed by the first drop only.
-   */
-  private crewClaimed = false;
-
-  /**
    * Footprints dropped during this placement session that the server has not
    * echoed back in a snapshot yet. Without them a fast shift-chain validates
    * every click against the pre-placement state: a second click on the same tile
@@ -135,7 +127,6 @@ export class PlacementController {
     // building is dropped.
     scene.buildingToPlace = type;
     scene.notifySelectionChange();
-    this.crewClaimed = false;
     this.pendingFootprints = [];
 
     const art = this.ghostArt(type);
@@ -159,8 +150,9 @@ export class PlacementController {
    * Sends PLACE_BUILDING for the tile under the click, or blinks a refusal.
    *
    * `keepActive` is the shift-click convention: the mode survives a successful
-   * drop so the next click can place the same building again. Without it the
-   * mode closes as soon as one foundation is sent.
+   * drop so the next click can place the same building again, and the drop is
+   * queued behind the crew's current site. Without it the mode closes as soon as
+   * one foundation is sent and the order replaces whatever the crew was doing.
    */
   commit(pointer: Phaser.Input.Pointer, keepActive = false) {
     const scene = this.scene;
@@ -175,18 +167,21 @@ export class PlacementController {
     const { gridX, gridY } = pointerWorldGrid(scene.cameras.main, pointer);
 
     if (this.isValid(gridX, gridY, blueprint)) {
-      const unitIds = this.crewClaimed ? [] : Array.from(scene.selectedUnitIds);
+      const unitIds = Array.from(scene.selectedUnitIds);
       // CMD-07: the crew travels with the placement. The foundation's id is
       // minted by the server, so a client-side follow-up BUILD_TARGET would have
       // to wait for the new building to appear in the snapshot and guess which
       // entry it just placed — that race is exactly the second click this removes.
+      //
+      // A shift-chain sends the same crew again with `queue`: the server appends
+      // the new foundation behind their current site instead of abandoning it.
       scene.room.send(NetworkMessage.PLACE_BUILDING, {
         type,
         gridX,
         gridY,
-        ...(unitIds.length > 0 ? { unitIds } : {})
+        ...(unitIds.length > 0 ? { unitIds } : {}),
+        ...(keepActive ? { queue: true } : {})
       });
-      this.crewClaimed = true;
       this.pendingFootprints.push({
         gridX,
         gridY,

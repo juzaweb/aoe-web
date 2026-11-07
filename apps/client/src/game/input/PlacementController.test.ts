@@ -83,33 +83,37 @@ describe('PlacementController', () => {
   it('stays in placement mode when the click asks to keep placing', () => {
     controller.commit(pointer, true);
 
-    expect(harness.scene.room.send).toHaveBeenCalledTimes(1);
+    expect(harness.scene.room.send).toHaveBeenCalledWith(NetworkMessage.PLACE_BUILDING, {
+      type: 'HOUSE',
+      gridX: 10,
+      gridY: 10,
+      unitIds: ['u1', 'u2'],
+      queue: true
+    });
     expect(harness.scene.buildingToPlace).toBe('HOUSE');
     expect(harness.scene.onPlacementCancelled).not.toHaveBeenCalled();
   });
 
-  it('lets only the first drop of a shift-chain claim the selected crew', () => {
+  it('queues every drop of a shift-chain for the same crew', () => {
     controller.commit(pointer, true);
     pointerGrid.gridX = 12;
     controller.commit(pointer, true);
 
     const payloads = harness.scene.room.send.mock.calls.map((call) => call[1]);
-    expect(payloads[0]).toMatchObject({ unitIds: ['u1', 'u2'] });
-    // Re-sending the same villagers would point them at the newest foundation
-    // and abandon the earlier ones.
-    expect(payloads[1].unitIds).toBeUndefined();
+    // The server appends the second foundation behind the first instead of
+    // pulling the crew off the site it is already building.
+    expect(payloads[0]).toMatchObject({ unitIds: ['u1', 'u2'], queue: true });
+    expect(payloads[1]).toMatchObject({ unitIds: ['u1', 'u2'], queue: true });
   });
 
-  it('resets the crew claim when a new placement session starts', () => {
+  it('does not queue a plain drop, so it replaces the crew current order', () => {
     controller.commit(pointer, true);
     pointerGrid.gridX = 12;
-    controller.commit(pointer, true);
-
-    controller.enter('HOUSE');
-    controller.commit(pointer, true);
+    controller.commit(pointer);
 
     const payloads = harness.scene.room.send.mock.calls.map((call) => call[1]);
-    expect(payloads[2]).toMatchObject({ unitIds: ['u1', 'u2'] });
+    expect(payloads[1].queue).toBeUndefined();
+    expect(harness.scene.buildingToPlace).toBeNull();
   });
 
   it('refuses a second drop on the same tile until the snapshot catches up', () => {
