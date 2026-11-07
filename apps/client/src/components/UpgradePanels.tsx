@@ -5,7 +5,6 @@ import {
   MAX_CONCURRENT_BUILDING_UPGRADES,
   Resources,
   UNIT_BLUEPRINTS,
-  UNIT_UPGRADE_ORDER,
   UnitType,
   getBuildingMaxLevel,
   getBuildingUpgradeCost,
@@ -253,7 +252,9 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
   );
 };
 
-interface BarracksResearchPanelProps {
+interface UnitResearchPanelProps {
+  /** MIL-01: unit types this building trains, and therefore researches. */
+  unitTypes: readonly UnitType[];
   unitLevels: number[];
   researchUnitType?: string;
   researchProgressMs?: number;
@@ -264,10 +265,17 @@ interface BarracksResearchPanelProps {
 }
 
 /**
- * Barracks-only research board. One player-wide timer at a time; every card is
+ * Unit research board for one trainer building.
+ *
+ * MIL-01: the roster comes from the selected building's `trainableUnits`, so a
+ * Barracks shows spearmen, a Stable cavalry, an Archery Range archers and the
+ * Town Center villagers. The server enforces the same rule, which is why the
+ * panel never has to gray a card out with a "wrong building" reason — the wrong
+ * cards are simply not there. One player-wide timer at a time; every card is
  * disabled while it runs, and the active type shows its progress instead.
  */
-export const BarracksResearchPanel: React.FC<BarracksResearchPanelProps> = ({
+export const UnitResearchPanel: React.FC<UnitResearchPanelProps> = ({
+  unitTypes,
   unitLevels,
   researchUnitType = '',
   researchProgressMs = 0,
@@ -278,6 +286,10 @@ export const BarracksResearchPanel: React.FC<BarracksResearchPanelProps> = ({
 }) => {
   const busy = Boolean(researchUnitType);
   const progressPercent = (researchProgressMs / Math.max(1, researchTimeMs)) * 100;
+  // Research on a unit this building does not train can only be an in-flight
+  // order placed before the selected building was picked; it still shows its
+  // timer, so the player can see and cancel it.
+  const researchingType = researchUnitType ? (researchUnitType as UnitType) : null;
 
   return (
     <div className="border-t border-slate-800 pt-2 space-y-1.5" data-research>
@@ -288,19 +300,19 @@ export const BarracksResearchPanel: React.FC<BarracksResearchPanelProps> = ({
         <span className="text-[9px] text-slate-500 font-mono">Toàn cục</span>
       </div>
 
-      {researchUnitType && (
+      {researchingType && (
         <>
           <div className="flex items-center justify-between text-[11px] text-slate-300">
             <span className="flex items-center gap-1">
               <Clock size={12} className="text-sky-400" />
-              {UNIT_BLUEPRINTS[researchUnitType as UnitType]?.name ?? researchUnitType}
+              {UNIT_BLUEPRINTS[researchingType]?.name ?? researchUnitType}
             </span>
             <span className="flex items-center gap-1.5">
               <span className="font-mono text-sky-300">
                 {Math.floor(researchProgressMs / 1000)}s / {Math.ceil(researchTimeMs / 1000)}s
               </span>
               <button
-                onClick={() => onCancelResearch(researchUnitType as UnitType)}
+                onClick={() => onCancelResearch(researchingType)}
                 className="w-4 h-4 rounded border border-red-800/70 bg-red-950/60 text-red-300 hover:border-red-500 hover:text-red-200 flex items-center justify-center transition-all"
                 title="Huỷ nghiên cứu, hoàn lại toàn bộ tài nguyên"
               >
@@ -313,7 +325,7 @@ export const BarracksResearchPanel: React.FC<BarracksResearchPanelProps> = ({
       )}
 
       <div className="grid grid-cols-2 gap-2">
-        {UNIT_UPGRADE_ORDER.map((unitType) => {
+        {unitTypes.map((unitType) => {
           const level = getPlayerUnitLevel(unitLevels, unitType);
           const maxLevel = getUnitMaxLevel();
           const atMax = level >= maxLevel;

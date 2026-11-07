@@ -43,7 +43,9 @@ chien-quoc/
   8 s (gold) of standing there, and the walk to a drop-off no longer dominates a trip.
 - **Empire Base Building:**
   - **Town Center:** Base headquarters providing population and training Villagers.
-  - **Barracks:** Military garrison to train Spearmen, Archers, and Cavalry.
+  - **Barracks:** Infantry garrison. Trains Spearmen.
+  - **Stable:** Cavalry stable. Trains Cavalry.
+  - **Archery Range:** Ranged garrison. Trains Archers.
   - **House:** Increases population capacity by +5.
   - **Farm:** Renewable food field holding 600 food at level 1 (+10%/level). Villagers harvest it in
     place and re-sow it for 60 wood once it runs dry.
@@ -72,6 +74,11 @@ chien-quoc/
 | **Build House** | `E` |
 | **Build Farm** | `R` |
 | **Build Watch Tower** | `T` |
+| **Build Lumber Camp** | `Y` |
+| **Build Mill** | `U` |
+| **Build Mining Camp** | `I` |
+| **Build Stable** | `C` |
+| **Build Archery Range** | `B` |
 
 ---
 

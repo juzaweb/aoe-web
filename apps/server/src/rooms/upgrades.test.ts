@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUILDING_BLUEPRINTS,
+  CORE_BUILDING_TYPES,
   MAX_BUILDING_LEVEL,
   MAX_UNIT_LEVEL,
   UNIT_BLUEPRINTS,
+  buildingTypeForUnit,
   getBuildingLevelStats,
   getBuildingMaxLevel,
   getBuildingUpgradeCost,
@@ -28,6 +30,33 @@ describe('player level defaults', () => {
     const player = new PlayerState();
     expect(Array.from(player.unitLevels)).toEqual([1, 1, 1, 1]);
     expect(player.researchUnitType).toBe('');
+  });
+});
+
+describe('military buildings (MIL-01)', () => {
+  it('gives each unit line exactly one trainer', () => {
+    expect(buildingTypeForUnit('VILLAGER')).toBe('TOWN_CENTER');
+    expect(buildingTypeForUnit('SPEARMAN')).toBe('BARRACKS');
+    expect(buildingTypeForUnit('ARCHER')).toBe('ARCHERY_RANGE');
+    expect(buildingTypeForUnit('CAVALRY')).toBe('STABLE');
+    expect(buildingTypeForUnit('DRAGON')).toBeNull();
+  });
+
+  it('trains one unit line per military building', () => {
+    expect(BUILDING_BLUEPRINTS.BARRACKS.trainableUnits).toEqual(['SPEARMAN']);
+    expect(BUILDING_BLUEPRINTS.STABLE.trainableUnits).toEqual(['CAVALRY']);
+    expect(BUILDING_BLUEPRINTS.ARCHERY_RANGE.trainableUnits).toEqual(['ARCHER']);
+  });
+
+  it('counts all three military branches as Town Center pillars', () => {
+    expect(CORE_BUILDING_TYPES).toEqual([
+      'HOUSE',
+      'BARRACKS',
+      'STABLE',
+      'ARCHERY_RANGE',
+      'FARM',
+      'TOWER'
+    ]);
   });
 });
 
@@ -201,6 +230,8 @@ describe('Town Center gate (LVL2)', () => {
     expect(getCoreLevelGaps({ HOUSE: 10, BARRACKS: 4, FARM: 10 }, 10)).toEqual([
       { type: 'HOUSE', current: 10, required: 10, met: true },
       { type: 'BARRACKS', current: 4, required: 10, met: false },
+      { type: 'STABLE', current: 0, required: 10, met: false },
+      { type: 'ARCHERY_RANGE', current: 0, required: 10, met: false },
       { type: 'FARM', current: 10, required: 10, met: true },
       { type: 'TOWER', current: 0, required: 10, met: false }
     ]);
@@ -209,12 +240,15 @@ describe('Town Center gate (LVL2)', () => {
   it('treats a missing or broken level map as "nothing built"', () => {
     expect(getCoreLevelGaps(undefined, 5).every((gap) => !gap.met)).toBe(true);
     expect(getCoreLevelGaps({ HOUSE: Number.NaN }, 5)[0].current).toBe(0);
-    // Every step is gated now, so a level-4 Town Center still needs four
-    // pillars at level 4 — no free upgrade at the bottom of the ladder.
+    // Every step is gated now, so a level-4 Town Center still needs every
+    // pillar at level 4 — no free upgrade at the bottom of the ladder.
     expect(getCoreLevelGaps(undefined, 4).every((gap) => !gap.met)).toBe(true);
-    expect(getCoreLevelGaps({ HOUSE: 4, BARRACKS: 4, FARM: 4, TOWER: 4 }, 4).every((gap) => gap.met)).toBe(
-      true
-    );
+    expect(
+      getCoreLevelGaps(
+        { HOUSE: 4, BARRACKS: 4, STABLE: 4, ARCHERY_RANGE: 4, FARM: 4, TOWER: 4 },
+        4
+      ).every((gap) => gap.met)
+    ).toBe(true);
   });
 });
 
@@ -243,7 +277,14 @@ describe('visual tiers (LVL3)', () => {
   });
 
   it('leaves every other building level-invariant', () => {
-    for (const type of ['TOWN_CENTER', 'BARRACKS', 'FARM', 'TOWER'] as const) {
+    for (const type of [
+      'TOWN_CENTER',
+      'BARRACKS',
+      'STABLE',
+      'ARCHERY_RANGE',
+      'FARM',
+      'TOWER'
+    ] as const) {
       expect(getBuildingVisualTierCount(type)).toBe(1);
       expect(getBuildingVisualTier(type, 10)).toBe(1);
       expect(getBuildingVisualTierName(type, 10)).toBeNull();

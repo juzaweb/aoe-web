@@ -44,7 +44,8 @@ import {
   getPlayerUnitLevel,
   getUnitMaxLevel,
   getUnitUpgradeCost,
-  getUnitUpgradeTimeMs
+  getUnitUpgradeTimeMs,
+  buildingTypeForUnit
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { RoadState } from '../schema/RoadState.js';
@@ -708,9 +709,13 @@ export class CommandSystem {
   }
 
   /**
-   * Starts a player-wide unit research. One Barracks is enough to unlock it, but
-   * the timer lives on the player so losing that Barracks mid-research does not
-   * silently cancel the investment.
+   * Starts a player-wide unit research.
+   *
+   * MIL-01: the research belongs to the building that trains the unit — a
+   * Barracks researches spearmen, a Stable cavalry, an Archery Range archers,
+   * the Town Center villagers. One finished building of that type is enough;
+   * the timer lives on the player, so losing it mid-research does not silently
+   * cancel the investment.
    */
   handleUpgradeUnitType(client: Client, payload: UpgradeUnitTypePayload) {
     if (!this.ensureZoneManager(client)) return;
@@ -733,8 +738,19 @@ export class CommandSystem {
       this.ports.rejectCommand(client, 'Another unit research is already in progress', RejectCode.BUSY);
       return;
     }
-    if (!this.hasConstructedBuilding(ownerId, 'BARRACKS')) {
-      this.ports.rejectCommand(client, 'Build a Barracks before researching unit upgrades', RejectCode.PREREQUISITE);
+
+    const trainerType = buildingTypeForUnit(requestedType);
+    if (!trainerType) {
+      this.ports.rejectCommand(client, 'No building trains this unit', RejectCode.INVALID);
+      return;
+    }
+    if (!this.hasConstructedBuilding(ownerId, trainerType)) {
+      const trainerName = BUILDING_BLUEPRINTS[trainerType]?.name ?? trainerType;
+      this.ports.rejectCommand(
+        client,
+        `Build ${indefiniteArticle(trainerName)} ${trainerName} before researching this unit`,
+        RejectCode.PREREQUISITE
+      );
       return;
     }
 
@@ -1211,4 +1227,17 @@ function describeCoreGaps(gaps: CoreLevelGap[]): string {
       return `${name} level ${gap.required} (have ${gap.current})`;
     })
     .join(', ');
+}
+
+/**
+ * `a` or `an`, for the building names that go into a rejection message.
+ *
+ * MIL-01 put "Archery Range" into the unit-research prerequisite, and "Build a
+ * Archery Range" reads like a typo in a toast the player sees every time they
+ * pick a research too early. Vowel-letter test only: every name in the roster is
+ * either consonant-initial or a plain vowel-initial word, so the exceptions of
+ * English ("an hour", "a university") cannot occur here.
+ */
+function indefiniteArticle(word: string): 'a' | 'an' {
+  return /^[aeiou]/i.test(word) ? 'an' : 'a';
 }

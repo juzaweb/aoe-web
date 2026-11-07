@@ -462,12 +462,16 @@ export class WorldScene extends Phaser.Scene {
     }
 
     // Preload generated building assets with cache-busting version (2x resolution)
-    // v=10: the house gained four level-tier sheets (`house_2..5.png`), which
-    // will ship alongside the existing level-1 sheet. Bump the key whenever a
-    // PNG under public/assets/buildings or /resources changes.
-    const v = 'v=10';
+    // v=11: MIL-01 added `stable.png` and `archery_range.png` to the roster. Bump
+    // the key whenever a PNG under public/assets/buildings or /resources changes.
+    const v = 'v=11';
     this.load.image('building_TOWN_CENTER', `/assets/buildings/town_center.png?${v}`);
     this.load.image('building_BARRACKS', `/assets/buildings/barracks.png?${v}`);
+    // MIL-01: the two new military sheets are NOT preloaded yet — their PNGs are
+    // produced by `scripts/generate_buildings_assets.py` and are not in the repo.
+    // Loading a missing file logs a Phaser error and leaves an empty texture, so
+    // the renderer's `FALLBACK_ART` path (the barracks silhouette) is the better
+    // placeholder. Add the two `load.image` calls here when the art lands.
     this.load.image('building_HOUSE', `/assets/buildings/house.png?${v}`);
     // LVL3: the house changes silhouette at four level milestones. Keys follow
     // `building_<TYPE>_<tier>`; `buildingArt` walks down from the requested tier

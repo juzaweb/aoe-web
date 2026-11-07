@@ -18,7 +18,12 @@ export type WorldRoomName = 'kingdom_room' | 'battlefield_room';
 
 export type BuildingType =
   | 'TOWN_CENTER'
+  /** MIL-01: infantry barracks — trains Spearmen. */
   | 'BARRACKS'
+  /** MIL-01: cavalry stable — trains Cavalry. */
+  | 'STABLE'
+  /** MIL-01: archery range — trains Archers. */
+  | 'ARCHERY_RANGE'
   | 'HOUSE'
   | 'FARM'
   | 'TOWER'

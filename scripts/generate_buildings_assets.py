@@ -94,6 +94,37 @@ BUILDING_SPECS = [
             "Solid pure white background, clean sharp silhouette, game asset ready --ar 1:2 --v 6.0 --style raw"
         ),
     },
+    # MIL-01: the two new military branches. Both are drawn on the barracks'
+    # 400x320 canvas so `buildingArt.ts` can reuse its lift and health-bar height
+    # instead of growing two more hand-measured entries.
+    {
+        "id": "stable",
+        "target_w": 400,
+        "target_h": 320,
+        "gen_w": 1024,
+        "gen_h": 1024,
+        "prompt": (
+            "A 2D game asset of an ancient East Asian cavalry stable and horse paddock, 2.5D isometric top-down view. "
+            "Timber and stone horse barn with a wide open stall door, hay bales, a wooden hitching rail, "
+            "tethering posts with saddles and tack hanging, small dirt exercise yard with hoof prints, "
+            "Warring States era military horse breeding building asset. "
+            "Solid pure white background, clean sharp silhouette, game asset ready --ar 1:1 --v 6.0 --style raw"
+        ),
+    },
+    {
+        "id": "archery_range",
+        "target_w": 400,
+        "target_h": 320,
+        "gen_w": 1024,
+        "gen_h": 1024,
+        "prompt": (
+            "A 2D game asset of an ancient East Asian archery range training ground, 2.5D isometric top-down view. "
+            "Low timber shooting pavilion with a thatched awning, straw target butts with arrows stuck in them, "
+            "a rack of bows and quivers leaning by the fence, a dirt firing lane with a backstop wall, "
+            "Warring States era military archery training building asset. "
+            "Solid pure white background, clean sharp silhouette, game asset ready --ar 1:1 --v 6.0 --style raw"
+        ),
+    },
 ]
 
 
@@ -206,7 +237,7 @@ def main():
         process_building(temp_path, final_path, spec["target_w"], spec["target_h"])
         temp_path.unlink(missing_ok=True)
 
-    print("\nAll 5 buildings generated successfully!")
+    print(f"\nAll {len(BUILDING_SPECS)} buildings generated successfully!")
 
 
 if __name__ == "__main__":

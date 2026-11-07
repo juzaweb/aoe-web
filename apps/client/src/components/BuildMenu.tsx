@@ -9,6 +9,8 @@ import {
   TreePine,
   Warehouse,
   Pickaxe,
+  Target,
+  Zap,
   Hammer,
   Route,
   Eraser,
@@ -16,13 +18,14 @@ import {
 } from 'lucide-react';
 import type { RoadMode } from '../game/input/RoadController.js';
 import { BUILDING_HOTKEY_BY_TYPE } from '../game/input/buildingHotkeys';
+import { buildingThumbnail } from './buildingThumbnails.js';
 
 interface BuildMenuProps {
   playerResources: Resources;
   activeBuildingType: BuildingType | null;
   onSelectBuilding: (type: BuildingType) => void;
   onCancelBuilding: () => void;
-  /** MOB-06: a collapsible 4x2 sheet instead of the always-open desktop dock. */
+  /** MOB-06: a collapsible 4-column sheet instead of the always-open desktop dock. */
   compact?: boolean;
   /**
    * Roads only exist in a kingdom: the battlefield's road network is terrain,
@@ -36,6 +39,8 @@ interface BuildMenuProps {
 const BUILDINGS: { type: BuildingType; icon: React.ReactNode }[] = [
   { type: 'TOWN_CENTER', icon: <Landmark size={20} /> },
   { type: 'BARRACKS', icon: <ShieldAlert size={20} /> },
+  { type: 'STABLE', icon: <Zap size={20} /> },
+  { type: 'ARCHERY_RANGE', icon: <Target size={20} /> },
   { type: 'HOUSE', icon: <House size={20} /> },
   { type: 'FARM', icon: <Wheat size={20} /> },
   { type: 'TOWER', icon: <TowerControl size={20} /> },
@@ -44,20 +49,13 @@ const BUILDINGS: { type: BuildingType; icon: React.ReactNode }[] = [
   { type: 'MINING_CAMP', icon: <Pickaxe size={20} /> }
 ];
 
-const BUILDING_THUMBNAILS: Record<BuildingType, string> = {
-  TOWN_CENTER: '/assets/buildings/town_center.png?v=3',
-  BARRACKS: '/assets/buildings/barracks.png?v=3',
-  HOUSE: '/assets/buildings/house.png?v=3',
-  FARM: '/assets/buildings/farm.png?v=3',
-  TOWER: '/assets/buildings/tower.png?v=3',
-  LUMBER_CAMP: '/assets/buildings/lumber_camp.png?v=1',
-  MILL: '/assets/buildings/mill.png?v=1',
-  MINING_CAMP: '/assets/buildings/mining_camp.png?v=1',
-  // Not listed in BUILDINGS: portals are server-created. The entry only keeps
-  // the exhaustive Record type-checking.
-  PORTAL: '/assets/buildings/portal.png?v=3'
-};
-
+/**
+ * Optional thumbnails. MIL-01's `STABLE` and `ARCHERY_RANGE` sheets are not in
+ * the repo yet (they come from `scripts/generate_buildings_assets.py`), so an
+ * absent entry renders the lucide icon on its own instead of firing a request
+ * that can only 404. The table itself lives in `buildingThumbnails.ts` so the
+ * selection panel and the build menu cannot disagree about a path.
+ */
 export const BuildMenu: React.FC<BuildMenuProps> = ({
   playerResources,
   activeBuildingType,
@@ -95,6 +93,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
     BUILDINGS.map(({ type, icon }) => {
       const hotkey = BUILDING_HOTKEY_BY_TYPE[type];
       const bp = BUILDING_BLUEPRINTS[type];
+      const thumbnail = buildingThumbnail(type);
       const affordable = canAfford(type);
       const isSelected = activeBuildingType === type;
 
@@ -119,14 +118,16 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
               compactTiles ? 'mt-0.5 h-7 w-7' : 'mt-0.5 h-10 w-10'
             }`}
           >
-            <img
-              src={BUILDING_THUMBNAILS[type]}
-              alt={bp.name}
-              className="h-full w-full object-contain filter drop-shadow"
-              onError={(e) => {
-                (e.target as HTMLElement).style.display = 'none';
-              }}
-            />
+            {thumbnail && (
+              <img
+                src={thumbnail}
+                alt={bp.name}
+                className="h-full w-full object-contain filter drop-shadow"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            )}
             <div className="absolute inset-0 -z-10 flex items-center justify-center opacity-40">
               {icon}
             </div>
