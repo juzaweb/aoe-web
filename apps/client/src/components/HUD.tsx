@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Axe, Drumstick, Coins, Mountain, Users, ShieldCheck, Wifi, LogOut, Map as MapIcon, Swords } from 'lucide-react';
+import { CITADEL_HP_THRESHOLD, type CitadelStatus } from '@chien-quoc/shared';
 import { MOBILE_MIN_TAP_PX } from '../device/inputMode.js';
 import { LanguageSwitcher } from '../i18n/LanguageSwitcher.js';
 
@@ -32,7 +33,49 @@ interface HUDProps {
   inRaid?: boolean;
   /** Phase 23: leaves the raid through the retreat gate. */
   onRetreat?: () => void;
+  /** Aggregate health of the player's citadel; null on the battlefield. */
+  citadelStatus?: CitadelStatus | null;
 }
+
+/**
+ * Aggregate citadel health. Red at the loss threshold (20%), amber below half,
+ * green while healthy, so "one more push" is readable at a glance.
+ */
+const CitadelBar: React.FC<{ status: CitadelStatus; compact?: boolean }> = ({
+  status,
+  compact = false
+}) => {
+  const pct = Math.max(0, Math.min(1, status.ratio));
+  const color =
+    pct <= CITADEL_HP_THRESHOLD
+      ? 'bg-red-500'
+      : pct <= 0.5
+        ? 'bg-amber-400'
+        : 'bg-emerald-400';
+
+  return (
+    <div
+      title={`Thành trì: ${Math.ceil(status.hp)} / ${Math.ceil(status.maxHp)} máu`}
+      className={`pointer-events-auto flex items-center gap-1.5 rounded-md border border-slate-700/80 bg-slate-950/90 shadow-lg backdrop-blur-md ${
+        compact ? 'px-2 py-1' : 'px-3 py-1.5'
+      }`}
+    >
+      <span className={`font-medieval font-bold tracking-wide text-amber-300 ${compact ? 'text-[9px]' : 'text-[11px]'}`}>
+        THÀNH TRÌ
+      </span>
+      <div className={`${compact ? 'h-1.5 w-16' : 'h-2 w-24'} overflow-hidden rounded-full bg-slate-800`}>
+        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct * 100}%` }} />
+      </div>
+      <span
+        className={`font-semibold tabular-nums ${
+          pct <= CITADEL_HP_THRESHOLD ? 'text-red-300' : 'text-slate-200'
+        } ${compact ? 'text-[10px]' : 'text-[11px]'}`}
+      >
+        {Math.round(pct * 100)}%
+      </span>
+    </div>
+  );
+};
 
 interface ResourceChipProps {
   icon: React.ReactNode;
@@ -77,7 +120,8 @@ export const HUD: React.FC<HUDProps> = ({
   onLeaveGame,
   onOpenWorldMap,
   inRaid = false,
-  onRetreat
+  onRetreat,
+  citadelStatus = null
 }) => {
   const { t } = useTranslation();
   const zoneIsBattle = inRaid;
@@ -204,13 +248,21 @@ export const HUD: React.FC<HUDProps> = ({
     </>
     )
     return (
+      <>
       <div className="pointer-events-none absolute left-[calc(env(safe-area-inset-left)+0.5rem)] right-[calc(env(safe-area-inset-right)+0.5rem)] top-[calc(env(safe-area-inset-top)+0.25rem)] z-20 flex select-none items-center gap-1.5">
         {compactContent}
       </div>
+      {citadelStatus && (
+        <div className="pointer-events-none absolute left-[calc(env(safe-area-inset-left)+0.5rem)] top-[calc(env(safe-area-inset-top)+2.5rem)] z-20 flex">
+          <CitadelBar status={citadelStatus} compact />
+        </div>
+      )}
+      </>
     );
   }
 
   return (
+    <>
     <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none select-none z-20">
       {/* Player Emblem & Name */}
       <div className="flex items-center gap-3 bg-slate-900/90 border border-amber-600/70 rounded-md px-4 py-2 shadow-lg backdrop-blur-sm pointer-events-auto">
@@ -371,5 +423,11 @@ export const HUD: React.FC<HUDProps> = ({
         <LanguageSwitcher compact />
       </div>
     </div>
+    {citadelStatus && (
+      <div className="pointer-events-none absolute left-2 top-[4.25rem] z-20 flex">
+        <CitadelBar status={citadelStatus} />
+      </div>
+    )}
+    </>
   );
 };

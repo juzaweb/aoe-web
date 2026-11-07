@@ -57,6 +57,7 @@ import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { getBuildApproachPoint } from './construction.js';
+import { footprintTouchesCitadelWall } from './citadel.js';
 import { RoadGrid } from './roads.js';
 import { ownerIdOf } from './identity.js';
 import { UNIT_SEPARATION } from './unitSeparation.js';
@@ -333,6 +334,13 @@ export class CommandSystem {
     // rejected the same way the client's ghost is painted red.
     if (this.footprintTouchesRoad(payload.gridX, payload.gridY, blueprint.sizeX, blueprint.sizeY)) {
       this.ports.rejectCommand(client, 'Cannot build on top of a road', RejectCode.PLACEMENT);
+      return;
+    }
+
+    // Citadel walls are indestructible terrain, not buildings, so the collision
+    // loop above cannot see them.
+    if (footprintTouchesCitadelWall(this.state, payload.gridX, payload.gridY, blueprint.sizeX, blueprint.sizeY)) {
+      this.ports.rejectCommand(client, 'Cannot build on the citadel wall', RejectCode.PLACEMENT);
       return;
     }
 

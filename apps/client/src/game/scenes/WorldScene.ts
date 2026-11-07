@@ -12,6 +12,8 @@ import {
   TERRAIN_BATTLEFIELD,
   TILE_HEIGHT,
   TILE_WIDTH,
+  citadelStatus,
+  type CitadelStatus,
   getBuildingMaxLevel,
   getIsoDepth,
   gridToScreen,
@@ -35,6 +37,7 @@ import { TOUCH_PICK_SLACK } from '../../device/inputMode.js';
 import { EntityRenderer } from '../render/EntityRenderer.js';
 import { FocusIndicator } from '../render/FocusIndicator.js';
 import { DecorLayer } from '../render/DecorLayer.js';
+import { CitadelLayer } from '../render/CitadelLayer.js';
 import { decorPreloadList } from '../render/decorArt.js';
 import { TerrainLayer } from '../render/TerrainLayer.js';
 import { OwnerColorRegistry, colorToCss } from '../render/ownerColor.js';
@@ -75,6 +78,14 @@ const HALF_TILE_HEIGHT = TILE_HEIGHT / 2;
  * second are indistinguishable from instant and cost nothing.
  */
 const IDLE_VILLAGER_SCAN_MS = 250;
+
+/**
+ * How often the citadel's aggregate health is recomputed, in milliseconds.
+ *
+ * Same reasoning as the idle counter: the bar only has to look live, and the
+ * eight slot lookups are cheap but not free.
+ */
+const CITADEL_STATUS_SCAN_MS = 250;
 
 /**
  * Modifiers captured on pointerdown, then used by the click / box-select release
@@ -391,6 +402,11 @@ export class WorldScene extends Phaser.Scene {
    */
   public onIdleVillagersChange: ((count: number) => void) | null = null;
   /**
+   * Published whenever the aggregate health of this player's citadel changes,
+   * so the HUD can draw the citadel bar without React reading room state.
+   */
+  public onCitadelStatusChange: ((status: CitadelStatus | null) => void) | null = null;
+  /**
    * UIX-03: published whenever the `Ctrl+1..9` rosters change (assign, recall,
    * a member dying), so the right-hand group panel mirrors the real groups.
    */
@@ -404,6 +420,9 @@ export class WorldScene extends Phaser.Scene {
   public onBoxSelectChange: ((armed: boolean) => void) | null = null;
   /** Last `hp|carrying|actionState` string published to the entity panel. */
   private lastUnitDetailSignature = '';
+  /** Last citadel `hp|maxHp` published to the HUD, and its scan throttle. */
+  private lastCitadelSignature = '';
+  private nextCitadelScanAt = 0;
   /** LVL: last building/panel signature, including player research progress. */
   private lastBuildingDetailSignature = '';
   /** ECO-02: last count published, and when the next scan is allowed. */
@@ -423,6 +442,8 @@ export class WorldScene extends Phaser.Scene {
   public entityRenderer!: EntityRenderer;
   public terrain!: TerrainLayer;
   public decor!: DecorLayer;
+  /** Stone floor and indestructible walls of the kingdom citadel. */
+  public citadel!: CitadelLayer;
   /**
    * Size of the map currently joined. A kingdom is 110x110, the battlefield
    * 220x220; the room replicates both numbers so camera, terrain culling,
@@ -571,6 +592,11 @@ export class WorldScene extends Phaser.Scene {
     // entity (the layer draws at depth 5, resources sit at 10).
     this.decor = new DecorLayer(this);
     this.decor.create();
+
+    // 1c. Kingdom citadel: stone floor and walls, derived from the Town Center.
+    // Drawn above the grass but below every entity.
+    this.citadel = new CitadelLayer(this);
+    this.citadel.create();
 
     // 2. Building placement ghost
     this.placement = new PlacementController(this);
@@ -825,6 +851,9 @@ export class WorldScene extends Phaser.Scene {
     this.mapHeight = height;
     this.terrainLayout = layout;
     this.terrain?.setTerrain(layout);
+    // The citadel only exists on a kingdom map, and its geometry depends on the
+    // Town Center the new snapshot carries.
+    this.citadel?.rebuild(this.room);
     // Decor depends on the terrain (roads, map edge), so it has to re-lay out
     // when the layout changes even if the camera never moved.
     this.decor?.invalidateViewport();
@@ -873,6 +902,7 @@ export class WorldScene extends Phaser.Scene {
     // The new map may have no roads at all (a battlefield always does not), so
     // the painted quads of the previous map must not survive the switch.
     this.terrain?.setPlayerRoads([]);
+    this.citadel?.clear();
     this.onRoadModeChange?.(null);
     this.cameraControl?.resetBookmarks();
     // The pool is repositioned only when the viewport moves; a new map can start
@@ -883,6 +913,8 @@ export class WorldScene extends Phaser.Scene {
     this.hasCenteredOnSpawn = false;
     this.centerAttempts = 0;
     this.cachedOwnerId = '';
+    this.lastCitadelSignature = '';
+    this.onCitadelStatusChange?.(null);
     this.ownerColorRegistry.invalidateAll();
     this.underAttackTracker.clear();
     this.cancelledFoundations.clear();
@@ -1143,6 +1175,7 @@ export class WorldScene extends Phaser.Scene {
     cb.onAdd('buildings', (building: any, key: any) => {
       if (this.buildingSprites.has(key)) return;
       this.entityRenderer.createBuildingSprite(key, building, cb);
+      if (building.type === 'TOWN_CENTER') this.citadel?.rebuild(this.room);
       this.centerOnOwnBaseIfNeeded();
     });
 
@@ -1166,6 +1199,7 @@ export class WorldScene extends Phaser.Scene {
         sprite.destroy();
         this.buildingSprites.delete(key);
       }
+      if (building?.type === 'TOWN_CENTER') this.citadel?.rebuild(this.room);
       if (this.selectedBuildingId === key) {
         this.selectedBuildingId = null;
         this.notifySelectionChange();
@@ -1239,6 +1273,9 @@ export class WorldScene extends Phaser.Scene {
     // stay empty until its next patch (which can be seconds, or never for a
     // static map). Materialise anything already in the snapshot.
     this.hydrateExistingEntities(room, cb);
+    // The citadel is derived from the Town Center, so it can be drawn as soon as
+    // the restored snapshot is in place.
+    this.citadel?.rebuild(room);
 
     // Repaint sprites that already exist against the newly bound snapshot.
     this.entityRenderer.refreshOwnershipVisuals();
@@ -2067,6 +2104,7 @@ export class WorldScene extends Phaser.Scene {
     this.syncSelectedUnitDetails();
     this.syncSelectedBuildingDetails();
     this.publishIdleVillagerCount(time);
+    this.publishCitadelStatus(time);
   }
 
   /**
@@ -2156,6 +2194,58 @@ export class WorldScene extends Phaser.Scene {
     if (count === this.lastIdleVillagerCount) return;
     this.lastIdleVillagerCount = count;
     this.onIdleVillagersChange(count);
+  }
+
+  /**
+   * Publishes this player's citadel health when it changes.
+   *
+   * The citadel's HP is not replicated as its own field: it is the sum of the
+   * eight citadel buildings' HP, which are already in the snapshot. Throttled
+   * like the idle counter, and only republished when the pair of numbers
+   * actually changes.
+   */
+  private publishCitadelStatus(time: number) {
+    if (!this.onCitadelStatusChange || !this.room) return;
+    if (this.terrainLayout.kind !== 'kingdom') {
+      if (this.lastCitadelSignature !== '') {
+        this.lastCitadelSignature = '';
+        this.onCitadelStatusChange(null);
+      }
+      return;
+    }
+    if (time < this.nextCitadelScanAt) return;
+    this.nextCitadelScanAt = time + CITADEL_STATUS_SCAN_MS;
+
+    const state = this.room.state as any;
+    const ownerId = this.myOwnerId;
+    const buildings: any[] = [];
+    let ownTownCenter: any = null;
+    let anyTownCenter: any = null;
+    state.buildings?.forEach((building: any) => {
+      buildings.push(building);
+      if (building.type !== 'TOWN_CENTER') return;
+      if (!anyTownCenter) anyTownCenter = building;
+      if (!ownTownCenter && ownerId && building.ownerId === ownerId) {
+        ownTownCenter = building;
+      }
+    });
+
+    // A raider or spectator has no Town Center of their own in this kingdom;
+    // the defender's bar is the one that matters to them.
+    const townCenter = ownTownCenter ?? anyTownCenter;
+    if (!townCenter) {
+      if (this.lastCitadelSignature !== '') {
+        this.lastCitadelSignature = '';
+        this.onCitadelStatusChange(null);
+      }
+      return;
+    }
+
+    const status = citadelStatus(buildings, townCenter.gridX, townCenter.gridY);
+    const signature = `${status.hp}|${status.maxHp}`;
+    if (signature === this.lastCitadelSignature) return;
+    this.lastCitadelSignature = signature;
+    this.onCitadelStatusChange(status);
   }
 
   /**

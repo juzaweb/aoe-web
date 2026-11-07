@@ -37,6 +37,7 @@ function fakeScene() {
     buildingToPlace: null as BuildingType | null,
     mapWidth: 100,
     mapHeight: 100,
+    terrainLayout: undefined as { kind: string; width: number; height: number } | undefined,
     commands: { showFeedback: vi.fn() },
     cursor: { refresh: vi.fn() },
     notifySelectionChange: vi.fn(),
@@ -155,5 +156,52 @@ describe('PlacementController', () => {
     expect(harness.scene.room.send).not.toHaveBeenCalled();
     expect(harness.scene.buildingToPlace).toBe('HOUSE');
     expect(harness.scene.commands.showFeedback).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a footprint that covers a citadel wall tile', () => {
+    harness.scene.terrainLayout = { kind: 'kingdom', width: 110, height: 110 };
+    harness.buildings.set('tc', {
+      type: 'TOWN_CENTER',
+      ownerId: 'p1',
+      gridX: 48,
+      gridY: 53,
+      sizeX: 4,
+      sizeY: 4
+    });
+    // The centred compound's west wall is x = originX = 47. Use a wall tile
+    // clear of the Town Center footprint so only the wall blocks the click.
+    pointerGrid.gridX = 47;
+    pointerGrid.gridY = 48;
+
+    controller.commit(pointer, true);
+
+    expect(harness.scene.room.send).not.toHaveBeenCalled();
+    expect(harness.scene.buildingToPlace).toBe('HOUSE');
+    expect(harness.scene.commands.showFeedback).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows a footprint through the single east gate', () => {
+    harness.scene.terrainLayout = { kind: 'kingdom', width: 110, height: 110 };
+    harness.buildings.set('tc', {
+      type: 'TOWN_CENTER',
+      ownerId: 'p1',
+      gridX: 48,
+      gridY: 53,
+      sizeX: 4,
+      sizeY: 4
+    });
+    // Gate tiles sit in the middle third of the east wall (x = 63).
+    pointerGrid.gridX = 63;
+    pointerGrid.gridY = 54;
+
+    controller.commit(pointer, true);
+
+    expect(harness.scene.room.send).toHaveBeenCalledWith(NetworkMessage.PLACE_BUILDING, {
+      type: 'HOUSE',
+      gridX: 63,
+      gridY: 54,
+      unitIds: ['u1', 'u2'],
+      queue: true
+    });
   });
 });

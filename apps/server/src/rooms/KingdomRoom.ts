@@ -5,7 +5,8 @@ import {
   RaidEndedPayload,
   RejectCode,
   Resources,
-  isRaidTownCenterBreached,
+  citadelStatus,
+  isCitadelBreached,
   zoneForOwner
 } from '@chien-quoc/shared';
 import { DatabaseService } from '../services/DatabaseService.js';
@@ -13,6 +14,7 @@ import { RaidService } from '../services/RaidService.js';
 import { BuildingState } from '../schema/BuildingState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { arrivalPoint, ensurePortalFor, findOwnPortal } from './portals.js';
+import { ensureCitadel, restoreCitadel } from './citadel.js';
 import { claimSpectatorWatch } from './spectatorWatch.js';
 import { WorldRoom } from './WorldRoom.js';
 import { normalizeLocale, render, type Locale } from '../i18n/index.js';
@@ -301,10 +303,10 @@ export class KingdomRoom extends WorldRoom {
       ensurePortalFor(this.state, this.raidAttackerId);
     }
     if (this.ownerScope) {
-      void RaidService.syncTownCenterLevel(
-        this.ownerScope,
-        this.townCenterOf(this.ownerScope)?.level ?? 0
-      );
+      // A save from before the citadel existed gets its barracks and houses
+      // retrofitted here, before any client can see the map.
+      ensureCitadel(this.state, this.ownerScope);
+      void RaidService.syncTownCenterLevel(this.ownerScope, this.townCenterLevelOf(this.ownerScope));
     }
   }
 
@@ -395,7 +397,14 @@ export class KingdomRoom extends WorldRoom {
       return;
     }
 
-    if (isRaidTownCenterBreached(townCenter.hp, townCenter.maxHp)) {
+    // The raid scores the whole citadel: its eight buildings share one health
+    // pool, and losing it at 20% is the attacker's win condition.
+    const citadel = citadelStatus(
+      Array.from(this.state.buildings.values()),
+      townCenter.gridX,
+      townCenter.gridY
+    );
+    if (isCitadelBreached(citadel.hp, citadel.maxHp)) {
       await this.settle(raidId, 'ATTACKER_WON');
       return;
     }
@@ -513,16 +522,11 @@ export class KingdomRoom extends WorldRoom {
         });
       }
 
-      // The Town Center is a score, not a ruin: it comes back at full strength
-      // so one raid cannot leave the defender permanently half-destroyed.
-      const townCenter = defenderId ? this.townCenterOf(defenderId) : null;
-      if (townCenter) townCenter.hp = townCenter.maxHp;
-
+      // The citadel is a score, not a ruin: every building comes back at full
+      // strength so one raid cannot leave the defender permanently crippled.
       if (defenderId) {
-        void RaidService.syncTownCenterLevel(
-          defenderId,
-          this.townCenterOf(defenderId)?.level ?? 0
-        );
+        restoreCitadel(this.state, defenderId);
+        void RaidService.syncTownCenterLevel(defenderId, this.townCenterLevelOf(defenderId));
       }
     } catch (err) {
       console.error(`❌ [KingdomRoom] Could not settle raid ${raidId}:`, err);
