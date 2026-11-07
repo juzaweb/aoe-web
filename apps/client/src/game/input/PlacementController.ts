@@ -26,6 +26,20 @@ export class PlacementController {
    */
   private crewClaimed = false;
 
+  /**
+   * Footprints dropped during this placement session that the server has not
+   * echoed back in a snapshot yet. Without them a fast shift-chain validates
+   * every click against the pre-placement state: a second click on the same tile
+   * (or one that overlaps the foundation just sent) would look placeable and be
+   * rejected by the server instead of turning the ghost red here.
+   */
+  private pendingFootprints: Array<{
+    gridX: number;
+    gridY: number;
+    sizeX: number;
+    sizeY: number;
+  }> = [];
+
   constructor(private readonly scene: WorldScene) {}
 
   create() {
@@ -52,6 +66,15 @@ export class PlacementController {
     }
 
     let blocked = false;
+
+    // A foundation sent a few milliseconds ago is not in the snapshot yet, so a
+    // fast second click can land on a tile the server already considers taken.
+    this.pendingFootprints.forEach((p) => {
+      const overlapX = gx < p.gridX + p.sizeX && gx + blueprint.sizeX > p.gridX;
+      const overlapY = gy < p.gridY + p.sizeY && gy + blueprint.sizeY > p.gridY;
+      if (overlapX && overlapY) blocked = true;
+    });
+
     scene.room.state.buildings.forEach((b: any) => {
       const overlapX = gx < b.gridX + b.sizeX && gx + blueprint.sizeX > b.gridX;
       const overlapY = gy < b.gridY + b.sizeY && gy + blueprint.sizeY > b.gridY;
@@ -113,6 +136,7 @@ export class PlacementController {
     scene.buildingToPlace = type;
     scene.notifySelectionChange();
     this.crewClaimed = false;
+    this.pendingFootprints = [];
 
     const art = this.ghostArt(type);
     this.ghostImage.setTexture(art.textureKey);
@@ -123,6 +147,7 @@ export class PlacementController {
   cancel() {
     const scene = this.scene;
     scene.buildingToPlace = null;
+    this.pendingFootprints = [];
     this.ghost.setVisible(false);
     // Placement owns the cursor while active, so leaving the mode has to restore
     // it even though the pointer has not moved.
@@ -133,7 +158,7 @@ export class PlacementController {
   /**
    * Sends PLACE_BUILDING for the tile under the click, or blinks a refusal.
    *
-   * `keepActive` is the shift-drag convention: the mode survives a successful
+   * `keepActive` is the shift-click convention: the mode survives a successful
    * drop so the next click can place the same building again. Without it the
    * mode closes as soon as one foundation is sent.
    */
@@ -162,6 +187,12 @@ export class PlacementController {
         ...(unitIds.length > 0 ? { unitIds } : {})
       });
       this.crewClaimed = true;
+      this.pendingFootprints.push({
+        gridX,
+        gridY,
+        sizeX: blueprint.sizeX,
+        sizeY: blueprint.sizeY
+      });
       if (keepActive) return;
       this.cancel();
       return;

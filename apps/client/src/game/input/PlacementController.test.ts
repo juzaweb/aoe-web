@@ -90,6 +90,7 @@ describe('PlacementController', () => {
 
   it('lets only the first drop of a shift-chain claim the selected crew', () => {
     controller.commit(pointer, true);
+    pointerGrid.gridX = 12;
     controller.commit(pointer, true);
 
     const payloads = harness.scene.room.send.mock.calls.map((call) => call[1]);
@@ -101,6 +102,7 @@ describe('PlacementController', () => {
 
   it('resets the crew claim when a new placement session starts', () => {
     controller.commit(pointer, true);
+    pointerGrid.gridX = 12;
     controller.commit(pointer, true);
 
     controller.enter('HOUSE');
@@ -108,6 +110,37 @@ describe('PlacementController', () => {
 
     const payloads = harness.scene.room.send.mock.calls.map((call) => call[1]);
     expect(payloads[2]).toMatchObject({ unitIds: ['u1', 'u2'] });
+  });
+
+  it('refuses a second drop on the same tile until the snapshot catches up', () => {
+    controller.commit(pointer, true);
+    controller.commit(pointer, true);
+
+    // Only the first click reached the server; the ghost knows the footprint is
+    // already spoken for, so a fast double click cannot fire a rejected order.
+    expect(harness.scene.room.send).toHaveBeenCalledTimes(1);
+    expect(harness.scene.commands.showFeedback).toHaveBeenCalledTimes(1);
+    expect(harness.scene.buildingToPlace).toBe('HOUSE');
+  });
+
+  it('still allows a neighbouring footprint that does not overlap the reservation', () => {
+    controller.commit(pointer, true);
+    pointerGrid.gridX = 12;
+    controller.commit(pointer, true);
+
+    expect(harness.scene.room.send).toHaveBeenCalledTimes(2);
+    expect(harness.scene.room.send.mock.calls[1][1]).toMatchObject({ gridX: 12, gridY: 10 });
+  });
+
+  it('forgets local reservations when the placement session ends', () => {
+    controller.commit(pointer, true);
+    controller.commit(pointer); // plain click on the reserved tile is refused...
+    expect(harness.scene.room.send).toHaveBeenCalledTimes(1);
+
+    controller.enter('HOUSE');
+    controller.commit(pointer, true);
+
+    expect(harness.scene.room.send).toHaveBeenCalledTimes(2);
   });
 
   it('keeps the mode open and sends nothing when the footprint is blocked', () => {
