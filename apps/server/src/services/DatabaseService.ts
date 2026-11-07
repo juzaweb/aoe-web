@@ -642,6 +642,25 @@ export class DatabaseService {
   }
 
   /**
+   * Reads the cached Town Center level of an account (phase 25).
+   *
+   * The column is written by `RaidService.syncTownCenterLevel`; this reader is
+   * only needed by a room that has no capital of that account to derive from
+   * (a shared battlefield receiving a traveling army). Returns 0 for an unknown
+   * account so the caller keeps its level-1 fallback instead of inventing one.
+   */
+  public static async loadTownCenterLevel(ownerId: string): Promise<number> {
+    await this.initialize();
+    const row = await prisma.player.findUnique({
+      where: { id: ownerId },
+      select: { townCenterLevel: true }
+    });
+    if (!row) return 0;
+    const level = Number(row.townCenterLevel ?? 0);
+    return Number.isFinite(level) && level > 0 ? Math.floor(level) : 0;
+  }
+
+  /**
    * Saves a single player's entire empire state (resources, buildings, units).
    *
    * `player.id` is the account id and the only ownership key: it is the primary

@@ -7,7 +7,7 @@ import {
   UnitType,
   clampRaidTownCenterHp,
   getBuildingLevelStats,
-  getUnitLevelStats
+  getEffectiveUnitAttackPower
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { UnitState } from '../schema/UnitState.js';
@@ -31,6 +31,12 @@ export interface CombatPorts {
   updatePlayerPopulation(ownerId: string): void;
   /** Drops a corpse once the client has had time to play its death clip. */
   scheduleCorpseRemoval(corpseId: string): void;
+  /**
+   * Town Center level of a unit's owner (phase 25/D9). Damage is computed per
+   * hit so a mid-fight upgrade applies to the next swing without touching the
+   * unit's own research level.
+   */
+  townCenterLevelOf(ownerId: string): number;
 }
 
 /**
@@ -260,8 +266,13 @@ export class CombatSystem {
     const blueprint = UNIT_BLUEPRINTS[unit.type as UnitType];
     if (!blueprint) return;
 
-    // LVL: the level scales damage; range and cooldown stay blueprint rules.
-    const levelStats = getUnitLevelStats(unit.type as UnitType, unit.level);
+    // LVL/D9: the unit's research level and its owner's Town Center aura both
+    // scale damage; range and cooldown stay blueprint rules.
+    const attackPower = getEffectiveUnitAttackPower(
+      unit.type as UnitType,
+      unit.level,
+      this.ports.townCenterLevelOf(unit.ownerId)
+    );
 
     // CMB-01 before the cooldown: a stance that has given up should not keep a
     // weapon timer parked against a target it is no longer fighting.
@@ -284,7 +295,7 @@ export class CombatSystem {
 
       if (!this.isTargetInWeaponRange(unit, blueprint)) return;
 
-      targetUnit.hp -= levelStats.attackPower;
+      targetUnit.hp -= attackPower;
       this.attackTimers.set(unit.id, blueprint.attackCooldownMs);
 
       if (targetUnit.hp <= 0) {
@@ -307,7 +318,7 @@ export class CombatSystem {
 
       if (!this.isTargetInWeaponRange(unit, blueprint)) return;
 
-      targetBuilding.hp -= levelStats.attackPower;
+      targetBuilding.hp -= attackPower;
 
       // Phase 23: a Town Center is never destructible, on any map. It is the
       // raid's objective, scored by the HP threshold the room checks, so damage

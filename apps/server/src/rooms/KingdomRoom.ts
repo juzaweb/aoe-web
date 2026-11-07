@@ -282,7 +282,10 @@ export class KingdomRoom extends WorldRoom {
       ensurePortalFor(this.state, this.raidAttackerId);
     }
     if (this.ownerScope) {
-      void RaidService.syncTownCenterLevel(this.ownerScope, this.townCenterLevelOf(this.ownerScope));
+      void RaidService.syncTownCenterLevel(
+        this.ownerScope,
+        this.townCenterOf(this.ownerScope)?.level ?? 0
+      );
     }
   }
 
@@ -492,7 +495,10 @@ export class KingdomRoom extends WorldRoom {
       if (townCenter) townCenter.hp = townCenter.maxHp;
 
       if (defenderId) {
-        void RaidService.syncTownCenterLevel(defenderId, this.townCenterLevelOf(defenderId));
+        void RaidService.syncTownCenterLevel(
+          defenderId,
+          this.townCenterOf(defenderId)?.level ?? 0
+        );
       }
     } catch (err) {
       console.error(`❌ [KingdomRoom] Could not settle raid ${raidId}:`, err);
@@ -533,10 +539,6 @@ export class KingdomRoom extends WorldRoom {
       if (building.ownerId === ownerId && building.type === 'TOWN_CENTER') found = building;
     });
     return found;
-  }
-
-  private townCenterLevelOf(ownerId: string): number {
-    return this.townCenterOf(ownerId)?.level ?? 0;
   }
 
   private removeUnitsOf(ownerId: string): void {

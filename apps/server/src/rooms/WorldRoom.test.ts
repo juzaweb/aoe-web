@@ -13,6 +13,7 @@ import {
   UNIT_BLUEPRINTS,
   INITIAL_POPULATION_CAP,
   getBuildingLevelStats,
+  getEffectiveBuildingMaxHp,
   isPlazaTile,
   getBuildingMaxLevel,
   getBuildingUpgradeCost,
@@ -2093,10 +2094,10 @@ describe('building upgrades (LVL)', () => {
 
     internals(room).update(duration);
 
-    const expected = getBuildingLevelStats('TOWN_CENTER', 2);
+    const expected = getEffectiveBuildingMaxHp('TOWN_CENTER', 2, 2);
     expect(townCenter.level).toBe(2);
-    expect(townCenter.maxHp).toBe(expected.maxHp);
-    expect(townCenter.hp).toBe(expected.maxHp);
+    expect(townCenter.maxHp).toBe(expected);
+    expect(townCenter.hp).toBe(expected);
     expect(townCenter.upgradeProgressMs).toBe(0);
     expect(townCenter.upgradeTimeMs).toBe(0);
     expect(player.populationCap).toBe(populationBefore + 1);
@@ -2113,7 +2114,7 @@ describe('building upgrades (LVL)', () => {
     internals(room).commands.handleUpgradeBuilding(createClient('player-a'), { buildingId: 'b_1' });
     internals(room).update(duration);
 
-    expect(townCenter.maxHp).toBe(getBuildingLevelStats('TOWN_CENTER', 2).maxHp);
+    expect(townCenter.maxHp).toBe(getEffectiveBuildingMaxHp('TOWN_CENTER', 2, 2));
     expect(townCenter.hp).toBe(townCenter.maxHp - 500);
   });
 

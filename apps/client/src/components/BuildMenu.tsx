@@ -1,5 +1,11 @@
 import React, { useState } from 'react';
-import { BUILDING_BLUEPRINTS, BuildingType, Resources } from '@chien-quoc/shared';
+import {
+  BUILDING_BLUEPRINTS,
+  BuildingType,
+  Resources,
+  getBuildingUnlockLevel,
+  isBuildingUnlocked
+} from '@chien-quoc/shared';
 import {
   Landmark,
   ShieldAlert,
@@ -12,6 +18,7 @@ import {
   Target,
   Zap,
   Hammer,
+  Lock,
   Route,
   Eraser,
   X
@@ -34,6 +41,11 @@ interface BuildMenuProps {
   showRoadTools?: boolean;
   roadMode?: RoadMode | null;
   onSelectRoad?: (mode: RoadMode) => void;
+  /**
+   * Phase 25: the player's Town Center level. The three drop-off camps are
+   * locked until the capital reaches 1/2/3; every other building is open at 1.
+   */
+  townCenterLevel?: number;
 }
 
 const BUILDINGS: { type: BuildingType; icon: React.ReactNode }[] = [
@@ -64,7 +76,8 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
   compact = false,
   showRoadTools = false,
   roadMode = null,
-  onSelectRoad
+  onSelectRoad,
+  townCenterLevel = 1
 }) => {
   const [open, setOpen] = useState(false);
 
@@ -96,21 +109,27 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
       const thumbnail = buildingThumbnail(type);
       const affordable = canAfford(type);
       const isSelected = activeBuildingType === type;
+      const unlocked = isBuildingUnlocked(type, townCenterLevel);
+      const unlockLevel = getBuildingUnlockLevel(type);
+      const disabled = !unlocked || !affordable;
+      const title = unlocked
+        ? `${bp.name} — ${bp.description}`
+        : `${bp.name} — cần Nhà chính Lv ${unlockLevel}`;
 
       const button = (
         <button
           key={type}
           onClick={() => pick(type)}
-          disabled={!affordable}
-          title={`${bp.name} — ${bp.description}`}
+          disabled={disabled}
+          title={title}
           className={`relative flex flex-col items-center justify-between rounded-md border transition-all ${
             compactTiles ? 'h-12 w-12 p-0.5' : 'h-16 w-16 p-1'
           } ${
             isSelected
               ? 'border-amber-400 bg-amber-600/40 ring-2 ring-amber-400/60 shadow-lg'
-              : affordable
-                ? 'aoe-button text-slate-200'
-                : 'cursor-not-allowed border-slate-800 bg-slate-900/60 text-slate-600 opacity-50'
+              : disabled
+                ? 'cursor-not-allowed border-slate-800 bg-slate-900/60 text-slate-600 opacity-50'
+                : 'aoe-button text-slate-200'
           }`}
         >
           <div
@@ -127,6 +146,15 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
                   (e.target as HTMLElement).style.display = 'none';
                 }}
               />
+            )}
+            {!unlocked && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded bg-slate-950/80">
+                <Lock
+                  size={compactTiles ? 14 : 18}
+                  className="text-amber-300"
+                  aria-label={`Cần Nhà chính Lv ${unlockLevel}`}
+                />
+              </div>
             )}
             <div className="absolute inset-0 -z-10 flex items-center justify-center opacity-40">
               {icon}
@@ -157,6 +185,11 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
           <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-48 -translate-x-1/2 rounded border border-amber-600/70 bg-slate-950/95 p-2 text-left opacity-0 shadow-2xl transition-opacity group-hover:opacity-100">
             <div className="font-medieval mb-1 text-xs font-bold text-amber-300">{bp.name}</div>
             <div className="mb-2 text-[11px] leading-tight text-slate-300">{bp.description}</div>
+            {!unlocked && (
+              <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-amber-300">
+                <Lock size={10} /> Cần Nhà chính Lv {unlockLevel}
+              </div>
+            )}
             <div className="space-y-0.5 border-t border-slate-800 pt-1 font-mono text-[10px]">
               {bp.cost.wood > 0 && <div className="text-amber-400">Gỗ: {bp.cost.wood}</div>}
               {bp.cost.food > 0 && <div className="text-red-400">Thịt: {bp.cost.food}</div>}

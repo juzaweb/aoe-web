@@ -13,6 +13,18 @@ export const BUILDING_STAT_GROWTH_PER_LEVEL = 0.02;
 export const UNIT_STAT_GROWTH_PER_LEVEL = 0.05;
 
 /**
+ * Town Center aura (phase 25): the capital buffs every asset its owner has.
+ *
+ * HP and training speed scale by 2% per Town Center level, unit attack by 1%.
+ * The multiplier starts at 1.0 when the owner has no Town Center (level 0), so
+ * a missing or freshly wiped capital never makes a unit weaker than its
+ * blueprint. All three are derived, never persisted, so a save written under a
+ * different formula is recalculated on restore instead of double-buffed.
+ */
+export const TOWN_CENTER_AURA_PER_LEVEL = 0.02;
+export const TOWN_CENTER_UNIT_ATTACK_PER_LEVEL = 0.01;
+
+/**
  * Extra field capacity per level for gatherable buildings (ECO-01).
  *
  * Faster than the generic building growth: a farm's harvest is the whole point
@@ -295,6 +307,90 @@ export function getUnitLevelStats(type: UnitType, rawLevel: number): UnitLevelSt
 }
 
 /**
+ * Multiplier of the Town Center aura at a raw level (phase 25).
+ *
+ * Level 0, a missing Town Center and non-finite input all mean 1.0, not an
+ * error: rooms restore before the capital is known and a dataless guest must
+ * still fight with blueprint stats. The cap is the shared ten-level ladder.
+ */
+export function townCenterAuraMultiplier(rawLevel: number): number {
+  const level = Math.max(1, clampTownCenterLevel(rawLevel));
+  return 1 + TOWN_CENTER_AURA_PER_LEVEL * (level - 1);
+}
+
+/** Attack share of the aura; kept separate so it can be retuned on its own. */
+export function townCenterUnitAttackMultiplier(rawLevel: number): number {
+  const level = Math.max(1, clampTownCenterLevel(rawLevel));
+  return 1 + TOWN_CENTER_UNIT_ATTACK_PER_LEVEL * (level - 1);
+}
+
+/** A building's `maxHp` including its own level and its owner's Town Center. */
+export function getEffectiveBuildingMaxHp(
+  type: BuildingType,
+  rawLevel: number,
+  rawTownCenterLevel: number
+): number {
+  return Math.round(
+    getBuildingLevelStats(type, rawLevel).maxHp * townCenterAuraMultiplier(rawTownCenterLevel)
+  );
+}
+
+/** A unit's `maxHp` including its own research level and the owner's capital. */
+export function getEffectiveUnitMaxHp(
+  type: UnitType,
+  rawLevel: number,
+  rawTownCenterLevel: number
+): number {
+  return Math.round(
+    getUnitLevelStats(type, rawLevel).maxHp * townCenterAuraMultiplier(rawTownCenterLevel)
+  );
+}
+
+/** A unit's attack including research and the owner's Town Center aura (D9). */
+export function getEffectiveUnitAttackPower(
+  type: UnitType,
+  rawLevel: number,
+  rawTownCenterLevel: number
+): number {
+  return round2(
+    getUnitLevelStats(type, rawLevel).attackPower *
+      townCenterUnitAttackMultiplier(rawTownCenterLevel)
+  );
+}
+
+/** Training time after the Town Center speed-up; never negative. */
+export function getEffectiveTrainTimeMs(type: UnitType, rawTownCenterLevel: number): number {
+  const blueprint = UNIT_BLUEPRINTS[type];
+  if (!blueprint) return 0;
+  const level = Math.max(1, clampTownCenterLevel(rawTownCenterLevel));
+  const factor = 1 - TOWN_CENTER_AURA_PER_LEVEL * (level - 1);
+  return Math.round(blueprint.trainTimeMs * Math.max(0, factor));
+}
+
+/**
+ * Town Center level a building needs before it may be placed (D5).
+ *
+ * Unset means 1, so every blueprint stays buildable from the start unless it
+ * opts in. The six core pillars are deliberately not gated: the Town Center
+ * gate already requires them at level 1, and locking them would make the first
+ * upgrade impossible.
+ */
+export function getBuildingUnlockLevel(type: BuildingType): number {
+  return BUILDING_BLUEPRINTS[type]?.requiredTownCenterLevel ?? 1;
+}
+
+/**
+ * Whether a Town Center level has unlocked a building type.
+ *
+ * A missing capital is treated as level 1 here: the kingdom always spawns one,
+ * and a transient restore gap should not strip the opening build menu.
+ */
+export function isBuildingUnlocked(type: BuildingType, rawTownCenterLevel: number): boolean {
+  const level = Math.max(1, clampTownCenterLevel(rawTownCenterLevel));
+  return level >= getBuildingUnlockLevel(type);
+}
+
+/**
  * Cost to take a building from `level` to `level + 1` (LVL2/D2).
  *
  * Two phases: the first ten levels stay on the gentle ramp the opening hours
@@ -387,6 +483,12 @@ function costScale(level: number): number {
 function clampLevel(level: number, maxLevel: number): number {
   if (!Number.isFinite(level)) return 1;
   return Math.min(maxLevel, Math.max(1, Math.floor(level)));
+}
+
+/** Town Center levels may be 0 ("no capital"), unlike entity levels. */
+function clampTownCenterLevel(level: number): number {
+  if (!Number.isFinite(level)) return 0;
+  return Math.min(MAX_BUILDING_LEVEL, Math.max(0, Math.floor(level)));
 }
 
 function round2(value: number): number {

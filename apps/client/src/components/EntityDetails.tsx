@@ -6,9 +6,13 @@ import {
   Resources,
   UNIT_BLUEPRINTS,
   UnitType,
+  getEffectiveTrainTimeMs,
+  getEffectiveUnitAttackPower,
+  getEffectiveUnitMaxHp,
   getPlayerUnitLevel,
-  getUnitLevelStats,
-  getUnitMaxLevel
+  getUnitMaxLevel,
+  townCenterAuraMultiplier,
+  townCenterUnitAttackMultiplier
 } from '@chien-quoc/shared';
 import { Shield, UserPlus, Heart, Hammer, X, Boxes } from 'lucide-react';
 import { BuildingUpgradePanel, UnitResearchPanel } from './UpgradePanels.js';
@@ -87,6 +91,14 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
   // MIL-01: `null` only for a building type that ships no sheet, so the panel
   // draws its placeholder instead of requesting a file that cannot exist.
   const buildingThumb = entity.type === 'building' ? buildingThumbnail(entity.subType ?? '') : null;
+
+  // Phase 25: aura of the entity's owner. Missing data (a battlefield snapshot
+  // before the level loads) reads as level 1, the same fallback the server uses.
+  const ownerTownCenterLevel = entity.ownerTownCenterLevel ?? 1;
+  const auraPercent = Math.round((townCenterAuraMultiplier(ownerTownCenterLevel) - 1) * 100);
+  const attackPercent = Math.round(
+    (townCenterUnitAttackMultiplier(ownerTownCenterLevel) - 1) * 100
+  );
 
   const buildingIsOwnedAndFinished =
     entity.type === 'building' && entity.isOwner === true && entity.isConstructed === true;
@@ -181,6 +193,28 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
               }`}
               style={{ width: `${Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100))}%` }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Phase 25: the capital is an empire-wide aura, so its own panel is where
+          the player reads the exact numbers instead of guessing from stats. */}
+      {entity.type === 'building' && entity.subType === 'TOWN_CENTER' && entity.isOwner && (
+        <div className="border-t border-amber-800/40 pt-2 space-y-1" data-town-center-aura>
+          <span className="text-[10px] font-bold tracking-wider text-amber-300">
+            BUFF ĐẾ CHẾ · NHÀ CHÍNH Lv {ownerTownCenterLevel}
+          </span>
+          <div className="flex justify-between text-[10px] text-slate-300">
+            <span>HP công trình &amp; quân</span>
+            <span className="font-mono text-emerald-300">+{auraPercent}%</span>
+          </div>
+          <div className="flex justify-between text-[10px] text-slate-300">
+            <span>Tấn công lính</span>
+            <span className="font-mono text-emerald-300">+{attackPercent}%</span>
+          </div>
+          <div className="flex justify-between text-[10px] text-slate-300">
+            <span>Thời gian huấn luyện</span>
+            <span className="font-mono text-sky-300">-{auraPercent}%</span>
           </div>
         </div>
       )}
@@ -323,7 +357,14 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
               const unitLevel = entity.unitLevels
                 ? getPlayerUnitLevel(entity.unitLevels, uType)
                 : 1;
-              const unitLevelStats = getUnitLevelStats(uType, unitLevel);
+              const unitAttack = getEffectiveUnitAttackPower(
+                uType,
+                unitLevel,
+                ownerTownCenterLevel
+              );
+              const unitMaxHp = getEffectiveUnitMaxHp(uType, unitLevel, ownerTownCenterLevel);
+              const effectiveTrainSeconds =
+                getEffectiveTrainTimeMs(uType, ownerTownCenterLevel) / 1000;
 
               return (
                 <div key={uType} className="relative group/train">
@@ -356,7 +397,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
                       {uBp.cost.wood > 0 && <span className="text-amber-400 mr-2">Gỗ: {uBp.cost.wood}</span>}
                       {uBp.cost.gold > 0 && <span className="text-yellow-400 mr-2">Vàng: {uBp.cost.gold}</span>}
                       <div className="text-slate-400 text-[9px] mt-0.5">
-                        Tấn công: {unitLevelStats.attackPower} | Máu: {unitLevelStats.maxHp}
+                        Tấn công: {unitAttack} | Máu: {unitMaxHp}
                       </div>
                       <div className="text-slate-400 text-[9px]">
                         Cấp hiện tại: {unitLevel}/{getUnitMaxLevel()}
@@ -364,7 +405,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
                       {/* UIX-02: AoE2 tooltips advertise the training time, which is
                           the only way to compare two units' cost-per-second. */}
                       <div className="text-slate-400 text-[9px]">
-                        Huấn luyện: {(uBp.trainTimeMs / 1000).toFixed(0)}s
+                        Huấn luyện: {effectiveTrainSeconds.toFixed(1)}s
                       </div>
                     </div>
                   </div>

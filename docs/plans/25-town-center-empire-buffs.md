@@ -1,6 +1,6 @@
 # Phase 25 — Nhà chính buff toàn đế chế
 
-**Status: `APPROVED`** — các quyết định D1–D9 đã chốt ngày 2026-11-07; chưa có dòng code nào.
+**Status: `IMPLEMENTED`** — các quyết định D1–D9 đã chốt ngày 2026-11-07; code + test đã xong, chờ verify tay.
 
 Phạm vi: `packages/shared`, `apps/server`, `apps/client`, `docs/plans/README.md`.
 **Không** đổi schema, **không** migration, **không** thêm `NetworkMessage`, **không** đổi payload.

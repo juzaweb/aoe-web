@@ -13,7 +13,9 @@ import {
   getPlayerUnitLevel,
   getUnitMaxLevel,
   getUnitUpgradeCost,
-  getUnitUpgradeTimeMs
+  getUnitUpgradeTimeMs,
+  townCenterAuraMultiplier,
+  townCenterUnitAttackMultiplier
 } from '@chien-quoc/shared';
 import { ArrowUp, Clock, Shield, Swords, X } from 'lucide-react';
 import { formatDuration } from './durationText.js';
@@ -126,6 +128,13 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
   const slotsFull = slotsTaken >= MAX_CONCURRENT_BUILDING_UPGRADES;
   const canUpgrade = affordable && !slotsFull && unmetGates.length === 0;
 
+  // Phase 25: the capital's own panel is where the aura is explained before and
+  // after the next level, so the player can weigh an upgrade without guessing.
+  const auraNow = Math.round((townCenterAuraMultiplier(level) - 1) * 100);
+  const attackNow = Math.round((townCenterUnitAttackMultiplier(level) - 1) * 100);
+  const auraNext = Math.round((townCenterAuraMultiplier(level + 1) - 1) * 100);
+  const attackNext = Math.round((townCenterUnitAttackMultiplier(level + 1) - 1) * 100);
+
   return (
     <div className="border-t border-slate-800 pt-2 space-y-1.5" data-upgrade>
       <div className="flex items-center justify-between">
@@ -186,6 +195,39 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
                 {BUILDING_BLUEPRINTS[coreType]?.name ?? coreType}: {current}/{required}
               </span>
             ))}
+          </div>
+        </div>
+      )}
+
+      {type === 'TOWN_CENTER' && (
+        <div
+          className="rounded border border-emerald-900/60 bg-emerald-950/20 p-1.5 space-y-0.5"
+          data-town-center-buff
+        >
+          <div className="flex items-center justify-between text-[9px] font-semibold text-emerald-300">
+            <span>Buff hiện tại</span>
+            {!isMaxed && <span className="text-slate-400">Sau nâng cấp</span>}
+          </div>
+          <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
+            <span>HP công trình &amp; quân</span>
+            <span>
+              <span className="text-emerald-300">+{auraNow}%</span>
+              {!isMaxed && <span className="text-slate-500"> → +{auraNext}%</span>}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
+            <span>Tấn công lính</span>
+            <span>
+              <span className="text-emerald-300">+{attackNow}%</span>
+              {!isMaxed && <span className="text-slate-500"> → +{attackNext}%</span>}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
+            <span>Thời gian huấn luyện</span>
+            <span>
+              <span className="text-sky-300">-{auraNow}%</span>
+              {!isMaxed && <span className="text-slate-500"> → -{auraNext}%</span>}
+            </span>
           </div>
         </div>
       )}

@@ -3,6 +3,7 @@ import {
   NetworkMessage,
   canTrainUnitsAt,
   gridToScreen,
+  isBuildingUnlocked,
   nextUnitStance
 } from '@chien-quoc/shared';
 import * as Phaser from 'phaser';
@@ -273,6 +274,9 @@ export class CommandController {
         // AoE where the card is not there to press. Placement mode keeps the
         // keys live so a villager can switch to another building mid-place.
         if (!this.scene.buildingToPlace && !this.scene.hasVillagerSelected()) return;
+        // Phase 25/D5: a camp hotkey must not start a placement the server would
+        // reject. The menu disables the tile; this guard makes the key agree.
+        if (!isBuildingUnlocked(type, this.scene.ownTownCenterLevel())) return;
 
         event.preventDefault();
         this.scene.onBuildingHotkey?.(type);

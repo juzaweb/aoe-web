@@ -458,6 +458,7 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     attackRange: 0,
     attackCooldownMs: 0,
     dropOffs: ['wood'],
+    requiredTownCenterLevel: 1,
     description: 'Wood drop-off. Villagers haul logs here instead of walking back to the Town Center.'
   },
   MILL: {
@@ -474,6 +475,7 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     attackRange: 0,
     attackCooldownMs: 0,
     dropOffs: ['food'],
+    requiredTownCenterLevel: 2,
     description: 'Food drop-off. Berries and farm harvests are delivered here.'
   },
   MINING_CAMP: {
@@ -493,6 +495,7 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     // enough to share a drop-off is a common map layout, and charging twice for
     // it would just make the player pick the worse of the two spots.
     dropOffs: ['gold', 'stone'],
+    requiredTownCenterLevel: 3,
     description: 'Gold and stone drop-off. Serves both mine types from one spot.'
   },
   // Server-created gateway. It has no cost because players never place it, and

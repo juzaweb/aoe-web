@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorldRoom } from './WorldRoom.js';
 import { WorldState } from '../schema/WorldState.js';
-import { RESOURCE_REGROW_MS, getBuildingLevelStats, mapSizeForZone } from '@chien-quoc/shared';
+import {
+  RESOURCE_REGROW_MS,
+  getEffectiveBuildingMaxHp,
+  mapSizeForZone
+} from '@chien-quoc/shared';
 import { DatabaseService } from '../services/DatabaseService.js';
 
 vi.mock('../services/DatabaseService.js', () => ({
@@ -293,7 +297,7 @@ describe('WorldRoom.initializeWorldPersistence', () => {
     // load a level the game no longer has — and its HP has to follow.
     const building = room.state.buildings.get('b_high')!;
     expect(building.level).toBe(10);
-    expect(building.maxHp).toBe(getBuildingLevelStats('TOWN_CENTER', 10).maxHp);
+    expect(building.maxHp).toBe(getEffectiveBuildingMaxHp('TOWN_CENTER', 10, 10));
     expect(building.hp).toBe(building.maxHp);
   });
 
