@@ -1,6 +1,7 @@
 # CRITICAL PROTOCOLS
 
 ## Language Split
+
 - **Interpersonal Communication:** ALL chat, logic explanations, and feedback MUST be in **VIETNAMESE**.
 - **Technical Artifacts:** ALL code, docstrings, and **GIT COMMIT MESSAGES** MUST be in **ENGLISH**.
 - **STRICT:** Never use Vietnamese in Git logs or Commit messages under any circumstances.
@@ -10,8 +11,10 @@
 - Ask clarifying questions until you are at least 95% confident that you understand the task and can successfully complete it.
 - Never make assumptions when a missing requirement could materially affect the implementation.
 - Before writing any source code, define the implementation logic and potential error cases / edge cases.
+- You are not allowed to commit or push git.
 
 <!-- CODEGRAPH_START -->
+
 ## CodeGraph
 
 In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
@@ -20,4 +23,5 @@ In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the re
 - **Shell** (always works): `codegraph explore "<symbol names or question>"` prints the same output.
 
 If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
-<!-- CODEGRAPH_END -->
+
+<!-- CODEGRAPH_END -->

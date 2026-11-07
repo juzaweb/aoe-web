@@ -109,8 +109,9 @@ gain-corrected. No sprite is redrawn.
 - **Used for:** `assets/buildings/house.png`.
 
 **Changes made.** Cropped to alpha, soft shadow faded out (`alphaFloor: 96`),
-luminance-matched to `107.3`, fitted to the 341x256 canvas and anchored bottom-centre.
-No artwork is redrawn.
+mirrored horizontally so the facade faces the camera, luminance-matched to
+`107.3`, fitted to the 341x256 canvas and anchored bottom-centre. No artwork
+is redrawn.
 
 ### Galata Tower — Bleed
 
