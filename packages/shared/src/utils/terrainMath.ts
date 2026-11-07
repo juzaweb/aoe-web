@@ -1,6 +1,6 @@
 import { BATTLEFIELD_MAP_SIZE, KINGDOM_MAP_SIZE, zoneKindOf } from '../constants/index.js';
 import type { MapZoneKind } from '../types/index.js';
-import { CITADEL_SIZE, citadelOriginFor } from './citadel.js';
+import { CITADEL_HEIGHT, CITADEL_WIDTH, citadelOriginFor } from './citadel.js';
 
 /** Everything the terrain generator needs to know about one map. */
 export interface MapTerrain {
@@ -34,8 +34,8 @@ export function isPlazaTile(gx: number, gy: number, terrain: MapTerrain): boolea
 
   return (
     gx >= originX - CITADEL_CLEAR_MARGIN &&
-    gx < originX + CITADEL_SIZE + CITADEL_CLEAR_MARGIN &&
+    gx < originX + CITADEL_WIDTH + CITADEL_CLEAR_MARGIN &&
     gy >= originY - CITADEL_CLEAR_MARGIN &&
-    gy < originY + CITADEL_SIZE + CITADEL_CLEAR_MARGIN
+    gy < originY + CITADEL_HEIGHT + CITADEL_CLEAR_MARGIN
   );
 }

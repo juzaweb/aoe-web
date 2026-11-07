@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUILDING_BLUEPRINTS,
+  CITADEL_HEIGHT,
   CITADEL_HP_THRESHOLD,
-  CITADEL_SIZE,
+  CITADEL_WIDTH,
   citadelLayoutFor,
   citadelStatus,
   citadelTownCenterFor,
@@ -20,6 +21,15 @@ import {
 
 const TC_X = 53;
 const TC_Y = 53;
+
+/**
+ * Side of the square compound that shipped before the citadel was enlarged.
+ *
+ * The migration test simulates a save written under that layout, so it must not
+ * follow `CITADEL_WIDTH`: resizing today's citadel would silently move the fake
+ * save out of the region the migration has to find.
+ */
+const LEGACY_CITADEL_SIZE = 17;
 
 function addTownCenter(state: WorldState, ownerId = 'defender'): BuildingState {
   const stats = getBuildingLevelStats('TOWN_CENTER', 1);
@@ -53,43 +63,49 @@ function allBuildings(state: WorldState): BuildingState[] {
 }
 
 describe('citadel layout', () => {
-  it('places one Town Center, two barracks and five houses', () => {
+  it('places one Town Center, one barracks, one archery range and five houses', () => {
     const layout = citadelLayoutFor(TC_X, TC_Y);
     expect(layout.slots).toHaveLength(8);
     expect(layout.slots.filter((slot) => slot.type === 'TOWN_CENTER')).toHaveLength(1);
-    expect(layout.slots.filter((slot) => slot.type === 'BARRACKS')).toHaveLength(2);
+    expect(layout.slots.filter((slot) => slot.type === 'BARRACKS')).toHaveLength(1);
+    expect(layout.slots.filter((slot) => slot.type === 'ARCHERY_RANGE')).toHaveLength(1);
     expect(layout.slots.filter((slot) => slot.type === 'HOUSE')).toHaveLength(5);
     expect(layout.slots[0]).toMatchObject({ type: 'TOWN_CENTER', gridX: TC_X, gridY: TC_Y });
   });
 
   it('rings the compound with walls except at the single east gate', () => {
     const layout = citadelLayoutFor(TC_X, TC_Y);
-    expect(layout.size).toBe(CITADEL_SIZE);
-    // 17x17 perimeter minus the three-tile gate in the east wall.
-    expect(layout.walls).toHaveLength(CITADEL_SIZE * 4 - 4 - 3);
+    expect(layout.sizeX).toBe(CITADEL_WIDTH);
+    expect(layout.sizeY).toBe(CITADEL_HEIGHT);
+    // Square perimeter minus the three-tile gate in the east wall.
+    expect(layout.walls).toHaveLength(2 * (CITADEL_WIDTH + CITADEL_HEIGHT) - 4 - 3);
     expect(layout.gates).toHaveLength(3);
 
     const wallKeys = new Set(layout.walls.map((tile) => `${tile.gridX},${tile.gridY}`));
     for (const gate of layout.gates) {
-      expect(gate.gridX).toBe(layout.originX + layout.size - 1);
+      expect(gate.gridX).toBe(layout.originX + layout.sizeX - 1);
       expect(wallKeys.has(`${gate.gridX},${gate.gridY}`)).toBe(false);
     }
   });
 
-  it('groups the barracks north and the houses south of the walkway', () => {
+  it('puts the trainers on the north wall and the houses on the west wall', () => {
     const layout = citadelLayoutFor(TC_X, TC_Y);
-    const barracks = layout.slots.filter((slot) => slot.type === 'BARRACKS');
+    const trainers = layout.slots.filter(
+      (slot) => slot.type === 'BARRACKS' || slot.type === 'ARCHERY_RANGE'
+    );
     const houses = layout.slots.filter((slot) => slot.type === 'HOUSE');
-    const townCenter = layout.slots.find((slot) => slot.type === 'TOWN_CENTER')!;
 
-    // Every barracks tile is above the Town Center's walkway rows.
-    for (const slot of barracks) {
-      expect(slot.gridY + slot.sizeY).toBeLessThanOrEqual(townCenter.gridY);
+    expect(trainers).toHaveLength(2);
+    for (const slot of trainers) {
+      expect(slot.gridY).toBe(layout.innerMinY);
     }
-    // Every house tile is below it.
     for (const slot of houses) {
-      expect(slot.gridY).toBeGreaterThanOrEqual(townCenter.gridY + townCenter.sizeY);
+      expect(slot.gridX).toBe(layout.innerMinX);
     }
+  });
+
+  it('stays a square after scaling up', () => {
+    expect(CITADEL_WIDTH).toBe(CITADEL_HEIGHT);
   });
 
   it('keeps every building slot inside the inner courtyard', () => {
@@ -102,13 +118,62 @@ describe('citadel layout', () => {
     }
   });
 
+  it('keeps the Town Center taller than wide', () => {
+    const layout = citadelLayoutFor(TC_X, TC_Y);
+    const townCenter = layout.slots.find((slot) => slot.type === 'TOWN_CENTER')!;
+    expect(townCenter.sizeX).toBe(BUILDING_BLUEPRINTS.TOWN_CENTER.sizeX);
+    expect(townCenter.sizeY).toBe(BUILDING_BLUEPRINTS.TOWN_CENTER.sizeY);
+    expect(townCenter.sizeY).toBeGreaterThan(townCenter.sizeX);
+  });
+
+  it('keeps the building slots from overlapping one another', () => {
+    const layout = citadelLayoutFor(TC_X, TC_Y);
+
+    for (let i = 0; i < layout.slots.length; i++) {
+      for (let j = i + 1; j < layout.slots.length; j++) {
+        const a = layout.slots[i];
+        const b = layout.slots[j];
+        const overlapX = a.gridX < b.gridX + b.sizeX && b.gridX < a.gridX + a.sizeX;
+        const overlapY = a.gridY < b.gridY + b.sizeY && b.gridY < a.gridY + a.sizeY;
+        expect(
+          overlapX && overlapY,
+          `${a.type} at ${a.gridX},${a.gridY} overlaps ${b.type} at ${b.gridX},${b.gridY}`
+        ).toBe(false);
+      }
+    }
+  });
+
+  it('packs the five houses in one column at the lower rear corner', () => {
+    const layout = citadelLayoutFor(TC_X, TC_Y);
+    const houses = layout.slots
+      .filter((slot) => slot.type === 'HOUSE')
+      .sort((a, b) => a.gridY - b.gridY);
+
+    const bottom = houses[houses.length - 1];
+    expect(bottom.gridY + bottom.sizeY - 1).toBe(layout.innerMaxY);
+    for (let index = 1; index < houses.length; index++) {
+      expect(houses[index].gridY).toBe(houses[index - 1].gridY + houses[index - 1].sizeY);
+      expect(houses[index].gridX).toBe(houses[0].gridX);
+    }
+  });
+
+  it('keeps the Town Center about four tiles from the rear wall', () => {
+    const layout = citadelLayoutFor(TC_X, TC_Y);
+    const townCenter = layout.slots.find((slot) => slot.type === 'TOWN_CENTER')!;
+
+    // `innerMinX` is the first interior tile, one step in from the west wall.
+    // Four empty tiles sit between that wall and the Town Center's west edge.
+    expect(townCenter.gridX - layout.innerMinX).toBe(4);
+  });
+
   it('centres the compound in the middle of the map', () => {
     const target = citadelTownCenterFor(110, 110);
     const layout = citadelLayoutFor(target.gridX, target.gridY);
 
-    const centredOrigin = Math.round((110 - CITADEL_SIZE) / 2);
-    expect(layout.originX).toBe(centredOrigin);
-    expect(layout.originY).toBe(centredOrigin);
+    const centredOriginX = Math.round((110 - CITADEL_WIDTH) / 2);
+    const centredOriginY = Math.round((110 - CITADEL_HEIGHT) / 2);
+    expect(layout.originX).toBe(centredOriginX);
+    expect(layout.originY).toBe(centredOriginY);
   });
 });
 
@@ -121,7 +186,8 @@ describe('citadel health', () => {
     const status = citadelStatus(allBuildings(state), TC_X, TC_Y);
     const expectedMax =
       getBuildingLevelStats('TOWN_CENTER', 1).maxHp +
-      2 * getBuildingLevelStats('BARRACKS', 1).maxHp +
+      getBuildingLevelStats('BARRACKS', 1).maxHp +
+      getBuildingLevelStats('ARCHERY_RANGE', 1).maxHp +
       5 * getBuildingLevelStats('HOUSE', 1).maxHp;
 
     expect(status.maxHp).toBe(expectedMax);
@@ -155,7 +221,7 @@ describe('citadel health', () => {
 });
 
 describe('citadel lifecycle', () => {
-  it('retrofits the barracks and houses onto a Town-Center-only save', () => {
+  it('retrofits the trainers and houses onto a Town-Center-only save', () => {
     const state = createKingdomState();
     addTownCenter(state);
 
@@ -163,8 +229,41 @@ describe('citadel lifecycle', () => {
 
     const types = allBuildings(state).map((building) => building.type);
     expect(types.filter((type) => type === 'TOWN_CENTER')).toHaveLength(1);
-    expect(types.filter((type) => type === 'BARRACKS')).toHaveLength(2);
+    expect(types.filter((type) => type === 'BARRACKS')).toHaveLength(1);
+    expect(types.filter((type) => type === 'ARCHERY_RANGE')).toHaveLength(1);
     expect(types.filter((type) => type === 'HOUSE')).toHaveLength(5);
+  });
+
+  it('turns the second barracks of a legacy save into an archery range', () => {
+    const state = createKingdomState();
+    const townCenter = addTownCenter(state);
+    spawnMissingCitadelBuildings(state, 'defender', townCenter);
+
+    // Saves written before the roster split field two barracks and no range.
+    const range = allBuildings(state).find((building) => building.type === 'ARCHERY_RANGE')!;
+    range.type = 'BARRACKS';
+
+    ensureCitadel(state, 'defender');
+
+    const military = allBuildings(state).filter(
+      (building) => building.type === 'BARRACKS' || building.type === 'ARCHERY_RANGE'
+    );
+    expect(military.filter((building) => building.type === 'BARRACKS')).toHaveLength(1);
+    expect(military.filter((building) => building.type === 'ARCHERY_RANGE')).toHaveLength(1);
+
+    const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+    for (const slot of layout.slots.filter(
+      (slot) => slot.type === 'BARRACKS' || slot.type === 'ARCHERY_RANGE'
+    )) {
+      expect(
+        military.some(
+          (building) =>
+            building.type === slot.type &&
+            building.gridX === slot.gridX &&
+            building.gridY === slot.gridY
+        )
+      ).toBe(true);
+    }
   });
 
   it('restores every building to full health after a raid', () => {
@@ -196,8 +295,8 @@ describe('citadel lifecycle', () => {
     rightEdgeTc.id = 'b-right-tc';
     rightEdgeTc.ownerId = 'defender';
     rightEdgeTc.type = 'TOWN_CENTER';
-    rightEdgeTc.gridX = 110 - 6 - CITADEL_SIZE + 12;
-    rightEdgeTc.gridY = Math.floor((110 - CITADEL_SIZE) / 2) + 6;
+    rightEdgeTc.gridX = 110 - 6 - LEGACY_CITADEL_SIZE + 12;
+    rightEdgeTc.gridY = Math.floor((110 - LEGACY_CITADEL_SIZE) / 2) + 6;
     rightEdgeTc.sizeX = BUILDING_BLUEPRINTS.TOWN_CENTER.sizeX;
     rightEdgeTc.sizeY = BUILDING_BLUEPRINTS.TOWN_CENTER.sizeY;
     rightEdgeTc.hp = stats.maxHp;
@@ -234,7 +333,8 @@ describe('citadel lifecycle', () => {
     expect(rightEdgeTc.gridY).toBe(target.gridY);
 
     const buildings = allBuildings(state);
-    expect(buildings.filter((building) => building.type === 'BARRACKS')).toHaveLength(2);
+    expect(buildings.filter((building) => building.type === 'BARRACKS')).toHaveLength(1);
+    expect(buildings.filter((building) => building.type === 'ARCHERY_RANGE')).toHaveLength(1);
     expect(buildings.filter((building) => building.type === 'HOUSE')).toHaveLength(5);
 
     const layout = citadelLayoutFor(target.gridX, target.gridY);
