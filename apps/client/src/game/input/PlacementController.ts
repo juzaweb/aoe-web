@@ -18,6 +18,14 @@ export class PlacementController {
   private ghost!: Phaser.GameObjects.Container;
   private ghostImage!: Phaser.GameObjects.Image;
 
+  /**
+   * Whether this placement session already sent the selected villagers to a
+   * site. A shift-chain can drop several foundations, and every drop carrying
+   * the same `unitIds` would re-point the crew at the newest one and leave the
+   * earlier sites unattended — so the crew is claimed by the first drop only.
+   */
+  private crewClaimed = false;
+
   constructor(private readonly scene: WorldScene) {}
 
   create() {
@@ -104,6 +112,7 @@ export class PlacementController {
     // building is dropped.
     scene.buildingToPlace = type;
     scene.notifySelectionChange();
+    this.crewClaimed = false;
 
     const art = this.ghostArt(type);
     this.ghostImage.setTexture(art.textureKey);
@@ -121,8 +130,14 @@ export class PlacementController {
     scene.onPlacementCancelled?.();
   }
 
-  /** Sends PLACE_BUILDING for the tile under the click, or blinks a refusal. */
-  commit(pointer: Phaser.Input.Pointer) {
+  /**
+   * Sends PLACE_BUILDING for the tile under the click, or blinks a refusal.
+   *
+   * `keepActive` is the shift-drag convention: the mode survives a successful
+   * drop so the next click can place the same building again. Without it the
+   * mode closes as soon as one foundation is sent.
+   */
+  commit(pointer: Phaser.Input.Pointer, keepActive = false) {
     const scene = this.scene;
     if (!scene.buildingToPlace || !scene.room) return;
     const type = scene.buildingToPlace;
@@ -135,7 +150,7 @@ export class PlacementController {
     const { gridX, gridY } = pointerWorldGrid(scene.cameras.main, pointer);
 
     if (this.isValid(gridX, gridY, blueprint)) {
-      const unitIds = Array.from(scene.selectedUnitIds);
+      const unitIds = this.crewClaimed ? [] : Array.from(scene.selectedUnitIds);
       // CMD-07: the crew travels with the placement. The foundation's id is
       // minted by the server, so a client-side follow-up BUILD_TARGET would have
       // to wait for the new building to appear in the snapshot and guess which
@@ -146,6 +161,8 @@ export class PlacementController {
         gridY,
         ...(unitIds.length > 0 ? { unitIds } : {})
       });
+      this.crewClaimed = true;
+      if (keepActive) return;
       this.cancel();
       return;
     }

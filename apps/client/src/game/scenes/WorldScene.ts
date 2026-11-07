@@ -1326,7 +1326,9 @@ export class WorldScene extends Phaser.Scene {
 
     if (pointer.leftButtonDown() || ctrlLeftClick) {
       if (this.buildingToPlace) {
-        this.placement.commit(pointer);
+        // Shift keeps the placement mode open after a successful drop, so the
+        // player can place a row of the same building without re-picking it.
+        this.placement.commit(pointer, !!native?.shiftKey);
       } else {
         // Start Drag selection box. Modifiers are resolved here, from the native
         // event, because the release can report them differently.
