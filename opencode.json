@@ -13,6 +13,20 @@
         "--no-usage-statistics"
       ],
       "enabled": true
+    },
+    "codegraph": {
+      "type": "local",
+      "command": [
+        "codegraph",
+        "serve", 
+        "--mcp"
+      ],
+      "enabled": true
+    },
+    "canva": {
+      "type": "remote",
+      "url": "https://mcp.canva.com/mcp",
+      "enabled": true
     }
   },
   "agent": {

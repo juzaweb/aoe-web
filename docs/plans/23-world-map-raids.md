@@ -35,7 +35,7 @@ khác** làm mỗi trận có đích (Nhà chính), có tài sản để mất (
 | R5 | Kết quả: cướp tài nguyên + phá quân/công trình vĩnh viễn. |
 | R6 | Không giới hạn số trận/ngày. **Thua** thì khoá cặp (attacker → defender) **3 ngày**. Defender luôn có **khiên 72 giờ** sau một trận. |
 | R7 | Nhà chính **không phá được**. Điều kiện thắng: HP Nhà chính chủ nhà ≤ **25%** `maxHp`. |
-| R8 | Rút quân bằng **cổng riêng** đặt trong vương quốc địch (tái dùng `ensurePortalFor`). |
+| R8 | Rút quân bằng **cổng riêng** đặt trong vương quốc địch (tái dùng `ensurePortalFor`). Bấm rút chỉ **ra lệnh hành quân** về cổng; trận chỉ đóng khi **toàn bộ quân còn sống** đứng tại cổng. |
 | R9 | Tối đa **120 quân**/trận (`MAX_TRAVEL_UNITS`). |
 | R10 | Chủ nhà online **đánh trả được** — PvP thật, hai tài khoản chung một phòng. |
 | R11 | Danh sách nước = tài khoản **đã có Nhà chính**; không có khiên bảo vệ tài khoản mới. |
@@ -216,7 +216,7 @@ việc của một migration riêng.
 | `listNeighbors(ownerId)` | Đọc cấp TC của mình, `findMany` các `players` có `town_center_level > 0` và `abs(Δ) ≤ 5`, bỏ chính mình; ghép `raids`/`raid_locks` để tính `canAttack` + `blockReason`. |
 | `startRaid({ attackerId, defenderId, unitIds })` | Một transaction: validate lại (cấp, khiên, khoá, không tự đánh mình, chưa có raid ACTIVE trên defender, 1..120 quân, quân thuộc attacker và đang ở `kingdom:<attackerId>`) → `UPDATE units SET zone='kingdom:<defenderId>'` với toạ độ chờ → `INSERT raids`. |
 | `settleRaid({ raidId, outcome })` | Transaction: tính loot, trừ defender/cộng attacker, đặt `shield_until = now + 72h`, `raids.status/ended_at`, `INSERT OR REPLACE raid_locks` khi thua, chuyển quân sống về `kingdom:<attackerId>`, xoá hàng quân đã chết. |
-| `retreatUnits(raidId, attackerId)` | Gọi `settleRaid(outcome='RETREATED')`. Idempotent. |
+| `retreatUnits(raidId, attackerId)` | Gọi `settleRaid(outcome='RETREATED')`. Idempotent. Chỉ dùng cho fallback HTTP khi socket đã mất; trong phòng, `RAID_RETREAT` ra lệnh cho quân chạy về cổng và chờ đủ quân mới settle. |
 | `syncTownCenterLevel(ownerId, level)` | Cập nhật cache sau autosave/settle. |
 | `reconcileStaleRaids()` | Lúc boot: raid `ACTIVE` quá `RAID_DEFAULT_RETREAT_TIMEOUT_MS` → settle `RETREATED`. Khoá/zone không bị kẹt vĩnh viễn sau restart. |
 
@@ -282,7 +282,7 @@ Tất cả yêu cầu `Authorization: Bearer <token>`; verify bằng `AuthServic
 | --- | --- | --- |
 | `GET /world-map` | — | `WorldMapPayload` |
 | `POST /raid/start` | `{ defenderId, unitIds }` | `RaidStartResponse` hoặc `4xx` `{ error }` tiếng Việt |
-| `POST /raid/retreat` | `{ raidId }` | `{ ok: true }`, idempotent |
+| `POST /raid/retreat` | `{ raidId }` | `{ ok: true }`, idempotent. Chỉ dành cho client **mất socket**; còn phiên phòng sống thì trả `409` để buộc quân đi bộ ra cổng. |
 
 Rate limit: `createRateLimit({ limit: 20, windowMs: 60_000 })` cho `/raid/start` để một client
 hỏng không spam transaction.

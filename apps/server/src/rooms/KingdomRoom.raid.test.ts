@@ -89,6 +89,25 @@ function addUnit(room: KingdomRoom, id: string, ownerId: string) {
   return unit;
 }
 
+function addPortal(room: KingdomRoom, ownerId: string) {
+  const portal = new BuildingState();
+  portal.id = 'b-portal';
+  portal.ownerId = ownerId;
+  portal.type = 'PORTAL';
+  // Matches `ensurePortalFor`'s fixed kingdom gateway: right edge, centred.
+  portal.gridX = room.state.mapWidth - 5 - 2;
+  portal.gridY = Math.floor(room.state.mapHeight / 2) - 1;
+  portal.sizeX = 2;
+  portal.sizeY = 2;
+  portal.level = 1;
+  portal.maxHp = 1000;
+  portal.hp = 1000;
+  portal.isConstructed = true;
+  portal.constructionProgress = 100;
+  room.state.buildings.set(portal.id, portal);
+  return portal;
+}
+
 function addTownCenter(room: KingdomRoom, ownerId: string, hp?: number) {
   const stats = getBuildingLevelStats('TOWN_CENTER', 1);
   const building = new BuildingState();
@@ -325,19 +344,96 @@ describe('KingdomRoom retreat', () => {
     );
   });
 
-  it('settles as RETREATED for the raider', async () => {
+  it('orders the army to the gate instead of settling immediately', async () => {
     const room = createRoom();
     addPlayer(room, 'attacker');
-    addUnit(room, 'u1', 'attacker');
+    const unit = addUnit(room, 'u1', 'attacker');
+    addPortal(room, 'attacker');
     withRaid(room);
 
     await room['handleRetreat'](createClient('attacker') as any);
 
+    expect(settleRaid).not.toHaveBeenCalled();
+    expect(internals(room).raidRetreating).toBe(true);
+    // The gate sits on the right edge, so the order must point there rather
+    // than leaving the unit at its old position.
+    expect(unit.actionState).toBe('MOVING');
+    expect(unit.targetX).toBeGreaterThan(100);
+  });
+
+  it('settles as RETREATED only once every unit reaches the gate', async () => {
+    const room = createRoom();
+    addPlayer(room, 'attacker');
+    addTownCenter(room, 'defender');
+    const unitA = addUnit(room, 'u1', 'attacker');
+    const unitB = addUnit(room, 'u2', 'attacker');
+    addPortal(room, 'attacker');
+    withRaid(room);
+
+    await room['handleRetreat'](createClient('attacker') as any);
+
+    // One unit is already at its slot, the other is still walking.
+    unitA.x = unitA.targetX;
+    unitA.y = unitA.targetY;
+    unitA.actionState = 'IDLE';
+    unitB.x = unitB.targetX + 10;
+
+    await room['evaluateRaid']();
+    expect(settleRaid).not.toHaveBeenCalled();
+
+    unitB.x = unitB.targetX;
+    unitB.y = unitB.targetY;
+    unitB.actionState = 'IDLE';
+
+    await room['evaluateRaid']();
     expect(settleRaid.mock.calls[0][0]).toMatchObject({
       raidId: 'raid-1',
       outcome: 'RETREATED',
-      survivingUnitIds: ['u1']
+      survivingUnitIds: ['u1', 'u2']
     });
+  });
+
+  it('does not treat a finished new order as reaching the gate', async () => {
+    const room = createRoom();
+    addPlayer(room, 'attacker');
+    addTownCenter(room, 'defender');
+    const unit = addUnit(room, 'u1', 'attacker');
+    addPortal(room, 'attacker');
+    withRaid(room);
+
+    await room['handleRetreat'](createClient('attacker') as any);
+
+    // The player pulled the unit away after clicking retreat and that new
+    // order finished somewhere else: matching its own target must not count.
+    unit.x = 5;
+    unit.y = 5;
+    unit.targetX = 5;
+    unit.targetY = 5;
+    unit.actionState = 'IDLE';
+
+    await room['evaluateRaid']();
+
+    expect(settleRaid).not.toHaveBeenCalled();
+    expect(internals(room).raidId).toBe('raid-1');
+  });
+
+  it('does not settle when the gate is missing', async () => {
+    const room = createRoom();
+    addPlayer(room, 'attacker');
+    addUnit(room, 'u1', 'attacker');
+    withRaid(room);
+    const client = createClient('attacker');
+
+    // The base room's `world` zone has no gates at all.
+    room.state.zoneId = 'world';
+
+    await room['handleRetreat'](client as any);
+
+    expect(settleRaid).not.toHaveBeenCalled();
+    expect(client.send).toHaveBeenCalledWith(
+      NetworkMessage.ERROR_NOTIFICATION,
+      expect.objectContaining({ message: 'Không tìm thấy cổng rút quân.' })
+    );
   });
 
   it('rejects a retreat when no raid is running', async () => {

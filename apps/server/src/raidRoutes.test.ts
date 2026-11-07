@@ -1,6 +1,7 @@
 import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Server } from 'http';
 import type { AddressInfo } from 'net';
+import { accountSessions } from './rooms/AccountSessions.js';
 
 const listNeighbors = vi.fn();
 const startRaid = vi.fn();
@@ -87,6 +88,7 @@ beforeEach(() => {
   listNeighbors.mockReset();
   startRaid.mockReset();
   retreatRaid.mockReset();
+  accountSessions.reset();
 });
 
 describe('GET /world-map', () => {
@@ -185,5 +187,33 @@ describe('POST /raid/retreat', () => {
     });
 
     expect(res.status).toBe(401);
+  });
+
+  it('refuses to skip the march while the attacker has a live room', async () => {
+    accountSessions.activate('attacker', 's-attacker', 'kingdom:defender');
+
+    const res = await fetch(`${baseUrl}/raid/retreat`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ raidId: 'raid-1' })
+    });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'Hãy rút quân trong trận đánh.' });
+    expect(retreatRaid).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the HTTP retreat when the socket is gone', async () => {
+    accountSessions.activate('attacker', 's-dead', 'kingdom:defender', () => undefined, () => false);
+    retreatRaid.mockResolvedValue(null);
+
+    const res = await fetch(`${baseUrl}/raid/retreat`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ raidId: 'raid-1' })
+    });
+
+    expect(res.status).toBe(200);
+    expect(retreatRaid).toHaveBeenCalledWith('raid-1', 'attacker');
   });
 });
