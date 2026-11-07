@@ -70,6 +70,7 @@ import { generateWorldResources } from './worldGeneration.js';
 import { isOneOffResourceNode, regrowDelayMs, starterResourceId } from './resources.js';
 import { isTravelCoolingDown, markTravel } from './travelCooldowns.js';
 import { releaseSpectatorWatch } from './spectatorWatch.js';
+import { normalizeLocale, render, translate, type LocalizedSpec, type Locale } from '../i18n/index.js';
 import { entityIds } from '../services/EntityIdAllocator.js';
 import type { TravelUnitSnapshot } from '../services/DatabaseService.js';
 import {
@@ -147,6 +148,12 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   protected readonly spectatorSessions = new Set<string>();
   /** Viewer account behind each spectator session, for the watch-slot registry. */
   protected readonly spectatorViewers = new Map<string, string>();
+
+  /**
+   * I18N: per-session language set at join and changeable at runtime via
+   * `SET_LOCALE`. Sessions without an entry keep the historical message text.
+   */
+  protected readonly localeBySession = new Map<string, Locale>();
   /** See `ZonePersistence`; a stale room must never flush over its successor. */
   private persistenceToken = 0;
   protected zoneReady = false;
@@ -400,7 +407,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       if (this.spectatorSessions.has(client.sessionId)) {
         this.rejectCommand(
           client,
-          'Bạn đang ở chế độ quan sát và không thể ra lệnh.',
+          'You are watching and cannot issue commands.',
           RejectCode.FORBIDDEN
         );
         return;
@@ -433,6 +440,13 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     // Without this, a client could join while state.buildings is still empty and
     // spawn a duplicate randomly-positioned base.
     this.readyPromise = this.initializeWorldPersistence();
+
+    // I18N: live language switch while inside the room. Accepted both as a
+    // bare string and as `{ locale }` from the client helpers.
+    this.onMessage('SET_LOCALE', (client, payload: unknown) => {
+      const locale = normalizeLocale(payload);
+      if (locale) this.localeBySession.set(client.sessionId, locale);
+    });
 
     // Setup network message listeners
     this.onCommandMessage(NetworkMessage.PLACE_BUILDING, (client, message: PlaceBuildingPayload) => {
@@ -523,7 +537,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     // clear rejection instead of a silent no-op. Clients from before the update
     // get an explanation rather than a stuck portal.
     this.onCommandMessage(NetworkMessage.TRAVEL, (client) => {
-      this.rejectCommand(client, 'Chiến trường đã đóng. Hãy dùng bản đồ thế giới để tập kích.', RejectCode.FORBIDDEN);
+      this.rejectCommand(client, 'The battlefield is retired. Use the world map to raid.', RejectCode.FORBIDDEN);
     });
 
     // Run authoritative tick loop
@@ -1123,7 +1137,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     if (!payload) {
       // AUTH_FAILED (525) is the canonical matchmaking code; the client checks
       // the code, not the message, to decide whether to clear the stored token.
-      throw new ServerError(ErrorCode.AUTH_FAILED, 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.');
+      throw new ServerError(ErrorCode.AUTH_FAILED, 'Session invalid or expired.');
     }
 
     // The signature only proves we issued the token; the account it names may be
@@ -1132,7 +1146,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     // identity from the database rather than from the claims.
     const user = await AuthService.findById(payload.id);
     if (!user) {
-      throw new ServerError(ErrorCode.AUTH_FAILED, 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.');
+      throw new ServerError(ErrorCode.AUTH_FAILED, 'Session invalid or expired.');
     }
 
     return {
@@ -1143,6 +1157,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   }
 
   async onJoin(client: Client, options: any) {
+    // I18N: remember the join language so every later rejection (including the
+    // throws below, before any state exists) can be localized for this client.
+    const locale = normalizeLocale(options?.locale);
+    if (locale) this.localeBySession.set(client.sessionId, locale);
     // `onAuth` runs before every join and rejects anything without a verified
     // token, so the account id is the only ownership key. There is deliberately
     // no fallback to `options.playerName`: a client-supplied name would let a
@@ -1158,7 +1176,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     // mismatched `ownerId`, but the room itself is the last line of defence: a
     // mis-registered room must never let a stranger read the owner's empire.
     if (!this.canJoinOwner(ownerId)) {
-      throw new ServerError(ErrorCode.AUTH_FAILED, 'Bạn không thể vào vương quốc này.');
+      throw new ServerError(
+        ErrorCode.AUTH_FAILED,
+        translate(this.localeBySession.get(client.sessionId), 'You cannot enter this kingdom.')
+      );
     }
 
     // MAPS: a travel hand-off has already committed the authoritative account
@@ -1188,13 +1209,22 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       console.warn(
         `[WorldRoom] Rejected session ${client.sessionId} for ${playerName}: account is held by session ${live}.`
       );
-      throw new ServerError(SESSION_ALREADY_ACTIVE, 'Tài khoản đang được đăng nhập ở nơi khác.');
+      throw new ServerError(
+        SESSION_ALREADY_ACTIVE,
+        translate(this.localeBySession.get(client.sessionId), 'The account is signed in somewhere else.')
+      );
     }
     if (claim === 'busy') {
       console.warn(
         `[WorldRoom] Rejected session ${client.sessionId} for ${playerName}: another join is in flight.`
       );
-      throw new ServerError(SESSION_BUSY, 'Phiên đăng nhập khác đang được xử lý, vui lòng thử lại.');
+      throw new ServerError(
+        SESSION_BUSY,
+        translate(
+          this.localeBySession.get(client.sessionId),
+          'Another sign-in is being processed, please retry.'
+        )
+      );
     }
 
     try {
@@ -1216,7 +1246,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         // would let two rooms write the same zone.
         throw new ServerError(
           ErrorCode.APPLICATION_ERROR,
-          'This map room has been replaced. Please rejoin.'
+          translate(
+            this.localeBySession.get(client.sessionId),
+            'This map room has been replaced. Please rejoin.'
+          )
         );
       }
 
@@ -1595,22 +1628,22 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     const portal = payload?.portalId ? this.state.buildings.get(payload.portalId) : undefined;
     if (!portal || portal.type !== 'PORTAL' || portal.ownerId !== ownerId) {
-      this.rejectCommand(client, 'Cổng dịch chuyển không hợp lệ.', RejectCode.INVALID);
+      this.rejectCommand(client, 'Invalid travel portal.', RejectCode.INVALID);
       return;
     }
 
     if (this.travelingOwners.has(ownerId)) {
-      this.rejectCommand(client, 'Bạn đang chuyển bản đồ.', RejectCode.BUSY);
+      this.rejectCommand(client, 'You are already switching maps.', RejectCode.BUSY);
       return;
     }
     if (isTravelCoolingDown(ownerId)) {
-      this.rejectCommand(client, 'Vui lòng đợi một chút rồi thử lại.', RejectCode.BUSY);
+      this.rejectCommand(client, 'Please wait a moment and try again.', RejectCode.BUSY);
       return;
     }
 
     const requested = Array.isArray(payload.unitIds) ? [...new Set(payload.unitIds)] : [];
     if (requested.length > MAX_TRAVEL_UNITS) {
-      this.rejectCommand(client, 'Quá nhiều đơn vị trong một lần chuyển.', RejectCode.LIMIT);
+      this.rejectCommand(client, 'Too many units in one transfer.', RejectCode.LIMIT);
       return;
     }
 
@@ -1652,7 +1685,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       });
     } catch (err) {
       console.error(`❌ [WorldRoom] Travel commit failed for ${ownerId}:`, err);
-      this.rejectCommand(client, 'Không thể chuyển bản đồ. Vui lòng thử lại.', RejectCode.INVALID);
+      this.rejectCommand(client, 'Could not switch maps. Please try again.', RejectCode.INVALID);
       return;
     } finally {
       this.travelingOwners.delete(ownerId);
@@ -1718,8 +1751,17 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   }
 
   /** Notify a client that a command was refused, so the UI can explain why. */
-  rejectCommand(client: Client, message: string, code: RejectCode) {
-    client.send(NetworkMessage.ERROR_NOTIFICATION, { message, code });
+  rejectCommand(client: Client, message: string | LocalizedSpec, code: RejectCode) {
+    client.send(
+      NetworkMessage.ERROR_NOTIFICATION,
+      { message: this.localizedFor(client, message), code }
+    );
+  }
+
+  /** I18N: resolve a plain message or a key-based spec for one client. */
+  protected localizedFor(client: Client, message: string | LocalizedSpec): string {
+    const locale = this.localeBySession.get(client.sessionId);
+    return typeof message === 'string' ? translate(locale, message) : render(locale, message);
   }
 
   private scheduleResourceRespawn(node: ResourceNodeState): void {
@@ -2161,6 +2203,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   }
 
   async onLeave(client: Client, code?: number) {
+    // I18N: the locale lives only as long as the session, whatever leave path
+    // runs (spectator branch included).
+    this.localeBySession.delete(client.sessionId);
+
     // A watcher never owned the account in this room: no session to release and
     // no empire to save. Dropping it from the set is the whole cleanup.
     if (this.spectatorSessions.delete(client.sessionId)) {

@@ -1,4 +1,5 @@
 import { Client } from '@colyseus/core';
+import type { LocalizedSpec } from '../i18n/index.js';
 import {
   BUILDING_BLUEPRINTS,
   BuildingType,
@@ -74,7 +75,7 @@ import {
  */
 export interface CommandPorts {
   /** Sends an `ERROR_NOTIFICATION` to the client. */
-  rejectCommand(client: Client, message: string, code: RejectCode): void;
+  rejectCommand(client: Client, message: string | LocalizedSpec, code: RejectCode): void;
   /** Replaces the unit's route with one to this point (SIM-01). */
   setWalkTarget(unit: UnitState, targetX: number, targetY: number): void;
   /** Pops the next queued waypoint into the active order (CTL-05). */
@@ -236,7 +237,7 @@ export class CommandSystem {
     if (this.ports.canManageZone(ownerId)) return true;
     this.ports.rejectCommand(
       client,
-      'Bạn chỉ có thể ra lệnh chiến đấu trong vương quốc này.',
+      'You may only issue combat orders in this kingdom.',
       RejectCode.FORBIDDEN
     );
     return false;
@@ -265,9 +266,16 @@ export class CommandSystem {
     // the opening build menu and the Town Center's own upgrade gate stay intact.
     const townCenterLevel = this.ports.townCenterLevelOf(ownerId);
     if (!isBuildingUnlocked(payload.type, townCenterLevel)) {
+      // I18N: the unlock gate is parameterised, so it travels as a spec and
+      // the boundary renders the active language from the level.
+      const unlockLevel = getBuildingUnlockLevel(payload.type);
       this.ports.rejectCommand(
         client,
-        `Requires Town Center level ${getBuildingUnlockLevel(payload.type)}`,
+        {
+          key: 'command.requiresTownCenterLevel',
+          params: { level: unlockLevel },
+          fallback: `Requires Town Center level ${unlockLevel}`
+        },
         RejectCode.PREREQUISITE
       );
       return;
@@ -743,7 +751,16 @@ export class CommandSystem {
         (gap) => !gap.met
       );
       if (unmet.length > 0) {
-        this.ports.rejectCommand(client, `Town Center upgrade requires ${describeCoreGaps(unmet)}`, RejectCode.PREREQUISITE);
+        const gaps = describeCoreGaps(unmet);
+        this.ports.rejectCommand(
+          client,
+          {
+            key: 'command.coreGaps',
+            params: { gaps },
+            fallback: `Town Center upgrade requires ${gaps}`
+          },
+          RejectCode.PREREQUISITE
+        );
         return;
       }
     }
@@ -751,7 +768,15 @@ export class CommandSystem {
     // LVL2/D6: two upgrades at a time, so the gate above costs real time instead
     // of being skipped by starting all four pillars in parallel.
     if (countActiveBuildingUpgrades(this.state, player.id) >= MAX_CONCURRENT_BUILDING_UPGRADES) {
-      this.ports.rejectCommand(client, `Building upgrade limit reached (${MAX_CONCURRENT_BUILDING_UPGRADES} at a time)`, RejectCode.LIMIT);
+      this.ports.rejectCommand(
+        client,
+        {
+          key: 'command.upgradeSlots',
+          params: { max: MAX_CONCURRENT_BUILDING_UPGRADES },
+          fallback: `Building upgrade limit reached (${MAX_CONCURRENT_BUILDING_UPGRADES} at a time)`
+        },
+        RejectCode.LIMIT
+      );
       return;
     }
 
@@ -829,9 +854,14 @@ export class CommandSystem {
     }
     if (!this.hasConstructedBuilding(ownerId, trainerType)) {
       const trainerName = BUILDING_BLUEPRINTS[trainerType]?.name ?? trainerType;
+      const article = indefiniteArticle(trainerName);
       this.ports.rejectCommand(
         client,
-        `Build ${indefiniteArticle(trainerName)} ${trainerName} before researching this unit`,
+        {
+          key: 'command.buildFirst',
+          params: { article, name: trainerName },
+          fallback: `Build ${article} ${trainerName} before researching this unit`
+        },
         RejectCode.PREREQUISITE
       );
       return;

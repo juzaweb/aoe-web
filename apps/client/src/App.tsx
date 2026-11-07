@@ -48,6 +48,7 @@ import {
   startRaid
 } from './auth/api.js';
 import { AlertCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { playUnderAttackAlert } from './game/audio/alertSound.js';
 import { RejectNotification } from './components/RejectNotification.js';
 import {
@@ -56,8 +57,10 @@ import {
   getStoredRaid,
   storeRaid
 } from './game/raid/session.js';
+import { LANGUAGE_CHANGED_EVENT } from './i18n/index.js';
 
 export const App: React.FC = () => {
+  const { t, i18n } = useTranslation();
   const [room, setRoom] = useState<Room | null>(null);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -185,6 +188,18 @@ export const App: React.FC = () => {
   }, [room]);
 
   /**
+   * I18N: the live room is told the active language, and a switcher action is
+   * forwarded as `SET_LOCALE` so server messages follow without a reconnect.
+   */
+  useEffect(() => {
+    if (!room) return;
+    room.send('SET_LOCALE', { locale: i18n.language });
+    const onLanguageChanged = () => room.send('SET_LOCALE', { locale: i18n.language });
+    window.addEventListener(LANGUAGE_CHANGED_EVENT, onLanguageChanged);
+    return () => window.removeEventListener(LANGUAGE_CHANGED_EVENT, onLanguageChanged);
+  }, [room, i18n.language]);
+
+  /**
    * The own map keeps simulating while a spectator window is open, but it must
    * not keep listening to the keyboard: Phaser binds keys at the window level,
    * so `A`/`P`/`Q`… would still order the player's own army from behind the
@@ -260,7 +275,7 @@ export const App: React.FC = () => {
     const token = getStoredToken();
     if (!token) {
       setAuthUser(null);
-      if (!opts.quiet) showNotification('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      if (!opts.quiet) showNotification(t('app.sessionExpired'));
       return false;
     }
 
@@ -276,8 +291,8 @@ export const App: React.FC = () => {
       // takeover button, never as an automatic retry. A raid join names the
       // defender instead and carries the raid id the server verifies.
       const options = opts.raid
-        ? { ownerId: opts.raid.defenderId, raidId: opts.raid.raidId }
-        : { ownerId: user.id, force: opts.force === true };
+        ? { ownerId: opts.raid.defenderId, raidId: opts.raid.raidId, locale: i18n.language }
+        : { ownerId: user.id, force: opts.force === true, locale: i18n.language };
 
       const joinedRoom = await client.joinOrCreate(roomName, options);
 
@@ -307,7 +322,7 @@ export const App: React.FC = () => {
         clearStoredRaid(user.id);
         raidSessionRef.current = null;
         setRaidSession(null);
-        showNotification(raidResultText(data));
+        showNotification(raidResultText(data, i18n.t));
         void switchToRoom(user, null);
       });
 
@@ -374,14 +389,14 @@ export const App: React.FC = () => {
 
         if (code === SESSION_REPLACED_CLOSE) {
           setSessionTaken(true);
-          showNotification('Phiên đã được đăng nhập ở thiết bị khác.');
+          showNotification(i18n.t('app.sessionReplaced'));
           return;
         }
         if (isLeavingRef.current) {
           isLeavingRef.current = false;
           return;
         }
-        showNotification('Mất kết nối với máy chủ.');
+        showNotification(i18n.t('app.connectionLost'));
       });
 
       return true;
@@ -412,12 +427,10 @@ export const App: React.FC = () => {
         clearStoredToken();
         setAuthUser(null);
         if (!opts.quiet) {
-          showNotification('Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.');
+          showNotification(t('app.invalidSession'));
         }
       } else if (!opts.quiet) {
-        showNotification(
-          'Không thể kết nối đến máy chủ game. Hãy kiểm tra server đã chạy ở port 2567!'
-        );
+        showNotification(t('app.connectFailed'));
       }
       return false;
     } finally {
@@ -490,11 +503,12 @@ export const App: React.FC = () => {
 
     try {
       const client = clientRef.current;
-      if (!client) throw new Error('Mất kết nối với máy chủ.');
+      if (!client) throw new Error(i18n.t('app.connectionLost'));
 
       const joined = await client.joinOrCreate('kingdom_room', {
         ownerId: entry.userId,
-        spectate: true
+        spectate: true,
+        locale: i18n.language
       });
       // The viewer closed the window (or picked another target) while the join
       // was in flight: drop the room instead of resurrecting the overlay.
@@ -520,7 +534,7 @@ export const App: React.FC = () => {
       if (spectateRequestRef.current === request) {
         spectateRoomRef.current = null;
         setSpectator(null);
-        showNotification((err as Error).message || 'Không thể quan sát vương quốc này.');
+        showNotification((err as Error).message || i18n.t('app.cannotSpectate'));
         // The map was hidden to show the target; bring it back so another
         // empire can be picked without reopening the panel from the HUD.
         setWorldMapOpen(true);
@@ -586,14 +600,14 @@ export const App: React.FC = () => {
         setIsConnected(false);
         setSwitchError(
           raid
-            ? 'Không thể vào vương quốc địch. Quân của bạn đang chờ; hãy thử lại.'
-            : 'Không thể về vương quốc. Quân của bạn đã được giữ an toàn; hãy thử lại.'
+            ? t('app.switchToEnemyFailed')
+            : t('app.switchHomeFailed')
         );
       }
     } catch (err) {
       console.error('Failed to switch rooms:', err);
       setRoom(null);
-      setSwitchError('Không thể chuyển bản đồ. Vui lòng thử lại.');
+      setSwitchError(t('app.switchMapFailed'));
     } finally {
       // On success `setRoom(newRoom)` already resumed; this also restores the
       // canvas behind the error overlay when the join failed.
@@ -913,7 +927,7 @@ export const App: React.FC = () => {
         <HUD
           playerName={playerName}
           playerColor={playerColor}
-          zoneLabel={raidSession ? 'TẬP KÍCH' : 'VƯƠNG QUỐC'}
+          zoneLabel={raidSession ? t('app.zoneRaid') : t('app.zoneKingdom')}
           inRaid={raidSession !== null}
           onOpenWorldMap={handleToggleWorldMap}
           onRetreat={handleRetreat}
@@ -1063,7 +1077,7 @@ export const App: React.FC = () => {
       {underAttack && (
         <div className={`absolute ${notification ? 'top-24' : 'top-16'} left-1/2 -translate-x-1/2 bg-red-950/90 border border-red-500/80 text-red-200 px-4 py-2 rounded shadow-2xl backdrop-blur-md flex items-center gap-2 z-50 text-sm animate-pulse`}>
           <AlertCircle size={16} className="text-red-400" />
-          <span>Đang bị tấn công!</span>
+          <span>{t('app.underAttack')}</span>
         </div>
       )}
 
@@ -1086,11 +1100,10 @@ export const App: React.FC = () => {
             <div className="aoe-panel flex w-full max-w-sm flex-col items-center gap-3 rounded-xl border-2 border-amber-600 p-5 text-center shadow-2xl">
               <div className="flex items-center gap-2 text-amber-400">
                 <AlertCircle size={22} />
-                <span className="font-medieval text-sm font-bold tracking-wider">MẤT KẾT NỐI</span>
+                <span className="font-medieval text-sm font-bold tracking-wider">{t('app.disconnectTitle')}</span>
               </div>
               <p className="text-xs leading-relaxed text-slate-300">
-                Tài khoản <span className="text-amber-300">{playerName}</span> vẫn đang đăng nhập.
-                Kết nối lại để tiếp tục đế chế và quân đang chơi.
+                {t('app.disconnectBody', { name: playerName })}
               </p>
               <div className="mt-1 flex w-full gap-2">
                 <button
@@ -1098,14 +1111,14 @@ export const App: React.FC = () => {
                   onClick={handleReconnect}
                   className="min-h-[46px] flex-1 rounded border border-amber-400 bg-gradient-to-r from-amber-600 to-amber-700 text-xs font-bold uppercase tracking-wider text-slate-950"
                 >
-                  Kết nối lại
+                  {t('app.reconnect')}
                 </button>
                 <button
                   type="button"
                   onClick={handleLeaveGame}
                   className="min-h-[46px] flex-1 rounded border border-slate-700 bg-slate-900 text-xs font-bold uppercase tracking-wider text-slate-300"
                 >
-                  Đăng xuất
+                  {t('app.logout')}
                 </button>
               </div>
             </div>
@@ -1117,14 +1130,14 @@ export const App: React.FC = () => {
         <div className="absolute inset-0 bg-slate-950/30 backdrop-blur-[1px] flex items-center justify-center z-50 p-4">
           <div className="aoe-panel px-8 py-6 rounded-xl flex flex-col items-center gap-3 shadow-2xl border-2 border-violet-500">
             <div className="w-8 h-8 rounded-full border-2 border-violet-400 border-t-transparent animate-spin" />
-            <span className="text-sm text-slate-300">Đang chuyển bản đồ...</span>
-            <span className="text-[11px] text-slate-500">Bản đồ đích đang được tải.</span>
+            <span className="text-sm text-slate-300">{t('app.switchingMap')}</span>
+            <span className="text-[11px] text-slate-500">{t('app.switchingMapDetail')}</span>
             <button
               type="button"
               onClick={() => window.location.reload()}
               className="px-3 py-1 rounded border border-slate-600 text-[11px] text-slate-300 hover:border-slate-400"
             >
-              Tải lại trang
+              {t('app.reload')}
             </button>
           </div>
         </div>
@@ -1142,14 +1155,14 @@ export const App: React.FC = () => {
                 onClick={retrySwitchZone}
                 className="px-4 py-2 rounded border border-amber-600 bg-amber-950/60 text-amber-200 text-sm hover:border-amber-400"
               >
-                Thử lại
+                {t('app.retry')}
               </button>
               <button
                 type="button"
                 onClick={() => window.location.reload()}
                 className="px-4 py-2 rounded border border-slate-600 text-slate-300 text-sm hover:border-slate-400"
               >
-                Tải lại trang
+                {t('app.reload')}
               </button>
             </div>
           </div>
@@ -1162,7 +1175,7 @@ export const App: React.FC = () => {
           <div className="aoe-panel px-8 py-6 rounded-xl flex flex-col items-center gap-3 shadow-2xl border-2 border-amber-600">
             <div className="w-8 h-8 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
             <span className="text-sm text-slate-300">
-              {isRestoringSession ? 'Đang khôi phục phiên đăng nhập...' : 'Đang kết nối vào thế giới...'}
+              {isRestoringSession ? t('app.restoreSession') : t('app.connectingWorld')}
             </span>
           </div>
         </div>
@@ -1175,7 +1188,7 @@ export const App: React.FC = () => {
           onClick={handleLeaveGame}
           className="absolute top-16 right-2 z-30 px-3 py-1.5 rounded bg-slate-900/90 border border-slate-700 text-[11px] text-slate-300 hover:border-amber-500 hover:text-amber-300 transition-colors cursor-pointer"
         >
-          Đăng xuất
+          {t('app.logout')}
         </button>
       )}
 
@@ -1230,13 +1243,16 @@ export const App: React.FC = () => {
 
 
 /** One line for the end of a raid, shown as a normal notification. */
-function raidResultText(payload: RaidEndedPayload): string {
+function raidResultText(
+  payload: RaidEndedPayload,
+  t: (key: string, options?: Record<string, unknown>) => string
+): string {
   if (payload.outcome === 'ATTACKER_WON') {
     const { wood, food, gold, stone } = payload.loot;
-    return `Thắng trận! Cướp được ${wood} gỗ, ${food} lương, ${gold} vàng, ${stone} đá.`;
+    return t('app.raidWinLoot', { wood, food, gold, stone });
   }
   if (payload.outcome === 'DEFENDER_WON') {
-    return 'Quân tập kích đã bị đánh bại.';
+    return t('app.raidDefeat');
   }
-  return 'Đã rút quân về vương quốc.';
+  return t('app.raidRetreated');
 }

@@ -10,6 +10,7 @@ import { DatabaseService } from './services/DatabaseService.js';
 import { AuthError, AuthService } from './services/AuthService.js';
 import { RaidError, RaidService } from './services/RaidService.js';
 import { createRateLimit } from './services/RateLimiter.js';
+import { localeFromHeader, translate, translateError } from './i18n/index.js';
 
 // The battlefield (220x220) holds ~1.2k resource nodes, so a full world snapshot
 // is far larger than the 16 KB default. Raising it up front avoids the per-room
@@ -45,14 +46,17 @@ app.get('/health', (req, res) => {
 
 /**
  * Maps auth failures to their HTTP status while keeping unexpected errors opaque.
+ * Error text is localized with the request's `Accept-Language` when it is a
+ * known message; unknown English internals stay untouched.
  */
 function sendAuthError(res: express.Response, err: unknown) {
+  const locale = localeFromHeader(res.req?.headers?.['accept-language']);
   if (err instanceof AuthError) {
-    res.status(err.status).json({ error: err.message });
+    res.status(err.status).json({ error: translateError(locale, err) });
     return;
   }
   console.error('[Auth Error]', err);
-  res.status(500).json({ error: 'Lỗi hệ thống. Vui lòng thử lại.' });
+  res.status(500).json({ error: translate(locale, 'System error. Please try again.') });
 }
 
 app.post('/auth/register', authRateLimit, async (req, res) => {
@@ -83,7 +87,9 @@ app.get('/auth/me', async (req, res) => {
   // instead of joining the room as an empire nobody owns.
   const user = payload ? await AuthService.findById(payload.id) : null;
   if (!user) {
-    res.status(401).json({ error: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.' });
+    res
+      .status(401)
+      .json({ error: translate(localeFromHeader(req.headers['accept-language']), 'Session invalid or expired.') });
     return;
   }
 
@@ -112,7 +118,9 @@ async function requireAccount(
   const payload = AuthService.verifyToken(token);
   const user = payload ? await AuthService.findById(payload.id) : null;
   if (!user) {
-    res.status(401).json({ error: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.' });
+    res
+      .status(401)
+      .json({ error: translate(localeFromHeader(req.headers['accept-language']), 'Session invalid or expired.') });
     return null;
   }
   return { id: user.id, displayName: user.displayName };
@@ -122,10 +130,26 @@ app.get('/world-map', async (req, res) => {
   try {
     const account = await requireAccount(req, res);
     if (!account) return;
-    res.json(await RaidService.listNeighbors(account.id));
+    const neighborhood = await RaidService.listNeighbors(account.id);
+    // I18N: shield/lock rationales ride inside the payload; localize them here
+    // where the request's language is known.
+    const locale = localeFromHeader(req.headers['accept-language']);
+    const localized = {
+      ...neighborhood,
+      neighbors: neighborhood.neighbors.map((tile) => ({
+        ...tile,
+        blockReason: tile.blockReason ? translate(locale, tile.blockReason) : tile.blockReason
+      }))
+    };
+    res.json(localized);
   } catch (err) {
     console.error('[WorldMap] Failed to build the neighbour list:', err);
-    res.status(500).json({ error: 'Không thể tải bản đồ thế giới. Vui lòng thử lại.' });
+    res.status(500).json({
+      error: translate(
+        localeFromHeader(req.headers['accept-language']),
+        'Could not load the world map. Please try again.'
+      )
+    });
   }
 });
 
@@ -139,7 +163,9 @@ app.post('/raid/start', raidRateLimit, async (req, res) => {
       unitIds?: unknown;
     };
     if (typeof defenderId !== 'string' || !Array.isArray(unitIds)) {
-      res.status(400).json({ error: 'Dữ liệu tập kích không hợp lệ.' });
+      res
+        .status(400)
+        .json({ error: translate(localeFromHeader(req.headers['accept-language']), 'Invalid raid request.') });
       return;
     }
 
@@ -151,11 +177,16 @@ app.post('/raid/start', raidRateLimit, async (req, res) => {
     res.json({ ...result, roomName: 'kingdom_room' });
   } catch (err) {
     if (err instanceof RaidError) {
-      res.status(err.status).json({ error: err.message });
+      res.status(err.status).json({ error: translateError(localeFromHeader(req.headers['accept-language']), err) });
       return;
     }
     console.error('[Raid] Start failed:', err);
-    res.status(500).json({ error: 'Không thể bắt đầu trận tập kích. Vui lòng thử lại.' });
+    res.status(500).json({
+      error: translate(
+        localeFromHeader(req.headers['accept-language']),
+        'Could not start the raid. Please try again.'
+      )
+    });
   }
 });
 
@@ -166,7 +197,9 @@ app.post('/raid/retreat', async (req, res) => {
 
     const { raidId } = (req.body ?? {}) as { raidId?: unknown };
     if (typeof raidId !== 'string') {
-      res.status(400).json({ error: 'Dữ liệu rút quân không hợp lệ.' });
+      res
+        .status(400)
+        .json({ error: translate(localeFromHeader(req.headers['accept-language']), 'Invalid retreat request.') });
       return;
     }
 
@@ -174,7 +207,9 @@ app.post('/raid/retreat', async (req, res) => {
     // endpoint exists only for a client that can no longer send messages, and
     // letting a connected client call it would skip the march entirely.
     if (accountSessions.hasLiveSession(account.id)) {
-      res.status(409).json({ error: 'Hãy rút quân trong trận đánh.' });
+      res
+        .status(409)
+        .json({ error: translate(localeFromHeader(req.headers['accept-language']), 'Retreat from inside the raid.') });
       return;
     }
 
@@ -184,7 +219,12 @@ app.post('/raid/retreat', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('[Raid] Retreat failed:', err);
-    res.status(500).json({ error: 'Không thể rút quân. Vui lòng thử lại.' });
+    res.status(500).json({
+      error: translate(
+        localeFromHeader(req.headers['accept-language']),
+        'Could not retreat. Please try again.'
+      )
+    });
   }
 });
 

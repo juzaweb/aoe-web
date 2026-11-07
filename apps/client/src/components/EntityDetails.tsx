@@ -21,25 +21,25 @@ import {
 import { Shield, UserPlus, Heart, Hammer, X, Boxes } from 'lucide-react';
 import { BuildingUpgradePanel, UnitResearchPanel } from './UpgradePanels.js';
 import { buildingThumbnail } from './buildingThumbnails.js';
-
-/** Vietnamese labels for the resource types a villager can haul. */
-const RESOURCE_LABELS: Record<string, string> = {
-  wood: 'Gỗ',
-  food: 'Thức ăn',
-  gold: 'Vàng',
-  stone: 'Đá'
-};
+import { useTranslation } from 'react-i18next';
+import {
+  buildingName,
+  resourceName,
+  resourceNodeName,
+  stanceName,
+  unitDescription,
+  unitName
+} from '../i18n/labels.js';
 
 /**
- * CMB-01: stance labels, in the same order the `D` key cycles them. The colours
- * run from green (fights anything) to grey (never engages), so the panel reads at
- * a glance without parsing the word.
+ * CMB-01: stance colours, in the same order the `D` key cycles them. The names
+ * themselves come from the i18n catalog via `stanceName`.
  */
-const STANCE_LABELS: Record<string, { label: string; className: string }> = {
-  AGGRESSIVE: { label: 'Chủ động', className: 'text-emerald-300' },
-  DEFENSIVE: { label: 'Phòng thủ', className: 'text-sky-300' },
-  STAND_GROUND: { label: 'Cố thủ', className: 'text-amber-300' },
-  NO_ATTACK: { label: 'Không đánh', className: 'text-slate-400' }
+const STANCE_CLASSES: Record<string, string> = {
+  AGGRESSIVE: 'text-emerald-300',
+  DEFENSIVE: 'text-sky-300',
+  STAND_GROUND: 'text-amber-300',
+  NO_ATTACK: 'text-slate-400'
 };
 
 interface EntityDetailsProps {
@@ -90,6 +90,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
   compact = false,
   interactionHint = 'right-click'
 }) => {
+  const { t } = useTranslation();
   const buildingBp = entity.type === 'building' ? BUILDING_BLUEPRINTS[entity.subType as BuildingType] : null;
   const trainableUnits = buildingBp ? buildingBp.trainableUnits : [];
   // MIL-01: `null` only for a building type that ships no sheet, so the panel
@@ -125,6 +126,22 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
   const trainerBuffPercent = Math.round((trainerUnitBuffMultiplier(buildingLevel) - 1) * 100);
   const gatherPercent = Math.round((dropOffGatherMultiplier(buildingLevel) - 1) * 100);
   const unloadRadius = dropOffRange(buildingLevel);
+
+  /**
+   * I18N: the scene publishes English/protocol names, so the card re-labels it
+   * here from the entity type instead of trusting the published string.
+   */
+  let displayName = entity.name;
+  if (entity.type === 'building') {
+    if (entity.subType === 'ROAD') displayName = t('details.roadUnderConstruction');
+    else if (entity.subType) displayName = buildingName(entity.subType as BuildingType);
+  } else if (entity.type === 'unit' && entity.subType) {
+    const base = unitName(entity.subType as UnitType);
+    displayName =
+      entity.selectionCount && entity.selectionCount > 1 ? `${base} (${entity.selectionCount})` : base;
+  } else if (entity.type === 'resource') {
+    displayName = resourceNodeName(entity.subType) ?? entity.name;
+  }
 
   return (
     <div
@@ -179,10 +196,10 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
           )}
           <div className="flex flex-col">
             <span className="font-medieval text-xs font-bold text-amber-300 truncate max-w-[170px]">
-              {entity.name}
+              {displayName}
             </span>
             <span className="text-[10px] text-slate-400 uppercase font-mono tracking-wider">
-              {entity.type}
+              {t(`entityType.${entity.type}`, { defaultValue: entity.type })}
               {entity.level !== undefined && (
                 <span className="ml-1.5 text-amber-400 normal-case">
                   Lv {entity.level}
@@ -199,7 +216,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
         <div className="space-y-1">
           <div className="flex items-center justify-between text-[11px] text-slate-300">
             <span className="flex items-center gap-1">
-              <Heart size={12} className="text-red-400" /> Sinh lực (HP)
+              <Heart size={12} className="text-red-400" /> {t('details.hp')}
             </span>
             <span className="font-mono text-slate-200">
               {entity.hp} / {entity.maxHp}
@@ -225,18 +242,18 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
       {entity.type === 'building' && entity.subType === 'TOWN_CENTER' && entity.isOwner && (
         <div className="border-t border-amber-800/40 pt-2 space-y-1" data-town-center-aura>
           <span className="text-[10px] font-bold tracking-wider text-amber-300">
-            BUFF ĐẾ CHẾ · NHÀ CHÍNH Lv {ownerTownCenterLevel}
+            {t('details.empireBuff', { level: ownerTownCenterLevel })}
           </span>
           <div className="flex justify-between text-[10px] text-slate-300">
-            <span>HP công trình &amp; quân</span>
+            <span>{t('stats.buildingUnitHp')}</span>
             <span className="font-mono text-emerald-300">+{auraPercent}%</span>
           </div>
           <div className="flex justify-between text-[10px] text-slate-300">
-            <span>Tấn công lính</span>
+            <span>{t('stats.unitAttack')}</span>
             <span className="font-mono text-emerald-300">+{attackPercent}%</span>
           </div>
           <div className="flex justify-between text-[10px] text-slate-300">
-            <span>Thời gian huấn luyện</span>
+            <span>{t('stats.trainingTime')}</span>
             <span className="font-mono text-sky-300">-{auraPercent}%</span>
           </div>
         </div>
@@ -245,16 +262,16 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
       {buildingIsOwnedAndFinished && isTrainerBuilding && (
         <div className="border-t border-slate-800 pt-2 space-y-1" data-trainer-effects>
           <span className="text-[10px] font-bold tracking-wider text-amber-300">
-            HIỆU ỨNG NHÀ HUẤN LUYỆN · Lv {buildingLevel}
+            {t('details.trainerEffectHeader', { level: buildingLevel })}
           </span>
           <div className="flex justify-between text-[10px] text-slate-300">
-            <span>Thời gian huấn luyện</span>
+            <span>{t('stats.trainingTime')}</span>
             <span className="font-mono text-sky-300" data-trainer-speed>
               -{trainerSpeedPercent}%
             </span>
           </div>
           <div className="flex justify-between text-[10px] text-slate-300">
-            <span>HP &amp; tấn công lính</span>
+            <span>{t('stats.unitHpAttack')}</span>
             <span className="font-mono text-emerald-300" data-trainer-buff>
               +{trainerBuffPercent}%
             </span>
@@ -265,16 +282,16 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
       {buildingIsOwnedAndFinished && isDropOffCamp && (
         <div className="border-t border-slate-800 pt-2 space-y-1" data-camp-effects>
           <span className="text-[10px] font-bold tracking-wider text-amber-300">
-            HIỆU ỨNG CAMP · Lv {buildingLevel}
+            {t('details.campEffectHeader', { level: buildingLevel })}
           </span>
           <div className="flex justify-between text-[10px] text-slate-300">
-            <span>Tốc độ gom</span>
+            <span>{t('stats.gatherSpeed')}</span>
             <span className="font-mono text-emerald-300" data-gather-bonus>
               +{gatherPercent}%
             </span>
           </div>
           <div className="flex justify-between text-[10px] text-slate-300">
-            <span>Bán kính dỡ hàng</span>
+            <span>{t('stats.unloadRadius')}</span>
             <span className="font-mono text-sky-300" data-unload-radius>
               {unloadRadius.toFixed(2)} tile
             </span>
@@ -287,19 +304,19 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
       {entity.type === 'building' && entity.isPortal && entity.isOwner && inRaid && (
         <div className="border-t border-red-800/60 pt-2 space-y-1.5">
           <span className="text-[10px] font-bold text-red-300 tracking-wider">
-            CỔNG RÚT QUÂN
+            {t('details.retreatGate')}
           </span>
           <button
             type="button"
             onClick={onRetreat}
             className="w-full px-2 py-1.5 rounded border border-red-600/80 bg-red-950/60 text-[11px] font-semibold text-red-200 hover:border-red-400 transition-all"
           >
-            Rút toàn bộ quân về vương quốc
+            {t('details.retreatAll')}
           </button>
           <p className="text-[10px] text-slate-400 italic">
             {interactionHint === 'long-press'
-              ? 'Giữ lâu vào cổng để rút quân.'
-              : 'Chuột phải vào cổng để rút quân.'}
+              ? t('details.retreatHintTouch')
+              : t('details.retreatHintMouse')}
           </p>
         </div>
       )}
@@ -308,15 +325,15 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
       {entity.type === 'unit' && entity.stance && (
         <div className="flex items-center justify-between text-[11px]" data-stance>
           <span className="flex items-center gap-1 text-slate-300">
-            <Shield size={12} className="text-sky-400" /> Thế trận
+            <Shield size={12} className="text-sky-400" /> {t('details.stance')}
           </span>
           <span className="flex items-center gap-1.5">
             <span
               className={`font-mono font-bold ${
-                STANCE_LABELS[entity.stance]?.className ?? 'text-slate-300'
+                STANCE_CLASSES[entity.stance] ?? 'text-slate-300'
               }`}
             >
-              {STANCE_LABELS[entity.stance]?.label ?? entity.stance}
+              {stanceName(entity.stance)}
             </span>
             <span className="text-[10px] text-slate-500 font-mono">(D)</span>
           </span>
@@ -327,10 +344,10 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
       {entity.type === 'unit' && (entity.carryingAmount ?? 0) > 0 && (
         <div className="flex items-center justify-between text-[11px] text-slate-300" data-carrying>
           <span className="flex items-center gap-1">
-            <Boxes size={12} className="text-amber-400" /> Đang mang
+            <Boxes size={12} className="text-amber-400" /> {t('details.carrying')}
           </span>
           <span className="font-mono text-amber-300 font-bold">
-            {entity.carryingAmount} {RESOURCE_LABELS[entity.carryingResourceType ?? ''] ?? entity.carryingResourceType}
+            {entity.carryingAmount} {resourceName(entity.carryingResourceType ?? '')}
           </span>
         </div>
       )}
@@ -339,7 +356,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
       {entity.remainingAmount !== undefined && (
         <div className="text-xs text-slate-300 space-y-1">
           <div className="flex justify-between">
-            <span>Trữ lượng còn lại:</span>
+            <span>{t('details.remaining')}</span>
             <span className="font-mono text-amber-400 font-bold">
               {entity.remainingAmount} / {entity.maxAmount}
             </span>
@@ -347,11 +364,11 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
           <p className="text-[10px] text-slate-400 italic">
             {interactionHint === 'long-press'
               ? entity.type === 'building'
-                ? 'Giữ lâu dân làng vào ruộng để khai thác; ruộng cạn sẽ được gieo lại bằng gỗ.'
-                : 'Giữ lâu dân làng vào mỏ để tiến hành khai thác.'
+                ? t('details.harvestFarmTouch')
+                : t('details.harvestMineTouch')
               : entity.type === 'building'
-                ? 'Chuột phải dân làng vào ruộng để khai thác; ruộng cạn sẽ được gieo lại bằng gỗ.'
-                : 'Chuột phải dân làng vào mỏ để tiến hành khai thác.'}
+                ? t('details.harvestFarmMouse')
+                : t('details.harvestMineMouse')}
           </p>
         </div>
       )}
@@ -361,7 +378,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
         <div className="border-t border-slate-800 pt-2 space-y-1.5">
           <div className="flex items-center justify-between text-[11px] text-slate-300">
             <span className="flex items-center gap-1">
-              <Hammer size={12} className="text-amber-400" /> Đang xây dựng
+              <Hammer size={12} className="text-amber-400" /> {t('details.underConstruction')}
             </span>
             <span className="font-mono text-amber-300">
               {Math.floor(entity.constructionProgress ?? 0)}%
@@ -378,9 +395,9 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
           <button
             onClick={() => onCancelBuilding(entity.id)}
             className="w-full px-2 py-1 rounded border border-red-800/70 bg-red-950/50 text-[10px] font-semibold text-red-300 hover:border-red-500 transition-all flex items-center justify-center gap-1"
-            title="Huỷ móng nhà, hoàn lại một phần tài nguyên"
+            title={t('details.cancelBuildingTitle')}
           >
-            <X size={12} /> Huỷ công trình (Delete)
+            <X size={12} /> {t('details.cancelBuilding')}
           </button>
         </div>
       )}
@@ -390,18 +407,18 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
         <div className="border-t border-slate-800 pt-2 space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold text-amber-400 tracking-wider flex items-center gap-1">
-              <UserPlus size={12} /> HUẤN LUYỆN QUÂN ĐỘI
+              <UserPlus size={12} /> {t('details.trainingTitle')}
             </span>
             {entity.trainingQueue && entity.trainingQueue.length > 0 && (
               <span className="flex items-center gap-1">
                 <span className="text-[10px] text-amber-300 font-mono">
-                  Đang chờ: {entity.trainingQueue.length}
+                  {t('details.queue', { count: entity.trainingQueue.length })}
                 </span>
                 {/* CMD-04a — cancel the unit currently at the head of the queue */}
                 <button
                   onClick={() => onCancelTrain(entity.id)}
                   className="w-4 h-4 rounded border border-red-800/70 bg-red-950/60 text-red-300 hover:border-red-500 hover:text-red-200 flex items-center justify-center transition-all"
-                  title="Huỷ đơn vị đang huấn luyện, hoàn lại toàn bộ tài nguyên"
+                  title={t('details.cancelTrainTitle')}
                 >
                   <X size={10} />
                 </button>
@@ -448,33 +465,33 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
                   >
                     <img
                       src={`/assets/units/${uType.toLowerCase()}_idle.png?v=3`}
-                      alt={uBp.name}
+                      alt={unitName(uType)}
                       className="w-7 h-7 object-contain rounded bg-slate-900/60 p-0.5 border border-amber-600/40"
                       onError={(e) => {
                         (e.target as HTMLElement).style.display = 'none';
                       }}
                     />
-                    <span>{uBp.name}</span>
+                    <span>{unitName(uType)}</span>
                   </button>
 
                   {/* Tooltip */}
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-44 p-2 rounded bg-slate-950 border border-amber-600/70 shadow-2xl opacity-0 group-hover/train:opacity-100 transition-opacity pointer-events-none z-50 text-left">
-                    <div className="font-medieval text-xs font-bold text-amber-300 mb-0.5">{uBp.name}</div>
-                    <div className="text-[10px] text-slate-300 mb-1">{uBp.description}</div>
+                    <div className="font-medieval text-xs font-bold text-amber-300 mb-0.5">{unitName(uType)}</div>
+                    <div className="text-[10px] text-slate-300 mb-1">{unitDescription(uType)}</div>
                     <div className="text-[10px] space-y-0.5 border-t border-slate-800 pt-1 font-mono">
-                      {uBp.cost.food > 0 && <span className="text-red-400 mr-2">Thịt: {uBp.cost.food}</span>}
-                      {uBp.cost.wood > 0 && <span className="text-amber-400 mr-2">Gỗ: {uBp.cost.wood}</span>}
-                      {uBp.cost.gold > 0 && <span className="text-yellow-400 mr-2">Vàng: {uBp.cost.gold}</span>}
+                      {uBp.cost.food > 0 && <span className="text-red-400 mr-2">{resourceName('food')}: {uBp.cost.food}</span>}
+                      {uBp.cost.wood > 0 && <span className="text-amber-400 mr-2">{resourceName('wood')}: {uBp.cost.wood}</span>}
+                      {uBp.cost.gold > 0 && <span className="text-yellow-400 mr-2">{resourceName('gold')}: {uBp.cost.gold}</span>}
                       <div className="text-slate-400 text-[9px] mt-0.5">
-                        Tấn công: {unitAttack} | Máu: {unitMaxHp}
+                        {t('details.attack', { value: unitAttack })} | {t('details.hpStat', { value: unitMaxHp })}
                       </div>
                       <div className="text-slate-400 text-[9px]">
-                        Cấp hiện tại: {unitLevel}/{getUnitMaxLevel()}
+                        {t('details.currentLevel', { level: unitLevel, max: getUnitMaxLevel() })}
                       </div>
                       {/* UIX-02: AoE2 tooltips advertise the training time, which is
                           the only way to compare two units' cost-per-second. */}
                       <div className="text-slate-400 text-[9px]">
-                        Huấn luyện: {effectiveTrainSeconds.toFixed(1)}s
+                        {t('details.trainTime', { seconds: effectiveTrainSeconds.toFixed(1) })}
                       </div>
                     </div>
                   </div>

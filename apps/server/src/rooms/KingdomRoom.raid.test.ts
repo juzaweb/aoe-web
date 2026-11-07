@@ -297,7 +297,7 @@ describe('KingdomRoom raid settlement', () => {
     );
     expect(defenderClient.send).toHaveBeenCalledWith(
       NetworkMessage.SYSTEM_ANNOUNCEMENT,
-      expect.objectContaining({ message: expect.stringContaining('bị tập kích') })
+      expect.objectContaining({ message: expect.stringContaining('was raided') })
     );
     expect(room.state.units.size).toBe(0);
   });
@@ -437,7 +437,7 @@ describe('KingdomRoom retreat', () => {
     expect(settleRaid).not.toHaveBeenCalled();
     expect(client.send).toHaveBeenCalledWith(
       NetworkMessage.ERROR_NOTIFICATION,
-      expect.objectContaining({ message: 'Không tìm thấy cổng rút quân.' })
+      expect.objectContaining({ message: 'Retreat gate not found.' })
     );
   });
 
@@ -485,7 +485,7 @@ describe('KingdomRoom spectator joins', () => {
 
     await expect(
       room['onJoin'](client as any, { ownerId: 'defender', spectate: true })
-    ).rejects.toThrow('chính mình');
+    ).rejects.toThrow('already in your own kingdom');
     expect(findSpectateTarget).not.toHaveBeenCalled();
   });
 
@@ -495,7 +495,7 @@ describe('KingdomRoom spectator joins', () => {
 
     await expect(
       room['onJoin'](createClient('viewer') as any, { ownerId: 'defender', spectate: true })
-    ).rejects.toThrow('không tồn tại hoặc chưa có');
+    ).rejects.toThrow('does not exist or has no Town Center');
   });
 
   it('refuses an unknown target', async () => {
@@ -504,7 +504,7 @@ describe('KingdomRoom spectator joins', () => {
 
     await expect(
       room['onJoin'](createClient('viewer') as any, { ownerId: 'ghost', spectate: true })
-    ).rejects.toThrow('không tồn tại hoặc chưa có');
+    ).rejects.toThrow('does not exist or has no Town Center');
   });
 
   it('refuses a map that has no Town Center after restore', async () => {
@@ -513,7 +513,7 @@ describe('KingdomRoom spectator joins', () => {
 
     await expect(
       room['onJoin'](createClient('viewer') as any, { ownerId: 'defender', spectate: true })
-    ).rejects.toThrow('không còn Nhà chính');
+    ).rejects.toThrow('no longer has a Town Center');
   });
 
   it('refuses a room that is no longer the live zone of that owner', async () => {
@@ -524,7 +524,7 @@ describe('KingdomRoom spectator joins', () => {
 
     await expect(
       room['onJoin'](createClient('viewer') as any, { ownerId: 'defender', spectate: true })
-    ).rejects.toThrow('đã được thay thế');
+    ).rejects.toThrow('has been replaced');
   });
 
   it('drops the watcher from the room on leave without touching the empire', () => {
@@ -552,7 +552,7 @@ describe('KingdomRoom spectator joins', () => {
     const secondClient = { ...createClient('viewer'), sessionId: 's-viewer-2' };
     await expect(
       second['onJoin'](secondClient as any, { ownerId: 'defender', spectate: true })
-    ).rejects.toThrow('đang quan sát một vương quốc khác');
+    ).rejects.toThrow('already watching another kingdom');
 
     first['onLeave'](firstClient as any);
     await second['onJoin'](secondClient as any, { ownerId: 'defender', spectate: true });

@@ -1,4 +1,5 @@
 import type { RequestHandler } from 'express';
+import { localeFromHeader, translate } from '../i18n/index.js';
 
 interface Bucket {
   count: number;
@@ -49,7 +50,9 @@ export function createRateLimit(options: {
     if (bucket.count > options.limit) {
       const retryAfterSeconds = Math.ceil((bucket.resetAt - now) / 1000);
       res.setHeader('Retry-After', String(retryAfterSeconds));
-      res.status(429).json({ error: 'Quá nhiều lần thử. Vui lòng đợi rồi thử lại.' });
+      res.status(429).json({
+        error: translate(localeFromHeader(req.headers['accept-language']), 'Too many attempts. Please wait and try again.')
+      });
       return;
     }
 

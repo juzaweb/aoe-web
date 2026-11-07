@@ -13,6 +13,7 @@ import {
   SESSION_BUSY,
   WorldMapPayload
 } from '@chien-quoc/shared';
+import i18n from '../i18n/index.js';
 
 export interface AuthUser {
   id: string;
@@ -65,7 +66,15 @@ async function readError(response: Response): Promise<string> {
   } catch {
     // Fall through to the generic message.
   }
-  return 'Không thể kết nối đến máy chủ. Vui lòng thử lại.';
+  return i18n.t('app.connectFailed');
+}
+
+/** Standard content headers used by every API call, plus the active language. */
+function apiHeaders(): Record<string, string> {
+  return {
+    'content-type': 'application/json',
+    'accept-language': i18n.language
+  };
 }
 
 async function postAuth(path: string, body: Record<string, string>): Promise<AuthResponse> {
@@ -73,11 +82,11 @@ async function postAuth(path: string, body: Record<string, string>): Promise<Aut
   try {
     response = await fetch(`${getServerUrl()}${path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: apiHeaders(),
       body: JSON.stringify(body)
     });
   } catch {
-    throw new Error('Không thể kết nối đến máy chủ game. Hãy kiểm tra server đã chạy ở cổng 2567!');
+    throw new Error(i18n.t('app.connectFailed'));
   }
 
   if (!response.ok) {
@@ -166,7 +175,7 @@ export async function fetchCurrentUser(): Promise<AuthUser | null> {
 /** `fetch` with the stored bearer token, throwing the server's message on 4xx. */
 async function authedJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getStoredToken();
-  if (!token) throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+  if (!token) throw new Error(i18n.t('app.sessionExpired'));
 
   let response: Response;
   try {
@@ -174,12 +183,12 @@ async function authedJson<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...init,
       headers: {
         authorization: `Bearer ${token}`,
-        'content-type': 'application/json',
+        ...apiHeaders(),
         ...(init.headers ?? {})
       }
     });
   } catch {
-    throw new Error('Không thể kết nối đến máy chủ game.');
+    throw new Error(i18n.t('app.connectionLost'));
   }
 
   if (!response.ok) throw new Error(await readError(response));

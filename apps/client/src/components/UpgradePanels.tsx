@@ -22,14 +22,9 @@ import {
   townCenterUnitAttackMultiplier
 } from '@chien-quoc/shared';
 import { ArrowUp, Clock, Shield, Swords, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { formatDuration } from './durationText.js';
-
-const RESOURCE_SHORT: Record<keyof Resources, string> = {
-  wood: 'Gỗ',
-  food: 'Thịt',
-  gold: 'Vàng',
-  stone: 'Đá'
-};
+import { buildingName, houseTierName, resourceName, unitName } from '../i18n/labels.js';
 
 const RESOURCE_TEXT: Record<keyof Resources, string> = {
   wood: 'text-amber-400',
@@ -43,8 +38,8 @@ const RESOURCE_ORDER: Array<keyof Resources> = ['wood', 'food', 'gold', 'stone']
 const CostChips: React.FC<{ cost: Resources }> = ({ cost }) => (
   <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-[9px] leading-tight font-mono">
     {RESOURCE_ORDER.filter((resource) => cost[resource] > 0).map((resource) => (
-      <span key={resource} className={RESOURCE_TEXT[resource]}>
-        {RESOURCE_SHORT[resource]}: {cost[resource]}
+      <span key={String(resource)} className={RESOURCE_TEXT[resource]}>
+        {resourceName(String(resource))}: {cost[resource]}
       </span>
     ))}
   </div>
@@ -112,6 +107,7 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
   onUpgrade,
   onCancel
 }) => {
+  const { t } = useTranslation();
   const cap = maxLevel ?? getBuildingMaxLevel(type);
   const isUpgrading = upgradeTimeMs > 0;
   const isMaxed = level >= cap;
@@ -158,16 +154,19 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
     <div className="border-t border-slate-800 pt-2 space-y-1.5" data-upgrade>
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-bold text-amber-400 tracking-wider flex items-center gap-1">
-          <ArrowUp size={12} /> NÂNG CẤP CÔNG TRÌNH
+          <ArrowUp size={12} /> {t('upgrades.buildingTitle')}
         </span>
         <span className="flex items-center gap-2">
           <span
             className={`text-[9px] font-mono ${
               slotsFull ? 'text-red-400' : 'text-slate-400'
             }`}
-            title={`Mỗi người chơi nâng tối đa ${MAX_CONCURRENT_BUILDING_UPGRADES} công trình cùng lúc`}
+            title={t('upgrades.slotTitle', { count: MAX_CONCURRENT_BUILDING_UPGRADES })}
           >
-            Slot {slotsTaken}/{MAX_CONCURRENT_BUILDING_UPGRADES}
+            {t('upgrades.slot', {
+              used: slotsTaken,
+              max: MAX_CONCURRENT_BUILDING_UPGRADES
+            })}
           </span>
           <span className="text-[10px] text-amber-300 font-mono">
             Lv {level}/{cap}
@@ -179,13 +178,17 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
         <div
           className="flex items-center justify-between gap-2 text-[9px] font-mono text-slate-400"
           data-visual-tier
-          title="Hình dáng công trình đổi theo cấp"
+          title={t('upgrades.visualTierTitle')}
         >
           <span>
-            Hình {visualTier}/{visualTierCount} · {visualTierName}
+            {t('upgrades.visual', {
+              tier: visualTier,
+              count: visualTierCount,
+              name: (visualTier ? houseTierName(visualTier) : '') || visualTierName
+            })}
           </span>
           {nextVisualTierLevel != null && (
-            <span className="text-sky-300 shrink-0">đổi ở Lv {nextVisualTierLevel}</span>
+            <span className="text-sky-300 shrink-0">{t('upgrades.changesAt', { level: nextVisualTierLevel })}</span>
           )}
         </div>
       )}
@@ -194,8 +197,7 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
         <div className="rounded border border-slate-800 bg-slate-950/60 p-1.5 space-y-1" data-gate>
           <div className="flex items-center justify-between gap-2">
             <span className="text-[9px] font-semibold text-slate-300 flex items-center gap-1">
-              <Shield size={10} className="text-amber-400" /> Trụ cột cần Lv{' '}
-              {requiredCoreLevel}
+              <Shield size={10} className="text-amber-400" /> {t('upgrades.requiresCore', { level: requiredCoreLevel })}
             </span>
             <span
               className={`text-[9px] font-mono ${
@@ -211,7 +213,7 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
                 key={coreType}
                 className={`text-[9px] font-mono ${met ? 'text-emerald-300' : 'text-red-400'}`}
               >
-                {BUILDING_BLUEPRINTS[coreType]?.name ?? coreType}: {current}/{required}
+                {BUILDING_BLUEPRINTS[coreType] ? buildingName(coreType) : coreType}: {current}/{required}
               </span>
             ))}
           </div>
@@ -224,25 +226,25 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
           data-town-center-buff
         >
           <div className="flex items-center justify-between text-[9px] font-semibold text-emerald-300">
-            <span>Buff hiện tại</span>
-            {!isMaxed && <span className="text-slate-400">Sau nâng cấp</span>}
+            <span>{t('upgrades.currentBuff')}</span>
+            {!isMaxed && <span className="text-slate-400">{t('upgrades.afterUpgrade')}</span>}
           </div>
           <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
-            <span>HP công trình &amp; quân</span>
+            <span>{t('stats.buildingUnitHp')}</span>
             <span>
               <span className="text-emerald-300">+{auraNow}%</span>
               {!isMaxed && <span className="text-slate-500"> → +{auraNext}%</span>}
             </span>
           </div>
           <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
-            <span>Tấn công lính</span>
+            <span>{t('stats.unitAttack')}</span>
             <span>
               <span className="text-emerald-300">+{attackNow}%</span>
               {!isMaxed && <span className="text-slate-500"> → +{attackNext}%</span>}
             </span>
           </div>
           <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
-            <span>Thời gian huấn luyện</span>
+            <span>{t('stats.trainingTime')}</span>
             <span>
               <span className="text-sky-300">-{auraNow}%</span>
               {!isMaxed && <span className="text-slate-500"> → -{auraNext}%</span>}
@@ -257,18 +259,18 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
           data-trainer-buff
         >
           <div className="flex items-center justify-between text-[9px] font-semibold text-emerald-300">
-            <span>Hiệu ứng nhà lính</span>
-            {!isMaxed && <span className="text-slate-400">Sau nâng cấp</span>}
+            <span>{t('upgrades.barracksEffect')}</span>
+            {!isMaxed && <span className="text-slate-400">{t('upgrades.afterUpgrade')}</span>}
           </div>
           <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
-            <span>Thời gian huấn luyện</span>
+            <span>{t('stats.trainingTime')}</span>
             <span>
               <span className="text-sky-300">-{trainerSpeedNow}%</span>
               {!isMaxed && <span className="text-slate-500"> → -{trainerSpeedNext}%</span>}
             </span>
           </div>
           <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
-            <span>HP &amp; tấn công lính</span>
+            <span>{t('stats.unitHpAttack')}</span>
             <span>
               <span className="text-emerald-300">+{trainerBuffNow}%</span>
               {!isMaxed && <span className="text-slate-500"> → +{trainerBuffNext}%</span>}
@@ -283,18 +285,18 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
           data-camp-buff
         >
           <div className="flex items-center justify-between text-[9px] font-semibold text-emerald-300">
-            <span>Hiệu ứng camp</span>
-            {!isMaxed && <span className="text-slate-400">Sau nâng cấp</span>}
+            <span>{t('upgrades.campEffect')}</span>
+            {!isMaxed && <span className="text-slate-400">{t('upgrades.afterUpgrade')}</span>}
           </div>
           <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
-            <span>Tốc độ gom</span>
+            <span>{t('stats.gatherSpeed')}</span>
             <span>
               <span className="text-emerald-300">+{gatherNow}%</span>
               {!isMaxed && <span className="text-slate-500"> → +{gatherNext}%</span>}
             </span>
           </div>
           <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
-            <span>Bán kính dỡ hàng</span>
+            <span>{t('stats.unloadRadius')}</span>
             <span>
               <span className="text-sky-300">{radiusNow.toFixed(2)} tile</span>
               {!isMaxed && (
@@ -309,7 +311,7 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
         <>
           <div className="flex items-center justify-between text-[11px] text-slate-300">
             <span className="flex items-center gap-1">
-              <Clock size={12} className="text-amber-400" /> Đang nâng cấp
+              <Clock size={12} className="text-amber-400" /> {t('upgrades.upgrading')}
             </span>
             <span className="font-mono text-amber-300">
               {formatDuration(upgradeProgressMs)} / {formatDuration(upgradeTimeMs)}
@@ -319,13 +321,13 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
           <button
             onClick={() => onCancel(buildingId)}
             className="w-full px-2 py-1 rounded border border-red-800/70 bg-red-950/40 text-[10px] font-semibold text-red-300 hover:border-red-500 transition-all flex items-center justify-center gap-1"
-            title="Huỷ nâng cấp, hoàn lại toàn bộ tài nguyên và giải phóng slot"
+            title={t('upgrades.cancelTitle')}
           >
-            <X size={12} /> Huỷ nâng cấp (hoàn tiền)
+            <X size={12} /> {t('upgrades.cancel')}
           </button>
         </>
       ) : isMaxed ? (
-        <p className="text-[10px] text-emerald-300/90 italic">Đã đạt cấp tối đa.</p>
+        <p className="text-[10px] text-emerald-300/90 italic">{t('upgrades.maxed')}</p>
       ) : (
         <>
           <div className="flex items-center justify-between gap-2">
@@ -339,12 +341,12 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
             disabled={!canUpgrade}
             title={
               slotsFull
-                ? `Đã dùng hết ${MAX_CONCURRENT_BUILDING_UPGRADES} slot nâng cấp`
+                ? t('upgrades.slotsFull', { count: MAX_CONCURRENT_BUILDING_UPGRADES })
                 : unmetGates.length > 0
-                  ? 'Cần nâng các công trình trụ cột trước'
+                  ? t('upgrades.requiresCoreFirst')
                   : !affordable
-                    ? 'Không đủ tài nguyên'
-                    : `Nâng lên Lv ${level + 1}`
+                    ? t('upgrades.insufficient')
+                    : t('upgrades.upgradeTo', { level: level + 1 })
             }
             className={`w-full px-2 py-1 rounded border text-[10px] font-semibold transition-all flex items-center justify-center gap-1 ${
               canUpgrade
@@ -352,13 +354,13 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
                 : 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed opacity-50'
             }`}
           >
-            <ArrowUp size={12} /> Nâng lên Lv {level + 1}
+            <ArrowUp size={12} /> {t('upgrades.upgradeTo', { level: level + 1 })}
           </button>
           {(slotsFull || unmetGates.length > 0) && (
             <p className="text-[9px] text-red-400/90 text-center">
               {slotsFull
-                ? `Đã dùng hết ${MAX_CONCURRENT_BUILDING_UPGRADES} slot nâng cấp`
-                : 'Cần đạt cấp trụ cột trước khi nâng Nhà chính'}
+                ? t('upgrades.slotsFull', { count: MAX_CONCURRENT_BUILDING_UPGRADES })
+                : t('upgrades.requiresCoreFirstShort')}
             </p>
           )}
         </>
@@ -399,6 +401,7 @@ export const UnitResearchPanel: React.FC<UnitResearchPanelProps> = ({
   onUpgradeUnitType,
   onCancelResearch
 }) => {
+  const { t } = useTranslation();
   const busy = Boolean(researchUnitType);
   const progressPercent = (researchProgressMs / Math.max(1, researchTimeMs)) * 100;
   // Research on a unit this building does not train can only be an in-flight
@@ -410,9 +413,9 @@ export const UnitResearchPanel: React.FC<UnitResearchPanelProps> = ({
     <div className="border-t border-slate-800 pt-2 space-y-1.5" data-research>
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-bold text-amber-400 tracking-wider flex items-center gap-1">
-          <Swords size={12} /> NGHIÊN CỨU QUÂN ĐỘI
+          <Swords size={12} /> {t('upgrades.researchTitle')}
         </span>
-        <span className="text-[9px] text-slate-500 font-mono">Toàn cục</span>
+        <span className="text-[9px] text-slate-500 font-mono">{t('upgrades.global')}</span>
       </div>
 
       {researchingType && (
@@ -420,7 +423,7 @@ export const UnitResearchPanel: React.FC<UnitResearchPanelProps> = ({
           <div className="flex items-center justify-between text-[11px] text-slate-300">
             <span className="flex items-center gap-1">
               <Clock size={12} className="text-sky-400" />
-              {UNIT_BLUEPRINTS[researchingType]?.name ?? researchUnitType}
+              {researchingType ? (UNIT_BLUEPRINTS[researchingType] ? unitName(researchingType as UnitType) : researchUnitType) : ''}
             </span>
             <span className="flex items-center gap-1.5">
               <span className="font-mono text-sky-300">
@@ -429,7 +432,7 @@ export const UnitResearchPanel: React.FC<UnitResearchPanelProps> = ({
               <button
                 onClick={() => onCancelResearch(researchingType)}
                 className="w-4 h-4 rounded border border-red-800/70 bg-red-950/60 text-red-300 hover:border-red-500 hover:text-red-200 flex items-center justify-center transition-all"
-                title="Huỷ nghiên cứu, hoàn lại toàn bộ tài nguyên"
+                title={t('upgrades.cancelResearch')}
               >
                 <X size={10} />
               </button>
@@ -456,7 +459,7 @@ export const UnitResearchPanel: React.FC<UnitResearchPanelProps> = ({
             >
               <div className="flex items-center justify-between gap-1">
                 <span className="text-[10px] font-semibold text-slate-200 truncate">
-                  {UNIT_BLUEPRINTS[unitType].name}
+                  {unitName(unitType)}
                 </span>
                 <span
                   className={`text-[9px] font-mono shrink-0 ${
@@ -468,21 +471,21 @@ export const UnitResearchPanel: React.FC<UnitResearchPanelProps> = ({
               </div>
 
               {atMax ? (
-                <div className="text-[9px] text-emerald-300/80 text-center py-1">Tối đa</div>
+                <div className="text-[9px] text-emerald-300/80 text-center py-1">{t('upgrades.max')}</div>
               ) : (
                 <>
                   <CostChips cost={cost} />
                   <button
                     onClick={() => onUpgradeUnitType(unitType)}
                     disabled={busy || !affordable}
-                    title={`Nâng lên Lv ${level + 1} • ${(duration / 1000).toFixed(1)}s`}
+                    title={`${t('upgrades.upgradeTo', { level: level + 1 })} • ${(duration / 1000).toFixed(1)}s`}
                     className={`w-full px-1 py-0.5 rounded border text-[9px] font-semibold transition-all ${
                       busy || !affordable
                         ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed opacity-50'
                         : 'aoe-button text-amber-200 hover:border-amber-400'
                     }`}
                   >
-                    {researchingThis ? 'Đang nghiên cứu' : `Nâng Lv ${level + 1}`}
+                    {researchingThis ? t('upgrades.researching') : t('upgrades.upgradeLevel', { level: level + 1 })}
                   </button>
                 </>
               )}
