@@ -98,55 +98,10 @@ BUILDING_SPECS = [
             "Solid pure white background, clean sharp silhouette, game asset ready --ar 2:1 --v 6.0 --style raw"
         ),
     },
-    {
-        "id": "tower",
-        "target_w": 80,
-        "target_h": 180,
-        "gen_w": 512,
-        "gen_h": 1024,
-        "prompt": (
-            "A 2D game asset of an ancient tall wooden and stone watchtower defense tower, 2.5D isometric top-down view. "
-            "Slender multi-tiered timber outpost with lookout parapet, arrow slits, signal fire brazier at the peak, stone base. "
-            "Solid pure white background, clean sharp silhouette, game asset ready --ar 1:2 --v 6.0 --style raw"
-        ),
-    },
-    # MIL-01: the two new military branches. Both are drawn on the barracks'
-    # 400x320 canvas so `buildingArt.ts` can reuse its lift and health-bar height
-    # instead of growing two more hand-measured entries.
-    {
-        "id": "stable",
-        "target_w": 400,
-        "target_h": 320,
-        "gen_w": 1280,
-        "gen_h": 1024,
-        "prompt": (
-            "A 2D RTS game building asset, ancient East Asian cavalry stable and horse paddock, "
-            "strict 2.5D isometric projection viewed from the south-east, 45 degree camera angle, "
-            "three-quarter aerial top-down view. Timber and stone horse barn with a wide open stall door, "
-            "hay bales, a wooden hitching rail, tethering posts with saddles and tack hanging, "
-            "a small dirt exercise yard, a war banner on the roof, Warring States era military horse breeding stable. "
-            "Hand-painted game art, crisp details, strong readable silhouette, warm daylight from the upper left. "
-            "Isolated on a solid pure white background, no cast shadow, no ground plane, no text, no border, "
-            "game asset ready --style raw"
-        ),
-    },
-    {
-        "id": "archery_range",
-        "target_w": 400,
-        "target_h": 320,
-        "gen_w": 1280,
-        "gen_h": 1024,
-        "prompt": (
-            "A 2D RTS game building asset, ancient East Asian archery range training ground, "
-            "strict 2.5D isometric projection viewed from the south-east, 45 degree camera angle, "
-            "three-quarter aerial top-down view. Low timber shooting pavilion with a thatched awning, "
-            "straw target butts with arrows stuck in them, a rack of bows and quivers leaning by a wooden fence, "
-            "a dirt firing lane with a low backstop wall, Warring States era military archery training camp. "
-            "Hand-painted game art, crisp details, strong readable silhouette, warm daylight from the upper left. "
-            "Isolated on a solid pure white background, no cast shadow, no ground plane, no text, no border, "
-            "game asset ready --style raw"
-        ),
-    },
+    # MIL-01's stable and archery range, and the watch tower, used to be
+    # generated here. They now ship from OpenGameArt packs via
+    # `scripts/assets/manifest.json` (`building.stable`, `building.archery-range`,
+    # `building.tower`), so this script must not overwrite them.
 ]
 
 
@@ -227,7 +182,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--only",
         metavar="IDS",
-        help="comma-separated building ids, e.g. stable,archery_range",
+        help="comma-separated building ids, e.g. farm,house",
     )
     parser.add_argument(
         "--all",

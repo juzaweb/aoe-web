@@ -524,9 +524,9 @@ export class WorldScene extends Phaser.Scene {
     }
 
     // Preload generated building assets with cache-busting version (2x resolution)
-    // v=12: MIL-01 added `stable.png` and `archery_range.png` to the roster. Bump
-    // the key whenever a PNG under public/assets/buildings or /resources changes.
-    const v = 'v=12';
+    // v=14: the tower swapped to Bleed's Galata Tower pack.
+    // Bump the key whenever a PNG under public/assets/buildings or /resources changes.
+    const v = 'v=14';
     this.load.image('building_TOWN_CENTER', `/assets/buildings/town_center.png?${v}`);
     this.load.image('building_BARRACKS', `/assets/buildings/barracks.png?${v}`);
     // MIL-01: both military branches now ship their own 400x320 sheet. The
