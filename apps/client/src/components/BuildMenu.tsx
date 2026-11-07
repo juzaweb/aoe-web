@@ -64,9 +64,9 @@ const BUILDINGS: { type: BuildingType; icon: React.ReactNode }[] = [
 ];
 
 /**
- * Optional thumbnails. MIL-01's `STABLE` and `ARCHERY_RANGE` sheets are generated
- * by `scripts/generate_buildings_assets.py`; an absent entry still renders the
- * lucide icon on its own instead of firing a request that can only 404. The
+ * Optional thumbnails. MIL-01's `STABLE` and `ARCHERY_RANGE` sheets ship from
+ * the feudalwars OpenGameArt pack; an absent entry still renders the lucide icon
+ * on its own instead of firing a request that can only 404. The
  * table itself lives in `buildingThumbnails.ts` so the selection panel and the
  * build menu cannot disagree about a path.
  */

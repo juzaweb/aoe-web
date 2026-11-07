@@ -132,22 +132,24 @@ four pack a soft drop shadow into the sprite itself; `scripts/assets/ops.py`
 again after the fit, because the shadow otherwise drags the measured iso base
 corner ~12–17% off centre and fails `build.py --check`. Nothing is redrawn.
 
-### Medieval Barracks, Medieval Stable and Castle — feudalwars
+### Medieval Barracks, Medieval Stable, Medieval Archery Range and Castle — feudalwars
 
 - **Author:** feudalwars (made for [Feudal Wars](https://feudalwars.net/))
 - **Source:** https://opengameart.org/content/medieval-barracks-isometric-25d,
   https://opengameart.org/content/medieval-stable-isometric-25d,
+  https://opengameart.org/content/medieval-archery-range-isometric-25d,
   https://opengameart.org/content/western-european-castle-isometric-25d
 - **License:** CC0 1.0 (public domain dedication — attribution not required,
   kept here for provenance)
 - **Used for:** `assets/buildings/barracks.png` (barracks),
-  `assets/buildings/lumber_camp.png` (stable, reused as the wood drop-off) and
-  `assets/buildings/town_center.png` (castle).
+  `assets/buildings/stable.png` (stable), `assets/buildings/archery_range.png`
+  (archery range), `assets/buildings/lumber_camp.png` (stable, reused as the
+  wood drop-off) and `assets/buildings/town_center.png` (castle).
 
-**Changes made.** All three are cropped to alpha, scaled to the client's canvas
+**Changes made.** All five are cropped to alpha, scaled to the client's canvas
 and luminance-matched; the stable is reused as the lumber camp because the pack
 has no dedicated drop-off building, and the castle stands in for the town centre
 because the set has no town-hall building. The castle is also mirrored
 horizontally so its gate faces the direction the client's isometric camera
-looks from; the barracks and stable are unmodified apart from crop/scale.
+looks from; the other buildings are unmodified apart from crop/scale.
 

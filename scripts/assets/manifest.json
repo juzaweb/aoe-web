@@ -17,6 +17,14 @@
         "sprite": { "url": "https://opengameart.org/sites/default/files/stable_0.png" }
       }
     },
+    "oga.feudal-archery-range": {
+      "page": "https://opengameart.org/content/medieval-archery-range-isometric-25d",
+      "author": "feudalwars",
+      "license": "CC0-1.0",
+      "files": {
+        "sprite": { "url": "https://opengameart.org/sites/default/files/archery_range_0.png" }
+      }
+    },
     "oga.bleed-trees": {
       "page": "https://opengameart.org/content/tree-collection-v26-bleeds-game-art",
       "author": "Bleed",
@@ -177,6 +185,20 @@
       "op": { "crop": "alpha", "fit": true, "matchLum": 103.8, "anchor": "bottom-center" },
       "out": "apps/client/public/assets/buildings/lumber_camp.png",
       "canvas": [256, 220]
+    },
+    "building.stable": {
+      "source": "oga.feudal-stable",
+      "file": "sprite",
+      "op": { "crop": "alpha", "fit": true, "matchLum": 90.9, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/buildings/stable.png",
+      "canvas": [400, 320]
+    },
+    "building.archery-range": {
+      "source": "oga.feudal-archery-range",
+      "file": "sprite",
+      "op": { "crop": "alpha", "fit": true, "matchLum": 90.9, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/buildings/archery_range.png",
+      "canvas": [400, 320]
     },
     "building.house": {
       "source": "oga.bleed-hovel",

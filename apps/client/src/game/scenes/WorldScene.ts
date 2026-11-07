@@ -489,9 +489,9 @@ export class WorldScene extends Phaser.Scene {
     }
 
     // Preload generated building assets with cache-busting version (2x resolution)
-    // v=12: MIL-01 added `stable.png` and `archery_range.png` to the roster. Bump
-    // the key whenever a PNG under public/assets/buildings or /resources changes.
-    const v = 'v=12';
+    // v=13: stable and archery range swapped to the feudalwars OpenGameArt pack.
+    // Bump the key whenever a PNG under public/assets/buildings or /resources changes.
+    const v = 'v=13';
     this.load.image('building_TOWN_CENTER', `/assets/buildings/town_center.png?${v}`);
     this.load.image('building_BARRACKS', `/assets/buildings/barracks.png?${v}`);
     // MIL-01: both military branches now ship their own 400x320 sheet. The

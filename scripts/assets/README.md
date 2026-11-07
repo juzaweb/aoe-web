@@ -96,11 +96,11 @@ python scripts/process_generated_assets.py --check   # canvas, anchoring, lum, d
 That script needs Pillow and numpy; the OpenGameArt pipeline itself only needs
 Pillow.
 
-`buildings/stable.png` and `buildings/archery_range.png` are also project-original
-generated art (`scripts/generate_buildings_assets.py`). They are not third-party
-and have no upstream URL, so they are pinned under `legacy` like the earlier
-AI-generated farm/tower sprites: rerun `python scripts/assets/build.py --legacy`
-after regenerating them, otherwise `--check` treats the new bytes as a hand edit.
+`buildings/stable.png` and `buildings/archery_range.png` were previously
+project-original generated art; they are now built from the feudalwars
+OpenGameArt pack by `building.stable` / `building.archery-range` in the manifest.
+`scripts/generate_buildings_assets.py` no longer defines them, so running it
+cannot overwrite the shipped third-party sprites.
 
 ## Not migrated
 
