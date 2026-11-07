@@ -12,14 +12,10 @@ import {
   TERRAIN_BATTLEFIELD,
   TILE_HEIGHT,
   TILE_WIDTH,
-  UNIT_BLUEPRINTS,
-  UnitType,
   citadelStatus,
   type CitadelStatus,
   getBuildingMaxLevel,
-  getEffectiveUnitAttackPower,
   getIsoDepth,
-  getUnitTrainerBuilding,
   gridToScreen,
   screenToGrid,
   terrainForZone
@@ -31,6 +27,7 @@ import { CursorController } from '../input/CursorController.js';
 import { PlacementController } from '../input/PlacementController.js';
 import { RoadController, type RoadMode } from '../input/RoadController.js';
 import { SelectionController } from '../input/SelectionController.js';
+import { trainerLevelFor, unitCombatStats } from './selectionStats.js';
 import type { BoxSelectFilter } from '../input/SelectionController.js';
 import { applyEdgeScroll, installCanvasPresence } from '../input/cameraInput.js';
 import { CameraController, ZOOM_MIN } from '../input/CameraController.js';
@@ -1064,25 +1061,6 @@ export class WorldScene extends Phaser.Scene {
     return this.findTownCenterOf(ownerId)?.level ?? 1;
   }
 
-  /**
-   * Phase 26/D9: level of the building that trains `unitType` for `ownerId`.
-   *
-   * Mirrors the server's `trainerLevelOf`, so the attack shown on a selected
-   * unit is the damage it deals. A battlefield snapshot has no enemy trainer
-   * building, which falls back to level 1 exactly like the simulation.
-   */
-  public trainerLevelFor(ownerId: string, unitType: string): number {
-    const trainerType = getUnitTrainerBuilding(unitType);
-    if (!trainerType || !this.room?.state?.buildings) return 1;
-    let level = 1;
-    this.room.state.buildings.forEach((b: any) => {
-      if (b.type === trainerType && b.ownerId === ownerId && b.isConstructed !== false) {
-        level = Math.max(level, b.level ?? 1);
-      }
-    });
-    return level;
-  }
-
   /** Phase 25: level of this player's own capital, for the hotkey gate. */
   public ownTownCenterLevel(): number {
     return this.findOwnTownCenter()?.level ?? 1;
@@ -1971,8 +1949,10 @@ export class WorldScene extends Phaser.Scene {
       const firstId = Array.from(this.selectedUnitIds)[0];
       const unit = this.room?.state?.units.get(firstId);
       if (unit) {
-        const unitBlueprint = UNIT_BLUEPRINTS[unit.type as UnitType];
         const ownerTownCenterLevel = this.townCenterLevelFor(unit.ownerId);
+        const trainerLevel = this.room?.state?.buildings
+          ? trainerLevelFor(this.room.state.buildings, unit.ownerId, unit.type)
+          : 1;
         this.onSelectionChange({
           id: firstId,
           type: 'unit',
@@ -1987,16 +1967,7 @@ export class WorldScene extends Phaser.Scene {
           carryingAmount: unit.carryingAmount,
           carryingResourceType: unit.carryingResourceType,
           stance: unit.stance,
-          attackPower: unitBlueprint
-            ? getEffectiveUnitAttackPower(
-                unit.type as UnitType,
-                unit.level,
-                ownerTownCenterLevel,
-                this.trainerLevelFor(unit.ownerId, unit.type)
-              )
-            : undefined,
-          attackRange: unitBlueprint?.attackRange,
-          attackCooldownMs: unitBlueprint?.attackCooldownMs,
+          ...unitCombatStats(unit.type, unit.level, ownerTownCenterLevel, trainerLevel),
           speed: unit.speed,
           villagerSelected,
           ownerTownCenterLevel
