@@ -1,4 +1,5 @@
 import {
+  BUILDING_BLUEPRINTS,
   BuildingBlueprint,
   BuildingType,
   UNIT_BLUEPRINTS,
@@ -41,6 +42,22 @@ export interface CombatPorts {
 const DEFENSIVE_LEASH_TILES = 4;
 
 /**
+ * Auto-acquisition priority. Soldiers pick the most dangerous thing they can
+ * reach: enemy fighters first, then villagers (the economy), and only then
+ * buildings. A lower number wins; distance breaks the tie within a tier.
+ */
+const AUTO_TARGET_PRIORITY = {
+  MILITARY: 0,
+  VILLAGER: 1,
+  BUILDING: 2
+} as const;
+
+interface AutoTarget {
+  id: string;
+  type: 'unit' | 'building';
+}
+
+/**
  * Melee combat for units and ranged fire for defensive buildings (CMD-01,
  * SIM-03).
  *
@@ -76,27 +93,29 @@ export class CombatSystem {
   ) {}
 
   /**
-   * CMD-01: before taking a step, an attack-moving or patrolling unit checks for
-   * the closest enemy inside its aggro radius. Switching to ATTACKING parks the
-   * current order in `previousActionState` so the unit picks it up again once
-   * the fight is over.
+   * CMD-01: before taking a step, a unit that is not already fighting checks for
+   * the best enemy inside its aggro radius. Switching to ATTACKING parks the
+   * current order in `previousActionState` so the unit picks it up again once the
+   * fight is over.
+   *
+   * Auto-acquisition runs for idle and moving units too, not just attack-move and
+   * patrol: a soldier left standing in a lane reacts to whatever walks past it.
+   * Villagers have `aggroRadius = 0`, so an economy crew never picks a fight.
    */
   acquireAggroTarget(unit: UnitState, aggroRadius: number) {
-    if (unit.actionState !== 'ATTACK_MOVE' && unit.actionState !== 'PATROL') return;
     if (aggroRadius <= 0) return;
+    if (unit.actionState === 'ATTACKING') return;
     // CMB-01: only the two engaging stances pick their own fights. A stand-ground
     // or no-attack unit waits to be told.
     if (unit.stance === 'STAND_GROUND' || unit.stance === 'NO_ATTACK') return;
 
-    const enemy = this.nearestEnemyOf(unit.ownerId, aggroRadius, (other) =>
-      Math.hypot(other.x - unit.x, other.y - unit.y)
-    );
+    const enemy = this.findAutoTarget(unit, aggroRadius);
     if (!enemy) return;
 
     unit.previousActionState = unit.actionState;
     unit.actionState = 'ATTACKING';
     unit.targetEntityId = enemy.id;
-    unit.targetEntityType = 'unit';
+    unit.targetEntityType = enemy.type;
     // The leash measures from here, not from the unit's destination: a defensive
     // unit pushed by a patrol has already left its post by the time it engages.
     if (unit.stance === 'DEFENSIVE') {
@@ -112,7 +131,7 @@ export class CombatSystem {
    * is exactly "auto-acquired".
    */
   private isAutoAcquired(unit: UnitState): boolean {
-    return unit.previousActionState === 'ATTACK_MOVE' || unit.previousActionState === 'PATROL';
+    return unit.previousActionState !== '';
   }
 
   /**
@@ -147,9 +166,9 @@ export class CombatSystem {
    * Ends a fight (CMD-01).
    *
    * The unit remembers what it was doing before it engaged in
-   * `previousActionState`: an attack-move keeps walking to its destination, a
-   * patrol keeps walking its route. Anything else falls back to the queued
-   * waypoints, exactly like a finished plain attack.
+   * `previousActionState`: a move or attack-move keeps walking to its
+   * destination, a patrol keeps walking its route. Anything else falls back to
+   * the queued waypoints, exactly like a finished plain attack.
    */
   endAttackOrder(unit: UnitState) {
     const resume = unit.previousActionState;
@@ -158,7 +177,7 @@ export class CombatSystem {
     // fight start already out of bounds.
     this.engageAnchors.delete(unit.id);
 
-    if (resume === 'ATTACK_MOVE' || resume === 'PATROL') {
+    if (resume === 'MOVING' || resume === 'ATTACK_MOVE' || resume === 'PATROL') {
       unit.targetEntityId = '';
       unit.targetEntityType = '';
       unit.actionState = resume;
@@ -391,6 +410,59 @@ export class CombatSystem {
     this.state.buildings.delete(building.id);
     this.forgetBuilding(building.id);
     this.ports.updatePlayerPopulation(ownerId);
+  }
+
+  /**
+   * Best enemy the unit may pick up on its own, or null.
+   *
+   * Priority is fixed by category (enemy soldiers, then villagers, then
+   * buildings) and only distance breaks a tie inside the same category. The
+   * radius is measured from the unit's centre to another unit, and from its
+   * centre to the target building's footprint so a 4x4 Town Center is not
+   * considered "farther" than a 1x1 tower standing next to it.
+   *
+   * A building the world cannot attack (the portal) is never auto-acquired.
+   */
+  private findAutoTarget(unit: UnitState, radius: number): AutoTarget | null {
+    let best: AutoTarget | null = null;
+    let bestPriority = Number.POSITIVE_INFINITY;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    const consider = (target: AutoTarget, priority: number, distance: number) => {
+      if (distance > radius) return;
+      if (priority > bestPriority) return;
+      if (priority === bestPriority && distance > bestDistance) return;
+      best = target;
+      bestPriority = priority;
+      bestDistance = distance;
+    };
+
+    this.state.units.forEach((other: UnitState) => {
+      if (other.ownerId === unit.ownerId) return;
+      const otherBlueprint = UNIT_BLUEPRINTS[other.type as UnitType];
+      const priority =
+        otherBlueprint?.canHarvest === true
+          ? AUTO_TARGET_PRIORITY.VILLAGER
+          : AUTO_TARGET_PRIORITY.MILITARY;
+      consider(
+        { id: other.id, type: 'unit' },
+        priority,
+        Math.hypot(other.x - unit.x, other.y - unit.y)
+      );
+    });
+
+    this.state.buildings.forEach((building: BuildingState) => {
+      if (building.ownerId === unit.ownerId) return;
+      const blueprint = BUILDING_BLUEPRINTS[building.type as BuildingType];
+      if (blueprint?.attackable === false) return;
+      consider(
+        { id: building.id, type: 'building' },
+        AUTO_TARGET_PRIORITY.BUILDING,
+        distanceToFootprint(unit.x, unit.y, building)
+      );
+    });
+
+    return best;
   }
 
   /**
