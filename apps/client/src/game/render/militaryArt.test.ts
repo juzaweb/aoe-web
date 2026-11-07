@@ -6,7 +6,7 @@ import { SHEET_OFFSET_Y, buildingArt, buildingHpBarY } from './buildingArt.js';
 /**
  * MIL-01 split the military roster across three buildings. The two new types
  * ship on the barracks' 400x320 canvas, so they borrow its lift. Their own
- * generated sheets crop to a different artwork height than the barracks sheet,
+ * OpenGameArt sheets crop to a different artwork height than the barracks sheet,
  * so each keeps its own measured health-bar height; only the procedural
  * fallback is still shared with the barracks.
  */
@@ -14,10 +14,10 @@ describe('military building artwork (MIL-01)', () => {
   const NEW_TYPES = ['STABLE', 'ARCHERY_RANGE'] as const;
 
   // Bar = sheet lift - canvasHeight/2 + topInset - 8, measured from the shipped
-  // PNGs (`scripts/generate_buildings_assets.py` prints the inset).
+  // PNGs (`scripts/assets/build.py --report` prints the inset).
   const OWN_SHEET_BAR: Record<(typeof NEW_TYPES)[number], number> = {
-    STABLE: -222,
-    ARCHERY_RANGE: -236
+    STABLE: -261,
+    ARCHERY_RANGE: -235
   };
 
   for (const type of NEW_TYPES) {

@@ -141,12 +141,13 @@ const DEFAULT_ART = { textureKey: 'b_town_center', offsetY: -130, hpBarY: -203 }
  */
 const HP_BAR_Y: Partial<Record<BuildingType, number>> = {
   TOWN_CENTER: -358,
-  TOWER: -350,
+  // Bleed's Galata Tower: -160 - 360/2 + topInset 9 - 8.
+  TOWER: -339,
   BARRACKS: -260,
-  // MIL-01: same 400x320 canvas, but each generated sheet crops to its own
-  // artwork height: -264 + topInset (Stable 42, Archery Range 28).
-  STABLE: -222,
-  ARCHERY_RANGE: -236,
+  // MIL-01: same 400x320 canvas, but each OpenGameArt sheet keeps its own
+  // artwork height: -264 + topInset (Stable 3, Archery Range 29).
+  STABLE: -261,
+  ARCHERY_RANGE: -235,
   HOUSE: -188,
   FARM: -100,
   LUMBER_CAMP: -171,

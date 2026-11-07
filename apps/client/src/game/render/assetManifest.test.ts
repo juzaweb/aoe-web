@@ -91,7 +91,10 @@ describe('building health bar heights', () => {
   const lock = readLock();
   const MIGRATED: Record<string, keyof typeof SHEET_OFFSET_Y> = {
     'building.town-center': 'TOWN_CENTER',
+    'building.tower': 'TOWER',
     'building.barracks': 'BARRACKS',
+    'building.stable': 'STABLE',
+    'building.archery-range': 'ARCHERY_RANGE',
     'building.house': 'HOUSE',
     'building.lumber-camp': 'LUMBER_CAMP'
   };

@@ -17,6 +17,14 @@
         "sprite": { "url": "https://opengameart.org/sites/default/files/stable_0.png" }
       }
     },
+    "oga.feudal-archery-range": {
+      "page": "https://opengameart.org/content/medieval-archery-range-isometric-25d",
+      "author": "feudalwars",
+      "license": "CC0-1.0",
+      "files": {
+        "sprite": { "url": "https://opengameart.org/sites/default/files/archery_range_0.png" }
+      }
+    },
     "oga.bleed-trees": {
       "page": "https://opengameart.org/content/tree-collection-v26-bleeds-game-art",
       "author": "Bleed",
@@ -68,6 +76,17 @@
       "license": "CC-BY-4.0",
       "files": {
         "rocks": { "url": "https://opengameart.org/sites/default/files/hjm-assorted_rocks_1.png" }
+      }
+    },
+    "oga.bleed-galata-tower": {
+      "page": "https://opengameart.org/content/galata-tower-bleeds-game-art",
+      "author": "Bleed",
+      "license": "CC-BY-3.0",
+      "files": {
+        "pack": {
+          "url": "https://opengameart.org/sites/default/files/Galata-Tower.zip",
+          "archive": "zip"
+        }
       }
     },
     "oga.bleed-hovel": {
@@ -178,6 +197,20 @@
       "out": "apps/client/public/assets/buildings/lumber_camp.png",
       "canvas": [256, 220]
     },
+    "building.stable": {
+      "source": "oga.feudal-stable",
+      "file": "sprite",
+      "op": { "crop": "alpha", "fit": true, "matchLum": 90.9, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/buildings/stable.png",
+      "canvas": [400, 320]
+    },
+    "building.archery-range": {
+      "source": "oga.feudal-archery-range",
+      "file": "sprite",
+      "op": { "crop": "alpha", "fit": true, "matchLum": 90.9, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/buildings/archery_range.png",
+      "canvas": [400, 320]
+    },
     "building.house": {
       "source": "oga.bleed-hovel",
       "file": "pack",
@@ -240,6 +273,14 @@
       },
       "out": "apps/client/public/assets/buildings/house_5.png",
       "canvas": [405, 304]
+    },
+    "building.tower": {
+      "source": "oga.bleed-galata-tower",
+      "file": "pack",
+      "entry": "Galata-Tower_0003.png",
+      "op": { "alphaFloor": 180, "crop": "alpha", "fit": true, "matchLum": 74.8, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/buildings/tower.png",
+      "canvas": [160, 360]
     },
     "building.town-center": {
       "source": "oga.feudal-castle",
