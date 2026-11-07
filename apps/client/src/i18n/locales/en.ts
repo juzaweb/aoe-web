@@ -99,7 +99,8 @@ const en = {
     road: 'Road',
     roadHint: 'Drag to paint roads. 2 wood per tile. Soldiers move 30% faster on roads.',
     erase: 'Erase',
-    eraseHint: 'Drag to erase your roads. 100% wood is refunded if not yet built.'
+    eraseHint: 'Drag to erase your roads. 100% wood is refunded if not yet built.',
+    lockedAtLevel: 'Requires Town Center Lv {{level}}'
   },
   resources: {
     wood: 'Wood',
@@ -131,7 +132,18 @@ const en = {
     harvestMineTouch: 'Long-press a villager onto the mine to gather.',
     harvestFarmMouse: 'Right click a villager onto the farm to harvest; an exhausted farm is re-sown with wood.',
     harvestMineMouse: 'Right click a villager onto the mine to gather.',
-    roadUnderConstruction: 'Road (under construction)'
+    roadUnderConstruction: 'Road (under construction)',
+    empireBuff: 'EMPIRE BUFF · TOWN CENTER LV {{level}}',
+    trainerEffectHeader: 'TRAINING BUILDING EFFECT · LV {{level}}',
+    campEffectHeader: 'CAMP EFFECT · LV {{level}}'
+  },
+  stats: {
+    buildingUnitHp: 'Building & unit HP',
+    unitAttack: 'Unit attack',
+    trainingTime: 'Training time',
+    unitHpAttack: 'Unit HP & attack',
+    gatherSpeed: 'Gather rate',
+    unloadRadius: 'Unload radius'
   },
   entityType: {
     unit: 'unit',
@@ -172,7 +184,11 @@ const en = {
     cancelResearch: 'Cancel the research and refund its full cost',
     max: 'Max',
     researching: 'Researching',
-    upgradeLevel: 'Upgrade Lv {{level}}'
+    upgradeLevel: 'Upgrade Lv {{level}}',
+    currentBuff: 'Current buff',
+    afterUpgrade: 'After upgrade',
+    barracksEffect: 'Barracks effect',
+    campEffect: 'Camp effect'
   },
   houseTiers: {
     '1': 'Thatched Hut',

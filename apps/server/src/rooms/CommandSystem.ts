@@ -266,9 +266,16 @@ export class CommandSystem {
     // the opening build menu and the Town Center's own upgrade gate stay intact.
     const townCenterLevel = this.ports.townCenterLevelOf(ownerId);
     if (!isBuildingUnlocked(payload.type, townCenterLevel)) {
+      // I18N: the unlock gate is parameterised, so it travels as a spec and
+      // the boundary renders the active language from the level.
+      const unlockLevel = getBuildingUnlockLevel(payload.type);
       this.ports.rejectCommand(
         client,
-        `Requires Town Center level ${getBuildingUnlockLevel(payload.type)}`,
+        {
+          key: 'command.requiresTownCenterLevel',
+          params: { level: unlockLevel },
+          fallback: `Requires Town Center level ${unlockLevel}`
+        },
         RejectCode.PREREQUISITE
       );
       return;

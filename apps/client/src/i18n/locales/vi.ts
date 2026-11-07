@@ -102,7 +102,8 @@ const vi = {
     road: 'Đường',
     roadHint: 'Kéo để vẽ đường. 2 gỗ mỗi ô. Lính đi nhanh hơn 30% trên đường.',
     erase: 'Xoá',
-    eraseHint: 'Kéo để xoá đường của bạn. Hoàn lại 100% gỗ nếu chưa xây.'
+    eraseHint: 'Kéo để xoá đường của bạn. Hoàn lại 100% gỗ nếu chưa xây.',
+    lockedAtLevel: 'Cần Nhà chính Lv {{level}}'
   },
   resources: {
     wood: 'Gỗ',
@@ -134,7 +135,18 @@ const vi = {
     harvestMineTouch: 'Giữ lâu dân làng vào mỏ để tiến hành khai thác.',
     harvestFarmMouse: 'Chuột phải dân làng vào ruộng để khai thác; ruộng cạn sẽ được gieo lại bằng gỗ.',
     harvestMineMouse: 'Chuột phải dân làng vào mỏ để tiến hành khai thác.',
-    roadUnderConstruction: 'Đường (đang xây)'
+    roadUnderConstruction: 'Đường (đang xây)',
+    empireBuff: 'BUFF ĐẾ CHẾ · NHÀ CHÍNH Lv {{level}}',
+    trainerEffectHeader: 'HIỆU ỨNG NHÀ HUẤN LUYỆN · Lv {{level}}',
+    campEffectHeader: 'HIỆU ỨNG CAMP · Lv {{level}}'
+  },
+  stats: {
+    buildingUnitHp: 'HP công trình & quân',
+    unitAttack: 'Tấn công lính',
+    trainingTime: 'Thời gian huấn luyện',
+    unitHpAttack: 'HP & tấn công lính',
+    gatherSpeed: 'Tốc độ gom',
+    unloadRadius: 'Bán kính dỡ hàng'
   },
   entityType: {
     unit: 'unit',
@@ -175,7 +187,11 @@ const vi = {
     cancelResearch: 'Huỷ nghiên cứu, hoàn lại toàn bộ tài nguyên',
     max: 'Tối đa',
     researching: 'Đang nghiên cứu',
-    upgradeLevel: 'Nâng Lv {{level}}'
+    upgradeLevel: 'Nâng Lv {{level}}',
+    currentBuff: 'Buff hiện tại',
+    afterUpgrade: 'Sau nâng cấp',
+    barracksEffect: 'Hiệu ứng nhà lính',
+    campEffect: 'Hiệu ứng camp'
   },
   houseTiers: {
     '1': 'Nhà tranh',

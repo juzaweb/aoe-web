@@ -226,25 +226,25 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
           data-town-center-buff
         >
           <div className="flex items-center justify-between text-[9px] font-semibold text-emerald-300">
-            <span>Buff hiện tại</span>
-            {!isMaxed && <span className="text-slate-400">Sau nâng cấp</span>}
+            <span>{t('upgrades.currentBuff')}</span>
+            {!isMaxed && <span className="text-slate-400">{t('upgrades.afterUpgrade')}</span>}
           </div>
           <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
-            <span>HP công trình &amp; quân</span>
+            <span>{t('stats.buildingUnitHp')}</span>
             <span>
               <span className="text-emerald-300">+{auraNow}%</span>
               {!isMaxed && <span className="text-slate-500"> → +{auraNext}%</span>}
             </span>
           </div>
           <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
-            <span>Tấn công lính</span>
+            <span>{t('stats.unitAttack')}</span>
             <span>
               <span className="text-emerald-300">+{attackNow}%</span>
               {!isMaxed && <span className="text-slate-500"> → +{attackNext}%</span>}
             </span>
           </div>
           <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
-            <span>Thời gian huấn luyện</span>
+            <span>{t('stats.trainingTime')}</span>
             <span>
               <span className="text-sky-300">-{auraNow}%</span>
               {!isMaxed && <span className="text-slate-500"> → -{auraNext}%</span>}
@@ -259,18 +259,18 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
           data-trainer-buff
         >
           <div className="flex items-center justify-between text-[9px] font-semibold text-emerald-300">
-            <span>Hiệu ứng nhà lính</span>
-            {!isMaxed && <span className="text-slate-400">Sau nâng cấp</span>}
+            <span>{t('upgrades.barracksEffect')}</span>
+            {!isMaxed && <span className="text-slate-400">{t('upgrades.afterUpgrade')}</span>}
           </div>
           <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
-            <span>Thời gian huấn luyện</span>
+            <span>{t('stats.trainingTime')}</span>
             <span>
               <span className="text-sky-300">-{trainerSpeedNow}%</span>
               {!isMaxed && <span className="text-slate-500"> → -{trainerSpeedNext}%</span>}
             </span>
           </div>
           <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
-            <span>HP &amp; tấn công lính</span>
+            <span>{t('stats.unitHpAttack')}</span>
             <span>
               <span className="text-emerald-300">+{trainerBuffNow}%</span>
               {!isMaxed && <span className="text-slate-500"> → +{trainerBuffNext}%</span>}
@@ -285,18 +285,18 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
           data-camp-buff
         >
           <div className="flex items-center justify-between text-[9px] font-semibold text-emerald-300">
-            <span>Hiệu ứng camp</span>
-            {!isMaxed && <span className="text-slate-400">Sau nâng cấp</span>}
+            <span>{t('upgrades.campEffect')}</span>
+            {!isMaxed && <span className="text-slate-400">{t('upgrades.afterUpgrade')}</span>}
           </div>
           <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
-            <span>Tốc độ gom</span>
+            <span>{t('stats.gatherSpeed')}</span>
             <span>
               <span className="text-emerald-300">+{gatherNow}%</span>
               {!isMaxed && <span className="text-slate-500"> → +{gatherNext}%</span>}
             </span>
           </div>
           <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
-            <span>Bán kính dỡ hàng</span>
+            <span>{t('stats.unloadRadius')}</span>
             <span>
               <span className="text-sky-300">{radiusNow.toFixed(2)} tile</span>
               {!isMaxed && (

@@ -155,7 +155,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
                 <Lock
                   size={compactTiles ? 14 : 18}
                   className="text-amber-300"
-                  aria-label={`Cần Nhà chính Lv ${unlockLevel}`}
+                  aria-label={t('build.lockedAtLevel', { level: unlockLevel })}
                 />
               </div>
             )}

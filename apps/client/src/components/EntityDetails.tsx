@@ -242,18 +242,18 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
       {entity.type === 'building' && entity.subType === 'TOWN_CENTER' && entity.isOwner && (
         <div className="border-t border-amber-800/40 pt-2 space-y-1" data-town-center-aura>
           <span className="text-[10px] font-bold tracking-wider text-amber-300">
-            BUFF ĐẾ CHẾ · NHÀ CHÍNH Lv {ownerTownCenterLevel}
+            {t('details.empireBuff', { level: ownerTownCenterLevel })}
           </span>
           <div className="flex justify-between text-[10px] text-slate-300">
-            <span>HP công trình &amp; quân</span>
+            <span>{t('stats.buildingUnitHp')}</span>
             <span className="font-mono text-emerald-300">+{auraPercent}%</span>
           </div>
           <div className="flex justify-between text-[10px] text-slate-300">
-            <span>Tấn công lính</span>
+            <span>{t('stats.unitAttack')}</span>
             <span className="font-mono text-emerald-300">+{attackPercent}%</span>
           </div>
           <div className="flex justify-between text-[10px] text-slate-300">
-            <span>Thời gian huấn luyện</span>
+            <span>{t('stats.trainingTime')}</span>
             <span className="font-mono text-sky-300">-{auraPercent}%</span>
           </div>
         </div>
@@ -262,16 +262,16 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
       {buildingIsOwnedAndFinished && isTrainerBuilding && (
         <div className="border-t border-slate-800 pt-2 space-y-1" data-trainer-effects>
           <span className="text-[10px] font-bold tracking-wider text-amber-300">
-            HIỆU ỨNG NHÀ HUẤN LUYỆN · Lv {buildingLevel}
+            {t('details.trainerEffectHeader', { level: buildingLevel })}
           </span>
           <div className="flex justify-between text-[10px] text-slate-300">
-            <span>Thời gian huấn luyện</span>
+            <span>{t('stats.trainingTime')}</span>
             <span className="font-mono text-sky-300" data-trainer-speed>
               -{trainerSpeedPercent}%
             </span>
           </div>
           <div className="flex justify-between text-[10px] text-slate-300">
-            <span>HP &amp; tấn công lính</span>
+            <span>{t('stats.unitHpAttack')}</span>
             <span className="font-mono text-emerald-300" data-trainer-buff>
               +{trainerBuffPercent}%
             </span>
@@ -282,16 +282,16 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
       {buildingIsOwnedAndFinished && isDropOffCamp && (
         <div className="border-t border-slate-800 pt-2 space-y-1" data-camp-effects>
           <span className="text-[10px] font-bold tracking-wider text-amber-300">
-            HIỆU ỨNG CAMP · Lv {buildingLevel}
+            {t('details.campEffectHeader', { level: buildingLevel })}
           </span>
           <div className="flex justify-between text-[10px] text-slate-300">
-            <span>Tốc độ gom</span>
+            <span>{t('stats.gatherSpeed')}</span>
             <span className="font-mono text-emerald-300" data-gather-bonus>
               +{gatherPercent}%
             </span>
           </div>
           <div className="flex justify-between text-[10px] text-slate-300">
-            <span>Bán kính dỡ hàng</span>
+            <span>{t('stats.unloadRadius')}</span>
             <span className="font-mono text-sky-300" data-unload-radius>
               {unloadRadius.toFixed(2)} tile
             </span>

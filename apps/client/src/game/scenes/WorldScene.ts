@@ -1971,7 +1971,7 @@ export class WorldScene extends Phaser.Scene {
         this.onSelectionChange({
           id: road.id,
           type: 'building',
-          name: 'Đường (đang xây)',
+          name: 'Road (under construction)',
           subType: 'ROAD',
           hp: 1,
           maxHp: 1,
