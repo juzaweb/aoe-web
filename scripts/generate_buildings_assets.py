@@ -98,22 +98,10 @@ BUILDING_SPECS = [
             "Solid pure white background, clean sharp silhouette, game asset ready --ar 2:1 --v 6.0 --style raw"
         ),
     },
-    {
-        "id": "tower",
-        "target_w": 80,
-        "target_h": 180,
-        "gen_w": 512,
-        "gen_h": 1024,
-        "prompt": (
-            "A 2D game asset of an ancient tall wooden and stone watchtower defense tower, 2.5D isometric top-down view. "
-            "Slender multi-tiered timber outpost with lookout parapet, arrow slits, signal fire brazier at the peak, stone base. "
-            "Solid pure white background, clean sharp silhouette, game asset ready --ar 1:2 --v 6.0 --style raw"
-        ),
-    },
-    # MIL-01's stable and archery range used to be generated here. They now ship
-    # from the feudalwars OpenGameArt pack via `scripts/assets/manifest.json`
-    # (`building.stable`, `building.archery-range`), so this script must not
-    # overwrite them.
+    # MIL-01's stable and archery range, and the watch tower, used to be
+    # generated here. They now ship from OpenGameArt packs via
+    # `scripts/assets/manifest.json` (`building.stable`, `building.archery-range`,
+    # `building.tower`), so this script must not overwrite them.
 ]
 
 
@@ -194,7 +182,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--only",
         metavar="IDS",
-        help="comma-separated building ids, e.g. farm,tower",
+        help="comma-separated building ids, e.g. farm,house",
     )
     parser.add_argument(
         "--all",

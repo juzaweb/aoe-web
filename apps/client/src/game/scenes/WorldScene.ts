@@ -489,9 +489,9 @@ export class WorldScene extends Phaser.Scene {
     }
 
     // Preload generated building assets with cache-busting version (2x resolution)
-    // v=13: stable and archery range swapped to the feudalwars OpenGameArt pack.
+    // v=14: the tower swapped to Bleed's Galata Tower pack.
     // Bump the key whenever a PNG under public/assets/buildings or /resources changes.
-    const v = 'v=13';
+    const v = 'v=14';
     this.load.image('building_TOWN_CENTER', `/assets/buildings/town_center.png?${v}`);
     this.load.image('building_BARRACKS', `/assets/buildings/barracks.png?${v}`);
     // MIL-01: both military branches now ship their own 400x320 sheet. The

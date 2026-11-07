@@ -78,6 +78,17 @@
         "rocks": { "url": "https://opengameart.org/sites/default/files/hjm-assorted_rocks_1.png" }
       }
     },
+    "oga.bleed-galata-tower": {
+      "page": "https://opengameart.org/content/galata-tower-bleeds-game-art",
+      "author": "Bleed",
+      "license": "CC-BY-3.0",
+      "files": {
+        "pack": {
+          "url": "https://opengameart.org/sites/default/files/Galata-Tower.zip",
+          "archive": "zip"
+        }
+      }
+    },
     "oga.bleed-hovel": {
       "page": "https://opengameart.org/content/simple-isometric-hovel",
       "author": "Bleed",
@@ -262,6 +273,14 @@
       },
       "out": "apps/client/public/assets/buildings/house_5.png",
       "canvas": [405, 304]
+    },
+    "building.tower": {
+      "source": "oga.bleed-galata-tower",
+      "file": "pack",
+      "entry": "Galata-Tower_0003.png",
+      "op": { "alphaFloor": 160, "crop": "alpha", "fit": true, "matchLum": 74.8, "anchor": "bottom-center" },
+      "out": "apps/client/public/assets/buildings/tower.png",
+      "canvas": [160, 360]
     },
     "building.town-center": {
       "source": "oga.feudal-castle",

@@ -96,16 +96,16 @@ python scripts/process_generated_assets.py --check   # canvas, anchoring, lum, d
 That script needs Pillow and numpy; the OpenGameArt pipeline itself only needs
 Pillow.
 
-`buildings/stable.png` and `buildings/archery_range.png` were previously
-project-original generated art; they are now built from the feudalwars
-OpenGameArt pack by `building.stable` / `building.archery-range` in the manifest.
-`scripts/generate_buildings_assets.py` no longer defines them, so running it
-cannot overwrite the shipped third-party sprites.
+`buildings/stable.png`, `buildings/archery_range.png` and `buildings/tower.png`
+were previously project-original generated art; they are now built from
+OpenGameArt packs by `building.stable`, `building.archery-range` and
+`building.tower` in the manifest. `scripts/generate_buildings_assets.py` no
+longer defines them, so running it cannot overwrite the shipped sprites.
 
 ## Not migrated
 
 `terrain/{grass,dirt}*.png`, `resources/{gold,stone,berry}.png`, `buildings/{farm,mill,
-mining_camp,tower}.png`, cavalry, icons and cursors keep their previous art;
+mining_camp}.png`, cavalry, icons and cursors keep their previous art;
 their bytes are pinned under `legacy` in the lock, with the icon provenance
 recorded as unknown. The grassland tileset ships no tile map (its OGA page points
 at the Flare repo, whose current tileset definition maps a different image), and
