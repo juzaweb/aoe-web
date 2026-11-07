@@ -83,19 +83,21 @@ interface SlotOffset {
  * The citadel faces east: the single gate sits in the middle of the east wall
  * and a straight walkway runs west from it to the Town Center, which sits about
  * four tiles in from the rear (west) wall. Barracks line the north wall, while
- * the five houses are packed side by side in the south-west corner, at the far
- * end from the gate. The Town Center is centred on the gate's rows so the avenue
- * ends on its doors.
+ * the five houses are stacked one after another against the rear wall itself,
+ * packed into the south-west corner at the lower end of the wall. The Town
+ * Center is centred on the gate's rows so the avenue ends on its doors.
  */
 const SLOT_OFFSETS: readonly SlotOffset[] = [
   { type: 'TOWN_CENTER', dx: 5, dy: 10 },
   { type: 'BARRACKS', dx: 5, dy: 1 },
   { type: 'BARRACKS', dx: 18, dy: 1 },
-  { type: 'HOUSE', dx: 1, dy: 23 },
-  { type: 'HOUSE', dx: 3, dy: 23 },
-  { type: 'HOUSE', dx: 5, dy: 23 },
-  { type: 'HOUSE', dx: 7, dy: 23 },
-  { type: 'HOUSE', dx: 9, dy: 23 }
+  // Five houses in one column against the west wall, filling the lower half of
+  // the compound from the Town Center's last row down to the south wall.
+  { type: 'HOUSE', dx: 1, dy: 15 },
+  { type: 'HOUSE', dx: 1, dy: 17 },
+  { type: 'HOUSE', dx: 1, dy: 19 },
+  { type: 'HOUSE', dx: 1, dy: 21 },
+  { type: 'HOUSE', dx: 1, dy: 23 }
 ];
 
 function slotSize(type: BuildingType): { sizeX: number; sizeY: number } {

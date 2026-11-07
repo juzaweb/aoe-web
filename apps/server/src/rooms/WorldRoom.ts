@@ -1499,8 +1499,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     // Spawn 3 starter villagers outside the Town Center. A returning player
     // whose empire was wiped keeps the villager research they already paid for.
-    // A citadel centres the Town Center, so the crew starts in the walkway just
-    // east of its footprint rather than inside the walls.
+    // A citadel seats the Town Center towards the rear wall, so the crew starts
+    // in the walkway just east of its footprint rather than inside the walls.
     const villagerLevel = getPlayerUnitLevel(player.unitLevels, 'VILLAGER');
     const villagerStats = getUnitLevelStats('VILLAGER', villagerLevel);
     const villagerOffsets = citadelLayout

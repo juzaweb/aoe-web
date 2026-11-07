@@ -22,6 +22,15 @@ import {
 const TC_X = 53;
 const TC_Y = 53;
 
+/**
+ * Side of the square compound that shipped before the citadel was enlarged.
+ *
+ * The migration test simulates a save written under that layout, so it must not
+ * follow `CITADEL_WIDTH`: resizing today's citadel would silently move the fake
+ * save out of the region the migration has to find.
+ */
+const LEGACY_CITADEL_SIZE = 17;
+
 function addTownCenter(state: WorldState, ownerId = 'defender'): BuildingState {
   const stats = getBuildingLevelStats('TOWN_CENTER', 1);
   const townCenter = new BuildingState();
@@ -78,19 +87,16 @@ describe('citadel layout', () => {
     }
   });
 
-  it('groups the barracks north and the houses south of the walkway', () => {
+  it('puts the barracks on the north wall and the houses on the west wall', () => {
     const layout = citadelLayoutFor(TC_X, TC_Y);
     const barracks = layout.slots.filter((slot) => slot.type === 'BARRACKS');
     const houses = layout.slots.filter((slot) => slot.type === 'HOUSE');
-    const townCenter = layout.slots.find((slot) => slot.type === 'TOWN_CENTER')!;
 
-    // Every barracks tile is above the Town Center's walkway rows.
     for (const slot of barracks) {
-      expect(slot.gridY + slot.sizeY).toBeLessThanOrEqual(townCenter.gridY);
+      expect(slot.gridY).toBe(layout.innerMinY);
     }
-    // Every house tile is below it.
     for (const slot of houses) {
-      expect(slot.gridY).toBeGreaterThanOrEqual(townCenter.gridY + townCenter.sizeY);
+      expect(slot.gridX).toBe(layout.innerMinX);
     }
   });
 
@@ -108,29 +114,42 @@ describe('citadel layout', () => {
     }
   });
 
-  it('keeps the Town Center taller than wide and the houses on the south wall', () => {
+  it('keeps the Town Center taller than wide', () => {
     const layout = citadelLayoutFor(TC_X, TC_Y);
     const townCenter = layout.slots.find((slot) => slot.type === 'TOWN_CENTER')!;
     expect(townCenter.sizeX).toBe(BUILDING_BLUEPRINTS.TOWN_CENTER.sizeX);
     expect(townCenter.sizeY).toBe(BUILDING_BLUEPRINTS.TOWN_CENTER.sizeY);
     expect(townCenter.sizeY).toBeGreaterThan(townCenter.sizeX);
+  });
 
-    for (const house of layout.slots.filter((slot) => slot.type === 'HOUSE')) {
-      // Last row of the house footprint sits on the last inner row.
-      expect(house.gridY + house.sizeY - 1).toBe(layout.innerMaxY);
+  it('keeps the building slots from overlapping one another', () => {
+    const layout = citadelLayoutFor(TC_X, TC_Y);
+
+    for (let i = 0; i < layout.slots.length; i++) {
+      for (let j = i + 1; j < layout.slots.length; j++) {
+        const a = layout.slots[i];
+        const b = layout.slots[j];
+        const overlapX = a.gridX < b.gridX + b.sizeX && b.gridX < a.gridX + a.sizeX;
+        const overlapY = a.gridY < b.gridY + b.sizeY && b.gridY < a.gridY + a.sizeY;
+        expect(
+          overlapX && overlapY,
+          `${a.type} at ${a.gridX},${a.gridY} overlaps ${b.type} at ${b.gridX},${b.gridY}`
+        ).toBe(false);
+      }
     }
   });
 
-  it('packs the five houses side by side at the rear of the compound', () => {
+  it('packs the five houses in one column at the lower rear corner', () => {
     const layout = citadelLayoutFor(TC_X, TC_Y);
     const houses = layout.slots
       .filter((slot) => slot.type === 'HOUSE')
-      .sort((a, b) => a.gridX - b.gridX);
+      .sort((a, b) => a.gridY - b.gridY);
 
-    expect(houses[0].gridX).toBe(layout.innerMinX);
+    const bottom = houses[houses.length - 1];
+    expect(bottom.gridY + bottom.sizeY - 1).toBe(layout.innerMaxY);
     for (let index = 1; index < houses.length; index++) {
-      expect(houses[index].gridX).toBe(houses[index - 1].gridX + houses[index - 1].sizeX);
-      expect(houses[index].gridY).toBe(houses[0].gridY);
+      expect(houses[index].gridY).toBe(houses[index - 1].gridY + houses[index - 1].sizeY);
+      expect(houses[index].gridX).toBe(houses[0].gridX);
     }
   });
 
@@ -238,8 +257,8 @@ describe('citadel lifecycle', () => {
     rightEdgeTc.id = 'b-right-tc';
     rightEdgeTc.ownerId = 'defender';
     rightEdgeTc.type = 'TOWN_CENTER';
-    rightEdgeTc.gridX = 110 - 6 - CITADEL_WIDTH + 12;
-    rightEdgeTc.gridY = Math.floor((110 - CITADEL_HEIGHT) / 2) + 6;
+    rightEdgeTc.gridX = 110 - 6 - LEGACY_CITADEL_SIZE + 12;
+    rightEdgeTc.gridY = Math.floor((110 - LEGACY_CITADEL_SIZE) / 2) + 6;
     rightEdgeTc.sizeX = BUILDING_BLUEPRINTS.TOWN_CENTER.sizeX;
     rightEdgeTc.sizeY = BUILDING_BLUEPRINTS.TOWN_CENTER.sizeY;
     rightEdgeTc.hp = stats.maxHp;
