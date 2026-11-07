@@ -1,7 +1,9 @@
 # Phase 26 — Hiệu ứng cấp công trình
 
-**Status: `DRAFT`** — các quyết định D1–D10 đã chốt qua trao đổi ngày 2026-11-07; **chưa code**
-(user yêu cầu chỉ tạo plan trước).
+**Status: `IMPLEMENTED` (2026-11-07)** — D1–D10 đã code đủ shared/server/client, test xanh
+(shared build OK, server 379 test, client 460 test). Còn lại: verify tay §9 trong game đang chạy.
+Đây là phần mở rộng của phase 03 (building levels): phase 03 vẫn giữ giá/thời gian nâng cấp và HP
+theo cấp, phase 26 chỉ thêm hiệu ứng hành vi (train/gather/radius) suy ra từ `buildings.level`.
 
 Phạm vi: `packages/shared`, `apps/server`, `apps/client`, `docs/plans/README.md`.
 **Không** đổi schema, **không** migration, **không** thêm `NetworkMessage`, **không** đổi payload.
