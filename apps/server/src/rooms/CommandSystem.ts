@@ -88,6 +88,10 @@ export interface CommandPorts {
   updatePlayerPopulation(ownerId: string): void;
   /** Cached road lookup for this room; invalidated by the road handlers. */
   roadGrid(): RoadGrid;
+  /** Notifies when a new road tile was placed as an unconstructed foundation. */
+  onRoadPlaced?(road: RoadState): void;
+  /** Notifies when a road tile was removed or cancelled. */
+  onRoadRemoved?(roadId: string): void;
   /**
    * Whether `ownerId` may issue economy/building orders on this map.
    *
@@ -114,11 +118,10 @@ const CANCEL_BUILDING_FULL_REFUND_BELOW = 10; // construction progress %
 const CANCEL_BUILDING_PARTIAL_REFUND_RATIO = 0.5;
 
 /**
- * How many foundations one villager may queue behind the site it is currently
- * building. A shift-placement chain is meant for a handful of houses; the cap
- * stops a client from growing a single unit's queue without bound.
+ * How many foundations/road tiles one villager may queue behind the site it is currently
+ * building.
  */
-const MAX_QUEUED_BUILD_SITES = 10;
+const MAX_QUEUED_BUILD_SITES = 200;
 
 /** One integer tile coordinate, after validation. */
 interface RoadTile {
@@ -392,24 +395,35 @@ export class CommandSystem {
     }
 
     player.wood -= cost;
+    const placedRoads: RoadState[] = [];
     for (const tile of buildable) {
       const road = new RoadState();
       road.id = roadTileKey(tile.x, tile.y);
       road.ownerId = ownerId;
       road.gridX = tile.x;
       road.gridY = tile.y;
+      road.isConstructed = false;
+      road.constructionProgress = 0;
       this.state.roads.set(road.id, road);
+      this.ports.onRoadPlaced?.(road);
+      placedRoads.push(road);
     }
     // A stroke can add and remove tiles within one tick, which leaves the count
     // unchanged; the cached grid must not trust the size alone.
     roads.invalidate();
+
+    const builders = this.collectBuilders(client, payload.unitIds);
+    if (builders.length > 0 && placedRoads.length > 0) {
+      this.assignBuildersToRoads(builders, placedRoads);
+    }
   }
 
-  /** Removes the sender's own road tiles; never refunds the wood. */
+  /** Removes the sender's own road tiles; refunds wood if unconstructed. */
   handleRemoveRoad(client: Client, payload: RemoveRoadPayload) {
     if (!this.ensureZoneManager(client)) return;
     const ownerId = ownerIdOf(client);
-    if (!this.state.players.get(ownerId)) return;
+    const player = this.state.players.get(ownerId);
+    if (!player) return;
 
     if (zoneKindOf(this.state.zoneId) !== 'kingdom') {
       this.ports.rejectCommand(client, 'Roads can only be removed in a kingdom', RejectCode.PLACEMENT);
@@ -423,7 +437,11 @@ export class CommandSystem {
       // Only the owner may erase a tile: a shared room must never let one
       // player take apart another player's network.
       if (!road || road.ownerId !== ownerId) continue;
+      if (!road.isConstructed) {
+        player.wood += ROAD_COST_PER_TILE;
+      }
       this.state.roads.delete(id);
+      this.ports.onRoadRemoved?.(id);
     }
     this.ports.roadGrid().invalidate();
   }
@@ -459,12 +477,13 @@ export class CommandSystem {
     return !occupied;
   }
 
-  /** Whether any tile of a footprint is a road. */
+  /** Whether any tile of a footprint touches a road (finished or under construction). */
   private footprintTouchesRoad(gx: number, gy: number, sizeX: number, sizeY: number): boolean {
     const roads = this.ports.roadGrid();
     for (let y = gy; y < gy + sizeY; y++) {
       for (let x = gx; x < gx + sizeX; x++) {
         if (roads.isRoad(x, y)) return true;
+        if (this.state.roads.has(roadTileKey(x, y))) return true;
       }
     }
     return false;
@@ -610,7 +629,20 @@ export class CommandSystem {
     if (!player) return;
 
     const building = this.requireOwnedBuilding(client, payload.buildingId);
-    if (!building) return;
+    if (!building) {
+      const road = this.state.roads.get(payload.buildingId);
+      if (road && road.ownerId === ownerIdOf(client)) {
+        if (road.isConstructed) {
+          this.ports.rejectCommand(client, 'Cannot cancel a completed building', RejectCode.INVALID);
+          return;
+        }
+        player.wood += ROAD_COST_PER_TILE;
+        this.state.roads.delete(road.id);
+        this.ports.onRoadRemoved?.(road.id);
+        this.ports.roadGrid().invalidate();
+      }
+      return;
+    }
 
     if (building.isConstructed) {
       this.ports.rejectCommand(client, 'Cannot cancel a completed building', RejectCode.INVALID);
@@ -918,7 +950,26 @@ export class CommandSystem {
     }
 
     const building = this.requireOwnedBuilding(client, payload.buildingId);
-    if (!building) return;
+    if (!building) {
+      const road = this.state.roads.get(payload.buildingId);
+      if (road && road.ownerId === ownerIdOf(client)) {
+        if (road.isConstructed) {
+          this.ports.rejectCommand(client, 'Building is already finished', RejectCode.INVALID);
+          return;
+        }
+        const builders = this.collectBuilders(client, payload.unitIds);
+        if (builders.length === 0) {
+          this.ports.rejectCommand(client, 'Only villagers can build', RejectCode.PREREQUISITE);
+          return;
+        }
+        builders.forEach((builder, idx) => {
+          this.queuedBuilds.delete(builder);
+          this.sendBuilderToRoad(builder, road, idx, builders.length);
+        });
+        return;
+      }
+      return;
+    }
     if (building.isConstructed) {
       this.ports.rejectCommand(client, 'Building is already finished', RejectCode.INVALID);
       return;
@@ -1134,10 +1185,10 @@ export class CommandSystem {
   }
 
   /**
-   * Moves an idle-after-completion builder onto the next queued foundation.
+   * Moves an idle-after-completion builder onto the next queued foundation or road.
    *
    * Called by the tick when the unit's current site is finished or gone. Entries
-   * that no longer resolve to an unconstructed foundation of the same owner are
+   * that no longer resolve to an unconstructed foundation/road of the same owner are
    * dropped here rather than needing a removal path for every cancel, destroy
    * and refund order.
    *
@@ -1145,21 +1196,102 @@ export class CommandSystem {
    */
   advanceBuildQueue(unit: UnitState): boolean {
     const queue = this.queuedBuilds.get(unit);
-    if (!queue) return false;
+    if (queue) {
+      while (queue.length > 0) {
+        const nextId = queue.shift() as string;
+        const building = this.state.buildings.get(nextId);
+        if (building && !building.isConstructed && building.ownerId === unit.ownerId) {
+          const heading = this.countUnitsHeadingTo(building.id);
+          this.sendBuilderToSite(unit, building, heading, heading + 1);
+          if (queue.length === 0) this.queuedBuilds.delete(unit);
+          return true;
+        }
 
-    while (queue.length > 0) {
-      const buildingId = queue.shift() as string;
-      const building = this.state.buildings.get(buildingId);
-      if (!building || building.isConstructed || building.ownerId !== unit.ownerId) continue;
+        const road = this.state.roads.get(nextId);
+        if (road && !road.isConstructed && road.ownerId === unit.ownerId) {
+          this.sendBuilderToRoad(unit, road);
+          if (queue.length === 0) this.queuedBuilds.delete(unit);
+          return true;
+        }
+      }
 
-      const heading = this.countUnitsHeadingTo(building.id);
-      this.sendBuilderToSite(unit, building, heading, heading + 1);
-      if (queue.length === 0) this.queuedBuilds.delete(unit);
+      this.queuedBuilds.delete(unit);
+    }
+
+    const nextRoad = this.findNearestUnconstructedRoad(unit);
+    if (nextRoad) {
+      this.sendBuilderToRoad(unit, nextRoad);
       return true;
     }
 
-    this.queuedBuilds.delete(unit);
     return false;
+  }
+
+  /** Signs a crew up to build newly placed road tiles. */
+  private assignBuildersToRoads(builders: UnitState[], roads: RoadState[]) {
+    if (roads.length === 0) return;
+    builders.forEach((unit, idx) => {
+      let firstRoad = roads[0];
+      let minDist = Math.hypot(unit.x - (firstRoad.gridX + 0.5), unit.y - (firstRoad.gridY + 0.5));
+      for (let i = 1; i < roads.length; i++) {
+        const d = Math.hypot(unit.x - (roads[i].gridX + 0.5), unit.y - (roads[i].gridY + 0.5));
+        if (d < minDist) {
+          minDist = d;
+          firstRoad = roads[i];
+        }
+      }
+
+      this.queuedBuilds.delete(unit);
+      this.sendBuilderToRoad(unit, firstRoad, idx, builders.length);
+
+      const otherRoads = roads.filter((r) => r.id !== firstRoad.id);
+      for (const r of otherRoads) {
+        this.enqueueBuild(unit, r.id);
+      }
+    });
+  }
+
+  /**
+   * Points one unit at one unconstructed road tile.
+   */
+  private sendBuilderToRoad(
+    unit: UnitState,
+    road: RoadState,
+    index = 0,
+    count = 1
+  ) {
+    const angle = (index / Math.max(1, count)) * Math.PI * 2;
+    const offsetX = Math.cos(angle) * 0.2;
+    const offsetY = Math.sin(angle) * 0.2;
+
+    const targetX = Math.max(0, Math.min(this.state.mapWidth - 1, road.gridX + 0.5 + offsetX));
+    const targetY = Math.max(0, Math.min(this.state.mapHeight - 1, road.gridY + 0.5 + offsetY));
+
+    unit.queueTargetX.clear();
+    unit.queueTargetY.clear();
+    unit.targetEntityId = road.id;
+    unit.targetEntityType = 'road';
+    unit.previousActionState = '';
+    this.ports.setWalkTarget(unit, targetX, targetY);
+    unit.actionState = 'BUILDING';
+    this.ports.clearHarvestOrder(unit.id);
+  }
+
+  /** Finds the closest unconstructed road tile of this owner within maxDist. */
+  private findNearestUnconstructedRoad(unit: UnitState, maxDist = 15): RoadState | null {
+    let nearest: RoadState | null = null;
+    let minDist = maxDist;
+
+    this.state.roads.forEach((road: RoadState) => {
+      if (road.isConstructed || road.ownerId !== unit.ownerId) return;
+      const dist = Math.hypot(unit.x - (road.gridX + 0.5), unit.y - (road.gridY + 0.5));
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = road;
+      }
+    });
+
+    return nearest;
   }
 
   /** Units already ordered to this site, used only to fan out approach points. */

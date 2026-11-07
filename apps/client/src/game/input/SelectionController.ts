@@ -103,6 +103,17 @@ export class SelectionController {
 
     if (clickedResId) {
       scene.selectedResourceId = clickedResId;
+      scene.notifySelectionChange();
+      return;
+    }
+
+    // Check click on unconstructed roads
+    const roads = (scene.room?.state as any)?.roads;
+    const clickedRoad = roads?.get(`${clickGrid.gridX},${clickGrid.gridY}`);
+    if (clickedRoad && clickedRoad.isConstructed === false && clickedRoad.ownerId === scene.myOwnerId) {
+      scene.selectedRoadId = clickedRoad.id;
+      scene.notifySelectionChange();
+      return;
     }
 
     scene.notifySelectionChange();
@@ -331,6 +342,7 @@ export class SelectionController {
 
     scene.selectedBuildingId = null;
     scene.selectedResourceId = null;
+    scene.selectedRoadId = null;
   }
 
   /**

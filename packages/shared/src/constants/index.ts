@@ -202,6 +202,11 @@ export const MAP_BUILD_MARGIN_TILES = 6;
 export const ROAD_COST_PER_TILE = 2;
 
 /**
+ * Time in milliseconds for one villager (buildPower = 1) to construct one road tile.
+ */
+export const ROAD_BUILD_TIME_MS = 2500;
+
+/**
  * Movement multiplier while a unit stands on a road tile. Kept modest: a road
  * is a convenience for base logistics, not a teleport.
  */

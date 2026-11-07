@@ -21,6 +21,9 @@ export class TerrainLayer {
   private playerRoads = new Set<string>();
   private playerRoadTiles: Array<{ gridX: number; gridY: number }> = [];
   private playerRoadPool: Phaser.GameObjects.Image[] = [];
+  private unconstructedRoadTiles: Array<{ gridX: number; gridY: number; progress: number }> = [];
+  private unconstructedRoadPool: Phaser.GameObjects.Image[] = [];
+  private foundationGraphicPool: Phaser.GameObjects.Graphics[] = [];
   private terrain: MapTerrain = TERRAIN_BATTLEFIELD;
   private lastViewportX = -999999;
   private lastViewportY = -999999;
@@ -62,7 +65,10 @@ export class TerrainLayer {
    * keys are kept: the renderer derives the texture variant from the tile
    * coordinates, so nothing else has to be replicated.
    */
-  setPlayerRoads(tiles: Iterable<{ gridX: number; gridY: number }>) {
+  setPlayerRoads(
+    tiles: Iterable<{ gridX: number; gridY: number }>,
+    unconstructedTiles: Iterable<{ gridX: number; gridY: number; progress: number }> = []
+  ) {
     this.playerRoads.clear();
     this.playerRoadTiles = [];
     for (const tile of tiles) {
@@ -70,6 +76,10 @@ export class TerrainLayer {
       if (this.playerRoads.has(key)) continue;
       this.playerRoads.add(key);
       this.playerRoadTiles.push(tile);
+    }
+    this.unconstructedRoadTiles = [];
+    for (const tile of unconstructedTiles) {
+      this.unconstructedRoadTiles.push(tile);
     }
     this.invalidateViewport();
   }
@@ -189,10 +199,62 @@ export class TerrainLayer {
       // reading as one repeated stamp.
       const shade = 232 + Math.floor(hash2(tile.gridX, tile.gridY, 0x5b3c) * 23);
       image.setTint((shade << 16) | (shade << 8) | shade);
+      image.setAlpha(1.0);
       image.setVisible(true);
     }
     for (let i = playerRoadIdx; i < this.playerRoadPool.length; i++) {
       this.playerRoadPool[i].setVisible(false);
+    }
+
+    // Unconstructed road tiles (foundations)
+    let unbuiltIdx = 0;
+    for (const tile of this.unconstructedRoadTiles) {
+      if (tile.gridX < minGx || tile.gridX > maxGx || tile.gridY < minGy || tile.gridY > maxGy) continue;
+
+      let image = this.unconstructedRoadPool[unbuiltIdx];
+      if (!image) {
+        image = this.scene.add.image(0, 0, 'tile_dirt');
+        image.setDepth(-99995);
+        image.setVisible(false);
+        this.unconstructedRoadPool.push(image);
+      }
+
+      let gfx = this.foundationGraphicPool[unbuiltIdx];
+      if (!gfx) {
+        gfx = this.scene.add.graphics();
+        gfx.setDepth(-99994);
+        gfx.setVisible(false);
+        this.foundationGraphicPool.push(gfx);
+      }
+      unbuiltIdx++;
+
+      const variant = (Math.floor(hash2(tile.gridX, tile.gridY, 0x7a11) * 3) % 3) + 1;
+      const texKey = this.scene.textures.exists(`tile_dirt_${variant}`)
+        ? `tile_dirt_${variant}`
+        : 'tile_dirt';
+      if (image.texture.key !== texKey) image.setTexture(texKey);
+
+      const pos = gridToScreen(tile.gridX, tile.gridY);
+      image.setPosition(pos.x, pos.y);
+      const shade = 210 + Math.floor(hash2(tile.gridX, tile.gridY, 0x5b3c) * 23);
+      image.setTint((shade << 16) | (shade << 8) | shade);
+      image.setAlpha(0.45);
+      image.setVisible(true);
+
+      gfx.clear();
+      gfx.lineStyle(1.5, 0xf59e0b, 0.85);
+      gfx.beginPath();
+      gfx.moveTo(pos.x, pos.y - 16);
+      gfx.lineTo(pos.x + 32, pos.y);
+      gfx.lineTo(pos.x, pos.y + 16);
+      gfx.lineTo(pos.x - 32, pos.y);
+      gfx.closePath();
+      gfx.strokePath();
+      gfx.setVisible(true);
+    }
+    for (let i = unbuiltIdx; i < this.unconstructedRoadPool.length; i++) {
+      this.unconstructedRoadPool[i].setVisible(false);
+      this.foundationGraphicPool[i]?.setVisible(false);
     }
   }
 }

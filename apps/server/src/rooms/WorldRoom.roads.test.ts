@@ -268,17 +268,28 @@ describe('handlePlaceRoad', () => {
 });
 
 describe('handleRemoveRoad', () => {
-  it('removes only the caller’s tiles and never refunds', () => {
+  it('refunds wood when removing an unconstructed road, but never refunds a finished road', () => {
     const room = createRoom();
     const player = addPlayer(room, 'owner', 100);
     const client = createClient();
     placeRoad(room, client, [{ x: 20, y: 20 }, { x: 21, y: 20 }]);
-    const woodAfterBuild = player.wood;
+    expect(player.wood).toBe(100 - 2 * ROAD_COST_PER_TILE);
 
-    removeRoad(room, client, [{ x: 20, y: 20 }, { x: 21, y: 20 }]);
+    // 1. Remove one unconstructed tile -> refunds ROAD_COST_PER_TILE
+    removeRoad(room, client, [{ x: 20, y: 20 }]);
+    expect(room.state.roads.size).toBe(1);
+    expect(player.wood).toBe(100 - ROAD_COST_PER_TILE);
 
+    // 2. Finish constructing the remaining tile
+    const remainingRoad = room.state.roads.get(roadTileKey(21, 20))!;
+    remainingRoad.isConstructed = true;
+    (room as any).roads.invalidate();
+
+    // 3. Remove finished road -> no refund
+    const woodBeforeRemoveFinished = player.wood;
+    removeRoad(room, client, [{ x: 21, y: 20 }]);
     expect(room.state.roads.size).toBe(0);
-    expect(player.wood).toBe(woodAfterBuild);
+    expect(player.wood).toBe(woodBeforeRemoveFinished);
   });
 
   it('leaves another owner’s tiles alone', () => {
@@ -317,7 +328,7 @@ describe('road speed bonus', () => {
     return unit;
   }
 
-  it('moves farther per tick on a road than on grass', () => {
+  it('moves farther per tick on a finished road than on grass or unconstructed road', () => {
     const grass = createRoom();
     addPlayer(grass, 'owner', 100);
     const grassUnit = walker(grass);
@@ -326,6 +337,9 @@ describe('road speed bonus', () => {
     addPlayer(road, 'owner', 100);
     const roadUnit = walker(road);
     placeRoad(road, createClient(), [{ x: 20, y: 20 }]);
+    const placedRoad = road.state.roads.get(roadTileKey(20, 20))!;
+    placedRoad.isConstructed = true;
+    (road as any).roads.invalidate();
 
     tickRoom(grass, [50, 50, 50]);
     tickRoom(road, [50, 50, 50]);
@@ -336,7 +350,115 @@ describe('road speed bonus', () => {
     expect(roadDistance).toBeGreaterThan(grassDistance);
   });
 
+  it('does not apply the speed multiplier on an unconstructed road', () => {
+    const grass = createRoom();
+    addPlayer(grass, 'owner', 100);
+    const grassUnit = walker(grass);
+
+    const unbuilt = createRoom();
+    addPlayer(unbuilt, 'owner', 100);
+    const unbuiltUnit = walker(unbuilt);
+    placeRoad(unbuilt, createClient(), [{ x: 20, y: 20 }]);
+    // isConstructed is false by default
+
+    tickRoom(grass, [50, 50, 50]);
+    tickRoom(unbuilt, [50, 50, 50]);
+
+    expect(unbuiltUnit.x).toBeCloseTo(grassUnit.x, 5);
+  });
+
   it('applies the multiplier while standing on a road tile', () => {
     expect(ROAD_SPEED_MULTIPLIER).toBeGreaterThan(1);
+  });
+});
+
+describe('villagers building roads', () => {
+  function tickRoom(room: WorldRoom, deltasMs: number[]) {
+    for (const delta of deltasMs) (room as any).update(delta);
+  }
+
+  function addVillager(room: WorldRoom, id = 'v1', x = 20, y = 20) {
+    const unit = new UnitState();
+    unit.id = id;
+    unit.ownerId = 'owner';
+    unit.type = 'VILLAGER';
+    unit.speed = UNIT_BLUEPRINTS.VILLAGER.speed;
+    unit.hp = 25;
+    unit.maxHp = 25;
+    unit.actionState = 'IDLE';
+    unit.x = x;
+    unit.y = y;
+    room.state.units.set(unit.id, unit);
+    return unit;
+  }
+
+  it('assigns selected villagers to construct road tiles sequentially', () => {
+    const room = createRoom();
+    addPlayer(room, 'owner', 100);
+    const villager = addVillager(room, 'v1', 20, 20);
+    const client = createClient();
+
+    // Place 2 road tiles with villager selected
+    (room as any).commands.handlePlaceRoad(client, {
+      tiles: [{ x: 20, y: 20 }, { x: 21, y: 20 }],
+      unitIds: ['v1']
+    });
+
+    const road1 = room.state.roads.get(roadTileKey(20, 20))!;
+    const road2 = room.state.roads.get(roadTileKey(21, 20))!;
+    expect(road1.isConstructed).toBe(false);
+    expect(road2.isConstructed).toBe(false);
+    expect(villager.actionState).toBe('BUILDING');
+    expect(villager.targetEntityId).toBe(road1.id);
+
+    // Advance 2500ms -> road 1 finishes
+    tickRoom(room, [1000, 1000, 600]);
+    expect(road1.isConstructed).toBe(true);
+    expect(road1.constructionProgress).toBe(100);
+
+    // Villager automatically moved to road 2
+    expect(villager.targetEntityId).toBe(road2.id);
+
+    // Advance another 2500ms -> road 2 finishes and villager becomes idle
+    tickRoom(room, [1000, 1000, 600]);
+    expect(road2.isConstructed).toBe(true);
+    expect(villager.actionState).toBe('IDLE');
+  });
+
+  it('allows right-clicking an unconstructed road to assign builders', () => {
+    const room = createRoom();
+    addPlayer(room, 'owner', 100);
+    const villager = addVillager(room, 'v1', 20, 20);
+    const client = createClient();
+
+    placeRoad(room, client, [{ x: 20, y: 20 }]);
+    const road = room.state.roads.get(roadTileKey(20, 20))!;
+    expect(road.isConstructed).toBe(false);
+    expect(villager.actionState).toBe('IDLE');
+
+    (room as any).commands.handleBuildTarget(client, {
+      unitIds: ['v1'],
+      buildingId: road.id
+    });
+
+    expect(villager.actionState).toBe('BUILDING');
+    expect(villager.targetEntityId).toBe(road.id);
+  });
+
+  it('cancels unconstructed road via handleCancelBuilding and refunds full wood', () => {
+    const room = createRoom();
+    const player = addPlayer(room, 'owner', 100);
+    const client = createClient();
+
+    placeRoad(room, client, [{ x: 20, y: 20 }]);
+    expect(player.wood).toBe(100 - ROAD_COST_PER_TILE);
+
+    const road = room.state.roads.get(roadTileKey(20, 20))!;
+    (room as any).commands.handleCancelBuilding(client, {
+      buildingId: road.id
+    });
+
+    expect(room.state.roads.has(road.id)).toBe(false);
+    expect(player.wood).toBe(100);
   });
 });

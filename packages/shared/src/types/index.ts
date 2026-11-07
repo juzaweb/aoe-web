@@ -377,6 +377,7 @@ export interface RoadTilePayload {
  */
 export interface PlaceRoadPayload {
   tiles: RoadTilePayload[];
+  unitIds?: string[];
 }
 
 /** Removes the sender's own road tiles. Never refunds the wood. */

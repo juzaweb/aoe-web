@@ -191,7 +191,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
       {
         mode: 'erase',
         label: 'Xoá',
-        hint: 'Kéo để xoá đường của bạn. Không hoàn lại gỗ.',
+        hint: 'Kéo để xoá đường của bạn. Hoàn lại 100% gỗ nếu chưa xây.',
         icon: <Eraser size={20} />
       }
     ];
