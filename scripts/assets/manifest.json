@@ -278,7 +278,7 @@
       "source": "oga.bleed-galata-tower",
       "file": "pack",
       "entry": "Galata-Tower_0003.png",
-      "op": { "alphaFloor": 160, "crop": "alpha", "fit": true, "matchLum": 74.8, "anchor": "bottom-center" },
+      "op": { "alphaFloor": 180, "crop": "alpha", "fit": true, "matchLum": 74.8, "anchor": "bottom-center" },
       "out": "apps/client/public/assets/buildings/tower.png",
       "canvas": [160, 360]
     },

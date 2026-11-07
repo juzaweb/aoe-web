@@ -453,8 +453,8 @@
       "lumGain": 0.722,
       "out": "apps/client/public/assets/buildings/tower.png",
       "page": "https://opengameart.org/content/galata-tower-bleeds-game-art",
-      "scale": 0.5357,
-      "sha256": "62d12dd0f28dfbefdaa2f974630c2891e347dcfcb477f258cddca322a065ff9a",
+      "scale": 0.5365,
+      "sha256": "3bd814f482b8575b4b195ec71e4670057d65bf83a5928f38582aacb072c409f2",
       "source": "oga.bleed-galata-tower",
       "sourceSha256": "439f82731beb070be6303bb9338cdbd49951f7a0b459d273db75fa2a4cd9abb3",
       "topInset": 9

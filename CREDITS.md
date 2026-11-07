@@ -139,10 +139,11 @@ corner ~12–17% off centre and fails `build.py --check`. Nothing is redrawn.
 - **License:** [CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/)
 - **Used for:** `assets/buildings/tower.png`.
 
-**Changes made.** One of the pack's eight directions (`Galata-Tower_0003`) is
+**Changes made.** One of the pack's eight directions (`Galata-Tower_0003`,
+chosen because its bottom row measures the smallest base span and offset) is
 cropped to alpha, scaled to the client's 160x360 canvas and luminance-matched.
 The source is a tall, round tower whose anti-aliased base would otherwise widen
-the lowest opaque row past the `iso_base` gate after downscaling, so a 160 alpha
+the lowest opaque row past the `iso_base` gate after downscaling, so a 180 alpha
 floor trims that fringe before the crop and again after the fit. No artwork is
 redrawn.
 
