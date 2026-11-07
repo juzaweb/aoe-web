@@ -62,9 +62,9 @@ export class DecorLayer {
     this.lastViewportZoom = cam.zoom;
 
     const terrain = this.scene.terrainLayout;
-    const blocked = this.collectBlocked();
     const margin = 220;
     const bounds = this.tileBounds(view.left - margin, view.top - margin, view.right + margin, view.bottom + margin, terrain);
+    const blocked = this.collectBlocked(bounds);
     const showForbs = cam.zoom >= FORB_LOD_ZOOM;
 
     let forbIdx = 0;
@@ -168,13 +168,16 @@ export class DecorLayer {
   }
 
   /**
-   * Every tile a resource node or a building footprint occupies.
+   * Every tile a resource node, a painted road or a building footprint occupies.
    *
    * Read from the room state when it is available: resource sprites spawn over
    * several frames (`flushResourceSpawns`), so a sprite-based set would let
    * flowers grow under a tree that appears one frame later.
+   *
+   * Roads are state, so a kingdom can hold thousands of them; only the tiles the
+   * current viewport can show are collected, which keeps a pan cheap.
    */
-  private collectBlocked(): Set<string> {
+  private collectBlocked(bounds: { minGx: number; maxGx: number; minGy: number; maxGy: number }): Set<string> {
     const blocked = new Set<string>();
     const state = this.scene.room?.state as
       | {
@@ -194,6 +197,19 @@ export class DecorLayer {
         const gy = container.getData('gridY') as number | undefined;
         if (gx !== undefined && gy !== undefined) blocked.add(tileKey(gx, gy));
       }
+    }
+    if (state?.roads) {
+      state.roads.forEach((road: any) => {
+        if (
+          road.gridX < bounds.minGx ||
+          road.gridX > bounds.maxGx ||
+          road.gridY < bounds.minGy ||
+          road.gridY > bounds.maxGy
+        ) {
+          return;
+        }
+        blocked.add(tileKey(road.gridX, road.gridY));
+      });
     }
     if (state?.buildings) {
       state.buildings.forEach((building: any) => {

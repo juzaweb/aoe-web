@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TERRAIN_BATTLEFIELD, TERRAIN_KINGDOM, isDirtRoadTile } from '@chien-quoc/shared';
+import { TERRAIN_BATTLEFIELD, TERRAIN_KINGDOM } from '@chien-quoc/shared';
 import {
   MAP_APRON_TILES,
   borderDecorAt,
@@ -11,8 +11,8 @@ import {
 /**
  * The scatter is a pure function of the tile, so these tests pin the three
  * properties the renderer relies on: determinism (no flicker between frames or
- * clients), exclusion (never on a road, a resource or a building) and a density
- * low enough that the map still reads as terrain, not as a flower bed.
+ * clients), exclusion (never on a blocked resource, building or road tile) and a
+ * density low enough that the map still reads as terrain, not as a flower bed.
  */
 const terrain = TERRAIN_BATTLEFIELD;
 const EMPTY: ReadonlySet<string> = new Set<string>();
@@ -40,15 +40,6 @@ describe('decorAt', () => {
     for (let gx = 0; gx < 20; gx++) {
       for (let gy = 0; gy < 20; gy++) {
         expect(decorAt(gx, gy, terrain, EMPTY)).toEqual(decorAt(gx, gy, terrain, EMPTY));
-      }
-    }
-  });
-
-  it('never grows on a road tile', () => {
-    for (let gx = 0; gx < terrain.width; gx++) {
-      for (let gy = 0; gy < terrain.height; gy++) {
-        if (!isDirtRoadTile(gx, gy, terrain)) continue;
-        expect(decorAt(gx, gy, terrain, EMPTY), `road at ${gx},${gy}`).toBeNull();
       }
     }
   });

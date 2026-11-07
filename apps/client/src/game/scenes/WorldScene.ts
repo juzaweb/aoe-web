@@ -497,22 +497,17 @@ export class WorldScene extends Phaser.Scene {
     this.load.image('res_node_BERRY_BUSH', `/assets/resources/berry.png?${v}`);
 
     // Preload Age of Empires 2 Grass Terrain textures
-    // tv=8: the road stamps were regenerated from the generated dirt texture.
     const tv = 'v=8';
     this.load.image('tile_grass_1', `/assets/terrain/grass_1.png?${tv}`);
     this.load.image('tile_grass_2', `/assets/terrain/grass_2.png?${tv}`);
     this.load.image('tile_grass_3', `/assets/terrain/grass_3.png?${tv}`);
     this.load.image('tile_grass', `/assets/terrain/grass.png?${tv}`);
 
-    // Preload Age of Empires 2 Dirt Road Terrain textures & organic road stamps
+    // Preload Age of Empires 2 Dirt Road Terrain textures
     this.load.image('tile_dirt_1', `/assets/terrain/dirt_1.png?${tv}`);
     this.load.image('tile_dirt_2', `/assets/terrain/dirt_2.png?${tv}`);
     this.load.image('tile_dirt_3', `/assets/terrain/dirt_3.png?${tv}`);
     this.load.image('tile_dirt', `/assets/terrain/dirt.png?${tv}`);
-    this.load.image('road_stamp', `/assets/terrain/road_stamp.png?${tv}`);
-    this.load.image('road_stamp_1', `/assets/terrain/road_stamp_1.png?${tv}`);
-    this.load.image('road_stamp_2', `/assets/terrain/road_stamp_2.png?${tv}`);
-    this.load.image('road_stamp_3', `/assets/terrain/road_stamp_3.png?${tv}`);
 
     // Decorative ground cover and the border forest. Single images built by
     // `scripts/assets/build.py` (targets `decor.*`), listed in `decorArt.ts`.
@@ -536,7 +531,7 @@ export class WorldScene extends Phaser.Scene {
     this.entityRenderer = new EntityRenderer(this);
     this.entityRenderer.initUnitAnimations();
 
-    // 1. Terrain: pre-allocated tile and road-stamp pools, rendered per viewport
+    // 1. Terrain: pre-allocated tile and road-tile pools, rendered per viewport
     // across a 220x220 map.
     this.terrain = new TerrainLayer(this);
     this.terrain.create();

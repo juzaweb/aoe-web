@@ -1,4 +1,4 @@
-import { MapTerrain, isDirtRoadTile } from '@chien-quoc/shared';
+import { MapTerrain } from '@chien-quoc/shared';
 import { fbm } from '../game/render/visualVariation.js';
 
 /**
@@ -74,8 +74,8 @@ export function buildGroundPixels(
 ): Uint8ClampedArray<ArrayBuffer> {
   const pixels: Uint8ClampedArray<ArrayBuffer> = new Uint8ClampedArray(MINIMAP_SIZE * MINIMAP_SIZE * 4);
   const scale = terrain.width / MINIMAP_SIZE;
-  // A kingdom has no generated roads, so its player-painted tiles come in as
-  // coordinates. The terrain test still owns the battlefield layout.
+  // Every road tile is player-painted room state, so the raster needs the
+  // coordinates; nothing about roads is baked into the layout.
   const playerTiles = new Set<string>();
   if (roads) {
     for (const road of roads) playerTiles.add(`${road.gridX},${road.gridY}`);
@@ -84,7 +84,7 @@ export function buildGroundPixels(
     const gy = Math.min(terrain.height - 1, Math.floor(py * scale));
     for (let px = 0; px < MINIMAP_SIZE; px++) {
       const gx = Math.min(terrain.width - 1, Math.floor(px * scale));
-      const road = isDirtRoadTile(gx, gy, terrain) || playerTiles.has(`${gx},${gy}`);
+      const road = playerTiles.has(`${gx},${gy}`);
       const index = (py * MINIMAP_SIZE + px) * 4;
       if (road) {
         pixels[index] = MINIMAP_COLORS.road[0];

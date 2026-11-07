@@ -43,7 +43,6 @@ import {
   getBuildingMaxLevel,
   getUnitLevelStats,
   getPlayerUnitLevel,
-  isDirtRoadTile,
   mapSizeForZone
 } from '@chien-quoc/shared';
 import { WorldState } from '../schema/WorldState.js';
@@ -684,21 +683,14 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
   /**
    * Checks whether a footprint fits inside the playable area and does not overlap
-   * dirt roads or existing buildings. Resource nodes are handled separately so a
-   * returning player can still claim their deterministic spot.
+   * existing buildings. Resource nodes are handled separately so a returning
+   * player can still claim their deterministic spot.
    */
   private isFootprintFree(gx: number, gy: number, sizeX: number, sizeY: number): boolean {
     const margin = MAP_BUILD_MARGIN_TILES;
     const { mapWidth: width, mapHeight: height } = this.state;
     if (gx < margin || gy < margin) return false;
     if (gx + sizeX > width - margin || gy + sizeY > height - margin) return false;
-
-    const terrain = this.terrain;
-    for (let x = gx; x < gx + sizeX; x++) {
-      for (let y = gy; y < gy + sizeY; y++) {
-        if (isDirtRoadTile(x, y, terrain)) return false;
-      }
-    }
 
     let clear = true;
     this.state.buildings.forEach((b: BuildingState) => {

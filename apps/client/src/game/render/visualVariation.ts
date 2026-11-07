@@ -97,53 +97,6 @@ export function grassTint(gx: number, gy: number): number {
   return (r << 16) | (g << 8) | b;
 }
 
-export interface RoadStampLook {
-  /** Extra rotation from the spline tangent, radians. */
-  angle: number;
-  scale: number;
-  tint: number;
-  offsetX: number;
-  offsetY: number;
-  /** Scale of the shoulder stamp for this point, or null when there is none. */
-  shoulderScale: number | null;
-}
-
-const STAMP_WARM = { r: 240, g: 226, b: 204 };
-const STAMP_WHITE = { r: 255, g: 255, b: 255 };
-
-/**
- * Variation for one road stamp.
- *
- * `angle` is the spline tangent in screen space; the returned angle adds a small
- * jitter so the repeated stamp does not tile visibly. The offset is applied
- * perpendicular to the road, which widens the worn edge; 25% of points also get
- * a smaller, offset shoulder stamp so the road does not read as one clean band.
- */
-export function roadStampLook(
-  gx: number,
-  gy: number,
-  angle: number,
-  index: number
-): RoadStampLook {
-  const seed = index * 7919;
-  const a = hash2(gx, gy, seed + 1);
-  const b = hash2(gx, gy, seed + 2);
-  const c = hash2(gx, gy, seed + 3);
-  const d = hash2(gx, gy, seed + 4);
-  const offset = (c - 0.5) * 10;
-  return {
-    angle: angle + (a - 0.5) * 0.12,
-    scale: 0.92 + b * 0.2,
-    tint:
-      (Math.round(lerp(STAMP_WARM.r, STAMP_WHITE.r, d)) << 16) |
-      (Math.round(lerp(STAMP_WARM.g, STAMP_WHITE.g, d)) << 8) |
-      Math.round(lerp(STAMP_WARM.b, STAMP_WHITE.b, d)),
-    offsetX: -Math.sin(angle) * offset,
-    offsetY: Math.cos(angle) * offset,
-    shoulderScale: d < 0.25 ? 0.45 + c * 0.25 : null
-  };
-}
-
 export interface ResourceLook {
   scale: number;
   flipX: boolean;

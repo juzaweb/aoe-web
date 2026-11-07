@@ -4,10 +4,10 @@ import { WorldState } from '../schema/WorldState.js';
 /**
  * Lookup for the player-painted road network of one room.
  *
- * Roads are replicated state, not terrain: `isDirtRoadTile` in
- * `@chien-quoc/shared` describes the deterministic battlefield layout and must
- * stay free of per-room data. Everything that needs "is this tile a road"
- * (movement speed, building placement, portal search) goes through here.
+ * Roads are replicated state, not terrain: the only road tiles in the game are
+ * the ones a player painted, so this grid is the single source of truth.
+ * Everything that needs "is this tile a road" (movement speed, building
+ * placement, portal search) goes through here.
  *
  * The grid is one byte per tile and is rebuilt only when the road count changes
  * or a writer calls {@link invalidate}: a kingdom is 12,100 cells, and

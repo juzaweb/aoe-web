@@ -1,9 +1,8 @@
-import { BUILDING_BLUEPRINTS, isDirtRoadTile, roadTileKey, zoneKindOf } from '@chien-quoc/shared';
+import { BUILDING_BLUEPRINTS, roadTileKey, zoneKindOf } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { entityIds } from '../services/EntityIdAllocator.js';
-import { terrainOf } from './mapLayout.js';
 
 const PORTAL_BLUEPRINT = BUILDING_BLUEPRINTS.PORTAL;
 const PORTAL_MARGIN = 5;
@@ -76,10 +75,8 @@ function isPortalFootprintFree(
   }
 
   if (!options.ignoreRoads) {
-    const terrain = terrainOf(state);
     for (let x = gx; x < gx + sizeX; x++) {
       for (let y = gy; y < gy + sizeY; y++) {
-        if (isDirtRoadTile(x, y, terrain)) return false;
         if (state.roads.has(roadTileKey(x, y))) return false;
       }
     }
