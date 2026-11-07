@@ -42,7 +42,6 @@ import {
   SESSION_REPLACED_CLOSE,
   getBuildingLevelStats,
   getBuildingMaxLevel,
-  getEffectiveBuildingMaxHp,
   getEffectiveTrainTimeMs,
   getEffectiveUnitMaxHp,
   getUnitLevelStats,
@@ -79,6 +78,11 @@ import {
   applyUnitResearch,
   restoreBuildingUpgrade
 } from './upgrades.js';
+import {
+  applyTownCenterAura,
+  findTownCenterLevel,
+  ownedBuildingMaxHp
+} from './townCenterAura.js';
 import { otherZone, roomNameForZone, zoneKindOf } from '@chien-quoc/shared';
 import { randomUUID } from 'crypto';
 
@@ -672,8 +676,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         // LVL2/D7: a 73 h upgrade is spread over many sessions, so the saved
         // progress is restored instead of restarting the timer.
         restoreBuildingUpgrade(building, b.upgradeProgressMs, b.upgradeTimeMs);
-        const effectiveMaxHp = getEffectiveBuildingMaxHp(
-          b.type as BuildingType,
+        const effectiveMaxHp = ownedBuildingMaxHp(
+          b.type,
           building.level,
           townCenterLevel
         );
@@ -763,13 +767,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     const cached = this.townCenterLevelByOwner.get(ownerId);
     if (cached !== undefined) return cached;
 
-    let level = 0;
-    this.state.buildings.forEach((building: BuildingState) => {
-      if (building.ownerId === ownerId && building.type === 'TOWN_CENTER') {
-        level = Math.max(level, building.level);
-      }
-    });
-
+    const level = findTownCenterLevel(this.state, ownerId);
     const resolved = level > 0 ? level : 1;
     this.townCenterLevelByOwner.set(ownerId, resolved);
     return resolved;
@@ -798,35 +796,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    * infrastructure is never player-built and has no combat role.
    */
   private refreshTownCenterAura(ownerId: string): void {
-    const townCenterLevel = this.townCenterLevelOf(ownerId);
-
-    this.state.buildings.forEach((building: BuildingState) => {
-      if (building.ownerId !== ownerId || building.type === 'PORTAL') return;
-      const nextMaxHp = getEffectiveBuildingMaxHp(
-        building.type as BuildingType,
-        building.level,
-        townCenterLevel
-      );
-      if (nextMaxHp === building.maxHp) return;
-
-      const missingHp = Math.max(0, building.maxHp - building.hp);
-      building.maxHp = nextMaxHp;
-      building.hp = Math.max(0, nextMaxHp - missingHp);
-    });
-
-    this.state.units.forEach((unit: UnitState) => {
-      if (unit.ownerId !== ownerId) return;
-      const nextMaxHp = getEffectiveUnitMaxHp(
-        unit.type as UnitType,
-        unit.level,
-        townCenterLevel
-      );
-      if (nextMaxHp === unit.maxHp) return;
-
-      const missingHp = Math.max(0, unit.maxHp - unit.hp);
-      unit.maxHp = nextMaxHp;
-      unit.hp = Math.max(0, nextMaxHp - missingHp);
-    });
+    applyTownCenterAura(this.state, ownerId, this.townCenterLevelOf(ownerId));
   }
 
   /**
@@ -1421,8 +1391,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     const missingHp = Math.max(0, snapshot.maxHp - snapshot.hp);
     unit.maxHp = effectiveMaxHp;
     // A destination with a lower aura must not kill the unit in transit, so the
-    // preserved damage is capped at one point of health.
-    unit.hp = Math.max(1, effectiveMaxHp - missingHp);
+    // preserved damage is capped at one point of health (and never above max).
+    unit.hp = Math.min(effectiveMaxHp, Math.max(1, effectiveMaxHp - missingHp));
     unit.actionState = 'IDLE';
 
     entityIds.observe(snapshot.id);

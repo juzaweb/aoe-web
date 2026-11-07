@@ -331,8 +331,11 @@ export const App: React.FC = () => {
       };
 
       cb.onAdd('buildings', (b: any) => {
+        // Only the capital changes this value; keeping a listener on every
+        // building would re-run the owner check on every HP/queue update.
+        if (b.type !== 'TOWN_CENTER') return;
         const apply = () => {
-          if (b.ownerId === myPlayerIdRef.current && b.type === 'TOWN_CENTER') {
+          if (b.ownerId === myPlayerIdRef.current) {
             setTownCenterLevel(Math.max(1, b.level));
           }
         };

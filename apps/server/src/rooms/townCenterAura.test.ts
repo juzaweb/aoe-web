@@ -196,8 +196,26 @@ describe('town center aura refresh (phase 25)', () => {
     expect(villager.hp).toBe(villager.maxHp - (UNIT_BLUEPRINTS.VILLAGER.maxHp - 30));
   });
 
-  it('does not leak one owner\u2019s aura into another owner', () => {
+  it('keeps travel portals outside the aura', () => {
     const room = createRoom();
+    addPlayer(room, 'player-a');
+    addBuilding(room, { id: 'b_tc', ownerId: 'player-a' });
+    const portal = addBuilding(room, {
+      id: 'b_portal',
+      ownerId: 'player-a',
+      type: 'PORTAL',
+      gridX: 30,
+      gridY: 30
+    });
+    const baseMaxHp = portal.maxHp;
+
+    internals(room).setTownCenterLevel('player-a', 10);
+
+    expect(portal.maxHp).toBe(baseMaxHp);
+    expect(portal.hp).toBe(baseMaxHp);
+  });
+
+  it('does not leak one owner\u2019s aura into another owner', () => {    const room = createRoom();
     addPlayer(room, 'player-a');
     addPlayer(room, 'player-b');
     addBuilding(room, { id: 'b_tc_a', ownerId: 'player-a' });

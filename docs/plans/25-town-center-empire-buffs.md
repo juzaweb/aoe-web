@@ -99,6 +99,7 @@ Aura **cộng dồn** với cấp công trình và cấp lính: `maxHp = base(le
 | File | Thay đổi |
 | --- | --- |
 | `src/rooms/WorldRoom.ts` | Thêm `townCenterLevelByOwner: Map<string, number>` + `townCenterLevelOf(ownerId)` (fallback 1). Thêm `setTownCenterLevel(ownerId, level)` và `refreshTownCenterAura(ownerId)` quét building/unit của owner, tính lại `maxHp`, giữ `missingHp = oldMax − hp`. Gọi ở: restore xong, xây xong, nâng cấp xong, spawn unit, research xong. Sửa restore (`:642-644`, `:670-672`) dùng hàm hiệu dụng thay vì stats gốc. Threshold train (`:1552`) dùng `getEffectiveTrainTimeMs`. Thêm `townCenterLevelOf` vào port của `CommandSystem`. |
+| `src/rooms/townCenterAura.ts` | Rule aura tách khỏi room: `findTownCenterLevel`, `ownedBuildingMaxHp` (miễn trừ `PORTAL`) và `applyTownCenterAura` (giữ lượng HP đã mất). |
 | `src/rooms/upgrades.ts` | `applyBuildingUpgrade(building, aura = 1)` dùng `round(stats.maxHp × aura)`. `applyUnitResearch(..., tcLevel = 1)` dùng `getEffectiveUnitMaxHp`. Mọi call site cũ mặc định 1, không phá test hiện có. |
 | `src/rooms/CommandSystem.ts` | Khi đặt nhà: kiểm tra `isBuildingUnlocked(type, tcLevel)` → từ chối bằng `RejectCode.PREREQUISITE` với thông điệp "Requires Town Center level N". `maxHp` khởi tạo dùng `getEffectiveBuildingMaxHp(type, 1, tcLevel)`. |
 | `src/rooms/CombatSystem.ts` | Hai chỗ trừ máu (`:287` đánh unit, `:310` đánh building) dùng `getEffectiveUnitAttackPower(type, unit.level, townCenterLevelOf(unit.ownerId))` thay cho `getUnitLevelStats(...).attackPower`. Damage của Tower (`:358`) giữ nguyên. |
