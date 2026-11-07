@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { RotateCw, Smartphone } from 'lucide-react';
 
 interface OrientationGateProps {
@@ -17,6 +18,7 @@ interface OrientationGateProps {
  * rotating, so a tap cannot slip through into a half-visible HUD.
  */
 export const OrientationGate: React.FC<OrientationGateProps> = ({ visible }) => {
+  const { t } = useTranslation();
   if (!visible) return null;
 
   return (
@@ -29,10 +31,10 @@ export const OrientationGate: React.FC<OrientationGateProps> = ({ visible }) => 
         <RotateCw size={22} className="absolute -right-6 -top-2 animate-spin text-amber-300" />
       </div>
       <h2 className="font-medieval text-lg font-bold tracking-wider text-amber-300">
-        XOAY NGANG MÁY
+        {t('orientation.title')}
       </h2>
       <p className="max-w-xs text-xs leading-relaxed text-slate-300">
-        Chiến Quốc cần màn hình nằm ngang để hiện bản đồ, minimap và thanh lệnh cùng lúc.
+        {t('orientation.body')}
       </p>
     </div>
   );

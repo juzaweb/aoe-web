@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Hand,
   Landmark,
@@ -108,6 +109,7 @@ export const MobileCommandBar: React.FC<MobileCommandBarProps> = ({
   onCenterBase,
   onCancelArmed
 }) => {
+  const { t } = useTranslation();
   const canCommand = hasUnits || hasOwnBuilding;
 
   return (
@@ -117,79 +119,79 @@ export const MobileCommandBar: React.FC<MobileCommandBarProps> = ({
     >
       {armed !== null && (
         <CommandButton
-          label="Huỷ lệnh"
+          label={t('mobile.cancelOrder')}
           icon={<X size={18} className="text-red-300" />}
           onClick={onCancelArmed}
           active
-          title="Huỷ lệnh đang chờ"
+          title={t('mobile.cancelOrderTitle')}
         />
       )}
 
       <CommandButton
-        label="Ra lệnh"
+        label={t('mobile.command')}
         icon={<MousePointerClick size={18} />}
         onClick={onArmContextual}
         active={armed === 'CONTEXT'}
         disabled={!canCommand}
-        title="Chạm điểm đích: đánh / thu hoạch / vào cổng / di chuyển"
+        title={t('mobile.commandTitle')}
       />
       <CommandButton
-        label="Đánh"
+        label={t('mobile.attack')}
         icon={<Swords size={18} />}
         onClick={onArmAttackMove}
         active={armed === 'ATTACK_MOVE'}
         disabled={!hasUnits}
-        title="Đánh theo đường (attack-move)"
+        title={t('mobile.attackTitle')}
       />
       <CommandButton
-        label="Tuần tra"
+        label={t('mobile.patrol')}
         icon={<Route size={18} />}
         onClick={onArmPatrol}
         active={armed === 'PATROL'}
         disabled={!hasUnits}
-        title="Tuần tra tới điểm chạm"
+        title={t('mobile.patrolTitle')}
       />
       <CommandButton
-        label="Dừng"
+        label={t('mobile.stop')}
         icon={<Hand size={18} />}
         onClick={onStop}
         disabled={!hasUnits}
-        title="Dừng lệnh hiện tại"
+        title={t('mobile.stopTitle')}
       />
       <CommandButton
-        label="Thế trận"
+        label={t('mobile.stance')}
         icon={<Shield size={18} />}
         onClick={onCycleStance}
         disabled={!hasUnits}
-        title="Đổi thế trận (chủ động / phòng thủ / cố thủ / không đánh)"
+        title={t('mobile.stanceTitle')}
       />
 
       <div className="mx-0.5 h-8 w-px shrink-0 bg-slate-700" />
 
       <CommandButton
-        label="Chọn vùng"
+        label={t('mobile.boxSelect')}
         icon={<SquareDashed size={18} />}
         onClick={onToggleBoxSelect}
         active={boxSelectArmed}
-        title="Bật rồi kéo một lần để chọn nhiều quân"
+        title={t('mobile.boxSelectTitle')}
       />
       <CommandButton
-        label="Bỏ chọn"
+        label={t('mobile.clear')}
         icon={<X size={18} />}
         onClick={onClearSelection}
         disabled={!canCommand}
-        title="Bỏ chọn toàn bộ"
+        title={t('mobile.clearTitle')}
       />
 
       <div className="mx-0.5 h-8 w-px shrink-0 bg-slate-700" />
 
-      <CommandButton label="−" icon={<Minus size={18} />} onClick={onZoomOut} title="Thu nhỏ" />
-      <CommandButton label="+" icon={<Plus size={18} />} onClick={onZoomIn} title="Phóng to" />
+      <CommandButton label="−" icon={<Minus size={18} />} onClick={onZoomOut} title={t('mobile.zoomOut')} />
+      <CommandButton label="+" icon={<Plus size={18} />} onClick={onZoomIn} title={t('mobile.zoomIn')} />
       <CommandButton
-        label="Nhà chính"
+        label={t('mobile.home')}
         icon={<Landmark size={18} />}
         onClick={onCenterBase}
-        title="Về nhà chính"
+        title={t('mobile.homeTitle')}
       />
     </div>
   );

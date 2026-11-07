@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import * as Phaser from 'phaser';
 import { Room } from '@colyseus/sdk';
 import { Eye, X } from 'lucide-react';
@@ -23,6 +24,7 @@ interface SpectatorOverlayProps {
  * the server refuses commands from the spectator session regardless.
  */
 export const SpectatorOverlay: React.FC<SpectatorOverlayProps> = ({ room, target, onClose }) => {
+  const { t } = useTranslation();
   const gameRef = useRef<Phaser.Game | null>(null);
   const sceneRef = useRef<WorldScene | null>(null);
 
@@ -41,24 +43,24 @@ export const SpectatorOverlay: React.FC<SpectatorOverlayProps> = ({ room, target
         <Eye size={18} className="shrink-0 text-amber-400" />
         <div className="min-w-0 flex-1">
           <h2 className="truncate font-medieval text-sm font-bold tracking-wider text-amber-200">
-            ĐANG QUAN SÁT · {target.name}
+            {t('spectator.title', { name: target.name })}
           </h2>
           <p className="truncate text-[11px] text-slate-400">
             <span
               className="mr-1 inline-block h-2 w-2 rounded-full border border-white/40 align-middle"
               style={{ backgroundColor: target.color }}
             />
-            Nhà chính cấp {target.townCenterLevel} · Chỉ xem, không thể ra lệnh
+            {t('spectator.level', { level: target.townCenterLevel })}
           </p>
         </div>
         <button
           type="button"
           onClick={onClose}
-          aria-label="Đóng cửa sổ quan sát"
+          aria-label={t('spectator.close')}
           className="flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:border-red-500 hover:text-red-300"
         >
           <X size={16} />
-          Đóng
+          {t('build.close')}
         </button>
       </header>
 
@@ -85,7 +87,7 @@ export const SpectatorOverlay: React.FC<SpectatorOverlayProps> = ({ room, target
           <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80">
             <div className="flex flex-col items-center gap-3">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
-              <span className="text-sm text-slate-300">Đang mở vương quốc...</span>
+              <span className="text-sm text-slate-300">{t('spectator.loading')}</span>
             </div>
           </div>
         )}

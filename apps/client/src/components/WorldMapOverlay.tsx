@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronRight, Eye, Map as MapIcon, Shield, Swords, X } from 'lucide-react';
 import { RAID_MAX_UNITS, WorldMapEntry, WorldMapPayload } from '@chien-quoc/shared';
 import { fetchWorldMap } from '../auth/api.js';
@@ -39,6 +40,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   onAttack,
   onSpectate
 }) => {
+  const { t } = useTranslation();
   const [payload, setPayload] = useState<WorldMapPayload | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -92,10 +94,10 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         <MapIcon size={18} className="text-amber-400" />
         <div className="min-w-0 flex-1">
           <h2 className="font-medieval text-sm font-bold tracking-wider text-amber-200">
-            BẢN ĐỒ THẾ GIỚI
+            {t('worldMap.title')}
           </h2>
           <p className="truncate text-[11px] text-slate-400">
-            Các nước trong vòng 5 cấp Nhà chính của bạn · Bạn đang ở cấp {selfLevel || '—'}
+            {t('worldMap.subtitle', { level: selfLevel || '—' })}
           </p>
         </div>
         <button
@@ -103,12 +105,12 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           onClick={reload}
           className="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:border-amber-500 hover:text-amber-200"
         >
-          Làm mới
+          {t('worldMap.refresh')}
         </button>
         <button
           type="button"
           onClick={onClose}
-          aria-label="Đóng bản đồ"
+          aria-label={t('worldMap.close')}
           className="rounded border border-slate-700 p-1 text-slate-300 hover:border-red-500 hover:text-red-300"
         >
           <X size={18} />
@@ -134,7 +136,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             viewBox={`${bounds.minX - 10} ${bounds.minY - 10} ${bounds.width + 20} ${bounds.height + 20}`}
             className="h-full w-full"
             role="img"
-            aria-label="Bản đồ các nước lân cận"
+            aria-label={t('worldMap.aria')}
           >
             {payload?.neighbors.map((entry) => {
               const tile = tiles.get(entry.userId);
@@ -197,7 +199,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 fill="#f8fafc"
                 className="pointer-events-none select-none"
               >
-                {selfName.slice(0, 9) || 'Bạn'}
+                {selfName.slice(0, 9) || t('worldMap.you')}
               </text>
               <text
                 x={0}
@@ -207,7 +209,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 fill="#e2e8f0"
                 className="pointer-events-none select-none"
               >
-                Bạn · Lv {selfLevel || '—'}
+                {t('worldMap.selfTile', { level: selfLevel || '—' })}
               </text>
             </g>
           </svg>
@@ -216,14 +218,14 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         {/* Detail panel */}
         <aside className="flex w-full shrink-0 flex-col gap-2 rounded-lg border border-slate-800 bg-slate-900/80 p-3 md:w-72">
           <div className="flex items-center gap-2 text-[11px] text-slate-400">
-            <span className="inline-block h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Yếu hơn
-            <span className="ml-2 inline-block h-2.5 w-2.5 rounded-sm bg-yellow-500" /> Ngang cấp
-            <span className="ml-2 inline-block h-2.5 w-2.5 rounded-sm bg-red-500" /> Mạnh hơn
+            <span className="inline-block h-2.5 w-2.5 rounded-sm bg-emerald-500" /> {t('worldMap.legendWeaker')}
+            <span className="ml-2 inline-block h-2.5 w-2.5 rounded-sm bg-yellow-500" /> {t('worldMap.legendEqual')}
+            <span className="ml-2 inline-block h-2.5 w-2.5 rounded-sm bg-red-500" /> {t('worldMap.legendStronger')}
           </div>
 
           {!selected && (
             <p className="text-[11px] leading-relaxed text-slate-400">
-              Chọn một ô trên bản đồ để xem thông tin nước đó.
+              {t('worldMap.pick')}
             </p>
           )}
 
@@ -239,9 +241,9 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-1 text-[11px] text-slate-300">
-                <span className="text-slate-400">Nhà chính</span>
-                <span className="text-right font-semibold">Cấp {selected.townCenterLevel}</span>
-                <span className="text-slate-400">Chênh lệch</span>
+                <span className="text-slate-400">{t('worldMap.townCenter')}</span>
+                <span className="text-right font-semibold">{t('worldMap.level', { level: selected.townCenterLevel })}</span>
+                <span className="text-slate-400">{t('worldMap.delta')}</span>
                 <span className="text-right font-semibold">
                   {selected.townCenterLevel - selfLevel > 0 ? '+' : ''}
                   {selected.townCenterLevel - selfLevel}
@@ -254,26 +256,26 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                   {selected.blockReason}
                   {selected.shieldUntil > 0 && (
                     <span className="text-slate-500">
-                      · còn {formatRemaining(selected.shieldUntil)}
+                      {t('worldMap.remaining', { time: formatRemaining(selected.shieldUntil, t) })}
                     </span>
                   )}
                   {selected.lockedUntil > 0 && (
                     <span className="text-slate-500">
-                      · còn {formatRemaining(selected.lockedUntil)}
+                      {t('worldMap.remaining', { time: formatRemaining(selected.lockedUntil, t) })}
                     </span>
                   )}
                 </p>
               )}
 
               <div className="mt-1 flex items-center justify-between text-[11px] text-slate-300">
-                <span>Quân mang theo</span>
+                <span>{t('worldMap.army')}</span>
                 <span className={tooMany ? 'font-bold text-red-400' : 'font-semibold'}>
                   {armySize}/{RAID_MAX_UNITS}
                 </span>
               </div>
               {armySize === 0 && (
                 <p className="text-[11px] italic text-amber-300/80">
-                  Hãy chọn quân trên bản đồ chính rồi mở lại bản đồ này.
+                  {t('worldMap.selectArmy')}
                 </p>
               )}
 
@@ -284,7 +286,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 className="mt-1 flex min-h-[42px] items-center justify-center gap-2 rounded border-2 border-red-600 bg-gradient-to-r from-red-800 to-red-900 text-xs font-bold uppercase tracking-wider text-red-50 transition-all enabled:hover:border-red-400 disabled:cursor-not-allowed disabled:border-slate-700 disabled:from-slate-800 disabled:to-slate-900 disabled:text-slate-500"
               >
                 <Swords size={15} />
-                {busy ? 'Đang xuất quân...' : 'Tập kích'}
+                {busy ? t('worldMap.attacking') : t('worldMap.attack')}
                 <ChevronRight size={14} />
               </button>
 
@@ -295,7 +297,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 className="flex min-h-[42px] items-center justify-center gap-2 rounded border border-amber-600/70 bg-slate-950/60 text-xs font-bold uppercase tracking-wider text-amber-200 transition-all enabled:hover:border-amber-400 disabled:cursor-not-allowed disabled:border-slate-700 disabled:text-slate-500"
               >
                 <Eye size={15} />
-                {busy ? 'Đang mở...' : 'Quan sát'}
+                {busy ? t('worldMap.opening') : t('worldMap.spectate')}
               </button>
             </div>
           )}
@@ -306,13 +308,18 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
 };
 
 /** `2 ngày 3 giờ` / `45 phút` — enough precision for a cooldown label. */
-function formatRemaining(until: number): string {
+function formatRemaining(
+  until: number,
+  t: (key: string, options?: Record<string, unknown>) => string
+): string {
   const ms = Math.max(0, until - Date.now());
   const minutes = Math.ceil(ms / 60_000);
-  if (minutes < 60) return `${minutes} phút`;
+  if (minutes < 60) return t('worldMap.minutes', { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} giờ`;
+  if (hours < 24) return t('worldMap.hours', { count: hours });
   const days = Math.floor(hours / 24);
   const restHours = hours % 24;
-  return restHours > 0 ? `${days} ngày ${restHours} giờ` : `${days} ngày`;
+  return restHours > 0
+    ? t('worldMap.daysHours', { days, hours: restHours })
+    : t('worldMap.days', { count: days });
 }

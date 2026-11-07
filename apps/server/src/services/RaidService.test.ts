@@ -105,7 +105,7 @@ describe('RaidService.listNeighbors', () => {
     const map = await RaidService.listNeighbors('attacker');
     const entry = map.neighbors.find((n) => n.userId === 'shielded')!;
     expect(entry.canAttack).toBe(false);
-    expect(entry.blockReason).toBe('Đang được bảo vệ');
+    expect(entry.blockReason).toBe('Protected');
   });
 
   it('blocks a defender this attacker recently lost to', async () => {
@@ -118,7 +118,7 @@ describe('RaidService.listNeighbors', () => {
     const map = await RaidService.listNeighbors('attacker');
     const entry = map.neighbors.find((n) => n.userId === 'rival')!;
     expect(entry.canAttack).toBe(false);
-    expect(entry.blockReason).toBe('Bạn vừa thua nước này');
+    expect(entry.blockReason).toBe('Recently defeated by you');
   });
 
   it('blocks a defender that is already being raided', async () => {
@@ -138,7 +138,7 @@ describe('RaidService.listNeighbors', () => {
     const map = await RaidService.listNeighbors('attacker');
     const entry = map.neighbors.find((n) => n.userId === 'busy')!;
     expect(entry.canAttack).toBe(false);
-    expect(entry.blockReason).toBe('Đang bị nước khác tấn công');
+    expect(entry.blockReason).toBe('Under attack by another empire');
   });
 });
 
@@ -186,7 +186,7 @@ describe('RaidService.startRaid', () => {
 
     await expect(
       RaidService.startRaid({ attackerId: 'attacker', defenderId: 'attacker', unitIds: ['u1'] })
-    ).rejects.toThrow('Không thể tấn công chính mình.');
+    ).rejects.toThrow('You cannot attack yourself.');
   });
 
   it('refuses a shielded defender and a locked pair', async () => {
@@ -196,7 +196,7 @@ describe('RaidService.startRaid', () => {
 
     await expect(
       RaidService.startRaid({ attackerId: 'attacker', defenderId: 'defender', unitIds: ['u1'] })
-    ).rejects.toThrow('đang được bảo vệ');
+    ).rejects.toThrow('This empire is protected');
 
     await prisma.player.update({ where: { id: 'defender' }, data: { shieldUntil: 0 } });
     await prisma.raidLock.create({
@@ -205,7 +205,7 @@ describe('RaidService.startRaid', () => {
 
     await expect(
       RaidService.startRaid({ attackerId: 'attacker', defenderId: 'defender', unitIds: ['u1'] })
-    ).rejects.toThrow('phải chờ hết thời gian khoá');
+    ).rejects.toThrow('wait for the lock to expire');
   });
 
   it('refuses an empty selection and a selection that is not in the home zone', async () => {
@@ -215,11 +215,11 @@ describe('RaidService.startRaid', () => {
 
     await expect(
       RaidService.startRaid({ attackerId: 'attacker', defenderId: 'defender', unitIds: [] })
-    ).rejects.toThrow('ít nhất một đơn vị');
+    ).rejects.toThrow('at least one unit');
 
     await expect(
       RaidService.startRaid({ attackerId: 'attacker', defenderId: 'defender', unitIds: ['u1'] })
-    ).rejects.toThrow('Không có đơn vị nào sẵn sàng');
+    ).rejects.toThrow('No unit is ready to attack');
   });
 
   it('refuses a second raid on a defender that is already under attack', async () => {
@@ -236,7 +236,7 @@ describe('RaidService.startRaid', () => {
 
     await expect(
       RaidService.startRaid({ attackerId: 'attacker', defenderId: 'defender', unitIds: ['u2'] })
-    ).rejects.toThrow('đang bị tấn công');
+    ).rejects.toThrow('already under attack');
   });
 });
 

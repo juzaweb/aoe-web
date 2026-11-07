@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   BUILDING_BLUEPRINTS,
   BuildingType,
@@ -26,6 +27,7 @@ import {
 import type { RoadMode } from '../game/input/RoadController.js';
 import { BUILDING_HOTKEY_BY_TYPE } from '../game/input/buildingHotkeys';
 import { buildingThumbnail } from './buildingThumbnails.js';
+import { buildingDescription, buildingName, resourceName } from '../i18n/labels.js';
 
 interface BuildMenuProps {
   playerResources: Resources;
@@ -79,6 +81,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
   onSelectRoad,
   townCenterLevel = 1
 }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   const canAfford = (type: BuildingType) => {
@@ -113,8 +116,8 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
       const unlockLevel = getBuildingUnlockLevel(type);
       const disabled = !unlocked || !affordable;
       const title = unlocked
-        ? `${bp.name} — ${bp.description}`
-        : `${bp.name} — cần Nhà chính Lv ${unlockLevel}`;
+        ? `${buildingName(type)} — ${buildingDescription(type)}`
+        : t('build.lockedAtLevel', { level: unlockLevel });
 
       const button = (
         <button
@@ -140,7 +143,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
             {thumbnail && (
               <img
                 src={thumbnail}
-                alt={bp.name}
+                alt={buildingName(type)}
                 className="h-full w-full object-contain filter drop-shadow"
                 onError={(e) => {
                   (e.target as HTMLElement).style.display = 'none';
@@ -165,7 +168,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
               compactTiles ? 'text-[8px]' : 'mb-0.5 max-w-[56px] text-[10px]'
             }`}
           >
-            {bp.name}
+            {buildingName(type)}
           </span>
           {/* MOB-06: no keyboard on a phone, so the hotkey badge is desktop only. */}
           {!compactTiles && (
@@ -183,20 +186,20 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
           {button}
           {/* Tooltip */}
           <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-48 -translate-x-1/2 rounded border border-amber-600/70 bg-slate-950/95 p-2 text-left opacity-0 shadow-2xl transition-opacity group-hover:opacity-100">
-            <div className="font-medieval mb-1 text-xs font-bold text-amber-300">{bp.name}</div>
-            <div className="mb-2 text-[11px] leading-tight text-slate-300">{bp.description}</div>
+            <div className="font-medieval mb-1 text-xs font-bold text-amber-300">{buildingName(type)}</div>
+            <div className="mb-2 text-[11px] leading-tight text-slate-300">{buildingDescription(type)}</div>
             {!unlocked && (
               <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-amber-300">
-                <Lock size={10} /> Cần Nhà chính Lv {unlockLevel}
+                <Lock size={10} /> {t('build.lockedAtLevel', { level: unlockLevel })}
               </div>
             )}
             <div className="space-y-0.5 border-t border-slate-800 pt-1 font-mono text-[10px]">
-              {bp.cost.wood > 0 && <div className="text-amber-400">Gỗ: {bp.cost.wood}</div>}
-              {bp.cost.food > 0 && <div className="text-red-400">Thịt: {bp.cost.food}</div>}
-              {bp.cost.gold > 0 && <div className="text-yellow-400">Vàng: {bp.cost.gold}</div>}
-              {bp.cost.stone > 0 && <div className="text-slate-300">Đá: {bp.cost.stone}</div>}
+              {bp.cost.wood > 0 && <div className="text-amber-400">{resourceName('wood')}: {bp.cost.wood}</div>}
+              {bp.cost.food > 0 && <div className="text-red-400">{resourceName('food')}: {bp.cost.food}</div>}
+              {bp.cost.gold > 0 && <div className="text-yellow-400">{resourceName('gold')}: {bp.cost.gold}</div>}
+              {bp.cost.stone > 0 && <div className="text-slate-300">{resourceName('stone')}: {bp.cost.stone}</div>}
               {bp.populationProvided > 0 && (
-                <div className="text-sky-400">Dân số: +{bp.populationProvided}</div>
+                <div className="text-sky-400">{t('build.population')}: +{bp.populationProvided}</div>
               )}
             </div>
           </div>
@@ -218,14 +221,14 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
     }> = [
       {
         mode: 'build',
-        label: 'Đường',
-        hint: 'Kéo để vẽ đường. 2 gỗ mỗi ô. Lính đi nhanh hơn 30% trên đường.',
+        label: t('build.road'),
+        hint: t('build.roadHint'),
         icon: <Route size={20} />
       },
       {
         mode: 'erase',
-        label: 'Xoá',
-        hint: 'Kéo để xoá đường của bạn. Hoàn lại 100% gỗ nếu chưa xây.',
+        label: t('build.erase'),
+        hint: t('build.eraseHint'),
         icon: <Eraser size={20} />
       }
     ];
@@ -272,7 +275,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
           type="button"
           onClick={() => setOpen((current) => !current)}
           aria-expanded={open}
-          title="Xây công trình"
+          title={t('build.buildButton')}
           className={`flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-md border ${
             activeBuildingType
               ? 'border-amber-400 bg-amber-600/40 text-amber-100'
@@ -280,20 +283,20 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
           }`}
         >
           <Hammer size={18} />
-          <span className="text-[9px] font-semibold leading-none">Xây</span>
+          <span className="text-[9px] font-semibold leading-none">{t('build.buildButton')}</span>
         </button>
 
         {open && (
           <div className="aoe-panel absolute bottom-full right-0 z-30 mb-2 w-[230px] rounded-lg p-2">
             <div className="mb-1.5 flex items-center justify-between border-b border-amber-800/40 pb-1">
               <span className="font-medieval text-[11px] font-bold tracking-wider text-amber-400">
-                XÂY CÔNG TRÌNH
+                {t('build.title')}
               </span>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                title="Đóng"
-                aria-label="Đóng"
+                title={t('build.close')}
+                aria-label={t('build.close')}
                 className="flex h-9 w-9 items-center justify-center rounded border border-slate-700 text-slate-300"
               >
                 <X size={14} />
@@ -312,7 +315,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
                 }}
                 className="mt-1.5 w-full rounded border border-red-800/60 bg-red-950/50 py-1.5 text-[11px] font-semibold uppercase text-red-300"
               >
-                Huỷ đặt
+                {t('build.cancelPlacement')}
               </button>
             )}
           </div>
@@ -325,14 +328,14 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
     <div className="aoe-panel pointer-events-auto flex flex-col gap-1.5 rounded-lg p-3">
       <div className="flex items-center justify-between border-b border-amber-800/40 pb-1.5">
         <span className="font-medieval text-xs font-bold tracking-wider text-amber-400">
-          XÂY CÔNG TRÌNH
+          {t('build.title')}
         </span>
         {activeBuildingType && (
           <button
             onClick={onCancelBuilding}
             className="rounded border border-red-800/50 bg-red-950/50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-red-400 hover:text-red-300"
           >
-            Hủy (Esc)
+            {t('build.cancel')}
           </button>
         )}
       </div>
