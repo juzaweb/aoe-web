@@ -63,6 +63,17 @@
       "license": "CC-BY-3.0",
       "page": "https://opengameart.org/content/galata-tower-bleeds-game-art"
     },
+    "oga.bleed-medieval-06": {
+      "author": "Bleed",
+      "files": {
+        "pack": {
+          "sha256": "a469871dbeebfcaa11a416efeadfa81db5f0bad8b5f9063e991d385c755458ed",
+          "url": "https://opengameart.org/sites/default/files/Medieval_Building_06.zip"
+        }
+      },
+      "license": "CC-BY-3.0",
+      "page": "https://opengameart.org/content/medieval-building-06"
+    },
     "oga.bleed-trees": {
       "author": "Bleed",
       "files": {
@@ -171,17 +182,6 @@
       },
       "license": "CC-BY-4.0",
       "page": "https://opengameart.org/content/assorted-isometric-rocks"
-    },
-    "oga.rubberduck-medieval-buildings": {
-      "author": "rubberduck",
-      "files": {
-        "pack": {
-          "sha256": "d2e89f5f7dcb79ebfcb8b19308738244c71e45ce71ea4465539b36d1aa8ee113",
-          "url": "https://opengameart.org/sites/default/files/building_pack_02_single.zip"
-        }
-      },
-      "license": "CC0-1.0",
-      "page": "https://opengameart.org/content/isometric-medieval-buildings"
     }
   },
   "targets": {
@@ -232,26 +232,26 @@
       "topInset": 4
     },
     "building.house": {
-      "author": "rubberduck",
+      "author": "Bleed",
       "bbox": [
-        21,
+        2,
         0,
-        234,
-        220
+        341,
+        256
       ],
       "bottomInset": 0,
       "canvas": [
-        256,
-        220
+        341,
+        256
       ],
-      "license": "CC0-1.0",
-      "lumGain": 1.9238,
+      "license": "CC-BY-3.0",
+      "lumGain": 1.1283,
       "out": "apps/client/public/assets/buildings/house.png",
-      "page": "https://opengameart.org/content/isometric-medieval-buildings",
-      "scale": 0.4089,
-      "sha256": "8df9fcfaeb30471391220d165a2dbcfab2712126b0ffa61bbe2c3ce2cebd088b",
-      "source": "oga.rubberduck-medieval-buildings",
-      "sourceSha256": "e55b3c52c9289653e9d42402012c2ac87c2fabfb3cc4924826578f8d481265e5",
+      "page": "https://opengameart.org/content/medieval-building-06",
+      "scale": 0.3133,
+      "sha256": "f52510a1b8bb390a506c67ce2e860337174a5d79ec33fb44c77f21b662d97455",
+      "source": "oga.bleed-medieval-06",
+      "sourceSha256": "d68dd009f1933aa85df24bdb9c57dc990ab4994a070161e1f6e620136d5239e0",
       "topInset": 0
     },
     "building.lumber-camp": {

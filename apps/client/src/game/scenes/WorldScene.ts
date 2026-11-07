@@ -521,9 +521,9 @@ export class WorldScene extends Phaser.Scene {
     }
 
     // Preload generated building assets with cache-busting version (2x resolution)
-    // v=16: house swapped to rubberduck's isometric medieval building (level-invariant).
+    // v=17: house swapped to Bleed's Medieval Building 06 (level-invariant).
     // Bump the key whenever a PNG under public/assets/buildings or /resources changes.
-    const v = 'v=16';
+    const v = 'v=17';
     this.load.image('building_TOWN_CENTER', `/assets/buildings/town_center.png?${v}`);
     this.load.image('building_BARRACKS', `/assets/buildings/barracks.png?${v}`);
     // MIL-01: both military branches now ship their own 400x320 sheet. The

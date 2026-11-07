@@ -101,15 +101,15 @@ duller saturation to the client's grass), luminance-matches it, and fits it into
 a 160x96 (forbs) or 80x64 (rocks) canvas, anchored bottom-centre. Rocks are not
 gain-corrected. No sprite is redrawn.
 
-### Isometric medieval buildings — rubberduck
+### Medieval Building 06 — Bleed
 
-- **Author:** rubberduck
-- **Source:** https://opengameart.org/content/isometric-medieval-buildings
-- **License:** CC0 1.0 (public domain dedication — attribution not required, kept here for provenance)
+- **Author:** Bleed
+- **Source:** https://opengameart.org/content/medieval-building-06
+- **License:** [CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/)
 - **Used for:** `assets/buildings/house.png`.
 
-**Changes made.** Building 1, direction `00` from the 128x64 shaded set is cropped
-to alpha, luminance-matched, fitted to the 256x220 canvas and anchored bottom-centre.
+**Changes made.** Cropped to alpha, soft shadow faded out (`alphaFloor: 96`),
+luminance-matched to `107.3`, fitted to the 341x256 canvas and anchored bottom-centre.
 No artwork is redrawn.
 
 ### Galata Tower — Bleed

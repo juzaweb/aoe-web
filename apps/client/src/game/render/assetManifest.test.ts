@@ -129,7 +129,7 @@ describe('house level invariance', () => {
   it('ships building.house in lock with correct dimensions and bottom anchoring', () => {
     const entry = lock.targets['building.house'];
     expect(entry, 'missing lock target building.house').toBeDefined();
-    expect(entry.canvas).toEqual([256, 220]);
+    expect(entry.canvas).toEqual([341, 256]);
     expect(entry.topInset).toBe(0);
     expect(entry.bottomInset).toBe(0);
   });
@@ -138,9 +138,9 @@ describe('house level invariance', () => {
     for (const level of [1, 2, 4, 6, 8, 10]) {
       const art = buildingArt('HOUSE', () => true, level);
       expect(art.textureKey).toBe('building_HOUSE');
-      expect(art.offsetY).toBe(-70);
+      expect(art.offsetY).toBe(-88);
       expect(art.scale).toBe(1);
-      expect(buildingHpBarY('HOUSE', level)).toBe(-188);
+      expect(buildingHpBarY('HOUSE', level)).toBe(-224);
       expect(buildingTierInfo('HOUSE', level)).toEqual({
         tier: 1,
         count: 1,

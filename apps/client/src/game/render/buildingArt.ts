@@ -51,7 +51,7 @@ export const SHEET_OFFSET_Y: Partial<Record<BuildingType, number>> = {
   // reuse its lift. A different canvas size would need its own number here.
   STABLE: -96,
   ARCHERY_RANGE: -96,
-  HOUSE: -70,
+  HOUSE: -88,
   FARM: 0,
   TOWER: -160,
   // ECO: the three drop-off camps are drawn on the same sheet as the house.
@@ -138,7 +138,7 @@ const HP_BAR_Y: Partial<Record<BuildingType, number>> = {
   // artwork height: -264 + topInset (Stable 3, Archery Range 29).
   STABLE: -261,
   ARCHERY_RANGE: -235,
-  HOUSE: -188,
+  HOUSE: -224,
   FARM: -100,
   LUMBER_CAMP: -171,
   MILL: -190,

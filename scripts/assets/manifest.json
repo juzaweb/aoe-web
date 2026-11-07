@@ -89,13 +89,13 @@
         }
       }
     },
-    "oga.rubberduck-medieval-buildings": {
-      "page": "https://opengameart.org/content/isometric-medieval-buildings",
-      "author": "rubberduck",
-      "license": "CC0-1.0",
+    "oga.bleed-medieval-06": {
+      "page": "https://opengameart.org/content/medieval-building-06",
+      "author": "Bleed",
+      "license": "CC-BY-3.0",
       "files": {
         "pack": {
-          "url": "https://opengameart.org/sites/default/files/building_pack_02_single.zip",
+          "url": "https://opengameart.org/sites/default/files/Medieval_Building_06.zip",
           "archive": "zip"
         }
       }
@@ -171,12 +171,18 @@
       "canvas": [400, 320]
     },
     "building.house": {
-      "source": "oga.rubberduck-medieval-buildings",
+      "source": "oga.bleed-medieval-06",
       "file": "pack",
-      "entry": "building_1/128x64_shaded/building1_128x64_00.png",
-      "op": { "crop": "alpha", "fit": true, "matchLum": 107.3, "anchor": "bottom-center" },
+      "entry": "Medieval_Building_06.png",
+      "op": {
+        "alphaFloor": 96,
+        "crop": "alpha",
+        "fit": true,
+        "matchLum": 107.3,
+        "anchor": "bottom-center"
+      },
       "out": "apps/client/public/assets/buildings/house.png",
-      "canvas": [256, 220]
+      "canvas": [341, 256]
     },
     "building.tower": {
       "source": "oga.bleed-galata-tower",
