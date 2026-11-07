@@ -5,8 +5,9 @@ import { BuildingState } from '../schema/BuildingState.js';
  * the point is inside it.
  *
  * Range checks against buildings have to use the footprint rather than the
- * footprint's centre: a 4x4 Town Center's centre is 2 tiles inside its own walls,
- * so centre-based distance would put half the building outside its own range.
+ * footprint's centre: a Town Center's centre is about two tiles inside its own
+ * walls, so centre-based distance would put half the building outside its own
+ * range.
  */
 export function distanceToFootprint(x: number, y: number, building: BuildingState): number {
   const dx = Math.max(building.gridX - x, 0, x - (building.gridX + building.sizeX));

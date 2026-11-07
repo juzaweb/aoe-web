@@ -16,12 +16,21 @@ import { getBuildingLevelStats } from './levels.js';
  * {@link CITADEL_HP_THRESHOLD}, the attacker has won.
  */
 
-/** Side length of the walled compound, in tiles. */
-export const CITADEL_SIZE = 17;
+/**
+ * Size of the walled compound, in tiles.
+ *
+ * The kingdom citadel is a square scaled up 1.5x from the original 17x17
+ * compound (rounded to a whole tile), so it keeps its silhouette while giving
+ * the buildings room to spread out. The interior offsets below are laid out for
+ * this square; changing one dimension without the other moves buildings onto
+ * the walls, which `citadel.test.ts` catches.
+ */
+export const CITADEL_WIDTH = 26;
+export const CITADEL_HEIGHT = 26;
 
 /** Town Center top-left offset from the compound's top-left corner. */
-export const CITADEL_TOWN_CENTER_OFFSET_X = 1;
-export const CITADEL_TOWN_CENTER_OFFSET_Y = 6;
+export const CITADEL_TOWN_CENTER_OFFSET_X = 5;
+export const CITADEL_TOWN_CENTER_OFFSET_Y = 10;
 
 /** Width of the single gate opening in the middle of the east wall. */
 export const CITADEL_GATE_WIDTH = 3;
@@ -48,7 +57,9 @@ export interface CitadelTile {
 export interface CitadelLayout {
   originX: number;
   originY: number;
-  size: number;
+  /** Compound extent, in tiles. */
+  sizeX: number;
+  sizeY: number;
   /** Inclusive interior bounds; the stone floor fills these tiles. */
   innerMinX: number;
   innerMinY: number;
@@ -70,19 +81,21 @@ interface SlotOffset {
  * The eight buildings, relative to the compound's top-left corner.
  *
  * The citadel faces east: the single gate sits in the middle of the east wall
- * and a straight walkway runs west to the Town Center at the far end. Barracks
- * are grouped along the north side of the walkway and houses along the south
- * side, so the compound reads as two wings around one avenue.
+ * and a straight walkway runs west from it to the Town Center, which sits about
+ * four tiles in from the rear (west) wall. Barracks line the north wall, while
+ * the five houses are packed side by side in the south-west corner, at the far
+ * end from the gate. The Town Center is centred on the gate's rows so the avenue
+ * ends on its doors.
  */
 const SLOT_OFFSETS: readonly SlotOffset[] = [
-  { type: 'TOWN_CENTER', dx: 1, dy: 6 },
-  { type: 'BARRACKS', dx: 8, dy: 2 },
-  { type: 'BARRACKS', dx: 12, dy: 2 },
-  { type: 'HOUSE', dx: 2, dy: 12 },
-  { type: 'HOUSE', dx: 5, dy: 12 },
-  { type: 'HOUSE', dx: 8, dy: 12 },
-  { type: 'HOUSE', dx: 11, dy: 12 },
-  { type: 'HOUSE', dx: 14, dy: 12 }
+  { type: 'TOWN_CENTER', dx: 5, dy: 10 },
+  { type: 'BARRACKS', dx: 5, dy: 1 },
+  { type: 'BARRACKS', dx: 18, dy: 1 },
+  { type: 'HOUSE', dx: 1, dy: 23 },
+  { type: 'HOUSE', dx: 3, dy: 23 },
+  { type: 'HOUSE', dx: 5, dy: 23 },
+  { type: 'HOUSE', dx: 7, dy: 23 },
+  { type: 'HOUSE', dx: 9, dy: 23 }
 ];
 
 function slotSize(type: BuildingType): { sizeX: number; sizeY: number } {
@@ -95,7 +108,7 @@ function slotSize(type: BuildingType): { sizeX: number; sizeY: number } {
 
 /** Gate tiles always sit in the middle third of the east wall. */
 function gateStart(): number {
-  return Math.floor((CITADEL_SIZE - CITADEL_GATE_WIDTH) / 2);
+  return Math.floor((CITADEL_HEIGHT - CITADEL_GATE_WIDTH) / 2);
 }
 
 /**
@@ -110,8 +123,8 @@ export function citadelOriginFor(
   mapHeight: number
 ): { originX: number; originY: number } {
   return {
-    originX: Math.round((mapWidth - CITADEL_SIZE) / 2),
-    originY: Math.round((mapHeight - CITADEL_SIZE) / 2)
+    originX: Math.round((mapWidth - CITADEL_WIDTH) / 2),
+    originY: Math.round((mapHeight - CITADEL_HEIGHT) / 2)
   };
 }
 
@@ -212,7 +225,7 @@ export function citadelLayoutFor(
   const gateFrom = gateStart();
   const gateTo = gateFrom + CITADEL_GATE_WIDTH - 1;
   for (let i = gateFrom; i <= gateTo; i++) {
-    gates.push({ gridX: originX + CITADEL_SIZE - 1, gridY: originY + i });
+    gates.push({ gridX: originX + CITADEL_WIDTH - 1, gridY: originY + i });
   }
 
   const gateKeys = new Set(gates.map((tile) => `${tile.gridX},${tile.gridY}`));
@@ -222,23 +235,24 @@ export function citadelLayoutFor(
     walls.push({ gridX, gridY });
   };
 
-  for (let i = 0; i < CITADEL_SIZE; i++) {
+  for (let i = 0; i < CITADEL_WIDTH; i++) {
     pushWall(originX + i, originY);
-    pushWall(originX + i, originY + CITADEL_SIZE - 1);
+    pushWall(originX + i, originY + CITADEL_HEIGHT - 1);
   }
-  for (let j = 1; j < CITADEL_SIZE - 1; j++) {
+  for (let j = 1; j < CITADEL_HEIGHT - 1; j++) {
     pushWall(originX, originY + j);
-    pushWall(originX + CITADEL_SIZE - 1, originY + j);
+    pushWall(originX + CITADEL_WIDTH - 1, originY + j);
   }
 
   return {
     originX,
     originY,
-    size: CITADEL_SIZE,
+    sizeX: CITADEL_WIDTH,
+    sizeY: CITADEL_HEIGHT,
     innerMinX: originX + 1,
     innerMinY: originY + 1,
-    innerMaxX: originX + CITADEL_SIZE - 2,
-    innerMaxY: originY + CITADEL_SIZE - 2,
+    innerMaxX: originX + CITADEL_WIDTH - 2,
+    innerMaxY: originY + CITADEL_HEIGHT - 2,
     slots,
     walls,
     gates

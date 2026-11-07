@@ -109,9 +109,9 @@ export function clearCitadelResources(state: WorldState, townCenter: BuildingSta
   state.resourceNodes.forEach((node: ResourceNodeState, id: string) => {
     if (
       node.gridX >= layout.originX &&
-      node.gridX < layout.originX + layout.size &&
+      node.gridX < layout.originX + layout.sizeX &&
       node.gridY >= layout.originY &&
-      node.gridY < layout.originY + layout.size
+      node.gridY < layout.originY + layout.sizeY
     ) {
       buried.push(id);
     }
@@ -120,44 +120,61 @@ export function clearCitadelResources(state: WorldState, townCenter: BuildingSta
   for (const id of buried) state.resourceNodes.delete(id);
 }
 
-/** True when a building footprint overlaps a square of `size` tiles at (x, y). */
+/** True when a building footprint overlaps a `sizeX x sizeY` rect at (x, y). */
 function footprintOverlaps(
   building: BuildingState,
   x: number,
   y: number,
-  size: number
+  sizeX: number,
+  sizeY: number
 ): boolean {
   return (
-    building.gridX < x + size &&
+    building.gridX < x + sizeX &&
     building.gridX + building.sizeX > x &&
-    building.gridY < y + size &&
+    building.gridY < y + sizeY &&
     building.gridY + building.sizeY > y
   );
 }
 
-/** A square of tiles that once held a citadel compound. */
+/** A rectangle of tiles that once held, or now holds, a citadel compound. */
 interface CompoundRect {
   x: number;
   y: number;
-  size: number;
+  sizeX: number;
+  sizeY: number;
 }
 
+/**
+ * Side of the square compound that shipped before the citadel was enlarged.
+ *
+ * Kept separate from `CITADEL_HEIGHT`: this is a historical save format, not
+ * the current geometry, so resizing today's citadel must not stop the migration
+ * from finding compounds saved under the old layout.
+ */
+const LEGACY_CITADEL_SIZE = 17;
+
 function insideCompound(building: BuildingState, rect: CompoundRect): boolean {
-  return footprintOverlaps(building, rect.x, rect.y, rect.size);
+  return footprintOverlaps(building, rect.x, rect.y, rect.sizeX, rect.sizeY);
 }
 
 /**
  * Open floor tiles of the central walkway, east of the Town Center.
  *
  * Used to place starter crews and to rescue units that a legacy save left on a
- * tile that the moved citadel now uses as a wall.
+ * tile that the moved citadel now uses as a wall. The band follows the Town
+ * Center's own rows so a spot can never land inside its footprint.
  */
 function walkwaySpots(
   layout: ReturnType<typeof citadelLayoutFor>
 ): Array<{ x: number; y: number }> {
+  const townCenter = layout.slots.find((slot) => slot.type === 'TOWN_CENTER');
+  const startX = townCenter ? townCenter.gridX + townCenter.sizeX : layout.innerMinX;
+  const startY = townCenter ? townCenter.gridY : layout.innerMinY + 4;
+  const endY = townCenter ? townCenter.gridY + townCenter.sizeY - 1 : layout.innerMinY + 10;
+
   const spots: Array<{ x: number; y: number }> = [];
-  for (let y = layout.originY + 5; y <= layout.originY + 11; y++) {
-    for (let x = layout.originX + 5; x <= layout.originX + 14; x++) {
+  for (let y = startY; y <= endY; y++) {
+    for (let x = startX; x <= layout.innerMaxX; x++) {
       spots.push({ x, y });
     }
   }
@@ -256,20 +273,40 @@ function canonicalizeCitadel(
     ) {
       return;
     }
-    if (footprintOverlaps(building, targetLayout.originX, targetLayout.originY, targetLayout.size)) {
+    if (
+      footprintOverlaps(
+        building,
+        targetLayout.originX,
+        targetLayout.originY,
+        targetLayout.sizeX,
+        targetLayout.sizeY
+      )
+    ) {
       blocked = true;
     }
   });
   if (blocked) return townCenter;
 
   const rects: CompoundRect[] = [
-    { x: targetLayout.originX, y: targetLayout.originY, size: targetLayout.size },
-    { x: currentLayout.originX, y: currentLayout.originY, size: currentLayout.size },
     {
-      // The short-lived right-edge layout this feature briefly shipped with.
-      x: state.mapWidth - 6 - targetLayout.size,
-      y: Math.floor((state.mapHeight - targetLayout.size) / 2),
-      size: targetLayout.size
+      x: targetLayout.originX,
+      y: targetLayout.originY,
+      sizeX: targetLayout.sizeX,
+      sizeY: targetLayout.sizeY
+    },
+    {
+      x: currentLayout.originX,
+      y: currentLayout.originY,
+      sizeX: currentLayout.sizeX,
+      sizeY: currentLayout.sizeY
+    },
+    {
+      // The short-lived right-edge layout this feature briefly shipped with,
+      // which was a square of `LEGACY_CITADEL_SIZE` tiles.
+      x: state.mapWidth - 6 - LEGACY_CITADEL_SIZE,
+      y: Math.floor((state.mapHeight - LEGACY_CITADEL_SIZE) / 2),
+      sizeX: LEGACY_CITADEL_SIZE,
+      sizeY: LEGACY_CITADEL_SIZE
     }
   ];
 
@@ -304,9 +341,9 @@ function canonicalizeCitadel(
     const insideAny = rects.some(
       (rect) =>
         unit.x >= rect.x &&
-        unit.x < rect.x + rect.size &&
+        unit.x < rect.x + rect.sizeX &&
         unit.y >= rect.y &&
-        unit.y < rect.y + rect.size
+        unit.y < rect.y + rect.sizeY
     );
     if (!insideAny) return;
 

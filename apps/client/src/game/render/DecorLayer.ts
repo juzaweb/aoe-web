@@ -1,4 +1,4 @@
-import { MapTerrain, getIsoDepth, gridToScreen, screenToGrid } from '@chien-quoc/shared';
+import { MapTerrain, citadelLayoutFor, getIsoDepth, gridToScreen, screenToGrid } from '@chien-quoc/shared';
 import type * as Phaser from 'phaser';
 import type { WorldScene } from '../scenes/WorldScene.js';
 import { decorTextureKey } from './decorArt.js';
@@ -198,6 +198,7 @@ export class DecorLayer {
         if (gx !== undefined && gy !== undefined) blocked.add(tileKey(gx, gy));
       }
     }
+    const townCenters: Array<{ gridX: number; gridY: number }> = [];
     if (state?.roads) {
       state.roads.forEach((road: any) => {
         if (
@@ -218,6 +219,7 @@ export class DecorLayer {
             blocked.add(tileKey(building.gridX + x, building.gridY + y));
           }
         }
+        if (building.type === 'TOWN_CENTER') townCenters.push(building);
       });
     } else {
       for (const container of this.scene.buildingSprites.values()) {
@@ -228,6 +230,16 @@ export class DecorLayer {
         if (gx === undefined || gy === undefined) continue;
         for (let y = 0; y < sy; y++) {
           for (let x = 0; x < sx; x++) blocked.add(tileKey(gx + x, gy + y));
+        }
+      }
+    }
+    // Every tile of a citadel compound is stone, not ground: without this the
+    // grass scatter grows tufts and flowers through the wall and the floor.
+    for (const townCenter of townCenters) {
+      const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+      for (let y = 0; y < layout.sizeY; y++) {
+        for (let x = 0; x < layout.sizeX; x++) {
+          blocked.add(tileKey(layout.originX + x, layout.originY + y));
         }
       }
     }

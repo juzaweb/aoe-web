@@ -1388,8 +1388,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       this.clearResourcesInFootprint(
         citadelLayout.originX,
         citadelLayout.originY,
-        citadelLayout.size,
-        citadelLayout.size
+        citadelLayout.sizeX,
+        citadelLayout.sizeY
       );
     } else {
       const centreX = Math.floor(width / 2) - Math.floor(tcBlueprint.sizeX / 2);
@@ -1443,10 +1443,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     // pushes them outside the east wall, in front of the gate.
     const starterTreeSpots = citadelLayout
       ? [
-          { gridX: citadelLayout.originX + citadelLayout.size + 1, gridY: citadelLayout.originY + 4 },
-          { gridX: citadelLayout.originX + citadelLayout.size + 1, gridY: citadelLayout.originY + 5 },
-          { gridX: citadelLayout.originX + citadelLayout.size + 2, gridY: citadelLayout.originY + 6 },
-          { gridX: citadelLayout.originX + citadelLayout.size + 2, gridY: citadelLayout.originY + 7 }
+          { gridX: citadelLayout.originX + citadelLayout.sizeX + 1, gridY: citadelLayout.originY + 10 },
+          { gridX: citadelLayout.originX + citadelLayout.sizeX + 1, gridY: citadelLayout.originY + 11 },
+          { gridX: citadelLayout.originX + citadelLayout.sizeX + 2, gridY: citadelLayout.originY + 12 },
+          { gridX: citadelLayout.originX + citadelLayout.sizeX + 2, gridY: citadelLayout.originY + 13 }
         ]
       : [
           { gridX: spawnX - 2, gridY: spawnY - 1 },
@@ -1473,9 +1473,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     // A citadel puts them east of the compound, in front of the single gate.
     const starterBerrySpots = citadelLayout
       ? [
-          { gridX: citadelLayout.originX + citadelLayout.size + 4, gridY: citadelLayout.originY + 7 },
-          { gridX: citadelLayout.originX + citadelLayout.size + 5, gridY: citadelLayout.originY + 7 },
-          { gridX: citadelLayout.originX + citadelLayout.size + 4, gridY: citadelLayout.originY + 8 }
+          { gridX: citadelLayout.originX + citadelLayout.sizeX + 4, gridY: citadelLayout.originY + 13 },
+          { gridX: citadelLayout.originX + citadelLayout.sizeX + 5, gridY: citadelLayout.originY + 13 },
+          { gridX: citadelLayout.originX + citadelLayout.sizeX + 4, gridY: citadelLayout.originY + 14 }
         ]
       : [
           { gridX: spawnX + 5, gridY: spawnY + 1 },
@@ -1497,10 +1497,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       this.state.resourceNodes.set(id, node);
     });
 
-    // Spawn 3 starter villagers outside 4x4 Town Center. A returning player
+    // Spawn 3 starter villagers outside the Town Center. A returning player
     // whose empire was wiped keeps the villager research they already paid for.
-    // A citadel places the Town Center against the west wall, so the crew starts
-    // in the central walkway to its east rather than through the wall.
+    // A citadel centres the Town Center, so the crew starts in the walkway just
+    // east of its footprint rather than inside the walls.
     const villagerLevel = getPlayerUnitLevel(player.unitLevels, 'VILLAGER');
     const villagerStats = getUnitLevelStats('VILLAGER', villagerLevel);
     const villagerOffsets = citadelLayout
