@@ -57,14 +57,18 @@ export function ownedBuildingMaxHp(
  * Recomputes `maxHp` for every building and unit `ownerId` owns.
  *
  * The amount of HP already missing is preserved, so a buff is not a free heal
- * and a formula change cannot erase damage. Callers decide when this runs;
- * a per-tick scan of the whole state would be wasted work because a capital
- * level changes a handful of times per game.
+ * and a formula change cannot erase damage. `trainerLevelOf` folds in phase 26:
+ * a unit's own trainer level raises its maximum just like the capital aura, and
+ * a villager's trainer (the Town Center) is handled by the aura itself.
+ *
+ * Callers decide when this runs; a per-tick scan of the whole state would be
+ * wasted work because a level changes a handful of times per game.
  */
 export function applyTownCenterAura(
   state: WorldState,
   ownerId: string,
-  townCenterLevel: number
+  townCenterLevel: number,
+  trainerLevelOf: (unitType: UnitType) => number = () => 1
 ): void {
   state.buildings.forEach((building: BuildingState) => {
     if (building.ownerId !== ownerId) return;
@@ -85,7 +89,8 @@ export function applyTownCenterAura(
     const nextMaxHp = getEffectiveUnitMaxHp(
       unit.type as UnitType,
       unit.level,
-      townCenterLevel
+      townCenterLevel,
+      trainerLevelOf(unit.type as UnitType)
     );
     if (nextMaxHp === unit.maxHp) return;
 

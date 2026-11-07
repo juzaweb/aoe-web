@@ -10,6 +10,7 @@ import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { DATABASE_INDEX_STATEMENTS, DATABASE_TABLE_STATEMENTS } from './databaseSchema.js';
 import { serializeUnitLevels } from './playerLevels.js';
 import { entityIds } from './EntityIdAllocator.js';
+import type { BuildingType } from '@chien-quoc/shared';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -658,6 +659,33 @@ export class DatabaseService {
     if (!row) return 0;
     const level = Number(row.townCenterLevel ?? 0);
     return Number.isFinite(level) && level > 0 ? Math.floor(level) : 0;
+  }
+
+  /**
+   * Reads the finished building levels of an account's own kingdom (phase 26).
+   *
+   * A room that receives a raider has no barracks or camp of that account to
+   * derive from, so the trainer level behind their army is read once from the
+   * rows their kingdom autosaved. Missing types stay absent and fall back to
+   * level 1 at the caller. **No schema change.**
+   */
+  public static async loadBuildingLevels(
+    ownerId: string
+  ): Promise<Partial<Record<BuildingType, number>>> {
+    await this.initialize();
+    const rows = await prisma.building.findMany({
+      where: { ownerId, zone: `kingdom:${ownerId}`, isConstructed: true },
+      select: { type: true, level: true }
+    });
+
+    const levels: Partial<Record<BuildingType, number>> = {};
+    for (const row of rows) {
+      const level = Number(row.level);
+      if (!Number.isFinite(level) || level <= 0) continue;
+      const type = row.type as BuildingType;
+      levels[type] = Math.max(levels[type] ?? 0, Math.floor(level));
+    }
+    return levels;
   }
 
   /**

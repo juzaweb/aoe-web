@@ -134,7 +134,8 @@ export function applyUnitResearch(
   state: WorldState,
   player: PlayerState,
   unitType: UnitType,
-  townCenterLevel = 1
+  townCenterLevel = 1,
+  trainerLevel = 1
 ): void {
   const index = getUnitUpgradeIndex(unitType);
   if (index < 0) {
@@ -150,9 +151,14 @@ export function applyUnitResearch(
 
     const oldMaxHp = unit.maxHp;
     unit.level = nextLevel;
-    // Combat reads the attack live, but `maxHp`/`hp` are snapshots; both the
-    // research level and the Town Center aura must be folded in here.
-    const nextMaxHp = getEffectiveUnitMaxHp(unitType, nextLevel, townCenterLevel);
+    // Combat reads the attack live, but `maxHp`/`hp` are snapshots; research,
+    // the Town Center aura and the trainer level must all be folded in here.
+    const nextMaxHp = getEffectiveUnitMaxHp(
+      unitType,
+      nextLevel,
+      townCenterLevel,
+      trainerLevel
+    );
     unit.maxHp = nextMaxHp;
     unit.hp = Math.min(nextMaxHp, unit.hp + Math.max(0, nextMaxHp - oldMaxHp));
   });

@@ -318,6 +318,11 @@ export class KingdomRoom extends WorldRoom {
     if (this.unitsOf(ownerId).length > 0) return;
 
     try {
+      // Phase 26: the raider's trainer and camp levels live in their own
+      // kingdom rows, not in this room; load them before any unit maxHp is
+      // derived so the army keeps the stats it was trained with.
+      await this.hydrateBuildingLevels(ownerId);
+      await this.hydrateTownCenterLevel(ownerId);
       const rows = await DatabaseService.loadZoneEntities(this.zoneId, ownerId);
       if (rows.length === 0) return;
       this.restoreSavedEntities(rows);

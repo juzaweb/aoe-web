@@ -37,6 +37,13 @@ export interface CombatPorts {
    * unit's own research level.
    */
   townCenterLevelOf(ownerId: string): number;
+  /**
+   * Level of the building that trained `unitType` (phase 26). Read per hit like
+   * the capital aura, so a barracks upgrade applies to living soldiers too.
+   */
+  trainerLevelOf(ownerId: string, unitType: UnitType): number;
+  /** Re-derives an owner's cached building levels after a building is razed. */
+  onBuildingRemoved(building: BuildingState): void;
 }
 
 /**
@@ -271,7 +278,8 @@ export class CombatSystem {
     const attackPower = getEffectiveUnitAttackPower(
       unit.type as UnitType,
       unit.level,
-      this.ports.townCenterLevelOf(unit.ownerId)
+      this.ports.townCenterLevelOf(unit.ownerId),
+      this.ports.trainerLevelOf(unit.ownerId, unit.type as UnitType)
     );
 
     // CMB-01 before the cooldown: a stance that has given up should not keep a
@@ -420,6 +428,7 @@ export class CombatSystem {
     const ownerId = building.ownerId;
     this.state.buildings.delete(building.id);
     this.forgetBuilding(building.id);
+    this.ports.onBuildingRemoved(building);
     this.ports.updatePlayerPopulation(ownerId);
   }
 

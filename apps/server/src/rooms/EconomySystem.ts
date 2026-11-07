@@ -38,6 +38,13 @@ export interface EconomyPorts {
    * can hide it) and schedules its refill instead of deleting the row.
    */
   onNodeDepleted(node: ResourceNodeState): void;
+  /**
+   * Phase 26: how much faster `ownerId` gathers `resourceType`, from the best
+   * camp that accepts it. 1 when the owner has no camp of that type.
+   */
+  gatherSpeedMultiplier(ownerId: string, resourceType: string): number;
+  /** Phase 26: unload ring of a drop-off, in tiles, from its own level. */
+  dropOffRange(building: BuildingState): number;
 }
 
 /**
@@ -49,13 +56,6 @@ const HARVEST_RETARGET_RADIUS = 10;
 
 /** How close to a node a villager has to stand to harvest it, in tiles. */
 const HARVEST_RANGE = 1.5;
-
-/**
- * How close to a drop-off's footprint edge a villager has to be for the load to
- * be banked. Matches the build range on purpose: both mean "standing next to the
- * building", and the approach point is only 0.5 tiles outside the footprint.
- */
-const DROP_OFF_RANGE = 1.5;
 
 /**
  * Distance outside a footprint a villager stands to work it, in tiles.
@@ -245,7 +245,10 @@ export class EconomySystem {
     carryCapacity: number,
     available: number
   ): number {
-    const interval = gatherIntervalMs(resourceType);
+    const interval = gatherIntervalMs(
+      resourceType,
+      this.ports.gatherSpeedMultiplier(unit.ownerId, resourceType)
+    );
     let elapsed = (this.gatherTimers.get(unit.id) ?? 0) + deltaTime;
     const roomInHand = carryCapacity - unit.carryingAmount;
     if (elapsed < interval || roomInHand <= 0) {
@@ -512,7 +515,7 @@ export class EconomySystem {
       return;
     }
 
-    if (distanceToFootprint(unit.x, unit.y, dropOff) > DROP_OFF_RANGE) return;
+    if (distanceToFootprint(unit.x, unit.y, dropOff) > this.ports.dropOffRange(dropOff)) return;
 
     const player = this.state.players.get(unit.ownerId);
     if (!player) return;

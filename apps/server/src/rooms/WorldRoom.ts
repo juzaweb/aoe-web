@@ -83,6 +83,14 @@ import {
   findTownCenterLevel,
   ownedBuildingMaxHp
 } from './townCenterAura.js';
+import {
+  OwnerBuildingLevels,
+  dropOffRangeOf,
+  findBuildingLevel,
+  findOwnerBuildingLevels,
+  gatherMultiplierFor,
+  trainerLevelFor
+} from './buildingLevels.js';
 import { otherZone, roomNameForZone, zoneKindOf } from '@chien-quoc/shared';
 import { randomUUID } from 'crypto';
 
@@ -94,6 +102,13 @@ import { randomUUID } from 'crypto';
  * extra margin also reads as a beat of stillness before the body disappears.
  */
 export const CORPSE_LINGER_MS = 1200;
+
+/** Trainers whose own level buffs their line (phase 26). */
+const TRAINER_BUILDING_TYPES = new Set<BuildingType>([
+  'BARRACKS',
+  'STABLE',
+  'ARCHERY_RANGE'
+]);
 
 const PLAYER_COLORS = [
   '#3b82f6', // Blue
@@ -156,6 +171,14 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    */
   private readonly townCenterLevelByOwner = new Map<string, number>();
   /**
+   * Highest finished level per building type, per account (phase 26).
+   *
+   * Derived from the buildings currently in this room; a raid guest's trainer
+   * and camp levels are loaded once from their own kingdom rows so their army
+   * keeps the stats it had at home. Never persisted on the units themselves.
+   */
+  private readonly buildingLevelsByOwner = new Map<string, OwnerBuildingLevels>();
+  /**
    * Player-painted road lookup for this room, built lazily because `state` only
    * exists after `onCreate` (or the unit-test harness) calls `setState`. The
    * grid inside is rebuilt only when the road count changes, so movement and
@@ -184,7 +207,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       forgetMovementState: (unitId) => this.movement.forgetUnit(unitId),
       updatePlayerPopulation: (ownerId) => this.updatePlayerPopulation(ownerId),
       scheduleCorpseRemoval: (corpseId) => this.scheduleCorpseRemoval(corpseId),
-      townCenterLevelOf: (ownerId) => this.townCenterLevelOf(ownerId)
+      townCenterLevelOf: (ownerId) => this.townCenterLevelOf(ownerId),
+      trainerLevelOf: (ownerId, unitType) => this.trainerLevelOf(ownerId, unitType),
+      onBuildingRemoved: (building) =>
+        this.invalidateBuildingLevel(building.ownerId, building.type as BuildingType)
     });
     return this.combatSystem;
   }
@@ -244,7 +270,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       setWalkTarget: (unit, x, y) => this.movement.setWalkTarget(unit, x, y),
       resumeQueuedWaypoint: (unit) => this.movement.resumeQueuedWaypoint(unit),
       rejectCommand: (client, message, code) => this.rejectCommand(client, message, code),
-      onNodeDepleted: (node) => this.scheduleResourceRespawn(node)
+      onNodeDepleted: (node) => this.scheduleResourceRespawn(node),
+      gatherSpeedMultiplier: (ownerId, resourceType) =>
+        this.gatherMultiplierOf(ownerId, resourceType),
+      dropOffRange: (building) => dropOffRangeOf(building)
     });
     return this.economySystem;
   }
@@ -659,6 +688,19 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       // Assign directly: a refresh here would touch half-restored entities.
       this.townCenterLevelByOwner.set(p.id, townCenterLevel);
 
+      // Phase 26: seed the trainer/camp levels from the same rows before any
+      // unit `maxHp` is derived. A partial army restore leaves an existing
+      // guest cache untouched, so a raider keeps the levels loaded from DB.
+      if (p.buildings.length > 0) {
+        const levels: OwnerBuildingLevels = {};
+        for (const b of p.buildings) {
+          if (!b.isConstructed) continue;
+          const type = b.type as BuildingType;
+          levels[type] = Math.max(levels[type] ?? 0, b.level);
+        }
+        this.buildingLevelsByOwner.set(p.id, levels);
+      }
+
       for (const b of p.buildings) {
         if (!this.fitsMap(b.gridX, b.gridY, b.sizeX, b.sizeY)) {
           dropped++;
@@ -711,7 +753,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         const effectiveMaxHp = getEffectiveUnitMaxHp(
           u.type as UnitType,
           unit.level,
-          townCenterLevel
+          townCenterLevel,
+          this.trainerLevelOf(p.id, u.type as UnitType)
         );
         unit.maxHp = effectiveMaxHp;
         unit.hp = Math.min(u.hp, effectiveMaxHp);
@@ -784,7 +827,90 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     const level = Number.isFinite(rawLevel) && rawLevel > 0 ? Math.floor(rawLevel) : 1;
     if (this.townCenterLevelByOwner.get(ownerId) === level) return;
     this.townCenterLevelByOwner.set(ownerId, level);
-    this.refreshTownCenterAura(ownerId);
+    this.refreshEmpireAura(ownerId);
+  }
+
+  /**
+   * Highest finished level per type the room knows for `ownerId` (phase 26).
+   *
+   * A cache miss derives the whole map from the buildings in state; a guest
+   * fills it from their kingdom rows before their army is restored.
+   */
+  protected buildingLevelsOf(ownerId: string): OwnerBuildingLevels {
+    const cached = this.buildingLevelsByOwner.get(ownerId);
+    if (cached) return cached;
+
+    const levels = findOwnerBuildingLevels(this.state, ownerId);
+    this.buildingLevelsByOwner.set(ownerId, levels);
+    return levels;
+  }
+
+  /**
+   * Highest finished level of one type, falling back to 1.
+   *
+   * `1` is the no-bonus level: an owner with no barracks of that type must not
+   * have their units weakened below the blueprint baseline.
+   */
+  protected buildingLevelOf(ownerId: string, type: BuildingType): number {
+    const levels = this.buildingLevelsByOwner.get(ownerId);
+    const cached = levels?.[type];
+    if (cached !== undefined) return Math.max(1, cached);
+
+    const level = findBuildingLevel(this.state, ownerId, type);
+    const resolved = level > 0 ? level : 1;
+    const next = { ...(levels ?? findOwnerBuildingLevels(this.state, ownerId)) };
+    next[type] = resolved;
+    this.buildingLevelsByOwner.set(ownerId, next);
+    return resolved;
+  }
+
+  /** Trainer level that governs `unitType` for `ownerId` (phase 26). */
+  protected trainerLevelOf(ownerId: string, unitType: UnitType): number {
+    return trainerLevelFor(this.buildingLevelsOf(ownerId), unitType);
+  }
+
+  /** Gather multiplier of the best camp accepting `resourceType` (phase 26). */
+  protected gatherMultiplierOf(ownerId: string, resourceType: string): number {
+    return gatherMultiplierFor(this.buildingLevelsOf(ownerId), resourceType);
+  }
+
+  /**
+   * Records a finished building level and refreshes any unit it trains.
+   *
+   * Called on construction and on upgrade completion. Only a higher level is
+   * stored, because one owner may hold several copies of the same type and the
+   * effects always read the tallest one.
+   */
+  protected setBuildingLevel(
+    ownerId: string,
+    type: BuildingType,
+    rawLevel: number
+  ): void {
+    const level = Number.isFinite(rawLevel) && rawLevel > 0 ? Math.floor(rawLevel) : 1;
+    const levels = { ...this.buildingLevelsOf(ownerId) };
+    if ((levels[type] ?? 0) >= level) return;
+    levels[type] = level;
+    this.buildingLevelsByOwner.set(ownerId, levels);
+    if (TRAINER_BUILDING_TYPES.has(type)) this.refreshEmpireAura(ownerId);
+  }
+
+  /**
+   * Re-derives one type after a building is destroyed.
+   *
+   * The cache would otherwise keep granting the level of the tallest barracks
+   * or camp long after it was razed, including its unit HP buff.
+   */
+  protected invalidateBuildingLevel(ownerId: string, type: BuildingType): void {
+    const levels = { ...this.buildingLevelsOf(ownerId) };
+    const level = findBuildingLevel(this.state, ownerId, type);
+    levels[type] = level > 0 ? level : 1;
+    this.buildingLevelsByOwner.set(ownerId, levels);
+    if (TRAINER_BUILDING_TYPES.has(type)) this.refreshEmpireAura(ownerId);
+  }
+
+  /** Seeds a guest's levels before their army arrives from the database. */
+  protected setGuestBuildingLevels(ownerId: string, levels: OwnerBuildingLevels): void {
+    this.buildingLevelsByOwner.set(ownerId, { ...levels });
   }
 
   /**
@@ -795,8 +921,13 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    * changes a handful of times. The portal is skipped because travel
    * infrastructure is never player-built and has no combat role.
    */
-  private refreshTownCenterAura(ownerId: string): void {
-    applyTownCenterAura(this.state, ownerId, this.townCenterLevelOf(ownerId));
+  private refreshEmpireAura(ownerId: string): void {
+    applyTownCenterAura(
+      this.state,
+      ownerId,
+      this.townCenterLevelOf(ownerId),
+      (unitType) => this.trainerLevelOf(ownerId, unitType)
+    );
   }
 
   /**
@@ -813,6 +944,23 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       if (level > 0) this.townCenterLevelByOwner.set(ownerId, level);
     } catch (err) {
       console.error(`❌ [WorldRoom] Failed to load Town Center level for ${ownerId}:`, err);
+    }
+  }
+
+  /**
+   * Loads a guest's finished building levels from their own kingdom (phase 26).
+   *
+   * Training and gathering only ever run where the owner's buildings are, but a
+   * raider's attack and HP must keep the trainer level of the barracks that
+   * produced them. A cache hit is trusted so the database is read once.
+   */
+  protected async hydrateBuildingLevels(ownerId: string): Promise<void> {
+    if (this.buildingLevelsByOwner.has(ownerId)) return;
+    try {
+      const levels = await DatabaseService.loadBuildingLevels(ownerId);
+      this.buildingLevelsByOwner.set(ownerId, levels);
+    } catch (err) {
+      console.error(`❌ [WorldRoom] Failed to load building levels for ${ownerId}:`, err);
     }
   }
 
@@ -1353,6 +1501,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     // A shared battlefield has no capital to derive from; load the owner's
     // level once so the arriving army keeps the aura it had in its kingdom.
     await this.hydrateTownCenterLevel(ownerId);
+    await this.hydrateBuildingLevels(ownerId);
 
     arrived.forEach((snapshot, index) => {
       this.addArrivedUnit(ownerId, snapshot, portal, index);
@@ -1386,7 +1535,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     const effectiveMaxHp = getEffectiveUnitMaxHp(
       unit.type as UnitType,
       unit.level,
-      this.townCenterLevelOf(ownerId)
+      this.townCenterLevelOf(ownerId),
+      this.trainerLevelOf(ownerId, unit.type as UnitType)
     );
     const missingHp = Math.max(0, snapshot.maxHp - snapshot.hp);
     unit.maxHp = effectiveMaxHp;
@@ -1635,6 +1785,11 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           // The crew is done; every builder drops back to idle on its next tick
           // (see `processUnitBuilding`), and the roster must not outlive the site.
           building.builderUnitIds.clear();
+          this.setBuildingLevel(
+            building.ownerId,
+            building.type as BuildingType,
+            building.level
+          );
           this.updatePlayerPopulation(building.ownerId);
         }
       }
@@ -1644,6 +1799,14 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       if (building.isConstructed && building.upgradeTimeMs > 0) {
         building.upgradeProgressMs += deltaTime;
         if (building.upgradeProgressMs >= building.upgradeTimeMs) {
+          // Phase 26: record the target level before the building changes, so a
+          // cache derived on the spot still sees the old value and the trainer
+          // refresh is not mistaken for a no-op.
+          this.setBuildingLevel(
+            building.ownerId,
+            building.type as BuildingType,
+            building.level + 1
+          );
           applyBuildingUpgrade(
             building,
             this.townCenterLevelOf(building.ownerId)
@@ -1682,7 +1845,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         const blueprint = UNIT_BLUEPRINTS[currentUnitType];
         const effectiveTrainTimeMs = getEffectiveTrainTimeMs(
           currentUnitType,
-          this.townCenterLevelOf(building.ownerId)
+          this.townCenterLevelOf(building.ownerId),
+          this.trainerLevelOf(building.ownerId, currentUnitType)
         );
         if (blueprint && building.trainingProgressMs >= effectiveTrainTimeMs) {
           building.trainingQueue.shift();
@@ -1762,7 +1926,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           this.state,
           player,
           player.researchUnitType as UnitType,
-          this.townCenterLevelOf(player.id)
+          this.townCenterLevelOf(player.id),
+          this.trainerLevelOf(player.id, player.researchUnitType as UnitType)
         );
       }
     });
@@ -1936,7 +2101,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     const effectiveMaxHp = getEffectiveUnitMaxHp(
       unitType,
       level,
-      this.townCenterLevelOf(ownerId)
+      this.townCenterLevelOf(ownerId),
+      this.trainerLevelOf(ownerId, unitType)
     );
     const uId = `u_${entityIds.nextId()}`;
     const unit = new UnitState();
