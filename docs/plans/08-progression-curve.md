@@ -29,7 +29,7 @@ trình là **35,5h**, nhưng với 2 slot và gate mỗi cấp thì thời gian 
 | D2 | Giá: `0,5 × 1,3^(L−1)` nhân `cost` của blueprint. |
 | D3 | Hệ số thời gian **3/cấp** — chọn theo nhịp "nặng": leo trọn thang TC 1→10 mất khoảng 20,5h. |
 | D4 | Cap: **10** cho mọi công trình (TC, 4 trụ cột, nhà phụ). Không còn ngoại lệ 100. |
-| D5 | Gate: nâng TC từ `L` lên `L+1` cần **House, Barracks, Farm, Tower** đều ≥ `L`. Bước đầu tiên đã cần cấp 1, nên phải dựng đủ 4 trụ cột trước khi TC lên cấp. |
+| D5 | Gate: nâng TC từ `L` lên `L+1` cần **House, Barracks, Farm, Tower** đều ≥ `L`. Bước đầu tiên đã cần cấp 1, nên phải dựng đủ 4 trụ cột trước khi TC lên cấp. **Cập nhật phase 24 (`MIL-01`)**: tách nhà lính làm 3 → danh sách trụ cột nay là **6** (`House, Barracks, Stable, Archery Range, Farm, Tower`) ở `CORE_BUILDING_TYPES`; số liệu thời gian trong file này tính cho bản 4 trụ cột, chưa retune cho 6. |
 | D6 | Mỗi người chơi nâng tối đa **2 công trình** cùng lúc. |
 | D7 | Timer **chỉ chạy khi online**, và tiến trình **cộng dồn qua các phiên**: `upgradeProgressMs` được lưu xuống DB khi autosave/leave và nạp lại khi vào, nên bước 13h40 nằm rải qua nhiều session. Hành vi này đã có sẵn từ phase 03, không cần cột mới. |
 

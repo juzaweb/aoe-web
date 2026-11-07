@@ -47,6 +47,10 @@ const PORTAL_HP_BAR_Y =
 export const SHEET_OFFSET_Y: Partial<Record<BuildingType, number>> = {
   TOWN_CENTER: -130,
   BARRACKS: -96,
+  // MIL-01: both new sheets are drawn at the barracks' 400x320 canvas, so they
+  // reuse its lift. A different canvas size would need its own number here.
+  STABLE: -96,
+  ARCHERY_RANGE: -96,
   HOUSE: -70,
   FARM: 0,
   TOWER: -160,
@@ -68,15 +72,29 @@ const SHEET_SCALE: Partial<Record<BuildingType, number>> = {
   PORTAL: PORTAL_SHEET.scale
 };
 
-/** Procedural textures used when a building has no generated PNG. */
-const FALLBACK_ART: Partial<Record<BuildingType, { textureKey: string; offsetY: number }>> = {
-  BARRACKS: { textureKey: 'b_barracks', offsetY: -70 },
-  HOUSE: { textureKey: 'b_house', offsetY: -50 },
-  FARM: { textureKey: 'b_farm', offsetY: 0 },
-  TOWER: { textureKey: 'b_tower', offsetY: -90 },
+/**
+ * Procedural textures used when a building has no generated PNG.
+ *
+ * `hpBarY` is part of the entry, not a derived value: the placeholder is a much
+ * smaller canvas than the real sheet, so a bar positioned from the sheet's
+ * numbers floats far above the drawn sprite. Keeping the two together means a
+ * fallback cannot ship without saying where its own bar goes.
+ */
+const FALLBACK_ART: Partial<
+  Record<BuildingType, { textureKey: string; offsetY: number; hpBarY: number }>
+> = {
+  BARRACKS: { textureKey: 'b_barracks', offsetY: -70, hpBarY: -126 },
+  // MIL-01: both new buildings borrow the barracks silhouette until their own
+  // sheet exists. A blank tile would be worse than a shared placeholder: it
+  // still reads as a military building on the map and in the minimap.
+  STABLE: { textureKey: 'b_barracks', offsetY: -70, hpBarY: -126 },
+  ARCHERY_RANGE: { textureKey: 'b_barracks', offsetY: -70, hpBarY: -126 },
+  HOUSE: { textureKey: 'b_house', offsetY: -50, hpBarY: -90 },
+  FARM: { textureKey: 'b_farm', offsetY: 0, hpBarY: -40 },
+  TOWER: { textureKey: 'b_tower', offsetY: -90, hpBarY: -148 },
   // The gate has its own sheet now (`GATE-01`); this only draws when that PNG
   // failed to load, so it keeps the tower silhouette rather than a blank tile.
-  PORTAL: { textureKey: 'b_tower', offsetY: -90 }
+  PORTAL: { textureKey: 'b_tower', offsetY: -90, hpBarY: -148 }
 };
 
 /**
@@ -108,7 +126,7 @@ const TIER_ART: Partial<Record<BuildingType, readonly TierArtSpec[]>> = {
   HOUSE: HOUSE_TIERS
 };
 
-const DEFAULT_ART = { textureKey: 'b_town_center', offsetY: -130 };
+const DEFAULT_ART = { textureKey: 'b_town_center', offsetY: -130, hpBarY: -203 };
 
 /**
  * Top of the health / construction bar, in the container's local space. Each
@@ -125,6 +143,9 @@ const HP_BAR_Y: Partial<Record<BuildingType, number>> = {
   TOWN_CENTER: -358,
   TOWER: -350,
   BARRACKS: -260,
+  // MIL-01: same 400x320 canvas as the barracks, so the same bar height.
+  STABLE: -260,
+  ARCHERY_RANGE: -260,
   HOUSE: -188,
   FARM: -100,
   LUMBER_CAMP: -171,
@@ -170,7 +191,21 @@ export function buildingArt(
       scale: SHEET_SCALE[type] ?? 1
     };
   }
-  return { ...(FALLBACK_ART[type] ?? DEFAULT_ART), scale: 1 };
+  return fallbackArt(type);
+}
+
+/**
+ * The procedural placeholder, copied field by field.
+ *
+ * Spreading the table entry would leak its `hpBarY` into the returned
+ * `BuildingArt`, and a spread also bypasses TypeScript's excess-property check,
+ * so the leak would be silent. Copying the three drawn fields keeps the two
+ * concerns separate: `buildingArt` says what to draw, `buildingHpBarY` reads
+ * `hpBarY` itself.
+ */
+function fallbackArt(type: BuildingType): BuildingArt {
+  const entry = FALLBACK_ART[type] ?? DEFAULT_ART;
+  return { textureKey: entry.textureKey, offsetY: entry.offsetY, scale: 1 };
 }
 
 /**
@@ -246,10 +281,30 @@ export function buildingTierInfo(
 
 /**
  * Top of the health / construction bar for a building at `level`, in container
- * space. Level-invariant types keep the hand-tuned table; tiered types derive
- * it from the sheet's measured art top so a new tier cannot float its bar.
+ * space.
+ *
+ * Level-invariant types keep the hand-tuned table; tiered types derive it from
+ * the sheet's measured art top so a new tier cannot float its bar.
+ *
+ * `hasTexture` decides *which* art is on screen. A building whose sheet is
+ * missing draws its procedural placeholder, which is a much smaller canvas, so
+ * the bar has to follow the placeholder instead of the sheet that was never
+ * drawn — otherwise the bar hangs in empty space above a small sprite. Pass the
+ * scene's real texture manager; the default assumes the sheet exists, which is
+ * what a unit test without a renderer wants.
  */
-export function buildingHpBarY(type: BuildingType, level = 1): number {
+export function buildingHpBarY(
+  type: BuildingType,
+  level = 1,
+  hasTexture: (textureKey: string) => boolean = () => true
+): number {
+  // Ask the same function that picked the sprite. A texture key that does not
+  // start with `building_` is the procedural placeholder, whose own bar height
+  // is part of its `FALLBACK_ART` entry.
+  if (!buildingArt(type, hasTexture, level).textureKey.startsWith('building_')) {
+    return (FALLBACK_ART[type] ?? DEFAULT_ART).hpBarY;
+  }
+
   const tier = visualTier(type, level);
   const spec = tierSpec(type, tier);
   if (spec) {

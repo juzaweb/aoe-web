@@ -378,7 +378,11 @@ export class EntityRenderer {
     const width = Math.max(70, building.sizeX * 36);
     const height = 6;
 
-    const barY = buildingHpBarY(building.type as BuildingType, building.level ?? 1);
+    const barY = buildingHpBarY(
+      building.type as BuildingType,
+      building.level ?? 1,
+      (key) => this.scene.textures.exists(key)
+    );
 
     // Background
     hpBar.fillStyle(0x0f172a, 0.85);

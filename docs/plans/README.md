@@ -32,6 +32,7 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | [`22-player-built-roads.md`](./22-player-built-roads.md) | Bỏ đường mặc định ở kingdom, cho người chơi kéo vẽ đường (2 gỗ/ô, +30% tốc độ, lưu SQLite) | IMPLEMENTED |
 | [`23-world-map-raids.md`](./23-world-map-raids.md) | Bỏ cổng chiến trường; bản đồ thế giới lục giác lọc ±5 cấp Nhà chính; tập kích vương quốc địch (cướp 20%, khiên 72 h, khoá 3 ngày) (`RD-01..RD-12`) | IMPLEMENTED — chờ verify tay UI |
 | [`24-spectator-mode.md`](./24-spectator-mode.md) | Quan sát vương quốc khác ở cửa sổ thứ hai: join read-only vào `kingdom_room`, chặn mọi lệnh, camera tự do, ẩn danh (`SPEC-01..SPEC-06`) | IMPLEMENTED — chờ verify tay UI |
+| [`24-military-buildings-split.md`](./24-military-buildings-split.md) | Tách nhà lính làm 3: `BARRACKS` bộ binh / `STABLE` kỵ binh / `ARCHERY_RANGE` cung thủ; nghiên cứu cấp lính theo đúng nhà train; 6 trụ cột gate TC (`MIL-01a..j`) | IMPLEMENTED — chờ verify tay, art 2 nhà mới chưa sinh |
 Status: `DRAFT` (chưa chốt quyết định) → `APPROVED` (bắt đầu code) → `DONE`.
 
 Phase 01 đã chốt 4 quyết định D1–D4 ngày 2026-11-01 (xem §11 của file phase); chưa có dòng code nào

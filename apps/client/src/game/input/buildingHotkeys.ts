@@ -1,9 +1,15 @@
 import type { BuildingType } from '@chien-quoc/shared';
 
 /**
- * `Q/W/E/R/T/Y/U/I` start a building placement, in the same order as the HUD's
- * build buttons. This is the only list: `CommandController` binds these keys and
- * `BuildMenu` prints the same letters on its buttons.
+ * `Q/W/E/R/T/Y/U/I/C/B` start a building placement, in the same order as the
+ * HUD's build buttons. This is the only list: `CommandController` binds these
+ * keys and `BuildMenu` prints the same letters on its buttons.
+ *
+ * MIL-01: `C` (cavalry) and `B` (bow) were appended instead of reshuffling the
+ * military buildings next to the Barracks. The first eight letters are muscle
+ * memory by now, and a build menu whose order drifts from its hotkeys is worse
+ * than one where the three military buildings are not neighbours in the list.
+ * `P` was deliberately skipped: it is already the patrol order.
  */
 export const BUILDING_HOTKEYS: ReadonlyArray<{ key: string; type: BuildingType }> = [
   { key: 'Q', type: 'TOWN_CENTER' },
@@ -13,7 +19,9 @@ export const BUILDING_HOTKEYS: ReadonlyArray<{ key: string; type: BuildingType }
   { key: 'T', type: 'TOWER' },
   { key: 'Y', type: 'LUMBER_CAMP' },
   { key: 'U', type: 'MILL' },
-  { key: 'I', type: 'MINING_CAMP' }
+  { key: 'I', type: 'MINING_CAMP' },
+  { key: 'C', type: 'STABLE' },
+  { key: 'B', type: 'ARCHERY_RANGE' }
 ];
 
 /** Reverse lookup for the build menu, which renders one button per type. */

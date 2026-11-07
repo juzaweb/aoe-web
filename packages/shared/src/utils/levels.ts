@@ -33,16 +33,22 @@ export const MAX_BUILDING_LEVEL = 10;
 export const MAX_UNIT_LEVEL = 10;
 
 /**
- * The four buildings that gate the Town Center (LVL2).
+ * The buildings that gate the Town Center (LVL2).
  *
  * A Town Center may not pull ahead of them: raising it from `L` to `L + 1`
- * demands level `L` from all four, so every Town Center level has to be earned
- * by a base that already supports it. `LUMBER_CAMP`, `MILL` and `MINING_CAMP`
- * are drop-offs and stay out of the gate.
+ * demands level `L` from all of them, so every Town Center level has to be
+ * earned by a base that already supports it. `LUMBER_CAMP`, `MILL` and
+ * `MINING_CAMP` are drop-offs and stay out of the gate.
+ *
+ * MIL-01: the military line is three buildings now, so all three are pillars.
+ * That is the cost of the split — a player who wants a fast Town Center cannot
+ * skip two of the three unit branches.
  */
 export const CORE_BUILDING_TYPES: readonly BuildingType[] = [
   'HOUSE',
   'BARRACKS',
+  'STABLE',
+  'ARCHERY_RANGE',
   'FARM',
   'TOWER'
 ];
@@ -50,9 +56,13 @@ export const CORE_BUILDING_TYPES: readonly BuildingType[] = [
 /**
  * How many of a player's buildings may upgrade at the same time (LVL-09).
  *
- * Without a cap the four core ladders run in parallel and the Town Center gate
- * costs nothing but attention; two slots keep a real queue in front of the
- * player without turning every upgrade into a global lock.
+ * Without a cap the core ladders run in parallel and the Town Center gate costs
+ * nothing but attention; two slots keep a real queue in front of the player
+ * without turning every upgrade into a global lock.
+ *
+ * MIL-01: unchanged on purpose. The military split added two core pillars, so
+ * the gate is heavier than phase 08 measured; raising this to 3 is the obvious
+ * knob but it is a balance decision, not part of the split.
  */
 export const MAX_CONCURRENT_BUILDING_UPGRADES = 2;
 
@@ -190,13 +200,14 @@ function visualTierLevels(type: BuildingType): readonly number[] | null {
 }
 
 /**
- * The level all four core buildings must reach before the Town Center may go
- * from `townCenterLevel` to `townCenterLevel + 1` (LVL2/D5).
+ * The level every core building must reach before the Town Center may go from
+ * `townCenterLevel` to `townCenterLevel + 1` (LVL2/D5).
  *
  * The gate steps on **every** Town Center level: a level-7 Town Center demands
- * four level-7 pillars, so the capital can never outrun the base that feeds it.
- * The first upgrade already demands level-1 pillars, which means all four
- * buildings have to exist before the Town Center grows at all.
+ * level-7 pillars, so the capital can never outrun the base that feeds it. The
+ * first upgrade already demands level-1 pillars, which means every core building
+ * — including both new military branches (MIL-01) — has to exist before the Town
+ * Center grows at all.
  */
 export function getRequiredCoreLevel(townCenterLevel: number): number {
   return clampLevel(townCenterLevel, MAX_BUILDING_LEVEL);

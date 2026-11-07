@@ -27,7 +27,7 @@ import { CORPSE_LINGER_MS, WorldRoom } from './WorldRoom.js';
 import { STARTER_RESOURCE_PREFIX } from './resources.js';
 import { isWithinBuildRange } from './construction.js';
 import { generateWorldResources } from './worldGeneration.js';
-import { restoreBuildingUpgrade } from './upgrades.js';
+import { clearUnitResearch, restoreBuildingUpgrade } from './upgrades.js';
 import { DatabaseService } from '../services/DatabaseService.js';
 import { WorldState } from '../schema/WorldState.js';
 import { PlayerState } from '../schema/PlayerState.js';
@@ -198,6 +198,13 @@ function addBuilding(
   return building;
 }
 
+/** Snapshot of the room's buildings, in insertion order. */
+function listedBuildings(room: WorldRoom): BuildingState[] {
+  const buildings: BuildingState[] = [];
+  room.state.buildings.forEach((b: BuildingState) => buildings.push(b));
+  return buildings;
+}
+
 function addResource(
   room: WorldRoom,
   options: { id: string; resourceType?: string; gridX?: number; gridY?: number; remainingAmount?: number }
@@ -317,6 +324,25 @@ describe('handleTrainUnit', () => {
     });
     expect(player.food).toBe(10);
     expect(room.state.buildings.get('b_1')!.trainingQueue.length).toBe(0);
+  });
+
+  // MIL-01: each military branch trains exactly one unit line.
+  it('refuses a unit the building does not train', () => {
+    const room = createRoom();
+    const player = addPlayer(room, 'player-a', { food: 500, gold: 500 });
+    addBuilding(room, { id: 'b_barracks', ownerId: 'player-a', type: 'BARRACKS' });
+    const client = createClient('player-a');
+
+    internals(room).commands.handleTrainUnit(client, {
+      buildingId: 'b_barracks',
+      unitType: 'CAVALRY'
+    });
+
+    expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Unit cannot be trained at this structure', code: RejectCode.PREREQUISITE
+    });
+    expect(player.food).toBe(500);
+    expect(room.state.buildings.get('b_barracks')!.trainingQueue.length).toBe(0);
   });
 });
 
@@ -468,6 +494,95 @@ describe('handlePlaceBuilding', () => {
 
     expect(room.state.buildings.size).toBe(1);
     expect(villager.actionState).toBe('IDLE');
+  });
+
+  it('queues a shift-placed foundation behind the site a crew already builds', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 500 });
+    const villager = addUnit(room, { id: 'u_1', ownerId: 'player-a', x: 30, y: 30 });
+    const clientA = createClient('player-a');
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 40, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const first = listedBuildings(room)[0];
+    expect(villager.targetEntityId).toBe(first.id);
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 44, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const second = listedBuildings(room).find((b) => b.id !== first.id)!;
+
+    // The crew stays on the first site; the second waits behind it.
+    expect(villager.targetEntityId).toBe(first.id);
+    expect(second.isConstructed).toBe(false);
+
+    // Finishing the first site hands the villager the queued foundation.
+    first.isConstructed = true;
+    internals(room).update(16);
+
+    expect(villager.actionState).toBe('BUILDING');
+    expect(villager.targetEntityId).toBe(second.id);
+  });
+
+  it('skips a queued foundation that was cancelled before the crew reached it', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 500 });
+    const villager = addUnit(room, { id: 'u_1', ownerId: 'player-a', x: 30, y: 30 });
+    const clientA = createClient('player-a');
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 40, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const first = listedBuildings(room)[0];
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 44, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const second = listedBuildings(room).find((b) => b.id !== first.id)!;
+    room.state.buildings.delete(second.id);
+
+    first.isConstructed = true;
+    internals(room).update(16);
+
+    // The vanished entry is dropped instead of stranding the villager on it.
+    expect(villager.actionState).toBe('IDLE');
+    expect(villager.targetEntityId).toBe('');
+  });
+
+  it('lets a plain drop replace the crew order and clear its build queue', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 500 });
+    const villager = addUnit(room, { id: 'u_1', ownerId: 'player-a', x: 30, y: 30 });
+    const clientA = createClient('player-a');
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 40, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const first = listedBuildings(room)[0];
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 44, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const queued = listedBuildings(room).find((b) => b.id !== first.id)!;
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 48, gridY: 40, unitIds: ['u_1']
+    });
+    const replacement = listedBuildings(room).find(
+      (b) => b.id !== first.id && b.id !== queued.id
+    )!;
+
+    expect(villager.targetEntityId).toBe(replacement.id);
+
+    // The stale queue entry must not pull the crew away once the first site is done.
+    first.isConstructed = true;
+    internals(room).update(16);
+    expect(villager.targetEntityId).toBe(replacement.id);
+
+    replacement.isConstructed = true;
+    internals(room).update(16);
+    expect(villager.actionState).toBe('IDLE');
+    expect(villager.targetEntityId).toBe('');
   });
 });
 
@@ -1938,11 +2053,11 @@ describe('starter base levels (LVL)', () => {
 describe('building upgrades (LVL)', () => {
   /**
    * The Town Center gate now asks for the Town Center's own level on every
-   * step, so any test that upgrades a Town Center has to start with the four
-   * pillars already built.
+   * step, so any test that upgrades a Town Center has to start with every
+   * pillar already built.
    */
   function addGatePillars(room: WorldRoom, level = 1) {
-    for (const type of ['HOUSE', 'BARRACKS', 'FARM', 'TOWER']) {
+    for (const type of ['HOUSE', 'BARRACKS', 'STABLE', 'ARCHERY_RANGE', 'FARM', 'TOWER']) {
       const pillar = addBuilding(room, { id: `b_${type}`, ownerId: 'player-a', type });
       pillar.level = level;
     }
@@ -2147,7 +2262,7 @@ describe('progression gate and slots (LVL2)', () => {
     return building;
   }
 
-  it('blocks the Town Center until the four pillars reach its level', () => {
+  it('blocks the Town Center until the six pillars reach its level', () => {
     const room = createRoom();
     addPlayer(room, 'player-a', RICH);
     const townCenter = addBuilding(room, { id: 'b_tc', ownerId: 'player-a' });
@@ -2159,6 +2274,7 @@ describe('progression gate and slots (LVL2)', () => {
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
       message:
         'Town Center upgrade requires House level 4 (have 0), Barracks level 4 (have 0), ' +
+        'Stable level 4 (have 0), Archery Range level 4 (have 0), ' +
         'Farm level 4 (have 0), Watch Tower level 4 (have 0)',
       code: RejectCode.PREREQUISITE
     });
@@ -2170,7 +2286,7 @@ describe('progression gate and slots (LVL2)', () => {
     addPlayer(room, 'player-a', RICH);
     const townCenter = addBuilding(room, { id: 'b_tc', ownerId: 'player-a' });
     townCenter.level = 9;
-    for (const type of ['HOUSE', 'BARRACKS', 'FARM', 'TOWER']) {
+    for (const type of ['HOUSE', 'BARRACKS', 'STABLE', 'ARCHERY_RANGE', 'FARM', 'TOWER']) {
       addCore(room, type, 9);
     }
     const client = createClient('player-a');
@@ -2190,6 +2306,8 @@ describe('progression gate and slots (LVL2)', () => {
     // The gate now asks for level 5, and this House is still a foundation.
     addCore(room, 'HOUSE', 5, false);
     addCore(room, 'BARRACKS', 5);
+    addCore(room, 'STABLE', 5);
+    addCore(room, 'ARCHERY_RANGE', 5);
     addCore(room, 'FARM', 5);
     addCore(room, 'TOWER', 5);
     const client = createClient('player-a');
@@ -2214,6 +2332,7 @@ describe('progression gate and slots (LVL2)', () => {
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
       message:
         'Town Center upgrade requires House level 1 (have 0), Barracks level 1 (have 0), ' +
+        'Stable level 1 (have 0), Archery Range level 1 (have 0), ' +
         'Farm level 1 (have 0), Watch Tower level 1 (have 0)',
       code: RejectCode.PREREQUISITE
     });
@@ -2327,7 +2446,7 @@ describe('progression gate and slots (LVL2)', () => {
 });
 
 describe('unit research (LVL)', () => {
-  it('requires a finished Barracks', () => {
+  it('requires the finished building that trains the unit', () => {
     const room = createRoom();
     addPlayer(room, 'player-a', { wood: 5000, food: 5000, gold: 5000 });
     const client = createClient('player-a');
@@ -2335,11 +2454,11 @@ describe('unit research (LVL)', () => {
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'SPEARMAN' });
 
     expect(client.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Build a Barracks before researching unit upgrades', code: RejectCode.PREREQUISITE
+      message: 'Build a Barracks before researching this unit', code: RejectCode.PREREQUISITE
     });
   });
 
-  it('rejects a foundation Barracks and an unaffordable research', () => {
+  it('rejects a foundation trainer and an unaffordable research', () => {
     const room = createRoom();
     const player = addPlayer(room, 'player-a', { wood: 0, food: 0, gold: 0 });
     addBuilding(room, {
@@ -2352,7 +2471,7 @@ describe('unit research (LVL)', () => {
 
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'SPEARMAN' });
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Build a Barracks before researching unit upgrades', code: RejectCode.PREREQUISITE
+      message: 'Build a Barracks before researching this unit', code: RejectCode.PREREQUISITE
     });
 
     addBuilding(room, { id: 'b_ready', ownerId: 'player-a', type: 'BARRACKS' });
@@ -2361,6 +2480,45 @@ describe('unit research (LVL)', () => {
       message: 'Insufficient resources to research unit upgrade', code: RejectCode.RESOURCE
     });
     expect(player.researchUnitType).toBe('');
+  });
+
+  // MIL-01: each military branch unlocks only its own unit line.
+  it('rejects cavalry research without a Stable and archer research without a range', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 5000, food: 5000, gold: 5000 });
+    addBuilding(room, { id: 'b_barracks', ownerId: 'player-a', type: 'BARRACKS' });
+    const client = createClient('player-a');
+
+    internals(room).commands.handleUpgradeUnitType(client, { unitType: 'CAVALRY' });
+    expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Build a Stable before researching this unit', code: RejectCode.PREREQUISITE
+    });
+
+    internals(room).commands.handleUpgradeUnitType(client, { unitType: 'ARCHER' });
+    expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Build an Archery Range before researching this unit',
+      code: RejectCode.PREREQUISITE
+    });
+
+    internals(room).commands.handleUpgradeUnitType(client, { unitType: 'VILLAGER' });
+    expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message: 'Build a Town Center before researching this unit', code: RejectCode.PREREQUISITE
+    });
+  });
+
+  it('accepts research once the matching branch exists', () => {
+    const room = createRoom();
+    const player = addPlayer(room, 'player-a', { wood: 5000, food: 5000, gold: 5000 });
+    addBuilding(room, { id: 'b_stable', ownerId: 'player-a', type: 'STABLE' });
+    addBuilding(room, { id: 'b_range', ownerId: 'player-a', type: 'ARCHERY_RANGE' });
+    const client = createClient('player-a');
+
+    internals(room).commands.handleUpgradeUnitType(client, { unitType: 'CAVALRY' });
+    expect(player.researchUnitType).toBe('CAVALRY');
+    clearUnitResearch(player);
+
+    internals(room).commands.handleUpgradeUnitType(client, { unitType: 'ARCHER' });
+    expect(player.researchUnitType).toBe('ARCHER');
   });
 
   it('charges once, ticks, and upgrades every existing unit of that type', () => {
@@ -2458,6 +2616,7 @@ describe('unit research (LVL)', () => {
       stone: 5000
     });
     addBuilding(room, { id: 'b_barracks', ownerId: 'player-a', type: 'BARRACKS' });
+    addBuilding(room, { id: 'b_range', ownerId: 'player-a', type: 'ARCHERY_RANGE' });
     const client = createClient('player-a');
 
     player.unitLevels[1] = 10;
@@ -2488,6 +2647,7 @@ describe('unit research (LVL)', () => {
       stone: 5000
     });
     addBuilding(room, { id: 'b_barracks', ownerId: 'player-a', type: 'BARRACKS' });
+    addBuilding(room, { id: 'b_range', ownerId: 'player-a', type: 'ARCHERY_RANGE' });
     const client = createClient('player-a');
 
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'ARCHER' });

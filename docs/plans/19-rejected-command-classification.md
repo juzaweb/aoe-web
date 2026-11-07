@@ -174,7 +174,7 @@ thành helper chung. Mỗi commit một task (xem §5).
 | `Invalid unit type` | `INVALID` |
 | `Unit type is already at max level` | `LIMIT` |
 | `Another unit research is already in progress` | `BUSY` |
-| `Build a Barracks before researching unit upgrades` | `PREREQUISITE` |
+| `Build a Barracks before researching this unit` (also `a Stable`, `an Archery Range`, `a Town Center` — see phase 24) | `PREREQUISITE` |
 | `Insufficient resources to research unit upgrade` | `RESOURCE` |
 | `No matching unit research is in progress` | `GONE` |
 | `Target no longer exists` | `GONE` |

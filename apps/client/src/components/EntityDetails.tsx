@@ -11,7 +11,8 @@ import {
   getUnitMaxLevel
 } from '@chien-quoc/shared';
 import { Shield, UserPlus, Heart, Hammer, X, Boxes } from 'lucide-react';
-import { BarracksResearchPanel, BuildingUpgradePanel } from './UpgradePanels.js';
+import { BuildingUpgradePanel, UnitResearchPanel } from './UpgradePanels.js';
+import { buildingThumbnail } from './buildingThumbnails.js';
 
 /** Vietnamese labels for the resource types a villager can haul. */
 const RESOURCE_LABELS: Record<string, string> = {
@@ -53,7 +54,7 @@ interface EntityDetailsProps {
   onUpgradeBuilding: (buildingId: string) => void;
   /** LVL: cancels an in-flight upgrade and refunds its cost. */
   onCancelBuildingUpgrade: (buildingId: string) => void;
-  /** LVL: starts a player-wide research for one unit type (Barracks only). */
+  /** MIL-01: starts a player-wide research for one unit type (its trainer only). */
   onUpgradeUnitType: (unitType: UnitType) => void;
   /** LVL: cancels the in-flight unit research. */
   onCancelUnitUpgrade: (unitType: UnitType) => void;
@@ -83,6 +84,9 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
 }) => {
   const buildingBp = entity.type === 'building' ? BUILDING_BLUEPRINTS[entity.subType as BuildingType] : null;
   const trainableUnits = buildingBp ? buildingBp.trainableUnits : [];
+  // MIL-01: `null` for a building whose sheet is not in the repo yet, so the
+  // panel draws its placeholder instead of requesting a file that cannot exist.
+  const buildingThumb = entity.type === 'building' ? buildingThumbnail(entity.subType ?? '') : null;
 
   const buildingIsOwnedAndFinished =
     entity.type === 'building' && entity.isOwner === true && entity.isConstructed === true;
@@ -110,14 +114,20 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
               }}
             />
           ) : entity.type === 'building' && entity.subType ? (
-            <img
-              src={`/assets/buildings/${entity.subType.toLowerCase()}.png?v=3`}
-              alt={entity.name}
-              className="w-10 h-10 object-contain rounded-md bg-slate-900/90 border border-amber-500/60 p-0.5 shadow-md"
-              onError={(e) => {
-                (e.target as HTMLElement).style.display = 'none';
-              }}
-            />
+            buildingThumb ? (
+              <img
+                src={buildingThumb}
+                alt={entity.name}
+                className="w-10 h-10 object-contain rounded-md bg-slate-900/90 border border-amber-500/60 p-0.5 shadow-md"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-md bg-slate-900/90 border border-amber-500/60 flex items-center justify-center text-amber-500 font-bold">
+                ?
+              </div>
+            )
           ) : entity.type === 'resource' && entity.subType ? (
             <img
               src={`/assets/resources/${entity.subType === 'TREE' ? 'tree' : entity.subType === 'GOLD_MINE' ? 'gold' : entity.subType === 'STONE_MINE' ? 'stone' : 'berry'}.png?v=3`}
@@ -390,11 +400,14 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
         />
       )}
 
-      {/* LVL: barracks is the single research point for player-wide unit levels */}
+      {/* MIL-01: every trainer researches its own unit line — the barracks
+          spearmen, the stable cavalry, the range archers, the town center
+          villagers. Which types appear is the blueprint's `trainableUnits`. */}
       {buildingIsOwnedAndFinished &&
-        entity.subType === 'BARRACKS' &&
+        trainableUnits.length > 0 &&
         (entity.unitLevels?.length ?? 0) > 0 && (
-          <BarracksResearchPanel
+          <UnitResearchPanel
+            unitTypes={trainableUnits}
             unitLevels={entity.unitLevels ?? []}
             researchUnitType={entity.researchUnitType}
             researchProgressMs={entity.researchProgressMs}

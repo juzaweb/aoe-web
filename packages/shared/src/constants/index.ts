@@ -332,12 +332,48 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     buildTimeMs: 10000,
     maxHp: 1200,
     populationProvided: 0,
-    trainableUnits: ['SPEARMAN', 'ARCHER', 'CAVALRY'],
+    trainableUnits: ['SPEARMAN'],
     attackPower: 0,
     attackRange: 0,
     attackCooldownMs: 0,
     dropOffs: [],
-    description: 'Military facility used to recruit spearmen, archers, and cavalry.'
+    description: 'Infantry barracks. Recruits spearmen, the backbone of a melee army.'
+  },
+  // MIL-01: the old Barracks trained all three military lines at once, so the
+  // unit roster was a single build order rather than a choice. Splitting the
+  // roster into one building per line makes each branch a real investment, and
+  // the art/price differences below are what make the branches feel distinct.
+  STABLE: {
+    type: 'STABLE',
+    name: 'Stable',
+    sizeX: 3,
+    sizeY: 3,
+    cost: { wood: 200, food: 0, gold: 0, stone: 50 },
+    buildTimeMs: 10000,
+    maxHp: 1200,
+    populationProvided: 0,
+    trainableUnits: ['CAVALRY'],
+    attackPower: 0,
+    attackRange: 0,
+    attackCooldownMs: 0,
+    dropOffs: [],
+    description: 'Cavalry stable. Breeds and trains mounted warriors for fast raids.'
+  },
+  ARCHERY_RANGE: {
+    type: 'ARCHERY_RANGE',
+    name: 'Archery Range',
+    sizeX: 3,
+    sizeY: 3,
+    cost: { wood: 150, food: 0, gold: 0, stone: 0 },
+    buildTimeMs: 10000,
+    maxHp: 1200,
+    populationProvided: 0,
+    trainableUnits: ['ARCHER'],
+    attackPower: 0,
+    attackRange: 0,
+    attackCooldownMs: 0,
+    dropOffs: [],
+    description: 'Archery range. Trains archers who fight from behind the front line.'
   },
   HOUSE: {
     type: 'HOUSE',
@@ -541,4 +577,24 @@ export const UNIT_BLUEPRINTS: Record<UnitType, UnitBlueprint> = {
     description: 'Fast and powerful mounted warrior suited for hit-and-run tactics.'
   }
 };
+
+/**
+ * The building that trains `unitType`, or `null` when nothing does (MIL-01).
+ *
+ * Derived by scanning the blueprints rather than kept in a second table, so a
+ * roster change cannot leave a trainer pointer aimed at a building that no
+ * longer trains the unit. Scanned per call instead of cached: this runs once per
+ * research command, and a module-level cache would add mutable state to a
+ * constants file for no measurable gain.
+ *
+ * Unit research uses it: researching a unit requires the building that trains
+ * it, which is what keeps Barracks/Stable/Archery Range from becoming three
+ * copies of the same panel.
+ */
+export function buildingTypeForUnit(unitType: string): BuildingType | null {
+  for (const blueprint of Object.values(BUILDING_BLUEPRINTS) as BuildingBlueprint[]) {
+    if (blueprint.trainableUnits.includes(unitType as UnitType)) return blueprint.type;
+  }
+  return null;
+}
 
