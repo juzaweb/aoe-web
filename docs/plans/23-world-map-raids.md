@@ -38,7 +38,7 @@ khác** làm mỗi trận có đích (Nhà chính), có tài sản để mất (
 | R8 | Rút quân bằng **cổng riêng** đặt trong vương quốc địch (tái dùng `ensurePortalFor`). Bấm rút chỉ **ra lệnh hành quân** về cổng; trận chỉ đóng khi **toàn bộ quân còn sống** đứng tại cổng. |
 | R9 | Tối đa **120 quân**/trận (`MAX_TRAVEL_UNITS`). |
 | R10 | Chủ nhà online **đánh trả được** — PvP thật, hai tài khoản chung một phòng. |
-| R11 | Danh sách nước = tài khoản **đã có Nhà chính**; không có khiên bảo vệ tài khoản mới. |
+| R11 | Danh sách nước = tài khoản **đã có Nhà chính**; không có khiên bảo vệ tài khoản mới. Chỉ **tấn công được khi chủ nước đang online** (có phiên game sống); nước offline vẫn hiện trên bản đồ nhưng bị khoá kèm lý do. |
 | R12 | Bố cục bản đồ: **lục giác**, vị trí cố định sinh từ hash `userId`. |
 | R13 | Cướp 20%/loại, trần **2.000**/loại/trận, tính trên số dư defender lúc kết thúc. |
 | R14 | Người tấn công **không** được xây/nâng cấp/đặt đường/khai thác trong vương quốc địch; chỉ có lệnh quân sự. |
@@ -317,13 +317,13 @@ Chi tiết overlay:
 
 | Tình huống | Hành vi |
 | --- | --- |
-| Defender offline | Phòng được tạo, base restore từ DB, quân defender đứng yên; chỉ tháp/nhà tự bắn. |
+| Defender offline lúc bắt đầu | Không thể là mục tiêu: `listNeighbors` trả `canAttack=false` (`Chủ thành đang ngoại tuyến`) và `startRaid` trả `400`. |
 | Defender online | Chung phòng với quân attacker, thấy và điều quân được (R10). |
 | Attacker F5 giữa trận | `raids.status='ACTIVE'` còn hiệu lực; client đọc `raidId` từ `localStorage`, join lại `kingdom_room` với `raidId`. |
 | Attacker mất mạng | Quân vẫn là hàng `units` có `owner_id` = attacker trong `kingdom:<defender>`; join lại là thấy. |
-| Defender rời phòng khi đang bị đánh | Phòng còn attacker nên không dispose; defender join lại vẫn thấy trận. |
+| Defender rời phòng khi đang bị đánh | Trận đã bắt đầu vẫn tiếp tục: phòng còn attacker nên không dispose, base restore từ DB, quân defender đứng yên (chỉ tháp/nhà tự bắn); defender join lại vẫn thấy trận. |
 | Hai người cùng đánh một nước | Bị chặn bởi unique index `raids_one_active_per_defender`. |
-| Attacker tự đánh mình / ngoài ±5 cấp / đang khiên / đang bị khoá | `400` với thông báo tiếng Việt cụ thể. |
+| Attacker tự đánh mình / ngoài ±5 cấp / defender offline / đang khiên / đang bị khoá | `400` với thông báo tiếng Việt cụ thể. |
 | Defender không còn Nhà chính | Không xuất hiện trên bản đồ (`town_center_level = 0`). |
 | Nhà chính defender biến mất giữa trận | `DEFENDER_WON`; không xoá thêm gì. |
 | Pop của attacker khi quân ở nước khác | `populationElsewhere` đã xử lý sẵn; thêm assert trong test. |
