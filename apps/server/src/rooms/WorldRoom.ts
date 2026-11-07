@@ -1520,8 +1520,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       const blueprint = UNIT_BLUEPRINTS[unit.type as UnitType];
       if (!blueprint) return;
 
-      // CMD-01: before taking a step, an attack-moving or patrolling unit checks
-      // for the closest enemy inside its aggro radius.
+      // CMD-01: before taking a step, an idle or moving soldier checks for the
+      // best enemy inside its aggro radius (soldiers, then villagers, then
+      // buildings). Attack-move and patrol use the same acquisition.
       this.combat.acquireAggroTarget(unit, blueprint.aggroRadius);
 
       // A fight whose target was destroyed, killed by someone else or simply
