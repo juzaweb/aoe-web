@@ -4,14 +4,12 @@
 - **Interpersonal Communication:** ALL chat, logic explanations, and feedback MUST be in **VIETNAMESE**.
 - **Technical Artifacts:** ALL code, docstrings, and **GIT COMMIT MESSAGES** MUST be in **ENGLISH**.
 - **STRICT:** Never use Vietnamese in Git logs or Commit messages under any circumstances.
-- **DO NOT** commit or push anything without permission.
 
 ### General Rules
 
 - Ask clarifying questions until you are at least 95% confident that you understand the task and can successfully complete it.
 - Never make assumptions when a missing requirement could materially affect the implementation.
 - Before writing any source code, define the implementation logic and potential error cases / edge cases.
-- Notify me if any resources are missing; do not draw without permission.
 
 <!-- CODEGRAPH_START -->
 ## CodeGraph

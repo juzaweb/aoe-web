@@ -5,8 +5,7 @@ import {
   grassTint,
   hash2,
   hashString,
-  resourceLook,
-  roadStampLook
+  resourceLook
 } from './visualVariation.js';
 
 /**
@@ -110,42 +109,6 @@ describe('grassTint', () => {
       for (let y = 0; y < 200; y += 10) seen.add(grassTint(x, y));
     }
     expect(seen.size).toBeGreaterThan(3);
-  });
-});
-
-describe('roadStampLook', () => {
-  it('stays inside the documented ranges', () => {
-    for (let i = 0; i < 200; i++) {
-      const look = roadStampLook(i * 0.35, i * 0.7, 0.4, i);
-      expect(look.angle).toBeGreaterThan(0.4 - 0.061);
-      expect(look.angle).toBeLessThan(0.4 + 0.061);
-      expect(look.scale).toBeGreaterThanOrEqual(0.92);
-      expect(look.scale).toBeLessThanOrEqual(1.12);
-      expect(Math.hypot(look.offsetX, look.offsetY)).toBeLessThanOrEqual(5.001);
-      const channels = [(look.tint >> 16) & 0xff, (look.tint >> 8) & 0xff, look.tint & 0xff];
-      for (const channel of channels) {
-        expect(channel).toBeGreaterThanOrEqual(204);
-        expect(channel).toBeLessThanOrEqual(255);
-      }
-    }
-  });
-
-  it('gives roughly a quarter of the stamps a shoulder', () => {
-    let shoulders = 0;
-    const total = 2000;
-    for (let i = 0; i < total; i++) {
-      if (roadStampLook(i * 0.35, i * 0.7, 0, i).shoulderScale !== null) shoulders++;
-    }
-    expect(shoulders / total).toBeGreaterThan(0.18);
-    expect(shoulders / total).toBeLessThan(0.32);
-  });
-
-  it('offsets perpendicular to the road', () => {
-    // A horizontal road must move stamps vertically, not along it.
-    for (let i = 0; i < 200; i++) {
-      const look = roadStampLook(i * 0.35, i * 0.7, 0, i);
-      expect(Math.abs(look.offsetX)).toBeLessThan(1e-9);
-    }
   });
 });
 

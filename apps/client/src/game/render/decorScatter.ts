@@ -1,4 +1,4 @@
-import { MapTerrain, isDirtRoadTile } from '@chien-quoc/shared';
+import { MapTerrain } from '@chien-quoc/shared';
 import { fbm, hash2, hashString } from './visualVariation.js';
 
 /**
@@ -71,7 +71,6 @@ export function decorAt(
 ): DecorChoice | null {
   if (gx < 0 || gy < 0 || gx >= terrain.width || gy >= terrain.height) return null;
   if (blocked.has(tileKey(gx, gy))) return null;
-  if (isDirtRoadTile(gx, gy, terrain)) return null;
 
   const roll = hash2(gx, gy, 0x1a2b);
   if (roll < ROCK_CHANCE) {

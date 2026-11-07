@@ -4,9 +4,11 @@ import {
   BuildingType,
   HarvestResourcePayload,
   MAX_SELECTION,
+  RejectCode,
   ResourceType,
   UnitType,
   UNIT_BLUEPRINTS,
+  gatherIntervalMs,
   getUnitLevelStats
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
@@ -16,7 +18,7 @@ import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { approachPointOutsideFootprint } from './construction.js';
 import { distanceToFootprint } from './geometry.js';
-import { gatheredType } from './gatherables.js';
+import { gatheredCapacity, gatheredType } from './gatherables.js';
 import { ownerIdOf } from './identity.js';
 
 /**
@@ -30,7 +32,7 @@ export interface EconomyPorts {
   /** Falls back to the next queued waypoint, or IDLE. */
   resumeQueuedWaypoint(unit: UnitState): void;
   /** Sends an `ERROR_NOTIFICATION` to the client. */
-  rejectCommand(client: Client, message: string): void;
+  rejectCommand(client: Client, message: string, code: RejectCode): void;
   /**
    * A node just ran dry. The room keeps the empty node in state (so the client
    * can hide it) and schedules its refill instead of deleting the row.
@@ -44,13 +46,6 @@ export interface EconomyPorts {
  * neighbouring forest patches without letting a villager cross the whole map.
  */
 const HARVEST_RETARGET_RADIUS = 10;
-
-/**
- * Units a villager takes off a node per second of harvesting. One second's worth
- * fills a starting villager's carry capacity (10), so the walk to a drop-off and
- * back — not the gathering — is what limits the economy.
- */
-const GATHER_AMOUNT_PER_SECOND = 10;
 
 /** How close to a node a villager has to stand to harvest it, in tiles. */
 const HARVEST_RANGE = 1.5;
@@ -102,7 +97,7 @@ export class EconomySystem {
   handleHarvestOrder(client: Client, payload: HarvestResourcePayload) {
     if (!payload?.unitIds || payload.unitIds.length === 0) return;
     if (payload.unitIds.length > MAX_SELECTION) {
-      this.ports.rejectCommand(client, 'Too many units in one command');
+      this.ports.rejectCommand(client, 'Too many units in one command', RejectCode.LIMIT);
       return;
     }
 
@@ -113,11 +108,11 @@ export class EconomySystem {
 
     const resource = this.state.resourceNodes.get(payload.resourceNodeId ?? '');
     if (!resource) {
-      this.ports.rejectCommand(client, 'Resource node no longer exists');
+      this.ports.rejectCommand(client, 'Resource node no longer exists', RejectCode.GONE);
       return;
     }
     if (resource.remainingAmount <= 0) {
-      this.ports.rejectCommand(client, 'Resource node is depleted');
+      this.ports.rejectCommand(client, 'Resource node is depleted', RejectCode.RESOURCE);
       return;
     }
 
@@ -143,25 +138,25 @@ export class EconomySystem {
   private assignFarmHarvest(client: Client, unitIds: string[], buildingId: string) {
     const farm = this.state.buildings.get(buildingId);
     if (!farm) {
-      this.ports.rejectCommand(client, 'Farm no longer exists');
+      this.ports.rejectCommand(client, 'Farm no longer exists', RejectCode.GONE);
       return;
     }
     if (farm.ownerId !== ownerIdOf(client)) {
-      this.ports.rejectCommand(client, 'That farm is not yours');
+      this.ports.rejectCommand(client, 'That farm is not yours', RejectCode.FORBIDDEN);
       return;
     }
     if (!farm.isConstructed) {
-      this.ports.rejectCommand(client, 'Farm is still under construction');
+      this.ports.rejectCommand(client, 'Farm is still under construction', RejectCode.PREREQUISITE);
       return;
     }
 
     const resourceType = gatheredType(farm);
     if (!resourceType) {
-      this.ports.rejectCommand(client, 'That building cannot be harvested');
+      this.ports.rejectCommand(client, 'That building cannot be harvested', RejectCode.INVALID);
       return;
     }
     if (farm.resourceAmount <= 0) {
-      this.ports.rejectCommand(client, 'Farm is empty');
+      this.ports.rejectCommand(client, 'Farm is empty', RejectCode.RESOURCE);
       return;
     }
 
@@ -232,6 +227,42 @@ export class EconomySystem {
     this.harvestTypeByUnit.delete(unitId);
   }
 
+  /**
+   * ECO-02: one harvest step, paid in whole units.
+   *
+   * The timer accumulates wall time and pays out one unit per interval, so a
+   * rate like 2.5/s is exactly two units every 800 ms rather than a fraction
+   * that the replicated `resourceAmount`/`carryingAmount` cannot hold. The
+   * unspent fraction of the current interval carries over, so ordinary ticks are
+   * never rounded away.
+   *
+   * @returns units taken this tick: 0 when the interval has not elapsed yet.
+   */
+  private harvestTick(
+    unit: UnitState,
+    resourceType: string,
+    deltaTime: number,
+    carryCapacity: number,
+    available: number
+  ): number {
+    const interval = gatherIntervalMs(resourceType);
+    let elapsed = (this.gatherTimers.get(unit.id) ?? 0) + deltaTime;
+    const roomInHand = carryCapacity - unit.carryingAmount;
+    if (elapsed < interval || roomInHand <= 0) {
+      this.gatherTimers.set(unit.id, elapsed);
+      return 0;
+    }
+
+    // Clamped by both the free room in hand and `available`, so a nearly empty
+    // node is not overdrawn. Whole intervals the caps blocked are dropped, so a
+    // long tick cannot bank a free load for whatever node comes next; only the
+    // fraction of the interval already worked is kept.
+    const units = Math.min(Math.floor(elapsed / interval), roomInHand, available);
+    elapsed = (elapsed - units * interval) % interval;
+    this.gatherTimers.set(unit.id, elapsed);
+    return units;
+  }
+
   private processGathering(unit: UnitState, deltaTime: number) {
     const carryCapacity = getUnitLevelStats(unit.type as UnitType, unit.level).carryCapacity;
     if (carryCapacity <= 0) return;
@@ -277,19 +308,16 @@ export class EconomySystem {
     const dist = Math.hypot(resource.gridX - unit.x, resource.gridY - unit.y);
     if (dist > HARVEST_RANGE) return;
 
-    const gatherTimer = (this.gatherTimers.get(unit.id) ?? 0) + deltaTime;
-    if (gatherTimer < 1000) {
-      this.gatherTimers.set(unit.id, gatherTimer);
-      return;
-    }
-    this.gatherTimers.set(unit.id, 0);
-
-    const taken = Math.min(
-      GATHER_AMOUNT_PER_SECOND,
-      resource.remainingAmount,
-      carryCapacity - unit.carryingAmount
+    const taken = this.harvestTick(
+      unit,
+      resource.resourceType,
+      deltaTime,
+      carryCapacity,
+      resource.remainingAmount
     );
 
+    // A node another villager already emptied is handled by the depletion branch
+    // below, so a zero take must not return early: the order would hang here.
     if (taken > 0) {
       resource.remainingAmount -= taken;
       unit.carryingAmount += taken;
@@ -297,9 +325,10 @@ export class EconomySystem {
     }
 
     if (resource.remainingAmount <= 0) {
-      // MAPS: the node stays in the snapshot as an empty slot so the client can
-      // hide it and the room can refill it after a respawn delay. Deleting it
-      // would make the battlefield permanently poorer the longer it is played.
+      // MAPS: a generated node stays in the snapshot as an empty slot so the
+      // client can hide it and the room can refill it after a respawn delay;
+      // deleting it would make the battlefield permanently poorer the longer it
+      // is played. The room decides: a starter node is removed for good.
       this.ports.onNodeDepleted(resource);
       // AoE behaviour: bank what is in hand, then walk to the next node of the
       // same type instead of standing idle next to an empty stump.
@@ -353,24 +382,12 @@ export class EconomySystem {
 
     if (distanceToFootprint(unit.x, unit.y, farm) > HARVEST_RANGE) return;
 
-    const gatherTimer = (this.gatherTimers.get(unit.id) ?? 0) + deltaTime;
-    if (gatherTimer < 1000) {
-      this.gatherTimers.set(unit.id, gatherTimer);
-      return;
-    }
-    this.gatherTimers.set(unit.id, 0);
+    const taken = this.harvestTick(unit, resourceType, deltaTime, carryCapacity, farm.resourceAmount);
+    if (taken <= 0) return;
 
-    const taken = Math.min(
-      GATHER_AMOUNT_PER_SECOND,
-      farm.resourceAmount,
-      carryCapacity - unit.carryingAmount
-    );
-
-    if (taken > 0) {
-      farm.resourceAmount -= taken;
-      unit.carryingAmount += taken;
-      unit.carryingResourceType = resourceType;
-    }
+    farm.resourceAmount -= taken;
+    unit.carryingAmount += taken;
+    unit.carryingResourceType = resourceType;
 
     // Sown again the moment it is emptied, so the field is ready for the next
     // trip instead of the villager discovering a bare plot on its return.
@@ -387,7 +404,8 @@ export class EconomySystem {
    */
   private resowFarm(farm: BuildingState): boolean {
     const blueprint = BUILDING_BLUEPRINTS[farm.type as BuildingType];
-    if (!blueprint?.gatheredResource || !blueprint.gatherCapacity) return false;
+    const capacity = gatheredCapacity(farm);
+    if (!blueprint?.gatheredResource || !capacity) return false;
 
     const player = this.state.players.get(farm.ownerId);
     if (!player) return false;
@@ -407,8 +425,8 @@ export class EconomySystem {
     player.gold -= cost.gold;
     player.stone -= cost.stone;
 
-    farm.resourceAmount = blueprint.gatherCapacity;
-    farm.resourceCapacity = blueprint.gatherCapacity;
+    farm.resourceAmount = capacity;
+    farm.resourceCapacity = capacity;
     return true;
   }
 

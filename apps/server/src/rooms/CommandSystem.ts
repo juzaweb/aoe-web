@@ -14,8 +14,16 @@ import {
   MAX_CONCURRENT_BUILDING_UPGRADES,
   MAX_QUEUED_WAYPOINTS,
   MAX_SELECTION,
+  MAX_ROAD_TILES_PER_MESSAGE,
+  MAX_ROADS_PER_ZONE,
   MoveUnitsPayload,
   PlaceBuildingPayload,
+  PlaceRoadPayload,
+  RemoveRoadPayload,
+  MAP_BUILD_MARGIN_TILES,
+  ROAD_COST_PER_TILE,
+  roadTileKey,
+  zoneKindOf,
   Resources,
   SetRallyPointPayload,
   SetStancePayload,
@@ -26,6 +34,7 @@ import {
   UnitType,
   UpgradeBuildingPayload,
   UpgradeUnitTypePayload,
+  RejectCode,
   canTrainUnitsAt,
   getBuildingMaxLevel,
   getBuildingLevelStats,
@@ -38,12 +47,15 @@ import {
   getUnitUpgradeTimeMs
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
+import { RoadState } from '../schema/RoadState.js';
 import { PlayerState } from '../schema/PlayerState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { getBuildApproachPoint } from './construction.js';
+import { RoadGrid } from './roads.js';
 import { ownerIdOf } from './identity.js';
+import { UNIT_SEPARATION } from './unitSeparation.js';
 import {
   clearUnitResearch,
   collectCoreLevels,
@@ -59,7 +71,7 @@ import {
  */
 export interface CommandPorts {
   /** Sends an `ERROR_NOTIFICATION` to the client. */
-  rejectCommand(client: Client, message: string): void;
+  rejectCommand(client: Client, message: string, code: RejectCode): void;
   /** Replaces the unit's route with one to this point (SIM-01). */
   setWalkTarget(unit: UnitState, targetX: number, targetY: number): void;
   /** Pops the next queued waypoint into the active order (CTL-05). */
@@ -74,10 +86,24 @@ export interface CommandPorts {
   allocateEntityId(): number;
   /** Recomputed whenever a unit or building is added. */
   updatePlayerPopulation(ownerId: string): void;
+  /** Cached road lookup for this room; invalidated by the road handlers. */
+  roadGrid(): RoadGrid;
+  /**
+   * Whether `ownerId` may issue economy/building orders on this map.
+   *
+   * A raider standing in someone else's kingdom may only fight: building,
+   * upgrading, training and harvesting there would let them colonise the map
+   * (Phase 23/R14).
+   */
+  canManageZone(ownerId: string): boolean;
 }
 
-/** Distance between formation cells, in tiles. Wide enough to keep rings apart. */
-const FORMATION_SPACING = 0.6;
+/**
+ * Distance between formation cells, in tiles. Shared with the anti-overlap pass:
+ * a squad laid out at exactly one separation arrives already legal, so the pass
+ * has nothing to undo and the two rules can never drift apart.
+ */
+const FORMATION_SPACING = UNIT_SEPARATION;
 
 /**
  * CMD-04b refund rule. AoE returns everything for a foundation that was only
@@ -86,6 +112,45 @@ const FORMATION_SPACING = 0.6;
  */
 const CANCEL_BUILDING_FULL_REFUND_BELOW = 10; // construction progress %
 const CANCEL_BUILDING_PARTIAL_REFUND_RATIO = 0.5;
+
+/** One integer tile coordinate, after validation. */
+interface RoadTile {
+  x: number;
+  y: number;
+}
+
+/**
+ * Normalises an untrusted road payload into unique integer tiles.
+ *
+ * Anything that is not a finite integer is dropped, and the list is capped so
+ * one message can never expand into unbounded work. The map bounds are not
+ * checked here: `isRoadTileBuildable` already rejects the margin, and a remove
+ * needs the same coordinate shape for tiles that may sit anywhere.
+ */
+function sanitizeRoadTiles(
+  raw: unknown,
+  mapWidth: number,
+  mapHeight: number
+): RoadTile[] {
+  if (!Array.isArray(raw)) return [];
+
+  const seen = new Set<string>();
+  const tiles: RoadTile[] = [];
+  for (const entry of raw) {
+    if (tiles.length >= MAX_ROAD_TILES_PER_MESSAGE) break;
+    if (!entry || typeof entry !== 'object') continue;
+    const { x, y } = entry as { x?: unknown; y?: unknown };
+    if (!Number.isInteger(x) || !Number.isInteger(y)) continue;
+    const gx = x as number;
+    const gy = y as number;
+    if (gx < 0 || gy < 0 || gx >= mapWidth || gy >= mapHeight) continue;
+    const id = roadTileKey(gx, gy);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    tiles.push({ x: gx, y: gy });
+  }
+  return tiles;
+}
 
 /**
  * Lays a squad out as a centred square block around its destination.
@@ -132,20 +197,39 @@ export class CommandSystem {
     private readonly ports: CommandPorts
   ) {}
 
+  /**
+   * Blocks economy/building orders from anyone who does not own this map.
+   *
+   * Returns false after telling the client why, so a handler can `return`
+   * immediately. Military orders deliberately skip this check: a raider has to
+   * be able to fight.
+   */
+  private ensureZoneManager(client: Client): boolean {
+    const ownerId = ownerIdOf(client);
+    if (this.ports.canManageZone(ownerId)) return true;
+    this.ports.rejectCommand(
+      client,
+      'Bạn chỉ có thể ra lệnh chiến đấu trong vương quốc này.',
+      RejectCode.FORBIDDEN
+    );
+    return false;
+  }
+
   handlePlaceBuilding(client: Client, payload: PlaceBuildingPayload) {
+    if (!this.ensureZoneManager(client)) return;
     const ownerId = ownerIdOf(client);
     const player = this.state.players.get(ownerId);
     if (!player) return;
 
     // Portals are server-created travel infrastructure, never a build order.
     if (payload.type === 'PORTAL') {
-      this.ports.rejectCommand(client, 'Portals cannot be built');
+      this.ports.rejectCommand(client, 'Portals cannot be built', RejectCode.FORBIDDEN);
       return;
     }
 
     const blueprint = BUILDING_BLUEPRINTS[payload.type];
     if (!blueprint) {
-      this.ports.rejectCommand(client, 'Invalid building type');
+      this.ports.rejectCommand(client, 'Invalid building type', RejectCode.INVALID);
       return;
     }
 
@@ -156,7 +240,7 @@ export class CommandSystem {
       player.gold < blueprint.cost.gold ||
       player.stone < blueprint.cost.stone
     ) {
-      this.ports.rejectCommand(client, 'Insufficient resources to construct building');
+      this.ports.rejectCommand(client, 'Insufficient resources to construct building', RejectCode.RESOURCE);
       return;
     }
 
@@ -169,7 +253,7 @@ export class CommandSystem {
       payload.gridY < 0 ||
       endY > this.state.mapHeight
     ) {
-      this.ports.rejectCommand(client, 'Cannot build outside map bounds');
+      this.ports.rejectCommand(client, 'Cannot build outside map bounds', RejectCode.PLACEMENT);
       return;
     }
 
@@ -192,7 +276,15 @@ export class CommandSystem {
     });
 
     if (isColliding) {
-      this.ports.rejectCommand(client, 'Placement obstructed by existing structure or resource');
+      this.ports.rejectCommand(client, 'Placement obstructed by existing structure or resource', RejectCode.PLACEMENT);
+      return;
+    }
+
+    // A road is walkable, not an obstacle, but a building on top of it would
+    // silently drop the movement bonus for that stretch. Rough terrain is
+    // rejected the same way the client's ghost is painted red.
+    if (this.footprintTouchesRoad(payload.gridX, payload.gridY, blueprint.sizeX, blueprint.sizeY)) {
+      this.ports.rejectCommand(client, 'Cannot build on top of a road', RejectCode.PLACEMENT);
       return;
     }
 
@@ -230,14 +322,142 @@ export class CommandSystem {
     this.assignBuildersToSite(this.collectBuilders(client, payload.unitIds), building);
   }
 
+  /**
+   * Paints roads on the sender's own kingdom.
+   *
+   * Every tile is 1x1 and priced individually, so the whole batch is validated
+   * before anything is charged: a payload that is half valid still commits its
+   * valid half, but only if the player can afford it. Tiles already holding a
+   * road, a building or a resource node are dropped silently — the client
+   * painted them red already, and failing the drag on one bad neighbour would
+   * make a long stroke unusable.
+   */
+  handlePlaceRoad(client: Client, payload: PlaceRoadPayload) {
+    if (!this.ensureZoneManager(client)) return;
+    const ownerId = ownerIdOf(client);
+    const player = this.state.players.get(ownerId);
+    if (!player) return;
+
+    if (zoneKindOf(this.state.zoneId) !== 'kingdom') {
+      this.ports.rejectCommand(client, 'Roads can only be built in a kingdom', RejectCode.PLACEMENT);
+      return;
+    }
+
+    const tiles = sanitizeRoadTiles(
+      payload?.tiles,
+      this.state.mapWidth,
+      this.state.mapHeight
+    );
+    if (tiles.length === 0) {
+      this.ports.rejectCommand(client, 'No buildable road tiles', RejectCode.PLACEMENT);
+      return;
+    }
+
+    const roads = this.ports.roadGrid();
+    const buildable = tiles.filter((tile) => this.isRoadTileBuildable(tile, roads));
+    if (buildable.length === 0) {
+      this.ports.rejectCommand(client, 'Those tiles are already occupied', RejectCode.PLACEMENT);
+      return;
+    }
+
+    if (this.state.roads.size + buildable.length > MAX_ROADS_PER_ZONE) {
+      this.ports.rejectCommand(client, 'This kingdom has reached its road limit', RejectCode.LIMIT);
+      return;
+    }
+
+    const cost = buildable.length * ROAD_COST_PER_TILE;
+    if (player.wood < cost) {
+      this.ports.rejectCommand(client, 'Not enough wood to build that road', RejectCode.RESOURCE);
+      return;
+    }
+
+    player.wood -= cost;
+    for (const tile of buildable) {
+      const road = new RoadState();
+      road.id = roadTileKey(tile.x, tile.y);
+      road.ownerId = ownerId;
+      road.gridX = tile.x;
+      road.gridY = tile.y;
+      this.state.roads.set(road.id, road);
+    }
+    // A stroke can add and remove tiles within one tick, which leaves the count
+    // unchanged; the cached grid must not trust the size alone.
+    roads.invalidate();
+  }
+
+  /** Removes the sender's own road tiles; never refunds the wood. */
+  handleRemoveRoad(client: Client, payload: RemoveRoadPayload) {
+    if (!this.ensureZoneManager(client)) return;
+    const ownerId = ownerIdOf(client);
+    if (!this.state.players.get(ownerId)) return;
+
+    if (zoneKindOf(this.state.zoneId) !== 'kingdom') {
+      this.ports.rejectCommand(client, 'Roads can only be removed in a kingdom', RejectCode.PLACEMENT);
+      return;
+    }
+
+    const tiles = sanitizeRoadTiles(payload?.tiles, this.state.mapWidth, this.state.mapHeight);
+    for (const tile of tiles) {
+      const id = roadTileKey(tile.x, tile.y);
+      const road = this.state.roads.get(id);
+      // Only the owner may erase a tile: a shared room must never let one
+      // player take apart another player's network.
+      if (!road || road.ownerId !== ownerId) continue;
+      this.state.roads.delete(id);
+    }
+    this.ports.roadGrid().invalidate();
+  }
+
+  /** Whether one road tile may be painted: inside the margin, empty of everything else. */
+  private isRoadTileBuildable(tile: { x: number; y: number }, roads: RoadGrid): boolean {
+    const margin = MAP_BUILD_MARGIN_TILES;
+    if (tile.x < margin || tile.y < margin) return false;
+    if (tile.x >= this.state.mapWidth - margin || tile.y >= this.state.mapHeight - margin) return false;
+
+    if (roads.isRoad(tile.x, tile.y)) return false;
+    if (this.state.roads.has(roadTileKey(tile.x, tile.y))) return false;
+
+    let occupied = false;
+    this.state.buildings.forEach((building: BuildingState) => {
+      if (occupied) return;
+      if (
+        tile.x >= building.gridX &&
+        tile.x < building.gridX + building.sizeX &&
+        tile.y >= building.gridY &&
+        tile.y < building.gridY + building.sizeY
+      ) {
+        occupied = true;
+      }
+    });
+    if (occupied) return false;
+
+    this.state.resourceNodes.forEach((node: ResourceNodeState) => {
+      if (occupied) return;
+      if (node.gridX === tile.x && node.gridY === tile.y) occupied = true;
+    });
+
+    return !occupied;
+  }
+
+  /** Whether any tile of a footprint is a road. */
+  private footprintTouchesRoad(gx: number, gy: number, sizeX: number, sizeY: number): boolean {
+    const roads = this.ports.roadGrid();
+    for (let y = gy; y < gy + sizeY; y++) {
+      for (let x = gx; x < gx + sizeX; x++) {
+        if (roads.isRoad(x, y)) return true;
+      }
+    }
+    return false;
+  }
+
   handleMoveUnits(client: Client, payload: MoveUnitsPayload) {
     if (!payload.unitIds || payload.unitIds.length === 0) return;
     if (payload.unitIds.length > MAX_SELECTION) {
-      this.ports.rejectCommand(client, 'Too many units in one command');
+      this.ports.rejectCommand(client, 'Too many units in one command', RejectCode.LIMIT);
       return;
     }
     if (!Number.isFinite(payload.targetGridX) || !Number.isFinite(payload.targetGridY)) {
-      this.ports.rejectCommand(client, 'Invalid move target');
+      this.ports.rejectCommand(client, 'Invalid move target', RejectCode.INVALID);
       return;
     }
 
@@ -278,6 +498,7 @@ export class CommandSystem {
   }
 
   handleTrainUnit(client: Client, payload: TrainUnitPayload) {
+    if (!this.ensureZoneManager(client)) return;
     const ownerId = ownerIdOf(client);
     const player = this.state.players.get(ownerId);
     const building = this.state.buildings.get(payload.buildingId);
@@ -285,7 +506,7 @@ export class CommandSystem {
 
     const blueprint = BUILDING_BLUEPRINTS[building.type as BuildingType];
     if (!blueprint || !blueprint.trainableUnits.includes(payload.unitType)) {
-      this.ports.rejectCommand(client, 'Unit cannot be trained at this structure');
+      this.ports.rejectCommand(client, 'Unit cannot be trained at this structure', RejectCode.PREREQUISITE);
       return;
     }
 
@@ -294,7 +515,7 @@ export class CommandSystem {
 
     // Population limit check
     if (player.population >= player.populationCap) {
-      this.ports.rejectCommand(client, 'Population limit reached. Build more Houses!');
+      this.ports.rejectCommand(client, 'Population limit reached. Build more Houses!', RejectCode.LIMIT);
       return;
     }
 
@@ -305,7 +526,7 @@ export class CommandSystem {
       player.gold < unitBlueprint.cost.gold ||
       player.stone < unitBlueprint.cost.stone
     ) {
-      this.ports.rejectCommand(client, 'Insufficient resources to train unit');
+      this.ports.rejectCommand(client, 'Insufficient resources to train unit', RejectCode.RESOURCE);
       return;
     }
 
@@ -328,6 +549,7 @@ export class CommandSystem {
    * been produced yet, the player only loses the elapsed time.
    */
   handleCancelTrain(client: Client, payload: CancelTrainPayload) {
+    if (!this.ensureZoneManager(client)) return;
     const player = this.state.players.get(ownerIdOf(client));
     if (!player) return;
 
@@ -335,7 +557,7 @@ export class CommandSystem {
     if (!building) return;
 
     if (building.trainingQueue.length === 0) {
-      this.ports.rejectCommand(client, 'Nothing is being trained here');
+      this.ports.rejectCommand(client, 'Nothing is being trained here', RejectCode.GONE);
       return;
     }
 
@@ -344,7 +566,7 @@ export class CommandSystem {
     const unitType = building.trainingQueue[0] as UnitType;
     const blueprint = UNIT_BLUEPRINTS[unitType];
     if (!blueprint) {
-      this.ports.rejectCommand(client, 'Unknown unit in training queue');
+      this.ports.rejectCommand(client, 'Unknown unit in training queue', RejectCode.INVALID);
       return;
     }
 
@@ -363,6 +585,7 @@ export class CommandSystem {
    * misclicked hotkey would be unrecoverable.
    */
   handleCancelBuilding(client: Client, payload: CancelBuildingPayload) {
+        if (!this.ensureZoneManager(client)) return;
     const player = this.state.players.get(ownerIdOf(client));
     if (!player) return;
 
@@ -370,7 +593,7 @@ export class CommandSystem {
     if (!building) return;
 
     if (building.isConstructed) {
-      this.ports.rejectCommand(client, 'Cannot cancel a completed building');
+      this.ports.rejectCommand(client, 'Cannot cancel a completed building', RejectCode.INVALID);
       return;
     }
 
@@ -397,6 +620,7 @@ export class CommandSystem {
    * finish it.
    */
   handleUpgradeBuilding(client: Client, payload: UpgradeBuildingPayload) {
+    if (!this.ensureZoneManager(client)) return;
     const player = this.state.players.get(ownerIdOf(client));
     if (!player) return;
 
@@ -404,37 +628,38 @@ export class CommandSystem {
     if (!building) return;
 
     if (!building.isConstructed) {
-      this.ports.rejectCommand(client, 'Building is still under construction');
+      this.ports.rejectCommand(client, 'Building is still under construction', RejectCode.PREREQUISITE);
       return;
     }
     if (building.upgradeTimeMs > 0) {
-      this.ports.rejectCommand(client, 'Building is already upgrading');
+      this.ports.rejectCommand(client, 'Building is already upgrading', RejectCode.BUSY);
       return;
     }
 
     const type = building.type as BuildingType;
     if (!BUILDING_BLUEPRINTS[type]) {
-      this.ports.rejectCommand(client, 'Unknown building type');
+      this.ports.rejectCommand(client, 'Unknown building type', RejectCode.INVALID);
       return;
     }
     if (type === 'PORTAL') {
-      this.ports.rejectCommand(client, 'Portals cannot be upgraded');
+      this.ports.rejectCommand(client, 'Portals cannot be upgraded', RejectCode.FORBIDDEN);
       return;
     }
     if (building.level >= getBuildingMaxLevel(type)) {
-      this.ports.rejectCommand(client, 'Building is already at max level');
+      this.ports.rejectCommand(client, 'Building is already at max level', RejectCode.LIMIT);
       return;
     }
 
     // LVL2/D5: the Town Center may not pull ahead of the four core buildings.
-    // Checked before the slot and the price so the player learns about the gate
-    // even when they have nothing to spend yet.
+    // The gate asks for the Town Center's own level, so every step has to be
+    // earned. Checked before the slot and the price so the player learns about
+    // the gate even when they have nothing to spend yet.
     if (type === 'TOWN_CENTER') {
       const unmet = getCoreLevelGaps(collectCoreLevels(this.state, player.id), building.level).filter(
         (gap) => !gap.met
       );
       if (unmet.length > 0) {
-        this.ports.rejectCommand(client, `Town Center upgrade requires ${describeCoreGaps(unmet)}`);
+        this.ports.rejectCommand(client, `Town Center upgrade requires ${describeCoreGaps(unmet)}`, RejectCode.PREREQUISITE);
         return;
       }
     }
@@ -442,16 +667,13 @@ export class CommandSystem {
     // LVL2/D6: two upgrades at a time, so the gate above costs real time instead
     // of being skipped by starting all four pillars in parallel.
     if (countActiveBuildingUpgrades(this.state, player.id) >= MAX_CONCURRENT_BUILDING_UPGRADES) {
-      this.ports.rejectCommand(
-        client,
-        `Building upgrade limit reached (${MAX_CONCURRENT_BUILDING_UPGRADES} at a time)`
-      );
+      this.ports.rejectCommand(client, `Building upgrade limit reached (${MAX_CONCURRENT_BUILDING_UPGRADES} at a time)`, RejectCode.LIMIT);
       return;
     }
 
     const cost = getBuildingUpgradeCost(type, building.level);
     if (!this.canAfford(player, cost)) {
-      this.ports.rejectCommand(client, 'Insufficient resources to upgrade building');
+      this.ports.rejectCommand(client, 'Insufficient resources to upgrade building', RejectCode.RESOURCE);
       return;
     }
 
@@ -462,6 +684,7 @@ export class CommandSystem {
 
   /** Cancels a building upgrade and returns its full price. */
   handleCancelBuildingUpgrade(client: Client, payload: CancelBuildingUpgradePayload) {
+    if (!this.ensureZoneManager(client)) return;
     const player = this.state.players.get(ownerIdOf(client));
     if (!player) return;
 
@@ -469,12 +692,12 @@ export class CommandSystem {
     if (!building) return;
 
     if (building.type === 'PORTAL') {
-      this.ports.rejectCommand(client, 'Portals cannot be upgraded');
+      this.ports.rejectCommand(client, 'Portals cannot be upgraded', RejectCode.FORBIDDEN);
       return;
     }
 
     if (building.upgradeTimeMs <= 0) {
-      this.ports.rejectCommand(client, 'No upgrade is in progress');
+      this.ports.rejectCommand(client, 'No upgrade is in progress', RejectCode.GONE);
       return;
     }
 
@@ -490,33 +713,34 @@ export class CommandSystem {
    * silently cancel the investment.
    */
   handleUpgradeUnitType(client: Client, payload: UpgradeUnitTypePayload) {
+    if (!this.ensureZoneManager(client)) return;
     const ownerId = ownerIdOf(client);
     const player = this.state.players.get(ownerId);
     if (!player) return;
 
     const requestedType = payload?.unitType;
     if (!requestedType || !isUpgradableUnitType(requestedType)) {
-      this.ports.rejectCommand(client, 'Invalid unit type');
+      this.ports.rejectCommand(client, 'Invalid unit type', RejectCode.INVALID);
       return;
     }
 
     const currentLevel = getPlayerUnitLevel(player.unitLevels, requestedType);
     if (currentLevel >= getUnitMaxLevel()) {
-      this.ports.rejectCommand(client, 'Unit type is already at max level');
+      this.ports.rejectCommand(client, 'Unit type is already at max level', RejectCode.LIMIT);
       return;
     }
     if (player.researchUnitType) {
-      this.ports.rejectCommand(client, 'Another unit research is already in progress');
+      this.ports.rejectCommand(client, 'Another unit research is already in progress', RejectCode.BUSY);
       return;
     }
     if (!this.hasConstructedBuilding(ownerId, 'BARRACKS')) {
-      this.ports.rejectCommand(client, 'Build a Barracks before researching unit upgrades');
+      this.ports.rejectCommand(client, 'Build a Barracks before researching unit upgrades', RejectCode.PREREQUISITE);
       return;
     }
 
     const cost = getUnitUpgradeCost(requestedType, currentLevel);
     if (!this.canAfford(player, cost)) {
-      this.ports.rejectCommand(client, 'Insufficient resources to research unit upgrade');
+      this.ports.rejectCommand(client, 'Insufficient resources to research unit upgrade', RejectCode.RESOURCE);
       return;
     }
 
@@ -528,12 +752,13 @@ export class CommandSystem {
 
   /** Cancels the single in-flight unit research and returns its full price. */
   handleCancelUnitUpgrade(client: Client, payload: CancelUnitUpgradePayload) {
+    if (!this.ensureZoneManager(client)) return;
     const player = this.state.players.get(ownerIdOf(client));
     if (!player) return;
 
     const requestedType = payload?.unitType;
     if (!player.researchUnitType || player.researchUnitType !== requestedType) {
-      this.ports.rejectCommand(client, 'No matching unit research is in progress');
+      this.ports.rejectCommand(client, 'No matching unit research is in progress', RejectCode.GONE);
       return;
     }
 
@@ -546,7 +771,7 @@ export class CommandSystem {
   handleAttackTarget(client: Client, payload: AttackTargetPayload) {
     if (!payload.unitIds || payload.unitIds.length === 0) return;
     if (payload.unitIds.length > MAX_SELECTION) {
-      this.ports.rejectCommand(client, 'Too many units in one command');
+      this.ports.rejectCommand(client, 'Too many units in one command', RejectCode.LIMIT);
       return;
     }
 
@@ -562,11 +787,11 @@ export class CommandSystem {
           : undefined;
 
     if (!target) {
-      this.ports.rejectCommand(client, 'Target no longer exists');
+      this.ports.rejectCommand(client, 'Target no longer exists', RejectCode.GONE);
       return;
     }
     if (target.ownerId === ownerId) {
-      this.ports.rejectCommand(client, 'Cannot attack your own units or buildings');
+      this.ports.rejectCommand(client, 'Cannot attack your own units or buildings', RejectCode.FORBIDDEN);
       return;
     }
 
@@ -575,7 +800,7 @@ export class CommandSystem {
     if (payload.targetType === 'building') {
       const targetBlueprint = BUILDING_BLUEPRINTS[(target as BuildingState).type as BuildingType];
       if (targetBlueprint?.attackable === false) {
-        this.ports.rejectCommand(client, 'That structure cannot be attacked');
+        this.ports.rejectCommand(client, 'That structure cannot be attacked', RejectCode.FORBIDDEN);
         return;
       }
     }
@@ -614,11 +839,11 @@ export class CommandSystem {
   handleAttackMove(client: Client, payload: AttackMovePayload, mode: 'ATTACK_MOVE' | 'PATROL') {
     if (!payload?.unitIds || payload.unitIds.length === 0) return;
     if (payload.unitIds.length > MAX_SELECTION) {
-      this.ports.rejectCommand(client, 'Too many units in one command');
+      this.ports.rejectCommand(client, 'Too many units in one command', RejectCode.LIMIT);
       return;
     }
     if (!Number.isFinite(payload.targetGridX) || !Number.isFinite(payload.targetGridY)) {
-      this.ports.rejectCommand(client, 'Invalid move target');
+      this.ports.rejectCommand(client, 'Invalid move target', RejectCode.INVALID);
       return;
     }
 
@@ -665,26 +890,27 @@ export class CommandSystem {
    * never disagree about who builds or where they stand.
    */
   handleBuildTarget(client: Client, payload: BuildTargetPayload) {
+    if (!this.ensureZoneManager(client)) return;
     if (!payload?.unitIds || payload.unitIds.length === 0) return;
     if (payload.unitIds.length > MAX_SELECTION) {
-      this.ports.rejectCommand(client, 'Too many units in one command');
+      this.ports.rejectCommand(client, 'Too many units in one command', RejectCode.LIMIT);
       return;
     }
 
     const building = this.requireOwnedBuilding(client, payload.buildingId);
     if (!building) return;
     if (building.isConstructed) {
-      this.ports.rejectCommand(client, 'Building is already finished');
+      this.ports.rejectCommand(client, 'Building is already finished', RejectCode.INVALID);
       return;
     }
     if (!BUILDING_BLUEPRINTS[building.type as BuildingType]) {
-      this.ports.rejectCommand(client, 'Unknown building type');
+      this.ports.rejectCommand(client, 'Unknown building type', RejectCode.INVALID);
       return;
     }
 
     const builders = this.collectBuilders(client, payload.unitIds);
     if (builders.length === 0) {
-      this.ports.rejectCommand(client, 'Only villagers can build');
+      this.ports.rejectCommand(client, 'Only villagers can build', RejectCode.PREREQUISITE);
       return;
     }
 
@@ -692,6 +918,7 @@ export class CommandSystem {
   }
 
   handleHarvestResource(client: Client, payload: HarvestResourcePayload) {
+    if (!this.ensureZoneManager(client)) return;
     this.ports.harvestOrder(client, payload);
   }
 
@@ -713,7 +940,7 @@ export class CommandSystem {
   handleStopUnits(client: Client, payload: StopUnitsPayload) {
     if (!payload?.unitIds || payload.unitIds.length === 0) return;
     if (payload.unitIds.length > MAX_SELECTION) {
-      this.ports.rejectCommand(client, 'Too many units in one command');
+      this.ports.rejectCommand(client, 'Too many units in one command', RejectCode.LIMIT);
       return;
     }
 
@@ -750,11 +977,11 @@ export class CommandSystem {
   handleSetStance(client: Client, payload: SetStancePayload) {
     if (!payload?.unitIds || payload.unitIds.length === 0) return;
     if (payload.unitIds.length > MAX_SELECTION) {
-      this.ports.rejectCommand(client, 'Too many units in one command');
+      this.ports.rejectCommand(client, 'Too many units in one command', RejectCode.LIMIT);
       return;
     }
     if (!UNIT_STANCES.includes(payload.stance)) {
-      this.ports.rejectCommand(client, 'Unknown unit stance');
+      this.ports.rejectCommand(client, 'Unknown unit stance', RejectCode.INVALID);
       return;
     }
 
@@ -776,11 +1003,12 @@ export class CommandSystem {
    * can never keep.
    */
   handleSetRallyPoint(client: Client, payload: SetRallyPointPayload) {
+    if (!this.ensureZoneManager(client)) return;
     const building = this.requireOwnedBuilding(client, payload?.buildingId);
     if (!building) return;
 
     if (!canTrainUnitsAt(building.type as BuildingType)) {
-      this.ports.rejectCommand(client, 'This building cannot train units');
+      this.ports.rejectCommand(client, 'This building cannot train units', RejectCode.PREREQUISITE);
       return;
     }
 
@@ -794,7 +1022,7 @@ export class CommandSystem {
       gridX >= this.state.mapWidth ||
       gridY >= this.state.mapHeight
     ) {
-      this.ports.rejectCommand(client, 'Invalid rally point');
+      this.ports.rejectCommand(client, 'Invalid rally point', RejectCode.INVALID);
       return;
     }
 
@@ -958,11 +1186,11 @@ export class CommandSystem {
 
     const building = this.state.buildings.get(buildingId);
     if (!building) {
-      this.ports.rejectCommand(client, 'Building no longer exists');
+      this.ports.rejectCommand(client, 'Building no longer exists', RejectCode.GONE);
       return null;
     }
     if (building.ownerId !== ownerIdOf(client)) {
-      this.ports.rejectCommand(client, 'Not your building');
+      this.ports.rejectCommand(client, 'Not your building', RejectCode.FORBIDDEN);
       return null;
     }
     return building;

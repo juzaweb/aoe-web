@@ -2,7 +2,12 @@ import { BATTLEFIELD_ZONE } from '@chien-quoc/shared';
 import { WorldRoom } from './WorldRoom.js';
 
 /**
- * The single shared PvP map every kingdom's portal leads to.
+ * The single shared PvP map every kingdom's portal used to lead to.
+ *
+ * Phase 23 retired it: the room is no longer registered on the game server, so
+ * no client can join. The file is kept because the zone model, its tests and
+ * the persistence paths still describe a valid map, and removing it would be a
+ * larger change than retiring the feature warrants.
  *
  * There is no starter base here: players bring the units they selected through
  * the portal and build their own forward camp with the villagers among them.

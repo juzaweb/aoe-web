@@ -43,6 +43,11 @@ model Player {
   researchProgressMs Float  @default(0) @map("research_progress_ms")
   researchTimeMs     Float  @default(0) @map("research_time_ms")
   isOnline      Boolean    @default(true) @map("is_online")
+  /// Epoch ms until which this empire cannot be raided. 0 = no shield.
+  shieldUntil   Float      @default(0) @map("shield_until")
+  /// Cached highest finished Town Center level, so the world map does not need
+  /// to join `buildings` for every account. 0 = no Town Center yet.
+  townCenterLevel Int      @default(1) @map("town_center_level")
   /// Zone the account was last seen in ("kingdom:<id>" or "battlefield").
   lastZone      String     @default("kingdom") @map("last_zone")
   lastSavedAt   DateTime   @default(now()) @updatedAt @map("last_saved_at")
@@ -105,6 +110,25 @@ model Unit {
   @@map("units")
 }
 
+/// Player-painted road tiles, one row per 1x1 tile.
+/// Roads belong to a zone, not to a player row, so there is no relation: a
+/// kingdom keeps its roads while its owner is offline on the battlefield.
+model WorldRoad {
+  /// `"<gridX>,<gridY>"`, unique **within** a zone: every kingdom has its own
+  /// road at (20,20). The primary key is therefore (zone, id), not id alone.
+  id        String
+  /// Map this tile belongs to ("kingdom:<id>"). Battlefield roads are terrain.
+  zone      String   @default("world")
+  ownerId   String   @map("owner_id")
+  gridX     Int      @map("grid_x")
+  gridY     Int      @map("grid_y")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([zone, id])
+  @@index([zone])
+  @@map("world_roads")
+}
+
 model WorldResourceNode {
   id              String   @id
   /// Map this node belongs to. Kingdoms are private; battlefield is shared.
@@ -115,6 +139,8 @@ model WorldResourceNode {
   gridY           Int      @map("grid_y")
   remainingAmount Float    @map("remaining_amount")
   maxAmount       Float    @map("max_amount")
+  /// Epoch ms at which a depleted node refills; null while it still has stock.
+  respawnAt       Float?   @map("respawn_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@index([gridX, gridY])
@@ -146,5 +172,38 @@ model SchemaMeta {
   value String
 
   @@map("schema_meta")
+}
+
+/// One raid: an attacker's army standing in a defender's kingdom, or its result.
+///
+/// Only one row per defender may be `ACTIVE`; that is enforced by a partial
+/// unique index in the boot DDL (`raids_one_active_per_defender`), because
+/// Prisma cannot express a filtered unique index.
+model Raid {
+  id         String    @id
+  attackerId String    @map("attacker_id")
+  defenderId String    @map("defender_id")
+  /// ACTIVE | ATTACKER_WON | DEFENDER_WON | RETREATED
+  status     String
+  /// JSON array of TravelUnitSnapshot objects carried by the attacker.
+  units      String
+  /// JSON Resources actually looted; empty object until the raid is settled.
+  loot       String    @default("{}")
+  startedAt  DateTime  @default(now()) @map("started_at")
+  endedAt    DateTime? @map("ended_at")
+
+  @@index([attackerId, defenderId, status])
+  @@map("raids")
+}
+
+/// An attacker's cooldown against one defender after losing a raid.
+model RaidLock {
+  attackerId String @map("attacker_id")
+  defenderId String @map("defender_id")
+  /// Epoch ms at which the attacker may raid this defender again.
+  unlockAt   Float  @map("unlock_at")
+
+  @@id([attackerId, defenderId])
+  @@map("raid_locks")
 }
 

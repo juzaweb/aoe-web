@@ -20,26 +20,24 @@ trực tiếp từ blueprint theo `type`.
 | --- | --- |
 | Mô hình | Công trình có level **riêng từng cá thể**; lính nâng **toàn cục theo người chơi + loại lính** |
 | Phạm vi | Mọi công trình đều nâng được; lính nâng tại trại lính |
-| Cấp tối đa | Nhà chính 100; 4 trụ cột (House/Barracks/Farm/Tower) 100; nhà phụ (Lumber Camp/Mill/Mining Camp) 10; lính 10 |
+| Cấp tối đa | Mọi công trình **10** (Nhà chính, 4 trụ cột lẫn nhà phụ); lính 10 |
 | Tăng chỉ số | Công trình +2%/cấp; lính +5%/cấp (tuyến tính, không lũy kế) |
-| Dân số / sức chứa | Nhà chính +1 dân/cấp; nhà ở tăng 2%/cấp (làm tròn); dân làng +5% sức chứa/cấp |
+| Dân số / sức chứa | Nhà chính +1 dân/cấp; nhà ở tăng 2%/cấp (làm tròn); dân làng +5% sức chứa/cấp; ruộng +10% trữ lượng/cấp |
 | Cơ chế thời gian | Nâng cấp/nghiên cứu chạy theo tick, không cần dân làng đứng xây; huỷ được và hoàn 100% |
-| Ngoài phạm vi | Tốc độ di chuyển, thời gian train/xây, sức chứa ruộng, tech tree nhiều tầng |
+| Ngoài phạm vi | Tốc độ di chuyển, thời gian train/xây, tech tree nhiều tầng |
 
 ## 3. Công thức
 
 Với `i = level - 1` (level hiện tại, bắt đầu từ 1):
 
+- Giới hạn: mọi công trình dừng ở cấp **10** (`MAX_BUILDING_LEVEL`).
 - Công trình:
   - `maxHp = round(maxHp_bp × (1 + 0.02i))`
   - `attackPower = round2(attackPower_bp × (1 + 0.02i))`
   - `populationProvided`: TC = `pop_bp + i`; còn lại = `round(pop_bp × (1 + 0.02i))`
-  - Giá nâng cấp (`costScale`, từ phase 08), mỗi resource `round(cost_bp × k)`:
-    - `level ≤ 10`: `k = 0.5 × 1.07^(level−1)`
-    - `level ≥ 11`: `k = 0.5 × 1.07^9 × 1.08^(level−10)`
-  - Thời gian (`timeScale`, từ phase 08), **không có trần**: `round(buildTimeMs_bp × k)`:
-    - `level ≤ 10`: `k = 0.5 × 1.9^(level−1)` → TC 7,5s → 40m20
-    - `level ≥ 11`: `k = 240 × 1.05^(level−11)` → TC đúng 1h ở cấp 11, 73h13 ở cấp 99
+  - Giá nâng cấp: mỗi resource `round(cost_bp × k)`, `k = 0.5 × 1.3^(level−1)`
+  - Thời gian: `round(buildTimeMs_bp × k)`, `k = 0.5 × 3^(level−1)` → TC 7,5s ở cấp 1,
+    13h40 ở bước cuối 9→10
 - Lính:
   - `maxHp = round(maxHp_bp × (1 + 0.05i))`
   - `attackPower = round2(attackPower_bp × (1 + 0.05i))`
@@ -48,8 +46,8 @@ Với `i = level - 1` (level hiện tại, bắt đầu từ 1):
     `gold += 25 × level`
   - Thời gian: `round(trainTimeMs_bp × (0.5 + 0.25i + 0.01i²))`
 
-Ví dụ: TC 1→2 = 138 gỗ + 50 đá, 7,5s; TC 10→11 = 253 gỗ + 92 đá, 40m20; TC 99→100 =
-238.490 gỗ + 86.724 đá, 73h13; Spearman 1→2 = 18 gỗ + 36 thịt + 25 vàng, 3,5s; Cavalry 9→10 =
+Ví dụ: TC 1→2 = 138 gỗ + 50 đá, 7,5s; TC 5→6 = 393 gỗ + 143 đá, 10m7; TC 9→10 =
+1.122 gỗ + 408 đá, 13h40; Spearman 1→2 = 18 gỗ + 36 thịt + 25 vàng, 3,5s; Cavalry 9→10 =
 378 thịt + 555 vàng, 31,4s. Bảng đầy đủ theo từng mốc ở `08-progression-curve.md` §4.
 
 Toàn bộ số liệu nằm trong `packages/shared/src/utils/levels.ts` để chỉnh một chỗ.
@@ -66,7 +64,8 @@ Toàn bộ số liệu nằm trong `packages/shared/src/utils/levels.ts` để c
 ## 5. Hành vi server
 
 - `handleUpgradeBuilding`: chỉ công trình đã xây xong, đúng chủ, chưa max, không đang nâng; sau đó
-  **gate TC** (phase 08, chỉ với `TOWN_CENTER`: 4 trụ cột phải đạt `floor(level/5) × 5`), rồi
+  **gate TC** (phase 08, chỉ với `TOWN_CENTER`: 4 trụ cột phải đạt đúng cấp hiện tại của
+  Nhà chính), rồi
   **slot** (tối đa 2 công trình nâng cùng lúc), rồi mới tới tiền. Trừ tiền và đặt `upgradeTimeMs`;
   tick cộng dồn và hoàn tất.
 - `handleCancelBuildingUpgrade`: hoàn 100% giá của cấp hiện tại, reset timer và **giải phóng slot**
@@ -77,7 +76,8 @@ Toàn bộ số liệu nằm trong `packages/shared/src/utils/levels.ts` để c
 - Hoàn tất nâng cấp công trình: giữ nguyên lượng máu đã mất (`hp += delta maxHp`), không hồi full.
 - Hoàn tất research: cập nhật `level`, `maxHp`, `hp` cho **mọi unit cùng loại đang tồn tại**; unit
   train sau đó spawn ở cấp mới.
-- Damage lính/tháp và sức chứa dân làng đọc chỉ số theo cấp; dân số TC/nhà ở tính lại khi hoàn tất.
+- Damage lính/tháp, sức chứa dân làng và trữ lượng ruộng đọc chỉ số theo cấp; dân số TC/nhà ở tính lại khi hoàn tất.
+- Trữ lượng ruộng (`getBuildingLevelStats().gatherCapacity`) tăng 10%/cấp. Khi nâng cấp xong, phần chênh lệch được **cộng thêm** vào lượng còn lại (không hồi đầy); ruộng đang cạn vẫn cạn và phải gieo lại bằng chi phí của ruộng. Lần gieo lại dùng mức trữ lượng của cấp hiện tại.
 - Research tạm dừng khi người chơi offline (PlayerState bị xoá khỏi room), giống hàng đợi train.
 - Nâng cấp công trình cũng chỉ chạy khi online, nhưng tiến trình **cộng dồn qua phiên**: hai cột
   `upgrade_progress_ms`/`upgrade_time_ms` được ghi lúc autosave/leave và nạp lại bằng

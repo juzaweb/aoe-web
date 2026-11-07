@@ -12,8 +12,8 @@ describe('portal artwork', () => {
   it('draws the generated gate sheet when it was preloaded', () => {
     expect(buildingArt('PORTAL', () => true)).toEqual({
       textureKey: 'building_PORTAL',
-      offsetY: -140,
-      scale: 1
+      offsetY: -230,
+      scale: 1.5
     });
   });
 
@@ -45,9 +45,11 @@ describe('portal artwork', () => {
   });
 
   it('places the bar above the measured artwork top', () => {
-    // offsetY (-140) - canvas height / 2 (180) + measured topInset (4) - gap (10).
-    // `topInset` comes from `process_generated_assets.py --check`; the gate art
-    // is 356 px tall on a 360 px canvas, so four rows are empty.
-    expect(buildingHpBarY('PORTAL')).toBe(-326);
+    // offsetY (-230) - scaled canvas height / 2 (270) + measured topInset
+    // (4 scaled to 6) - gap (8). `topInset` comes from
+    // `process_generated_assets.py --check`; the gate art is 356 px tall on a
+    // 360 px canvas, so four rows are empty. The sheet is drawn at 1.5x, so the
+    // bar follows the scaled top rather than the raw canvas rectangle.
+    expect(buildingHpBarY('PORTAL')).toBe(-502);
   });
 });

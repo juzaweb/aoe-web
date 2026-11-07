@@ -8,12 +8,15 @@ import {
   MAX_POPULATION_LIMIT,
   MAX_UNIT_LEVEL,
   MapTerrain,
+  MAP_BUILD_MARGIN_TILES,
   MAX_TRAVEL_UNITS,
   NetworkMessage,
-  RESOURCE_RESPAWN_MS,
   TravelPayload,
   TravelReadyPayload,
   PlaceBuildingPayload,
+  PlaceRoadPayload,
+  RemoveRoadPayload,
+  ROAD_SPEED_MULTIPLIER,
   MoveUnitsPayload,
   TrainUnitPayload,
   AttackTargetPayload,
@@ -32,6 +35,7 @@ import {
   SERVER_TICK_RATE,
   UNIT_BLUEPRINTS,
   UnitType,
+  RejectCode,
   SESSION_ALREADY_ACTIVE,
   SESSION_BUSY,
   SESSION_REPLACED_CLOSE,
@@ -39,7 +43,6 @@ import {
   getBuildingMaxLevel,
   getUnitLevelStats,
   getPlayerUnitLevel,
-  isDirtRoadTile,
   mapSizeForZone
 } from '@chien-quoc/shared';
 import { WorldState } from '../schema/WorldState.js';
@@ -58,8 +61,12 @@ import { accountSaves, accountSessions } from './AccountSessions.js';
 import { zonePersistence } from './ZonePersistence.js';
 import { arrivalPoint, ensurePortalFor, findOwnPortal } from './portals.js';
 import { terrainOf } from './mapLayout.js';
+import { RoadGrid } from './roads.js';
+import { RoadState } from '../schema/RoadState.js';
 import { generateWorldResources } from './worldGeneration.js';
+import { isOneOffResourceNode, regrowDelayMs, starterResourceId } from './resources.js';
 import { isTravelCoolingDown, markTravel } from './travelCooldowns.js';
+import { releaseSpectatorWatch } from './spectatorWatch.js';
 import { entityIds } from '../services/EntityIdAllocator.js';
 import type { TravelUnitSnapshot } from '../services/DatabaseService.js';
 import {
@@ -106,19 +113,46 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   protected zoneId: string = 'world';
   /** Account that owns this kingdom room; null on the shared battlefield. */
   protected ownerScope: string | null = null;
+  /**
+   * Sessions watching this map without owning an account in it.
+   *
+   * A spectator is a full read-only client: it receives the same snapshot as
+   * the players, but never becomes a `PlayerState`, never claims the account
+   * session (the viewer is already playing their own kingdom) and every
+   * command message is refused at the room boundary.
+   */
+  protected readonly spectatorSessions = new Set<string>();
+  /** Viewer account behind each spectator session, for the watch-slot registry. */
+  protected readonly spectatorViewers = new Map<string, string>();
   /** See `ZonePersistence`; a stale room must never flush over its successor. */
   private persistenceToken = 0;
-  private zoneReady = false;
+  protected zoneReady = false;
   /** Accounts with a travel transaction in flight; autosave waits for them. */
   private readonly travelingOwners = new Set<string>();
   /** Where an account is travelling to while its leave save runs. */
   private readonly departureZoneByOwner = new Map<string, string>();
   /**
-   * Depleted resource nodes and when they refill. In-memory only: a restart
-   * refills them immediately, which is the same outcome a fresh room has.
+   * Depleted resource nodes and when they refill. In-memory only; the deadline
+   * is persisted per node (see `DatabaseService.saveZoneResources`) so a restart
+   * resumes the wait instead of refilling the map.
    */
   private readonly resourceRespawnAt = new Map<string, number>();
   private lastRespawnScanAt = 0;
+  /**
+   * Player-painted road lookup for this room, built lazily because `state` only
+   * exists after `onCreate` (or the unit-test harness) calls `setState`. The
+   * grid inside is rebuilt only when the road count changes, so movement and
+   * placement can query it freely.
+   */
+  private roadGridInstance: RoadGrid | null = null;
+  private roadGridState: WorldState | null = null;
+  private get roads(): RoadGrid {
+    if (!this.roadGridInstance || this.roadGridState !== this.state) {
+      this.roadGridInstance = new RoadGrid(this.state);
+      this.roadGridState = this.state;
+    }
+    return this.roadGridInstance;
+  }
   /**
    * Combat rules (damage, cooldowns, target resolution) and their transient
    * maps. Built on first use for the same reason as {@link economySystem}.
@@ -143,14 +177,16 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   /** Built on first use; see {@link commandSystem}. */
   private get commands(): CommandSystem {
     this.commandSystem ??= new CommandSystem(this.state, {
-      rejectCommand: (client, message) => this.rejectCommand(client, message),
+      rejectCommand: (client, message, code) => this.rejectCommand(client, message, code),
       setWalkTarget: (unit, x, y) => this.movement.setWalkTarget(unit, x, y),
       advanceQueuedWaypoint: (unit) => this.movement.advanceQueuedWaypoint(unit),
       clearHarvestOrder: (unitId) => this.economy.clearHarvestOrder(unitId),
       forgetBuilding: (buildingId) => this.combat.forgetBuilding(buildingId),
       harvestOrder: (client, payload) => this.economy.handleHarvestOrder(client, payload),
       allocateEntityId: () => entityIds.nextId(),
-      updatePlayerPopulation: (ownerId) => this.updatePlayerPopulation(ownerId)
+      updatePlayerPopulation: (ownerId) => this.updatePlayerPopulation(ownerId),
+      roadGrid: () => this.roads,
+      canManageZone: (ownerId) => this.canManageZone(ownerId)
     });
     return this.commandSystem;
   }
@@ -185,14 +221,14 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.economySystem ??= new EconomySystem(this.state, {
       setWalkTarget: (unit, x, y) => this.movement.setWalkTarget(unit, x, y),
       resumeQueuedWaypoint: (unit) => this.movement.resumeQueuedWaypoint(unit),
-      rejectCommand: (client, message) => this.rejectCommand(client, message),
+      rejectCommand: (client, message, code) => this.rejectCommand(client, message, code),
       onNodeDepleted: (node) => this.scheduleResourceRespawn(node)
     });
     return this.economySystem;
   }
 
-  private readyPromise: Promise<void> | null = null;
-  private worldRestoreError: Error | null = null;
+  protected readyPromise: Promise<void> | null = null;
+  protected worldRestoreError: Error | null = null;
 
   /**
    * SESS-03: which session drives each account, plus the join currently
@@ -233,12 +269,93 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   }
 
   /**
+   * Whether `ownerId` may issue building/economy orders on this map.
+   *
+   * True by default: a private kingdom is managed by its owner, and the legacy
+   * base room has no concept of guests. `KingdomRoom` narrows it during a raid.
+   */
+  protected canManageZone(_ownerId: string): boolean {
+    return true;
+  }
+
+  /**
+   * Runs after the simulation step. `KingdomRoom` uses it to evaluate the live
+   * raid without making the base room aware of raids at all.
+   */
+  protected afterTick(): void {}
+
+  /**
+   * Sends one unit to a point, replacing every order it had in flight.
+   *
+   * Subclasses use it for server-driven moves such as the raid retreat: the
+   * client never sends the destination, so it must go through the same route
+   * queue as a normal move command. Queued waypoints are dropped because they
+   * belong to the order being replaced.
+   */
+  protected moveUnitTo(unit: UnitState, targetX: number, targetY: number): void {
+    unit.queueTargetX.clear();
+    unit.queueTargetY.clear();
+    unit.targetEntityId = '';
+    unit.targetEntityType = '';
+    unit.previousActionState = '';
+    this.movement.setWalkTarget(unit, targetX, targetY);
+    unit.actionState = 'MOVING';
+  }
+
+  /** Called when a finished building completes an upgrade. */
+  protected onBuildingUpgraded(_building: BuildingState): void {}
+
+  /**
+   * Which accounts' entities this room restores from SQLite.
+   *
+   * `null` means "everyone in this zone" — the battlefield's rule, where an
+   * offline forward base must stay attackable. A kingdom narrows it to its
+   * owner, and a raided kingdom widens it to the raider as well.
+   */
+  protected async entityOwnersToLoad(): Promise<string[] | null> {
+    return this.ownerScope ? [this.ownerScope] : null;
+  }
+
+  /**
+   * Runs once the map is restored and before any client may join it.
+   *
+   * `KingdomRoom` uses it to pick up a raid that survived a restart and to
+   * place the retreat gate.
+   */
+  protected async onWorldReady(): Promise<void> {}
+
+  /**
    * Whether this room still owns its zone. A token of 0 means the room was
    * constructed without `onCreate` (the unit-test harness), which has no zone
    * to compete for.
    */
-  private isZoneOwner(): boolean {
+  protected isZoneOwner(): boolean {
     return this.persistenceToken === 0 || zonePersistence.isCurrent(this.zoneId, this.persistenceToken);
+  }
+
+  /**
+   * Registers a client message that must never run for a spectator.
+   *
+   * Ownership checks already stop a watcher from touching the defending
+   * empire, but they still let the request enter the simulation. This guard
+   * answers at the room boundary instead, so "read-only" is one rule rather
+   * than a promise spread across every command handler.
+   */
+  protected onCommandMessage<T>(
+    type: NetworkMessage,
+    handler: (client: Client, message: T) => void
+  ): void {
+    this.onMessage<T>(type, (client: Client, message: T) => {
+      if (this.spectatorSessions.has(client.sessionId)) {
+        this.rejectCommand(
+          client,
+          'Bạn đang ở chế độ quan sát và không thể ra lệnh.',
+          RejectCode.FORBIDDEN
+        );
+        return;
+      }
+      handler(client, message);
+    });
   }
 
   /** Terrain layout of this room; see `terrainOf`. */
@@ -267,82 +384,95 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.readyPromise = this.initializeWorldPersistence();
 
     // Setup network message listeners
-    this.onMessage(NetworkMessage.PLACE_BUILDING, (client, message: PlaceBuildingPayload) => {
+    this.onCommandMessage(NetworkMessage.PLACE_BUILDING, (client, message: PlaceBuildingPayload) => {
       this.commands.handlePlaceBuilding(client, message);
     });
 
-    this.onMessage(NetworkMessage.MOVE_UNITS, (client, message: MoveUnitsPayload) => {
+    // A road is walkable, so it never invalidates a route; only the step size
+    // in `updateUnitMovement` reads it.
+    this.onCommandMessage(NetworkMessage.PLACE_ROAD, (client, message: PlaceRoadPayload) => {
+      this.commands.handlePlaceRoad(client, message);
+    });
+
+    this.onCommandMessage(NetworkMessage.REMOVE_ROAD, (client, message: RemoveRoadPayload) => {
+      this.commands.handleRemoveRoad(client, message);
+    });
+
+    this.onCommandMessage(NetworkMessage.MOVE_UNITS, (client, message: MoveUnitsPayload) => {
       this.commands.handleMoveUnits(client, message);
     });
 
-    this.onMessage(NetworkMessage.TRAIN_UNIT, (client, message: TrainUnitPayload) => {
+    this.onCommandMessage(NetworkMessage.TRAIN_UNIT, (client, message: TrainUnitPayload) => {
       this.commands.handleTrainUnit(client, message);
     });
 
-    this.onMessage(NetworkMessage.ATTACK_TARGET, (client, message: AttackTargetPayload) => {
+    this.onCommandMessage(NetworkMessage.ATTACK_TARGET, (client, message: AttackTargetPayload) => {
       this.commands.handleAttackTarget(client, message);
     });
 
-    this.onMessage(NetworkMessage.ATTACK_MOVE, (client, message: AttackMovePayload) => {
+    this.onCommandMessage(NetworkMessage.ATTACK_MOVE, (client, message: AttackMovePayload) => {
       this.commands.handleAttackMove(client, message, 'ATTACK_MOVE');
     });
 
-    this.onMessage(NetworkMessage.PATROL, (client, message: AttackMovePayload) => {
+    this.onCommandMessage(NetworkMessage.PATROL, (client, message: AttackMovePayload) => {
       this.commands.handleAttackMove(client, message, 'PATROL');
     });
 
-    this.onMessage(NetworkMessage.BUILD_TARGET, (client, message: BuildTargetPayload) => {
+    this.onCommandMessage(NetworkMessage.BUILD_TARGET, (client, message: BuildTargetPayload) => {
       this.commands.handleBuildTarget(client, message);
     });
 
-    this.onMessage(NetworkMessage.HARVEST_RESOURCE, (client, message: HarvestResourcePayload) => {
+    this.onCommandMessage(NetworkMessage.HARVEST_RESOURCE, (client, message: HarvestResourcePayload) => {
       this.commands.handleHarvestResource(client, message);
     });
 
-    this.onMessage(NetworkMessage.STOP_UNITS, (client, message: StopUnitsPayload) => {
+    this.onCommandMessage(NetworkMessage.STOP_UNITS, (client, message: StopUnitsPayload) => {
       this.commands.handleStopUnits(client, message);
     });
 
-    this.onMessage(NetworkMessage.SET_RALLY_POINT, (client, message: SetRallyPointPayload) => {
+    this.onCommandMessage(NetworkMessage.SET_RALLY_POINT, (client, message: SetRallyPointPayload) => {
       this.commands.handleSetRallyPoint(client, message);
     });
 
-    this.onMessage(NetworkMessage.SET_STANCE, (client, message: SetStancePayload) => {
+    this.onCommandMessage(NetworkMessage.SET_STANCE, (client, message: SetStancePayload) => {
       this.commands.handleSetStance(client, message);
     });
 
-    this.onMessage(NetworkMessage.CANCEL_TRAIN, (client, message: CancelTrainPayload) => {
+    this.onCommandMessage(NetworkMessage.CANCEL_TRAIN, (client, message: CancelTrainPayload) => {
       this.commands.handleCancelTrain(client, message);
     });
 
-    this.onMessage(NetworkMessage.CANCEL_BUILDING, (client, message: CancelBuildingPayload) => {
+    this.onCommandMessage(NetworkMessage.CANCEL_BUILDING, (client, message: CancelBuildingPayload) => {
       this.commands.handleCancelBuilding(client, message);
     });
 
-    this.onMessage(NetworkMessage.UPGRADE_BUILDING, (client, message: UpgradeBuildingPayload) => {
+    this.onCommandMessage(NetworkMessage.UPGRADE_BUILDING, (client, message: UpgradeBuildingPayload) => {
       this.commands.handleUpgradeBuilding(client, message);
     });
 
-    this.onMessage(
+    this.onCommandMessage(
       NetworkMessage.CANCEL_BUILDING_UPGRADE,
       (client, message: CancelBuildingUpgradePayload) => {
         this.commands.handleCancelBuildingUpgrade(client, message);
       }
     );
 
-    this.onMessage(NetworkMessage.UPGRADE_UNIT_TYPE, (client, message: UpgradeUnitTypePayload) => {
+    this.onCommandMessage(NetworkMessage.UPGRADE_UNIT_TYPE, (client, message: UpgradeUnitTypePayload) => {
       this.commands.handleUpgradeUnitType(client, message);
     });
 
-    this.onMessage(
+    this.onCommandMessage(
       NetworkMessage.CANCEL_UNIT_UPGRADE,
       (client, message: CancelUnitUpgradePayload) => {
         this.commands.handleCancelUnitUpgrade(client, message);
       }
     );
 
-    this.onMessage(NetworkMessage.TRAVEL, (client, message: TravelPayload) => {
-      void this.handleTravel(client, message);
+    // Phase 23: the battlefield is retired, so the old travel order is now a
+    // clear rejection instead of a silent no-op. Clients from before the update
+    // get an explanation rather than a stuck portal.
+    this.onCommandMessage(NetworkMessage.TRAVEL, (client) => {
+      this.rejectCommand(client, 'Chiến trường đã đóng. Hãy dùng bản đồ thế giới để tập kích.', RejectCode.FORBIDDEN);
     });
 
     // Run authoritative tick loop
@@ -377,9 +507,25 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           node.resourceType = res.resourceType;
           node.gridX = res.gridX;
           node.gridY = res.gridY;
+          // A starter node is a one-off supply: one that ran out is dropped
+          // instead of refilled, and the sweep deletes its row.
+          if (res.remainingAmount <= 0 && isOneOffResourceNode(res, this.terrain)) continue;
+
           // A depleted node is kept as an empty slot so the client can hide it
-          // and the respawn scan can refill it. A restart refills immediately.
-          node.remainingAmount = res.remainingAmount > 0 ? res.remainingAmount : res.maxAmount;
+          // and the respawn scan can refill it. The refill deadline is persisted,
+          // so a restart resumes the wait instead of refilling on boot.
+          const storedRespawnAt = res.respawnAt ?? null;
+          if (res.remainingAmount > 0) {
+            node.remainingAmount = res.remainingAmount;
+          } else if (storedRespawnAt !== null && storedRespawnAt <= Date.now()) {
+            node.remainingAmount = res.maxAmount;
+          } else {
+            node.remainingAmount = 0;
+            this.resourceRespawnAt.set(
+              res.id,
+              storedRespawnAt ?? Date.now() + regrowDelayMs(res.resourceType)
+            );
+          }
           node.maxAmount = res.maxAmount;
           this.state.resourceNodes.set(res.id, node);
         }
@@ -396,66 +542,41 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         console.log(`✨ [WorldRoom] Saved ${resArray.length} fresh resource clusters.`);
       }
 
-      // 2. Restore this map's empires. A kingdom loads only its owner; the
-      // battlefield loads every participant, including offline ones whose
-      // forward base must stay attackable.
-      const savedPlayers = await DatabaseService.loadZoneEntities(
-        this.zoneId,
-        this.ownerScope ?? undefined
-      );
-      for (const p of savedPlayers) {
-        for (const b of p.buildings) {
-          if (!this.fitsMap(b.gridX, b.gridY, b.sizeX, b.sizeY)) {
-            droppedOutOfBounds++;
-            continue;
-          }
-          const building = new BuildingState();
-          building.id = b.id;
-          building.ownerId = p.id;
-          building.type = b.type;
-          building.gridX = b.gridX;
-          building.gridY = b.gridY;
-          building.sizeX = b.sizeX;
-          building.sizeY = b.sizeY;
-          building.level = clampStoredLevel(b.level, getBuildingMaxLevel(b.type as BuildingType));
-          // LVL2/D7: a 73 h upgrade is spread over many sessions, so the saved
-          // progress is restored instead of restarting the timer.
-          restoreBuildingUpgrade(building, b.upgradeProgressMs, b.upgradeTimeMs);
-          const levelStats = getBuildingLevelStats(b.type as BuildingType, building.level);
-          building.maxHp = levelStats.maxHp;
-          building.hp = Math.min(b.hp, levelStats.maxHp);
-          building.isConstructed = b.isConstructed;
-          building.constructionProgress = b.constructionProgress;
-
-          // ECO-01: restored as a finished building, so a field comes back full
-          // instead of permanently barren (see `seedGatheredBuilding`).
-          if (b.isConstructed) seedGatheredBuilding(building);
-
-          this.state.buildings.set(b.id, building);
+      // 1b. Restore the player-painted roads of this map. They are zone-wide, so
+      // they load even for a kingdom whose owner is still offline.
+      const savedRoads = await DatabaseService.loadRoads(this.zoneId);
+      for (const row of savedRoads) {
+        if (!this.fitsMap(row.gridX, row.gridY)) {
+          droppedOutOfBounds++;
+          continue;
         }
-
-        for (const u of p.units) {
-          if (!this.fitsMap(u.x, u.y)) {
-            droppedOutOfBounds++;
-            continue;
-          }
-          const unit = new UnitState();
-          unit.id = u.id;
-          unit.ownerId = p.id;
-          unit.type = u.type;
-          unit.x = u.x;
-          unit.y = u.y;
-          unit.targetX = u.x;
-          unit.targetY = u.y;
-          unit.speed = u.speed;
-          unit.level = clampStoredLevel(u.level, MAX_UNIT_LEVEL);
-          const levelStats = getUnitLevelStats(u.type as UnitType, unit.level);
-          unit.maxHp = levelStats.maxHp;
-          unit.hp = Math.min(u.hp, levelStats.maxHp);
-          unit.actionState = u.actionState;
-          this.state.units.set(u.id, unit);
-        }
+        const road = new RoadState();
+        road.id = row.id;
+        road.ownerId = row.ownerId;
+        road.gridX = row.gridX;
+        road.gridY = row.gridY;
+        this.state.roads.set(road.id, road);
       }
+      if (savedRoads.length > 0) {
+        console.log(`🛣️ [WorldRoom] Restored ${savedRoads.length} road tiles for ${this.zoneId}.`);
+      }
+
+      // 2. Restore this map's empires. A kingdom loads only its owner (plus the
+      // raider, when Phase 23 has one standing in it); the battlefield loads
+      // every participant, including offline ones whose forward base must stay
+      // attackable.
+      const entityOwners = await this.entityOwnersToLoad();
+      const savedPlayers =
+        entityOwners === null
+          ? await DatabaseService.loadZoneEntities(this.zoneId)
+          : (
+              await Promise.all(
+                entityOwners.map((ownerId) =>
+                  DatabaseService.loadZoneEntities(this.zoneId, ownerId)
+                )
+              )
+            ).flat();
+      droppedOutOfBounds += this.restoreSavedEntities(savedPlayers);
       if (savedPlayers.length > 0) {
         console.log(`🏰 [WorldRoom] Restored bases for ${savedPlayers.length} empires from database.`);
       }
@@ -466,11 +587,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       }
 
       // Keep generated entity ids unique across restarts (avoid overwriting persisted rows)
-      this.state.resourceNodes.forEach((n) => this.bumpEntityId(n.id));
-      this.state.buildings.forEach((b) => this.bumpEntityId(b.id));
-      this.state.units.forEach((u) => this.bumpEntityId(u.id));
+      this.bumpEntityIdsFromState();
 
       this.zoneReady = true;
+      await this.onWorldReady();
       console.log(`✅ [WorldRoom] Zone ${this.zoneId} is ready.`);
     } catch (err) {
       // Record instead of rethrowing: a rejected readyPromise would surface as an
@@ -480,9 +600,93 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     }
   }
 
+
+  /**
+   * Puts rows read from SQLite into this room's state.
+   *
+   * Extracted from the room boot so a raider joining an already-live kingdom
+   * (Phase 23) can restore their army from the database through the same rules:
+   * level clamping, upgrade resume and the population cap all stay in one place.
+   *
+   * @returns how many rows were dropped for falling outside this map.
+   */
+  protected restoreSavedEntities(
+    savedPlayers: Awaited<ReturnType<typeof DatabaseService.loadZoneEntities>>
+  ): number {
+    let dropped = 0;
+
+    for (const p of savedPlayers) {
+      for (const b of p.buildings) {
+        if (!this.fitsMap(b.gridX, b.gridY, b.sizeX, b.sizeY)) {
+          dropped++;
+          continue;
+        }
+        const building = new BuildingState();
+        building.id = b.id;
+        building.ownerId = p.id;
+        building.type = b.type;
+        building.gridX = b.gridX;
+        building.gridY = b.gridY;
+        building.sizeX = b.sizeX;
+        building.sizeY = b.sizeY;
+        building.level = clampStoredLevel(b.level, getBuildingMaxLevel(b.type as BuildingType));
+        // LVL2/D7: a 73 h upgrade is spread over many sessions, so the saved
+        // progress is restored instead of restarting the timer.
+        restoreBuildingUpgrade(building, b.upgradeProgressMs, b.upgradeTimeMs);
+        const levelStats = getBuildingLevelStats(b.type as BuildingType, building.level);
+        building.maxHp = levelStats.maxHp;
+        building.hp = Math.min(b.hp, levelStats.maxHp);
+        building.isConstructed = b.isConstructed;
+        building.constructionProgress = b.constructionProgress;
+
+        // ECO-01: restored as a finished building, so a field comes back full
+        // instead of permanently barren (see `seedGatheredBuilding`).
+        if (b.isConstructed) seedGatheredBuilding(building);
+
+        this.state.buildings.set(b.id, building);
+      }
+
+      for (const u of p.units) {
+        if (!this.fitsMap(u.x, u.y)) {
+          dropped++;
+          continue;
+        }
+        const unit = new UnitState();
+        unit.id = u.id;
+        unit.ownerId = p.id;
+        unit.type = u.type;
+        unit.x = u.x;
+        unit.y = u.y;
+        unit.targetX = u.x;
+        unit.targetY = u.y;
+        unit.speed = u.speed;
+        unit.level = clampStoredLevel(u.level, MAX_UNIT_LEVEL);
+        const levelStats = getUnitLevelStats(u.type as UnitType, unit.level);
+        unit.maxHp = levelStats.maxHp;
+        unit.hp = Math.min(u.hp, levelStats.maxHp);
+        unit.actionState = u.actionState;
+        this.state.units.set(u.id, unit);
+      }
+    }
+
+    return dropped;
+  }
+
   /** Advances the process-wide id sequence past a persisted id. */
   private bumpEntityId(id: string) {
     entityIds.observe(id);
+  }
+
+  /**
+   * Advances the id sequence past every entity this room now holds.
+   *
+   * Called after a restore, so a newly minted id can never reuse one that is
+   * already a primary key somewhere in the database.
+   */
+  protected bumpEntityIdsFromState(): void {
+    this.state.resourceNodes.forEach((n) => this.bumpEntityId(n.id));
+    this.state.buildings.forEach((b) => this.bumpEntityId(b.id));
+    this.state.units.forEach((u) => this.bumpEntityId(u.id));
   }
 
   /**
@@ -534,21 +738,14 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
   /**
    * Checks whether a footprint fits inside the playable area and does not overlap
-   * dirt roads or existing buildings. Resource nodes are handled separately so a
-   * returning player can still claim their deterministic spot.
+   * existing buildings. Resource nodes are handled separately so a returning
+   * player can still claim their deterministic spot.
    */
   private isFootprintFree(gx: number, gy: number, sizeX: number, sizeY: number): boolean {
-    const margin = 6;
+    const margin = MAP_BUILD_MARGIN_TILES;
     const { mapWidth: width, mapHeight: height } = this.state;
     if (gx < margin || gy < margin) return false;
     if (gx + sizeX > width - margin || gy + sizeY > height - margin) return false;
-
-    const terrain = this.terrain;
-    for (let x = gx; x < gx + sizeX; x++) {
-      for (let y = gy; y < gy + sizeY; y++) {
-        if (isDirtRoadTile(x, y, terrain)) return false;
-      }
-    }
 
     let clear = true;
     this.state.buildings.forEach((b: BuildingState) => {
@@ -925,7 +1122,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       const gridY = spawnY + off.dy;
       if (this.hasResourceAt(gridX, gridY)) return;
 
-      const id = `res_${entityIds.nextId()}`;
+      const id = starterResourceId(entityIds.nextId());
       const node = new ResourceNodeState();
       node.id = id;
       node.type = 'TREE';
@@ -948,7 +1145,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       const gridY = spawnY + off.dy;
       if (this.hasResourceAt(gridX, gridY)) return;
 
-      const id = `res_${entityIds.nextId()}`;
+      const id = starterResourceId(entityIds.nextId());
       const node = new ResourceNodeState();
       node.id = id;
       node.type = 'BERRY_BUSH';
@@ -989,9 +1186,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       this.state.units.set(vId, villager);
     });
 
-    // Every kingdom needs its exit. The battlefield portal is created on join
-    // by `materializeTravel`; `ensurePortalFor` is idempotent for both.
-    ensurePortalFor(this.state, ownerId);
+    // Phase 23: a kingdom no longer has a gateway to a shared battlefield. The
+    // only portal that appears here belongs to a raider and is created on join.
 
     this.updatePlayerPopulation(ownerId);
   }
@@ -1091,7 +1287,17 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       await this.refreshForeignBaseline(player);
     }
 
-    await DatabaseService.saveFullWorldState(this.state, this.zoneId, { skipIfBusy: true });
+    try {
+      await DatabaseService.saveFullWorldState(this.state, this.zoneId, {
+        skipIfBusy: true,
+        resourceRespawnAt: this.resourceRespawnAt
+      });
+    } catch (err) {
+      // The 30s clock callback does not await this promise, so a throw here is an
+      // unhandled rejection that takes the process down. One failed autosave (a
+      // locked file, a unique-constraint clash) must not kill every live room.
+      console.error(`❌ [WorldRoom] Autosave failed for ${this.zoneId}:`, err);
+    }
   }
 
   /**
@@ -1110,22 +1316,22 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     const portal = payload?.portalId ? this.state.buildings.get(payload.portalId) : undefined;
     if (!portal || portal.type !== 'PORTAL' || portal.ownerId !== ownerId) {
-      this.rejectCommand(client, 'Cổng dịch chuyển không hợp lệ.');
+      this.rejectCommand(client, 'Cổng dịch chuyển không hợp lệ.', RejectCode.INVALID);
       return;
     }
 
     if (this.travelingOwners.has(ownerId)) {
-      this.rejectCommand(client, 'Bạn đang chuyển bản đồ.');
+      this.rejectCommand(client, 'Bạn đang chuyển bản đồ.', RejectCode.BUSY);
       return;
     }
     if (isTravelCoolingDown(ownerId)) {
-      this.rejectCommand(client, 'Vui lòng đợi một chút rồi thử lại.');
+      this.rejectCommand(client, 'Vui lòng đợi một chút rồi thử lại.', RejectCode.BUSY);
       return;
     }
 
     const requested = Array.isArray(payload.unitIds) ? [...new Set(payload.unitIds)] : [];
     if (requested.length > MAX_TRAVEL_UNITS) {
-      this.rejectCommand(client, 'Quá nhiều đơn vị trong một lần chuyển.');
+      this.rejectCommand(client, 'Quá nhiều đơn vị trong một lần chuyển.', RejectCode.LIMIT);
       return;
     }
 
@@ -1167,7 +1373,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       });
     } catch (err) {
       console.error(`❌ [WorldRoom] Travel commit failed for ${ownerId}:`, err);
-      this.rejectCommand(client, 'Không thể chuyển bản đồ. Vui lòng thử lại.');
+      this.rejectCommand(client, 'Không thể chuyển bản đồ. Vui lòng thử lại.', RejectCode.INVALID);
       return;
     } finally {
       this.travelingOwners.delete(ownerId);
@@ -1221,13 +1427,21 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   }
 
   /** Notify a client that a command was refused, so the UI can explain why. */
-  rejectCommand(client: Client, message: string) {
-    client.send(NetworkMessage.ERROR_NOTIFICATION, { message });
+  rejectCommand(client: Client, message: string, code: RejectCode) {
+    client.send(NetworkMessage.ERROR_NOTIFICATION, { message, code });
   }
 
   private scheduleResourceRespawn(node: ResourceNodeState): void {
+    // Neither the starter woodline nor the berry patch near the Town Center
+    // comes back; see `isOneOffResourceNode` for how they are recognised.
+    if (isOneOffResourceNode(node, this.terrain)) {
+      this.resourceRespawnAt.delete(node.id);
+      this.state.resourceNodes.delete(node.id);
+      return;
+    }
+
     if (this.resourceRespawnAt.has(node.id)) return;
-    this.resourceRespawnAt.set(node.id, Date.now() + RESOURCE_RESPAWN_MS);
+    this.resourceRespawnAt.set(node.id, Date.now() + regrowDelayMs(node.resourceType));
   }
 
   /** Refills depleted nodes whose respawn delay has elapsed. */
@@ -1249,9 +1463,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     }
   }
 
-  private update(deltaTime: number) {
+  protected update(deltaTime: number) {
     const dtSeconds = deltaTime / 1000;
-
     this.scanResourceRespawns(Date.now());
 
     // SIM-01: hand out a few routes before anyone moves. Units whose request is
@@ -1293,6 +1506,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           applyBuildingUpgrade(building);
           // Town Centers and Houses change the population ceiling.
           this.updatePlayerPopulation(building.ownerId);
+          // Phase 23: a Town Center level is what the world map filters on.
+          this.onBuildingUpgraded(building);
         }
       }
 
@@ -1342,8 +1557,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       const blueprint = UNIT_BLUEPRINTS[unit.type as UnitType];
       if (!blueprint) return;
 
-      // CMD-01: before taking a step, an attack-moving or patrolling unit checks
-      // for the closest enemy inside its aggro radius.
+      // CMD-01: before taking a step, an idle or moving soldier checks for the
+      // best enemy inside its aggro radius (soldiers, then villagers, then
+      // buildings). Attack-move and patrol use the same acquisition.
       this.combat.acquireAggroTarget(unit, blueprint.aggroRadius);
 
       // A fight whose target was destroyed, killed by someone else or simply
@@ -1420,7 +1636,12 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         const stopDist = unit.actionState === 'ATTACKING' ? attackRange : 0.15;
 
         if (dist > stopDist) {
-          const moveStep = Math.min(dist, unit.speed * dtSeconds);
+          // A painted road speeds the unit up while it stands on one. The
+          // multiplier is applied here, not stored on the unit, so the
+          // replicated `speed` stays the blueprint value the client animates.
+          const onRoad = this.roads.isRoad(unit.x, unit.y);
+          const speed = onRoad ? unit.speed * ROAD_SPEED_MULTIPLIER : unit.speed;
+          const moveStep = Math.min(dist, speed * dtSeconds);
           unit.x += (dx / dist) * moveStep;
           unit.y += (dy / dist) * moveStep;
         } else if (unit.actionState !== 'ATTACKING' && unit.pathX.length > 0) {
@@ -1471,6 +1692,15 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         this.economy.updateUnit(unit, deltaTime);
       }
     });
+
+    // MOV-02: units have no blocking collision, so a squad ordered onto one tile
+    // (or trained at the same door) would stand on identical coordinates and draw
+    // as a single figure. The shove runs after every order has set a position, so
+    // it can never fight the movement step, and it does not touch orders.
+    this.movement.separateUnits(dtSeconds);
+
+    // Phase 23: a raid is judged after combat has landed this tick's damage.
+    this.afterTick();
   }
 
   /**
@@ -1518,7 +1748,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.updatePlayerPopulation(ownerId);
   }
 
-  private updatePlayerPopulation(ownerId: string) {
+  protected updatePlayerPopulation(ownerId: string) {
     const player = this.state.players.get(ownerId);
     if (!player) return;
 
@@ -1546,6 +1776,16 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   }
 
   async onLeave(client: Client, code?: number) {
+    // A watcher never owned the account in this room: no session to release and
+    // no empire to save. Dropping it from the set is the whole cleanup.
+    if (this.spectatorSessions.delete(client.sessionId)) {
+      const viewerId = this.spectatorViewers.get(client.sessionId);
+      this.spectatorViewers.delete(client.sessionId);
+      if (viewerId) releaseSpectatorWatch(viewerId, client.sessionId);
+      console.log(`[WorldRoom] Spectator ${client.sessionId} left ${this.zoneId}.`);
+      return;
+    }
+
     const ownerId = ownerIdOf(client);
 
     // SESS-05/D1: a rejected join and a superseded socket both leave without
@@ -1639,7 +1879,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         // A hand-off leave may have returned early (the destination already
         // owned the session), leaving the player entry in this state. Flush the
         // entities but not the stale account row.
-        skipAccountFor: new Set(this.departureZoneByOwner.keys())
+        skipAccountFor: new Set(this.departureZoneByOwner.keys()),
+        resourceRespawnAt: this.resourceRespawnAt
       });
     } else {
       console.log(`🛑 [WorldRoom] ${this.zoneId} disposing; newer room owns the zone.`);

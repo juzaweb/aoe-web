@@ -1,6 +1,9 @@
 # Phase 09 — Asset đường đất và cổng ra chiến trường (AI-generated)
 
 Status: **IMPLEMENTED** (2026-11-03). Automated gates green; §7.2 vẫn cần verify tay.
+
+> Cập nhật phase 22: art stamp đường dưới đây giờ **chỉ** dùng cho battlefield. Kingdom không
+> còn đường sinh tự động — người chơi tự kéo vẽ (xem `22-player-built-roads.md`).
 Phạm vi: `apps/client` + `scripts/`. **Không** đổi server, `packages/shared`, schema, protocol hay DB.
 
 Nguồn: 2 ảnh AI gen tại `/Users/dev/Downloads/games/{cong,duong}.png`, prompt ở
@@ -46,7 +49,7 @@ Số đo lấy trực tiếp từ 2 file ngày 2026-11-03, không suy đoán.
 | Mã | Quyết định |
 | --- | --- |
 | D1 | Căn cổng **bottom-center theo alpha bbox**; không thêm `offsetX`, không dịch ngang art. Tâm lối đi lệch tâm bbox 17 px, dưới ngưỡng nhìn thấy ở 320×360. |
-| D2 | Canvas cổng **320×360**, scale theo chiều cao 356 → rộng 277; đáy art đặt ở local y **+40**, tức `SHEET_OFFSET_Y.PORTAL = -140` (cùng quy ước house 2×2: +40). |
+| D2 | Canvas cổng **320×360**, scale theo chiều cao 356 → rộng 277. Bản 2026-11-05 vẽ ở **scale 1,5** (`SHEET_SCALE.PORTAL`), đáy art vẫn ở local y **+40** ⇒ `SHEET_OFFSET_Y.PORTAL = 40 - (360 × 1,5) / 2 = -230` (trước đó scale 1 / `-140`). |
 | D3 | Đường: cắt 4 cửa sổ 480×240 từ texture, resize **120×60**, chuẩn hoá từng crop về mean **150 ± 3**, giữ p5–p95 ≥ 60; gán alpha elip mềm. |
 | D4 | **Không** đưa 2 asset vào `scripts/assets/manifest.json`/`assets.lock.json`: đây là art gốc của project, không có license bên thứ ba và không tái lập được từ URL. Kiểm tra bằng `scripts/process_generated_assets.py --check`, không bằng lock hash. |
 | D5 | Giữ fallback: xoá nhánh đặc biệt `PORTAL → building_TOWER`, để `FALLBACK_ART.PORTAL` (`b_tower`) xử lý khi thiếu `building_PORTAL`. Không xoá fallback procedural. |
@@ -59,11 +62,11 @@ Số đo lấy trực tiếp từ 2 file ngày 2026-11-03, không suy đoán.
 | File | `apps/client/public/assets/buildings/portal.png` | `assets/terrain/road_stamp{,_1,_2,_3}.png` |
 | Canvas | 320×360 RGBA | 120×60 RGBA |
 | Neo | bottom-center, `bottomInset = 0` | elip phủ canvas, góc alpha = 0 |
-| Offset | `SHEET_OFFSET_Y.PORTAL = -140` | — |
-| HP bar | `HP_BAR_Y.PORTAL = offsetY - 180 + topInset - 10`; với `topInset = 4` đo được → **-326** | — |
+| Offset | `SHEET_OFFSET_Y.PORTAL = -230` (scale 1,5) | — |
+| HP bar | `offsetY - (360/2) × scale + topInset × scale - 8`; với `topInset = 4`, `scale = 1,5` → **-502** | — |
 | Texture key | `building_PORTAL` | `road_stamp`, `road_stamp_1..3` |
 | Vẽ ở | container tâm footprint 2×2 (`EntityRenderer.ts:213-219`) | mỗi điểm spline, cách 0,35 tile (`TerrainLayer.ts:150-178`) |
-| Footprint | 2×2 ⇒ diamond 256×128; art rộng 277, cao 356 | — |
+| Footprint | 2×2 ⇒ diamond 256×128; art rộng 277, cao 356 (vẽ 416×534 ở scale 1,5) | — |
 
 Ràng buộc:
 
@@ -100,10 +103,11 @@ crop alpha bbox -> resize height 356 (LANCZOS, premultiplied)
 - Sau khi dọn, RGB ở pixel trong suốt gần như đen (96,7% có kênh 0/255). PNG lưu alpha thẳng nên
   bilinear vẫn lấy RGB đó → viền tối quanh cổng. Script **bleed** màu mép ra 2 px (trung bình
   4-neighbour) trước khi ghi; RGB mép còn lại đo được ≈ (74,71,66), sát mean art (90,84,74).
-- Nếu buộc phải chừa padding đáy, `offsetY = -140 + bottomInset` để đáy art vẫn ở local +40.
+- Nếu buộc phải chừa padding đáy, `offsetY = -230 + bottomInset × 1,5` để đáy art vẫn ở local +40
+  (sheet vẽ ở `SHEET_SCALE.PORTAL = 1,5`).
 - Không thêm shadow, không thêm glow ngoài art.
 - Đo được: `topInset = 4`, `bottomInset = 0`, art 277×356, lum 84,8, lòng vòm 66×186 thông xuống
-  đáy → `HP_BAR_Y.PORTAL = -326` (không phải -327 như dự thảo).
+  đáy. Ở scale 1,5: `SHEET_OFFSET_Y.PORTAL = -230`, `HP_BAR_Y.PORTAL = -502`.
 
 ### 5.2 Đường
 
@@ -136,8 +140,9 @@ Kết quả: lum 150,0 cả 4; p5–p95 = 86–187, 74–189, 75–173, 92–177
 | `WorldScene.ts:380-389` | `v = 'v=7'`; thêm `this.load.image('building_PORTAL', '/assets/buildings/portal.png?' + v)` |
 | `WorldScene.ts:404-418` | `tv = 'v=8'` |
 | `buildingArt.ts:83-90` | Xoá nhánh `PORTAL → building_TOWER` |
-| `buildingArt.ts:30` | `PORTAL: -140` |
-| `buildingArt.ts:65` | `PORTAL: -326` (tính lại theo `topInset = 4` thực tế) |
+| `buildingArt.ts` `SHEET_OFFSET_Y` | `PORTAL: -230` (scale 1,5) |
+| `buildingArt.ts` `SHEET_SCALE` | `PORTAL: 1.5` |
+| `buildingArt.ts` `HP_BAR_Y` | `PORTAL: -502` (theo `topInset = 4` và scale 1,5) |
 | `EntityRenderer.ts:257` | Xoá `if (building.type === 'PORTAL') img.setTint(0xc084fc)` |
 | `EntityDetails.tsx:98-102` | Bỏ nhánh `PORTAL → tower.png` cho thumbnail panel |
 | `BuildMenu.tsx:35` | `PORTAL: '/assets/buildings/portal.png?v=3'` (entry chỉ để đủ Record) |
@@ -154,9 +159,9 @@ Không đổi `PORTAL` blueprint (2×2, `attackable: false`, `maxHp 99999`), kh�
 
 `apps/client/src/game/render/portalArt.test.ts` (mới):
 
-- `buildingArt('PORTAL', () => true)` → `{ textureKey: 'building_PORTAL', offsetY: -140 }`.
+- `buildingArt('PORTAL', () => true)` → `{ textureKey: 'building_PORTAL', offsetY: -230, scale: 1.5 }`.
 - `buildingArt('PORTAL', () => false)` → `{ textureKey: 'b_tower', offsetY: -90 }` (fallback D5).
-- `buildingHpBarY('PORTAL')` → `-326`.
+- `buildingHpBarY('PORTAL')` → `-502`.
 - `buildingArt('PORTAL', (k) => k === 'building_TOWER')` → vẫn là `b_tower`: không mượn tower nữa.
 - Texture manager chỉ được hỏi đúng một key `building_PORTAL`, không probe `building_TOWER`.
 - Không có test nào phụ thuộc hash PNG, để đổi art không phải sửa test.
@@ -205,7 +210,8 @@ Mỗi task một commit, message tiếng Anh; không commit ảnh nguồn trong 
 | Resize không premultiplied | Dùng premultiplied để tránh viền sẫm ở mép alpha |
 | Quên bump cache | `v`/`tv` là query string; không bump thì trình duyệt giữ PNG cũ |
 | Ảnh nguồn bị xoá khỏi Downloads | Script nhận path; muốn tái lập thì copy vào `scripts/out/generated/` (gitignored) trước |
-| `HP_BAR_Y` sai | Portal không bị đánh (`attackable: false`) nên bar hiếm khi hiện; vẫn tính theo công thức để không drift |
+| `HP_BAR_Y` sai | Portal không bị đánh (`attackable: false`) nên bar hiếm khi hiện; test `portalArt.test.ts` tính lại bar từ canvas/topInset/scale để không drift |
+| Đổi `SHEET_SCALE.PORTAL` mà quên `HP_BAR_Y` | Test portalArt recompute độc lập từ (360, topInset 4, scale trong `buildingArt`) nên lệch là đỏ |
 
 ## 10. Definition of Done
 

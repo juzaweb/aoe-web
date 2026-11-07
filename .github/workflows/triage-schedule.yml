@@ -1,0 +1,73 @@
+name: Triage schedule
+
+# Dispatches `loop.yml` with step=triage every two hours. A separate file,
+# not an `on.schedule` on the loop itself, for two reasons:
+#
+#   1. The loop is expensive and repair-risky. Keeping it manual-only means a
+#      broken schedule can be deleted without touching the pipeline it drives.
+#   2. A schedule event carries no inputs, so every `inputs.step` in loop.yml
+#      would need a fallback. Dispatching passes real inputs instead, and the
+#      loop stays exactly as it runs by hand.
+#
+# Cron is UTC. `0 */2 * * *` fires at 00:00, 02:00, 04:00, 06:00, 08:00, 10:00,
+# 12:00, 14:00, 16:00, 18:00, 20:00 and 22:00 UTC, which is 07:00, 09:00, 11:00,
+# 13:00, 15:00, 17:00, 19:00, 21:00, 23:00, 01:00, 03:00 and 05:00 in Asia/Ho_Chi_Minh.
+# GitHub runs scheduled workflows on a best-effort basis; a busy queue can delay a slot.
+on:
+  schedule:
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+
+# Same group as `loop-schedule`: the two schedulers must not evaluate their
+# preflight at the same time, or both see "nothing running" and both dispatch.
+concurrency:
+  group: loop-dispatch
+  cancel-in-progress: false
+
+permissions:
+  # `gh workflow run` needs this. `workflow_dispatch` is one of the few things a
+  # GITHUB_TOKEN may trigger (unlike `push`, which it suppresses).
+  actions: write
+  contents: read
+  # scripts/should-dispatch.sh reads `gh pr list` to notice an unmerged
+  # `loop/state-*` proposal. A `permissions:` block sets every scope it does not
+  # name to `none`, so without this the query 403s and the preflight silently
+  # reads "no proposal pending".
+  pull-requests: read
+
+jobs:
+  dispatch:
+    name: dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          sparse-checkout: |
+            STATE.md
+            scripts
+
+      - name: Dispatch triage loop
+        env:
+          # `gh` reads GH_TOKEN, not the token context: a runner carries no stored
+          # auth, so the credential has to be exported for the CLI to find it.
+          # GH_REPO is not needed — the checkout already configured `origin`.
+          GH_TOKEN: ${{ secrets.LOOP_PAT || github.token }}
+        run: |
+          set -euo pipefail
+
+          # The preflight checks two things, and both are cheap next to a run
+          # that executes against a moved develop:
+          #   - a loop run already in flight, any step (queued counts: that is
+          #     what `group: loop` makes of a second dispatch)
+          #   - an unmerged `loop/state-*` PR, meaning the previous triage already
+          #     proposed the next batch and is waiting on a human
+          #
+          # The dispatch and the wait for it to register live in the same script
+          # so a second scheduler cannot slip through the gap between them.
+          # chain=0: triage opens a proposal PR and never chains anyway.
+          bash scripts/dispatch-loop.sh triage 0
+

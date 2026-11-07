@@ -19,7 +19,9 @@ const __dirname = path.dirname(__filename);
  * `dist/services` (compiled). The directory is created on boot when missing.
  */
 export const DATABASE_DIR = path.resolve(__dirname, '../../database');
-export const DATABASE_FILE = path.join(DATABASE_DIR, 'dev.db');
+export const DATABASE_FILE = process.env.DATABASE_FILE
+  ? path.resolve(process.env.DATABASE_FILE)
+  : path.join(DATABASE_DIR, 'dev.db');
 
 export const prisma = new PrismaClient({
   datasources: {
@@ -98,6 +100,12 @@ export class DatabaseService {
     // MAPS: the same additive treatment for zones and travel transfers.
     await this.ensureZoneColumns();
 
+    // RAIDS: shield + cached Town Center level on an existing database.
+    await this.ensureRaidColumns();
+
+    // ROADS: a globally unique tile id collides across kingdoms.
+    await this.ensureRoadPrimaryKey();
+
     // MAPS-V2: kingdoms shrank from 220x220 to 110x110. Old coordinates cannot be
     // remapped without overlaps, so the layout is reset once (see the method).
     await this.resetLegacyKingdoms();
@@ -119,7 +127,7 @@ export class DatabaseService {
    * so a fresh clone (or a deleted `database/` folder) starts without extra setup.
    */
   private static ensureDatabaseFile(): void {
-    fs.mkdirSync(DATABASE_DIR, { recursive: true });
+    fs.mkdirSync(path.dirname(DATABASE_FILE), { recursive: true });
 
     if (fs.existsSync(DATABASE_FILE)) {
       return;
@@ -148,6 +156,58 @@ export class DatabaseService {
   }
 
   /**
+   * Road identity migration: `world_roads` originally keyed on `id` alone, so
+   * two kingdoms could not both own the tile at (20,20). The table is rebuilt
+   * with (zone, id) as the primary key; the rows themselves are kept, because a
+   * player's painted network is not regenerable.
+   *
+   * `CREATE TABLE IF NOT EXISTS` cannot change a primary key, so this inspects
+   * the existing table and only rebuilds when it is the old shape.
+   */
+  private static async ensureRoadPrimaryKey() {
+    const tables = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'world_roads'`
+    );
+    if (tables.length === 0) return;
+
+    const columns = await prisma.$queryRawUnsafe<Array<{ name: string; pk: bigint | number }>>(
+      `PRAGMA table_info("world_roads")`
+    );
+    // SQLite reports `pk` as the 1-based position inside the primary key (and
+    // Prisma hands the value back as a BigInt), so a composite key shows pk 1
+    // and 2 on two different columns.
+    const keyed = columns
+      .filter((column) => Number(column.pk) > 0)
+      .sort((a, b) => Number(a.pk) - Number(b.pk));
+    const alreadyComposite = keyed.length === 2 && keyed[0].name === 'zone';
+    if (alreadyComposite) return;
+
+    await prisma.$executeRawUnsafe(`ALTER TABLE "world_roads" RENAME TO "world_roads_legacy"`);
+    await prisma.$executeRawUnsafe(
+      `CREATE TABLE "world_roads" (
+        "id" TEXT NOT NULL,
+        "zone" TEXT NOT NULL DEFAULT 'world',
+        "owner_id" TEXT NOT NULL,
+        "grid_x" INTEGER NOT NULL,
+        "grid_y" INTEGER NOT NULL,
+        "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY ("zone", "id")
+      )`
+    );
+    await prisma.$executeRawUnsafe(
+      `INSERT OR IGNORE INTO "world_roads" ("id", "zone", "owner_id", "grid_x", "grid_y", "created_at")
+       SELECT "id", "zone", "owner_id", "grid_x", "grid_y", "created_at" FROM "world_roads_legacy"`
+    );
+    await prisma.$executeRawUnsafe(`DROP TABLE "world_roads_legacy"`);
+    // The old table's index went with it, and `ensureSchema` already ran this
+    // boot, so the replacement has to be created here.
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "world_roads_zone_idx" ON "world_roads"("zone")`
+    );
+    console.log('🗄️  [DatabaseService] Rebuilt world_roads with a (zone, id) primary key.');
+  }
+
+  /**
    * LVL: additive migration for databases created before upgrade levels
    * existed. `ensureSchema` only runs `CREATE TABLE IF NOT EXISTS`, so an
    * existing `dev.db` would otherwise be missing every new column.
@@ -165,7 +225,10 @@ export class DatabaseService {
       ['buildings', 'level', 'INTEGER NOT NULL DEFAULT 1'],
       ['buildings', 'upgrade_progress_ms', 'REAL NOT NULL DEFAULT 0'],
       ['buildings', 'upgrade_time_ms', 'REAL NOT NULL DEFAULT 0'],
-      ['units', 'level', 'INTEGER NOT NULL DEFAULT 1']
+      ['units', 'level', 'INTEGER NOT NULL DEFAULT 1'],
+      // Regrow: a depleted node keeps its refill timestamp so an empty map is
+      // not refilled by a restart (see `WorldRoom.scanResourceRespawns`).
+      ['world_resource_nodes', 'respawn_at', 'REAL NULL']
     ];
 
     for (const [table, column, definition] of columns) {
@@ -177,7 +240,32 @@ export class DatabaseService {
       await prisma.$executeRawUnsafe(
         `ALTER TABLE "${table}" ADD COLUMN "${column}" ${definition}`
       );
-      console.log(`🗄️  [DatabaseService] Added ${table}.${column} for upgrade levels.`);
+      console.log(`🗄️  [DatabaseService] Added ${table}.${column} to an existing database.`);
+    }
+  }
+
+  /**
+   * RAIDS: columns a pre-Phase-23 database lacks.
+   *
+   * `town_center_level` starts at 1 and is corrected by the first autosave of
+   * each empire (`syncTownCenterLevel`), so no backfill pass is needed.
+   */
+  private static async ensureRaidColumns() {
+    const columns: Array<[table: string, column: string, definition: string]> = [
+      ['players', 'shield_until', 'REAL NOT NULL DEFAULT 0'],
+      ['players', 'town_center_level', 'INTEGER NOT NULL DEFAULT 1']
+    ];
+
+    for (const [table, column, definition] of columns) {
+      const existing = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+        `PRAGMA table_info("${table}")`
+      );
+      if (existing.some((row) => row.name === column)) continue;
+
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE "${table}" ADD COLUMN "${column}" ${definition}`
+      );
+      console.log(`🗄️  [DatabaseService] Added ${table}.${column} to an existing database.`);
     }
   }
 
@@ -373,7 +461,8 @@ export class DatabaseService {
         gridX: node.gridX,
         gridY: node.gridY,
         remainingAmount: node.remainingAmount,
-        maxAmount: node.maxAmount
+        maxAmount: node.maxAmount,
+        respawnAt: null
       }))
     });
   }
@@ -386,27 +475,44 @@ export class DatabaseService {
    * write queue for seconds (a player's leave waits behind it), so the current
    * rows are read once and only new/changed nodes are written.
    */
-  private static async saveZoneResources(zone: string, nodes: ResourceNodeState[]) {
+  private static async saveZoneResources(
+    zone: string,
+    nodes: ResourceNodeState[],
+    options: {
+      stmts?: { n: number };
+      /** Refill deadline per depleted node id; `null`/absent means "has stock". */
+      respawnAtOf?: ReadonlyMap<string, number>;
+    } = {}
+  ) {
+    const { stmts, respawnAtOf } = options;
+
     if (nodes.length > 0) {
       const existing = await prisma.worldResourceNode.findMany({
         where: { zone },
-        select: { id: true, remainingAmount: true }
+        select: { id: true, remainingAmount: true, respawnAt: true }
       });
-      const knownAmounts = new Map(
-        existing.map((row) => [row.id, row.remainingAmount] as const)
-      );
+      if (stmts) stmts.n++;
+      const known = new Map(existing.map((row) => [row.id, row] as const));
 
-      const created: ResourceNodeState[] = [];
-      const changed: ResourceNodeState[] = [];
+      const created: Array<{ node: ResourceNodeState; respawnAt: number | null }> = [];
+      const changed: Array<{ node: ResourceNodeState; respawnAt: number | null }> = [];
       for (const node of nodes) {
-        const known = knownAmounts.get(node.id);
-        if (known === undefined) created.push(node);
-        else if (known !== node.remainingAmount) changed.push(node);
+        const respawnAt = respawnAtOf?.get(node.id) ?? null;
+        const saved = known.get(node.id);
+        if (saved === undefined) {
+          created.push({ node, respawnAt });
+        } else if (
+          saved.remainingAmount !== node.remainingAmount ||
+          (saved.respawnAt ?? null) !== respawnAt
+        ) {
+          changed.push({ node, respawnAt });
+        }
       }
 
       if (created.length > 0) {
+        if (stmts) stmts.n++;
         await prisma.worldResourceNode.createMany({
-          data: created.map((node) => ({
+          data: created.map(({ node, respawnAt }) => ({
             id: node.id,
             zone,
             type: node.type,
@@ -414,25 +520,80 @@ export class DatabaseService {
             gridX: node.gridX,
             gridY: node.gridY,
             remainingAmount: node.remainingAmount,
-            maxAmount: node.maxAmount
+            maxAmount: node.maxAmount,
+            respawnAt
           }))
         });
       }
 
       if (changed.length > 0) {
+        if (stmts) stmts.n += changed.length;
         await prisma.$transaction(
-          changed.map((node) =>
+          changed.map(({ node, respawnAt }) =>
             prisma.worldResourceNode.update({
               where: { id: node.id },
-              data: { remainingAmount: node.remainingAmount }
+              data: { remainingAmount: node.remainingAmount, respawnAt }
             })
           )
         );
       }
     }
 
+    if (stmts) stmts.n++;
     await prisma.worldResourceNode.deleteMany({
       where: { zone, id: { notIn: nodes.map((node) => node.id) } }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Roads
+  // ---------------------------------------------------------------------------
+
+  /** Loads the player-painted road tiles of one map. */
+  public static async loadRoads(zone: string) {
+    await this.initialize();
+    return await prisma.worldRoad.findMany({ where: { zone } });
+  }
+
+  /**
+   * Upserts and sweeps the road tiles of exactly one zone.
+   *
+   * Roads change one small stroke at a time, so the same diff strategy as the
+   * resource nodes applies: read the known ids once, insert the new ones in one
+   * statement, delete everything the room no longer holds. Rows never change
+   * after creation (a tile is either there or gone), so there is no update pass.
+   */
+  private static async saveZoneRoads(
+    zone: string,
+    roads: Array<{ id: string; ownerId: string; gridX: number; gridY: number }>,
+    stmts?: { n: number }
+  ) {
+    // Read the (zone, id) composite: `id` alone is only unique inside a zone,
+    // so a bare `where: { id: { in } }` would sweep another kingdom's rows.
+    const existing = await prisma.worldRoad.findMany({ where: { zone }, select: { id: true } });
+    if (stmts) stmts.n++;
+    const known = new Set(existing.map((row) => row.id));
+
+    const created = roads.filter((road) => !known.has(road.id));
+    if (created.length > 0) {
+      if (stmts) stmts.n++;
+      await prisma.worldRoad.createMany({
+        data: created.map((road) => ({
+          id: road.id,
+          zone,
+          ownerId: road.ownerId,
+          gridX: road.gridX,
+          gridY: road.gridY
+        }))
+      });
+    }
+
+    if (stmts) stmts.n++;
+    // `zone` is part of the predicate on purpose: `id` is only unique inside a
+    // zone, so an unscoped `notIn` would delete every other kingdom's roads that
+    // happen to share a tile coordinate.
+    await prisma.worldRoad.deleteMany({
+      where: { zone, id: { notIn: roads.map((road) => road.id) } }
     });
   }
 
@@ -521,8 +682,9 @@ export class DatabaseService {
     });
   }
 
-  private static async savePlayerAccountInternal(player: PlayerState, zone: string) {
+  private static async savePlayerAccountInternal(player: PlayerState, zone: string, stmts?: { n: number }) {
     const ownerId = player.id;
+    if (stmts) stmts.n++;
     await prisma.player.upsert({
       where: { id: ownerId },
       create: {
@@ -570,10 +732,12 @@ export class DatabaseService {
     zone: string,
     ownerId: string,
     buildings: BuildingState[],
-    units: UnitState[]
+    units: UnitState[],
+    stmts?: { n: number }
   ) {
     await prisma.$transaction(async (tx) => {
       const currentBuildingIds = buildings.map((b) => b.id);
+      if (stmts) stmts.n++;
       await tx.building.deleteMany({
         where: {
           ownerId,
@@ -583,6 +747,7 @@ export class DatabaseService {
       });
 
       for (const b of buildings) {
+        if (stmts) stmts.n++;
         await tx.building.upsert({
           where: { id: b.id },
           create: {
@@ -623,6 +788,7 @@ export class DatabaseService {
       }
 
       const currentUnitIds = units.map((u) => u.id);
+      if (stmts) stmts.n++;
       await tx.unit.deleteMany({
         where: {
           ownerId,
@@ -632,6 +798,7 @@ export class DatabaseService {
       });
 
       for (const u of units) {
+        if (stmts) stmts.n++;
         await tx.unit.upsert({
           where: { id: u.id },
           create: {
@@ -648,7 +815,12 @@ export class DatabaseService {
             actionState: u.actionState
           },
           update: {
-            zone,
+            // Phase 23: `zone` is deliberately not written here. A unit the
+            // home room still holds in memory may already have been moved to
+            // another zone by a raid commit (a raid or a return home), and
+            // re-stamping this zone would drag it back — duplicating an army or
+            // resurrecting a casualty. Zone changes belong to the raid/travel
+            // transactions only.
             x: u.x,
             y: u.y,
             level: u.level,
@@ -670,12 +842,18 @@ export class DatabaseService {
   public static async saveFullWorldState(
     state: WorldState,
     zone = state.zoneId || 'world',
-    options: { skipIfBusy?: boolean; skipAccountFor?: Set<string> } = {}
+    options: {
+      skipIfBusy?: boolean;
+      skipAccountFor?: Set<string>;
+      resourceRespawnAt?: ReadonlyMap<string, number>;
+    } = {}
   ) {
     await this.withZoneQueue(
       zone,
       async () => {
+        const started = performance.now();
         await this.initialize();
+        const stmts = { n: 0 };
 
         const entitiesByOwner = new Map<
           string,
@@ -711,17 +889,27 @@ export class DatabaseService {
           // A player who travelled away must not have the source room's stale
           // resources written back over the travel commit / destination room.
           if (player && !options.skipAccountFor?.has(ownerId)) {
-            await this.savePlayerAccountInternal(player, zone);
+            await this.savePlayerAccountInternal(player, zone, stmts);
           }
-          await this.saveZoneEntitiesInternal(zone, ownerId, group.buildings, group.units);
+          await this.saveZoneEntitiesInternal(zone, ownerId, group.buildings, group.units, stmts);
         }
 
         const nodes: ResourceNodeState[] = [];
         state.resourceNodes.forEach((node: ResourceNodeState) => nodes.push(node));
-        await this.saveZoneResources(zone, nodes);
+        await this.saveZoneResources(zone, nodes, {
+          stmts,
+          respawnAtOf: options.resourceRespawnAt
+        });
 
+        const roads: Array<{ id: string; ownerId: string; gridX: number; gridY: number }> = [];
+        state.roads.forEach((road) => {
+          roads.push({ id: road.id, ownerId: road.ownerId, gridX: road.gridX, gridY: road.gridY });
+        });
+        await this.saveZoneRoads(zone, roads, stmts);
+
+        const elapsedMs = Math.round(performance.now() - started);
         console.log(
-          `💾 [DatabaseService] ${zone} auto-saved (Players: ${state.players.size}, Buildings: ${state.buildings.size}, Units: ${state.units.size})`
+          `💾 [DatabaseService] ${zone} auto-saved (Players: ${state.players.size}, Buildings: ${state.buildings.size}, Units: ${state.units.size}, ${elapsedMs} ms, ${stmts.n} stmts)`
         );
       },
       options.skipIfBusy === true

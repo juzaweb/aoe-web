@@ -3,7 +3,6 @@ import { SelectedEntityData } from '../game/scenes/WorldScene.js';
 import {
   BUILDING_BLUEPRINTS,
   BuildingType,
-  MapZoneKind,
   Resources,
   UNIT_BLUEPRINTS,
   UnitType,
@@ -41,10 +40,10 @@ interface EntityDetailsProps {
    */
   entity: SelectedEntityData;
   playerResources: Resources;
-  /** Map the player is on, which decides the portal button's label. */
-  zoneKind: MapZoneKind;
-  /** Solo travel through an owned portal (right-click carries the selection). */
-  onTravel: (portalId: string) => void;
+  /** Phase 23: true while the player is attacking somebody else's kingdom. */
+  inRaid?: boolean;
+  /** Phase 23: leaves the raid through the retreat gate. */
+  onRetreat?: () => void;
   onTrainUnit: (buildingId: string, unitType: UnitType) => void;
   /** CMD-04a: drops the first unit in the training queue and refunds it. */
   onCancelTrain: (buildingId: string) => void;
@@ -70,8 +69,8 @@ interface EntityDetailsProps {
 export const EntityDetails: React.FC<EntityDetailsProps> = ({
   entity,
   playerResources,
-  zoneKind,
-  onTravel,
+  inRaid = false,
+  onRetreat,
   onTrainUnit,
   onCancelTrain,
   onCancelBuilding,
@@ -176,24 +175,24 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
         </div>
       )}
 
-      {/* MAPS: owned portal. Right-click travels with the current selection;
-          this button is the way to travel when nothing is selected. */}
-      {entity.type === 'building' && entity.isPortal && entity.isOwner && (
-        <div className="border-t border-violet-800/60 pt-2 space-y-1.5">
-          <span className="text-[10px] font-bold text-violet-300 tracking-wider">
-            CỔNG DỊCH CHUYỂN
+      {/* Phase 23: a portal is now only a retreat gate, and only a raider has
+          one. Right-clicking it is the second way to retreat. */}
+      {entity.type === 'building' && entity.isPortal && entity.isOwner && inRaid && (
+        <div className="border-t border-red-800/60 pt-2 space-y-1.5">
+          <span className="text-[10px] font-bold text-red-300 tracking-wider">
+            CỔNG RÚT QUÂN
           </span>
           <button
             type="button"
-            onClick={() => onTravel(entity.id)}
-            className="w-full px-2 py-1.5 rounded border border-violet-600/80 bg-violet-950/60 text-[11px] font-semibold text-violet-200 hover:border-violet-400 transition-all"
+            onClick={onRetreat}
+            className="w-full px-2 py-1.5 rounded border border-red-600/80 bg-red-950/60 text-[11px] font-semibold text-red-200 hover:border-red-400 transition-all"
           >
-            {zoneKind === 'battlefield' ? 'Về vương quốc' : 'Đi tới chiến trường'}
+            Rút toàn bộ quân về vương quốc
           </button>
           <p className="text-[10px] text-slate-400 italic">
             {interactionHint === 'long-press'
-              ? 'Chọn quân/dân rồi giữ lâu vào cổng để mang họ theo.'
-              : 'Chọn quân/dân rồi chuột phải vào cổng để mang họ theo.'}
+              ? 'Giữ lâu vào cổng để rút quân.'
+              : 'Chuột phải vào cổng để rút quân.'}
           </p>
         </div>
       )}
@@ -382,6 +381,10 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
           playerResources={playerResources}
           coreLevels={entity.coreLevels}
           activeUpgrades={entity.activeUpgrades}
+          visualTier={entity.visualTier}
+          visualTierCount={entity.visualTierCount}
+          visualTierName={entity.visualTierName}
+          nextVisualTierLevel={entity.nextVisualTierLevel}
           onUpgrade={onUpgradeBuilding}
           onCancel={onCancelBuildingUpgrade}
         />

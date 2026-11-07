@@ -1,0 +1,161 @@
+{
+  "runId": "2026-11-04T05:03:26.908Z",
+  "clients": 2,
+  "battlefield": true,
+  "durationSec": 65,
+  "warmupSec": 5,
+  "samples": [
+    {
+      "zone": "kingdom:d4c011d4-878f-442e-abe2-87992d5e28e7",
+      "type": "kingdom",
+      "players": 1,
+      "buildings": 2,
+      "units": 3,
+      "ms": 9,
+      "stmts": 11,
+      "warmup": false,
+      "t": 1793768536696
+    },
+    {
+      "zone": "kingdom:bf2ebe68-adc2-4502-802b-a49460e9a242",
+      "type": "kingdom",
+      "players": 1,
+      "buildings": 2,
+      "units": 3,
+      "ms": 8,
+      "stmts": 11,
+      "warmup": false,
+      "t": 1793768536745
+    },
+    {
+      "zone": "battlefield",
+      "type": "battlefield",
+      "players": 1,
+      "buildings": 2,
+      "units": 0,
+      "ms": 16,
+      "stmts": 9,
+      "warmup": false,
+      "t": 1793768536835
+    },
+    {
+      "zone": "kingdom:d4c011d4-878f-442e-abe2-87992d5e28e7",
+      "type": "kingdom",
+      "players": 1,
+      "buildings": 2,
+      "units": 3,
+      "ms": 7,
+      "stmts": 10,
+      "warmup": false,
+      "t": 1793768566674
+    },
+    {
+      "zone": "kingdom:bf2ebe68-adc2-4502-802b-a49460e9a242",
+      "type": "kingdom",
+      "players": 1,
+      "buildings": 2,
+      "units": 3,
+      "ms": 7,
+      "stmts": 10,
+      "warmup": false,
+      "t": 1793768566717
+    },
+    {
+      "zone": "battlefield",
+      "type": "battlefield",
+      "players": 1,
+      "buildings": 2,
+      "units": 0,
+      "ms": 13,
+      "stmts": 9,
+      "warmup": false,
+      "t": 1793768566855
+    },
+    {
+      "zone": "kingdom:d4c011d4-878f-442e-abe2-87992d5e28e7",
+      "type": "kingdom",
+      "players": 1,
+      "buildings": 2,
+      "units": 3,
+      "ms": 7,
+      "stmts": 10,
+      "warmup": false,
+      "t": 1793768596656
+    },
+    {
+      "zone": "kingdom:bf2ebe68-adc2-4502-802b-a49460e9a242",
+      "type": "kingdom",
+      "players": 1,
+      "buildings": 2,
+      "units": 3,
+      "ms": 7,
+      "stmts": 10,
+      "warmup": false,
+      "t": 1793768596707
+    },
+    {
+      "zone": "battlefield",
+      "type": "battlefield",
+      "players": 1,
+      "buildings": 2,
+      "units": 0,
+      "ms": 13,
+      "stmts": 9,
+      "warmup": false,
+      "t": 1793768596852
+    },
+    {
+      "zone": "kingdom:bf2ebe68-adc2-4502-802b-a49460e9a242",
+      "type": "kingdom",
+      "players": 0,
+      "buildings": 2,
+      "units": 3,
+      "ms": 8,
+      "stmts": 9,
+      "warmup": false,
+      "t": 1793768606868
+    },
+    {
+      "zone": "kingdom:d4c011d4-878f-442e-abe2-87992d5e28e7",
+      "type": "kingdom",
+      "players": 0,
+      "buildings": 2,
+      "units": 3,
+      "ms": 25,
+      "stmts": 9,
+      "warmup": false,
+      "t": 1793768606874
+    },
+    {
+      "zone": "battlefield",
+      "type": "battlefield",
+      "players": 0,
+      "buildings": 2,
+      "units": 0,
+      "ms": 12,
+      "stmts": 8,
+      "warmup": false,
+      "t": 1793768606879
+    }
+  ],
+  "summary": {
+    "kingdom": {
+      "n": 8,
+      "min": 7,
+      "p50": 7.5,
+      "p95": 25,
+      "max": 25,
+      "mean": 9.8,
+      "stmtsAvg": 10
+    },
+    "battlefield": {
+      "n": 4,
+      "min": 12,
+      "p50": 13,
+      "p95": 16,
+      "max": 16,
+      "mean": 13.5,
+      "stmtsAvg": 8.8
+    }
+  }
+}

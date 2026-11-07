@@ -88,6 +88,47 @@
       "files": {
         "sprite": { "url": "https://opengameart.org/sites/default/files/castle_7.png" }
       }
+    },
+    "oga.bleed-medieval-01": {
+      "page": "https://opengameart.org/content/medieval-building-01-bleeds-game-art-0",
+      "author": "Bleed",
+      "license": "CC-BY-3.0",
+      "files": {
+        "pack": {
+          "url": "https://opengameart.org/sites/default/files/Medieval_Building_01.zip",
+          "archive": "zip"
+        }
+      }
+    },
+    "oga.bleed-medieval-04": {
+      "page": "https://opengameart.org/content/medieval-building-04-bleeds-game-art",
+      "author": "Bleed",
+      "license": "CC-BY-3.0",
+      "files": {
+        "pack": {
+          "url": "https://opengameart.org/sites/default/files/Medieval_04.zip",
+          "archive": "zip"
+        }
+      }
+    },
+    "oga.bleed-medieval-05": {
+      "page": "https://opengameart.org/content/medieval-building-05-bleeds-game-art",
+      "author": "Bleed",
+      "license": "CC-BY-3.0",
+      "files": {
+        "sprite": { "url": "https://opengameart.org/sites/default/files/mb_0000.png" }
+      }
+    },
+    "oga.bleed-medieval-06": {
+      "page": "https://opengameart.org/content/medieval-building-06",
+      "author": "Bleed",
+      "license": "CC-BY-3.0",
+      "files": {
+        "pack": {
+          "url": "https://opengameart.org/sites/default/files/Medieval_Building_06.zip",
+          "archive": "zip"
+        }
+      }
     }
   },
   "targets": {
@@ -144,6 +185,61 @@
       "op": { "crop": "alpha", "fit": true, "matchLum": 107.3, "anchor": "bottom-center" },
       "out": "apps/client/public/assets/buildings/house.png",
       "canvas": [256, 220]
+    },
+    "building.house-2": {
+      "source": "oga.bleed-medieval-05",
+      "file": "sprite",
+      "op": {
+        "alphaFloor": 96,
+        "crop": "alpha",
+        "fit": true,
+        "matchLum": 107.3,
+        "anchor": "bottom-center"
+      },
+      "out": "apps/client/public/assets/buildings/house_2.png",
+      "canvas": [318, 232]
+    },
+    "building.house-3": {
+      "source": "oga.bleed-medieval-06",
+      "file": "pack",
+      "entry": "Medieval_Building_06.png",
+      "op": {
+        "alphaFloor": 96,
+        "crop": "alpha",
+        "fit": true,
+        "matchLum": 107.3,
+        "anchor": "bottom-center"
+      },
+      "out": "apps/client/public/assets/buildings/house_3.png",
+      "canvas": [341, 256]
+    },
+    "building.house-4": {
+      "source": "oga.bleed-medieval-01",
+      "file": "pack",
+      "entry": "Normal/sprite0.png",
+      "op": {
+        "alphaFloor": 96,
+        "crop": "alpha",
+        "fit": true,
+        "matchLum": 107.3,
+        "anchor": "bottom-center"
+      },
+      "out": "apps/client/public/assets/buildings/house_4.png",
+      "canvas": [379, 280]
+    },
+    "building.house-5": {
+      "source": "oga.bleed-medieval-04",
+      "file": "pack",
+      "entry": "Medieval_04/building_full.png",
+      "op": {
+        "alphaFloor": 96,
+        "crop": "alpha",
+        "fit": true,
+        "matchLum": 107.3,
+        "anchor": "bottom-center"
+      },
+      "out": "apps/client/public/assets/buildings/house_5.png",
+      "canvas": [405, 304]
     },
     "building.town-center": {
       "source": "oga.feudal-castle",

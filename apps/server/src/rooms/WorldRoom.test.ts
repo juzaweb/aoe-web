@@ -4,23 +4,27 @@ import {
   MAP_GRID_WIDTH,
   MAX_SELECTION,
   NetworkMessage,
+  RejectCode,
   SESSION_ALREADY_ACTIVE,
   SESSION_REPLACED_CLOSE,
   KINGDOM_MAP_SIZE,
+  RESOURCE_REGROW_MS,
   TERRAIN_KINGDOM,
   UNIT_BLUEPRINTS,
+  INITIAL_POPULATION_CAP,
   getBuildingLevelStats,
-  isDirtRoadTile,
   isPlazaTile,
   getBuildingMaxLevel,
   getBuildingUpgradeCost,
   getBuildingUpgradeTimeMs,
   getPlayerUnitLevel,
   getUnitLevelStats,
+  gatherIntervalMs,
   getUnitUpgradeCost,
   getUnitUpgradeTimeMs
 } from '@chien-quoc/shared';
 import { CORPSE_LINGER_MS, WorldRoom } from './WorldRoom.js';
+import { STARTER_RESOURCE_PREFIX } from './resources.js';
 import { isWithinBuildRange } from './construction.js';
 import { generateWorldResources } from './worldGeneration.js';
 import { restoreBuildingUpgrade } from './upgrades.js';
@@ -44,7 +48,8 @@ vi.mock('../services/DatabaseService.js', () => ({
     saveFullWorldState: vi.fn().mockResolvedValue(undefined),
     loadForeignBaseline: vi.fn().mockResolvedValue({ unitCount: 0, buildings: [] }),
     consumeTravelTransfers: vi.fn().mockResolvedValue([]),
-    commitTravel: vi.fn().mockResolvedValue(undefined)
+    commitTravel: vi.fn().mockResolvedValue(undefined),
+    loadRoads: vi.fn().mockResolvedValue([])
   }
 }));
 
@@ -100,6 +105,21 @@ function createClient(
     send: vi.fn(),
     leave: vi.fn()
   };
+}
+
+/** Runs `ms` of simulation in 100 ms steps, the room's own tick granularity. */
+function simulate(room: WorldRoom, ms: number, tickMs = 100) {
+  for (let elapsed = 0; elapsed < ms; elapsed += tickMs) internals(room).update(tickMs);
+}
+
+/**
+ * ECO-02: time one villager needs to fill its carry slot from `resourceType`.
+ *
+ * Gathering is paid in whole units, so this is exact rather than approximate:
+ * a load of `carryCapacity` takes that many harvest intervals.
+ */
+function fullLoadMs(resourceType: string): number {
+  return gatherIntervalMs(resourceType) * UNIT_BLUEPRINTS.VILLAGER.carryCapacity;
 }
 
 function addPlayer(room: WorldRoom, sessionId: string, overrides: Partial<PlayerState> = {}) {
@@ -219,7 +239,7 @@ describe('handleMoveUnits', () => {
     internals(room).commands.handleMoveUnits(clientA, { unitIds, targetGridX: 60, targetGridY: 60 });
 
     expect(clientA.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Too many units in one command'
+      message: 'Too many units in one command', code: RejectCode.LIMIT
     });
   });
 });
@@ -238,7 +258,7 @@ describe('handleAttackTarget', () => {
     });
 
     expect(clientA.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Cannot attack your own units or buildings'
+      message: 'Cannot attack your own units or buildings', code: RejectCode.FORBIDDEN
     });
     expect(own.actionState).toBe('IDLE');
     expect(own.targetEntityId).toBe('');
@@ -293,7 +313,7 @@ describe('handleTrainUnit', () => {
     internals(room).commands.handleTrainUnit(clientA, { buildingId: 'b_1', unitType: 'VILLAGER' });
 
     expect(clientA.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Insufficient resources to train unit'
+      message: 'Insufficient resources to train unit', code: RejectCode.RESOURCE
     });
     expect(player.food).toBe(10);
     expect(room.state.buildings.get('b_1')!.trainingQueue.length).toBe(0);
@@ -328,7 +348,7 @@ describe('handlePlaceBuilding', () => {
     internals(room).commands.handlePlaceBuilding(clientA, { type: 'HOUSE', gridX: 41, gridY: 41 });
 
     expect(clientA.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Placement obstructed by existing structure or resource'
+      message: 'Placement obstructed by existing structure or resource', code: RejectCode.PLACEMENT
     });
     expect(room.state.buildings.size).toBe(buildingsBefore);
     expect(player.wood).toBe(500);
@@ -346,7 +366,7 @@ describe('handlePlaceBuilding', () => {
     });
 
     expect(clientA.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Cannot build outside map bounds'
+      message: 'Cannot build outside map bounds', code: RejectCode.PLACEMENT
     });
     expect(player.wood).toBe(500);
   });
@@ -566,7 +586,7 @@ describe('gathering and drop-off (SIM-02)', () => {
   it('carries a full load instead of crediting the player directly', () => {
     const { room, player, node, unit } = harvestScenario();
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('wood'));
 
     expect(unit.carryingAmount).toBe(UNIT_BLUEPRINTS.VILLAGER.carryCapacity);
     expect(unit.carryingResourceType).toBe('wood');
@@ -576,11 +596,22 @@ describe('gathering and drop-off (SIM-02)', () => {
     expect(unit.dropOffId).toBe('b_tc');
   });
 
+  it('takes one unit per gather interval rather than a load every second', () => {
+    const { room, node, unit } = harvestScenario();
+
+    // ECO-02: slower rates are the point of the pass, so a single second must
+    // not come close to filling the slot.
+    simulate(room, gatherIntervalMs('wood') * 2);
+
+    expect(unit.carryingAmount).toBe(2);
+    expect(node.remainingAmount).toBe(98);
+  });
+
   it('banks the load at the town center and walks back to the node', () => {
     const { room, player, unit } = harvestScenario();
     const capacity = UNIT_BLUEPRINTS.VILLAGER.carryCapacity;
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('wood'));
     expect(unit.actionState).toBe('RETURNING');
 
     let delivered = false;
@@ -597,10 +628,50 @@ describe('gathering and drop-off (SIM-02)', () => {
     expect(unit.targetEntityId).toBe('res_1');
   });
 
+  it('never takes more than a nearly empty node holds in one tick', () => {
+    const { room, node, unit } = harvestScenario({ nodeAmount: 1 });
+
+    // A long tick (lag, or a resumed room) has room for several harvest
+    // intervals; the node only has one unit left.
+    internals(room).update(3000);
+
+    expect(unit.carryingAmount).toBe(1);
+    expect(node.remainingAmount).toBe(0);
+    expect(room.state.resourceNodes.has(node.id)).toBe(true);
+  });
+
+  it('does not carry spare harvest time to a different node', () => {
+    const { room, node, unit } = harvestScenario({ nodeAmount: 1 });
+    const other = addResource(room, {
+      id: 'res_2',
+      resourceType: 'wood',
+      gridX: 51,
+      gridY: 41,
+      remainingAmount: 100
+    });
+
+    // Three seconds on a one-unit node would otherwise bank ~2.6s of credit and
+    // hand the next node almost a free load.
+    internals(room).update(3000);
+    expect(node.remainingAmount).toBe(0);
+
+    unit.targetEntityId = other.id;
+    unit.targetEntityType = 'resource';
+    unit.targetX = other.gridX;
+    unit.targetY = other.gridY;
+    unit.actionState = 'HARVESTING';
+    internals(room).update(50);
+
+    // Only the 50 ms of this tick counts: the spare time is capped at one
+    // interval, not banked into a free unit.
+    expect(unit.carryingAmount).toBe(1);
+    expect(other.remainingAmount).toBe(100);
+  });
+
   it('banks a partial load when the node runs dry mid-gather', () => {
     const { room, player, node, unit } = harvestScenario({ nodeAmount: 4 });
 
-    internals(room).update(1000);
+    simulate(room, gatherIntervalMs('wood') * 4);
 
     expect(unit.carryingAmount).toBe(4);
     // MAPS: a depleted node stays in the snapshot as an empty slot so it can
@@ -611,10 +682,21 @@ describe('gathering and drop-off (SIM-02)', () => {
     expect(player.wood).toBe(0);
   });
 
+  it('gives up on a node another villager emptied before it arrived', () => {
+    const { room, unit } = harvestScenario({ nodeAmount: 0 });
+
+    internals(room).update(50);
+
+    // The order must resolve on the first tick: a zero take cannot return early
+    // or the villager stands at an empty stump forever.
+    expect(unit.actionState).toBe('IDLE');
+    expect(unit.targetEntityId).toBe('');
+  });
+
   it('keeps the load when no drop-off accepts it', () => {
     const { room, player, unit } = harvestScenario({ withTownCenter: false });
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('wood'));
 
     expect(unit.carryingAmount).toBe(UNIT_BLUEPRINTS.VILLAGER.carryCapacity);
     expect(unit.actionState).toBe('IDLE');
@@ -625,7 +707,7 @@ describe('gathering and drop-off (SIM-02)', () => {
     const { room, player, unit } = harvestScenario();
     const capacity = UNIT_BLUEPRINTS.VILLAGER.carryCapacity;
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('wood'));
     expect(unit.actionState).toBe('RETURNING');
 
     room.state.buildings.delete('b_tc');
@@ -656,7 +738,7 @@ describe('gathering and drop-off (SIM-02)', () => {
 describe('farm gathering (ECO-01)', () => {
   /** A villager standing at a field's edge, already ordered to work it. */
   function farmScenario(options: { farmFood?: number; wood?: number } = {}) {
-    const { farmFood = 250, wood = 0 } = options;
+    const { farmFood = BUILDING_BLUEPRINTS.FARM.gatherCapacity ?? 0, wood = 0 } = options;
     const room = createRoom();
     const player = addPlayer(room, 'player-a', { wood, food: 0 });
 
@@ -681,12 +763,13 @@ describe('farm gathering (ECO-01)', () => {
 
   it('harvests food from the field instead of the ground', () => {
     const { room, player, farm, unit } = farmScenario();
+    const capacity = UNIT_BLUEPRINTS.VILLAGER.carryCapacity;
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('food'));
 
-    expect(unit.carryingAmount).toBe(UNIT_BLUEPRINTS.VILLAGER.carryCapacity);
+    expect(unit.carryingAmount).toBe(capacity);
     expect(unit.carryingResourceType).toBe('food');
-    expect(farm.resourceAmount).toBe(250 - UNIT_BLUEPRINTS.VILLAGER.carryCapacity);
+    expect(farm.resourceAmount).toBe((BUILDING_BLUEPRINTS.FARM.gatherCapacity ?? 0) - capacity);
     expect(player.food).toBe(0);
     expect(unit.actionState).toBe('RETURNING');
     expect(unit.dropOffId).toBe('b_tc');
@@ -696,7 +779,7 @@ describe('farm gathering (ECO-01)', () => {
     const { room, player, unit } = farmScenario();
     const capacity = UNIT_BLUEPRINTS.VILLAGER.carryCapacity;
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('food'));
     expect(unit.actionState).toBe('RETURNING');
 
     let delivered = false;
@@ -714,7 +797,8 @@ describe('farm gathering (ECO-01)', () => {
   it('re-sows an emptied field for the farm cost and keeps working', () => {
     const { room, player, farm, unit } = farmScenario({ farmFood: 5, wood: 60 });
 
-    internals(room).update(1000);
+    // Food comes off a field at 2.5/s, so five units is two seconds of work.
+    simulate(room, 2000);
 
     // Five units left on the field, so five are carried and the field is paid for.
     expect(unit.carryingAmount).toBe(5);
@@ -723,10 +807,24 @@ describe('farm gathering (ECO-01)', () => {
     expect(farm.resourceCapacity).toBe(BUILDING_BLUEPRINTS.FARM.gatherCapacity);
   });
 
+  it('re-sows a levelled field to its own capacity, not the blueprint baseline', () => {
+    const { room, player, farm } = farmScenario({ farmFood: 5, wood: 60 });
+    farm.level = 4;
+    const capacity = getBuildingLevelStats('FARM', 4).gatherCapacity;
+    farm.resourceCapacity = capacity;
+
+    simulate(room, 2000);
+
+    expect(player.wood).toBe(0);
+    expect(farm.resourceAmount).toBe(capacity);
+    expect(farm.resourceCapacity).toBe(capacity);
+    expect(capacity).toBeGreaterThan(BUILDING_BLUEPRINTS.FARM.gatherCapacity ?? 0);
+  });
+
   it('stop working a field it cannot re-sow, but keeps the load', () => {
     const { room, player, farm, unit } = farmScenario({ farmFood: 5, wood: 0 });
 
-    internals(room).update(1000);
+    simulate(room, 2000);
     // Empty and unaffordable: the load in hand is banked, not thrown away.
     internals(room).update(1000);
 
@@ -742,7 +840,7 @@ describe('farm gathering (ECO-01)', () => {
     internals(room).economy.handleHarvestOrder(client, { unitIds: ['u_1'], buildingId: farm.id });
 
     expect(farm.resourceAmount).toBe(0);
-    expect(client.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, { message: 'Farm is empty' });
+    expect(client.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, { message: 'Farm is empty', code: RejectCode.RESOURCE });
   });
 
   it('refuses a harvest order on a farm owned by somebody else', () => {
@@ -752,7 +850,7 @@ describe('farm gathering (ECO-01)', () => {
     internals(room).economy.handleHarvestOrder(stranger, { unitIds: ['u_1'], buildingId: farm.id });
 
     expect(stranger.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'That farm is not yours'
+      message: 'That farm is not yours', code: RejectCode.FORBIDDEN
     });
   });
 
@@ -1017,6 +1115,151 @@ describe('tower combat (SIM-03)', () => {
   });
 });
 
+describe('unit auto-engagement', () => {
+  it('lets an idle soldier pick up an enemy inside its aggro radius', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const soldier = addUnit(room, {
+      id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN', x: 10, y: 10
+    });
+    const enemy = addUnit(room, { id: 'u_2', ownerId: 'player-b', type: 'VILLAGER', x: 14, y: 10 });
+
+    internals(room).update(100);
+
+    expect(soldier.actionState).toBe('ATTACKING');
+    expect(soldier.targetEntityId).toBe(enemy.id);
+    expect(soldier.targetEntityType).toBe('unit');
+    // Out of weapon range this tick: it acquired the target, but did not hit.
+    expect(enemy.hp).toBe(UNIT_BLUEPRINTS.VILLAGER.maxHp);
+  });
+
+  it('prefers an enemy soldier over a closer villager', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const soldier = addUnit(room, {
+      id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN', x: 10, y: 10
+    });
+    addUnit(room, { id: 'u_2', ownerId: 'player-b', type: 'VILLAGER', x: 11, y: 10 });
+    const enemySoldier = addUnit(room, {
+      id: 'u_3', ownerId: 'player-b', type: 'SPEARMAN', x: 14, y: 10
+    });
+
+    internals(room).update(100);
+
+    expect(soldier.targetEntityId).toBe(enemySoldier.id);
+  });
+
+  it('prefers a villager over a nearer building', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const soldier = addUnit(room, {
+      id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN', x: 10, y: 10
+    });
+    addBuilding(room, {
+      id: 'b_1', ownerId: 'player-b', type: 'HOUSE', gridX: 11, gridY: 9
+    });
+    const villager = addUnit(room, {
+      id: 'u_2', ownerId: 'player-b', type: 'VILLAGER', x: 14, y: 10
+    });
+
+    internals(room).update(100);
+
+    expect(soldier.targetEntityId).toBe(villager.id);
+  });
+
+  it('falls back to an enemy building when no unit is in range', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const soldier = addUnit(room, {
+      id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN', x: 10, y: 10
+    });
+    const building = addBuilding(room, {
+      id: 'b_1', ownerId: 'player-b', type: 'HOUSE', gridX: 12, gridY: 10
+    });
+
+    internals(room).update(100);
+
+    expect(soldier.targetEntityId).toBe(building.id);
+    expect(soldier.targetEntityType).toBe('building');
+  });
+
+  it('never auto-acquires the portal', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const soldier = addUnit(room, {
+      id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN', x: 10, y: 10
+    });
+    addBuilding(room, {
+      id: 'b_1', ownerId: 'player-b', type: 'PORTAL', gridX: 12, gridY: 10
+    });
+
+    internals(room).update(100);
+
+    expect(soldier.actionState).toBe('IDLE');
+    expect(soldier.targetEntityId).toBe('');
+  });
+
+  it('spares friendly units and buildings', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    const soldier = addUnit(room, {
+      id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN', x: 10, y: 10
+    });
+    addUnit(room, { id: 'u_2', ownerId: 'player-a', type: 'VILLAGER', x: 11, y: 10 });
+    addBuilding(room, {
+      id: 'b_1', ownerId: 'player-a', type: 'HOUSE', gridX: 12, gridY: 10
+    });
+
+    internals(room).update(100);
+
+    expect(soldier.actionState).toBe('IDLE');
+    expect(soldier.targetEntityId).toBe('');
+  });
+
+  it('keeps villagers out of fights they were not ordered into', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const villager = addUnit(room, {
+      id: 'u_1', ownerId: 'player-a', type: 'VILLAGER', x: 10, y: 10
+    });
+    addUnit(room, { id: 'u_2', ownerId: 'player-b', type: 'SPEARMAN', x: 12, y: 10 });
+
+    internals(room).update(100);
+
+    expect(villager.actionState).toBe('IDLE');
+    expect(villager.targetEntityId).toBe('');
+  });
+
+  it('resumes a plain move after the auto-acquired fight ends', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const soldier = addUnit(room, {
+      id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN', x: 10, y: 10, actionState: 'MOVING'
+    });
+    soldier.targetX = 40;
+    soldier.targetY = 10;
+    const enemy = addUnit(room, { id: 'u_2', ownerId: 'player-b', type: 'VILLAGER', x: 12, y: 10 });
+
+    internals(room).update(100);
+    expect(soldier.actionState).toBe('ATTACKING');
+    expect(soldier.targetEntityId).toBe(enemy.id);
+
+    room.state.units.delete(enemy.id);
+    internals(room).update(100);
+
+    expect(soldier.actionState).toBe('MOVING');
+    expect(soldier.targetX).toBe(40);
+    expect(soldier.x).toBeGreaterThan(10);
+  });
+});
+
 describe('combat cooldown bookkeeping', () => {
   it('resumes the stored order on the tick its target dies', () => {
     const room = createRoom();
@@ -1045,6 +1288,9 @@ describe('combat cooldown bookkeeping', () => {
     const enemy = addUnit(room, {
       id: 'u_1', ownerId: 'player-a', type: 'SPEARMAN', x: 10, y: 10
     });
+    // Keep the idle soldier from auto-acquiring the villager: this test is about
+    // the villager's cooldown being dropped, not about auto-engagement.
+    enemy.stance = 'NO_ATTACK';
     const victim = addUnit(room, {
       id: 'u_2', ownerId: 'player-b', type: 'VILLAGER', x: 11, y: 10, actionState: 'ATTACKING'
     });
@@ -1340,7 +1586,7 @@ describe('drop-off buildings (ECO)', () => {
   it('lumber camp banks wood instead of the distant town center', () => {
     const { room, player, unit } = campScenario({ campType: 'LUMBER_CAMP', nodeType: 'wood' });
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('wood'));
     expect(unit.actionState).toBe('RETURNING');
     expect(unit.dropOffId).toBe('b_camp');
 
@@ -1351,7 +1597,7 @@ describe('drop-off buildings (ECO)', () => {
   it('mill banks food', () => {
     const { room, player, unit } = campScenario({ campType: 'MILL', nodeType: 'food' });
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('food'));
     expect(unit.dropOffId).toBe('b_camp');
 
     bank(room, () => player.food > 0);
@@ -1362,7 +1608,7 @@ describe('drop-off buildings (ECO)', () => {
     for (const resource of ['gold', 'stone'] as const) {
       const { room, player, unit } = campScenario({ campType: 'MINING_CAMP', nodeType: resource });
 
-      internals(room).update(1000);
+      simulate(room, fullLoadMs(resource));
       expect(unit.dropOffId, resource).toBe('b_camp');
 
       bank(room, () => player[resource] > 0);
@@ -1379,7 +1625,7 @@ describe('drop-off buildings (ECO)', () => {
       isConstructed: false
     });
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('wood'));
 
     expect(unit.actionState).toBe('RETURNING');
     expect(unit.dropOffId).toBe('b_tc');
@@ -1416,7 +1662,7 @@ describe('drop-off buildings (ECO)', () => {
     unit.targetEntityId = node.id;
     unit.targetEntityType = 'resource';
 
-    internals(room).update(1000);
+    simulate(room, fullLoadMs('gold'));
 
     expect(unit.carryingAmount).toBe(UNIT_BLUEPRINTS.VILLAGER.carryCapacity);
     expect(unit.carryingResourceType).toBe('gold');
@@ -1690,6 +1936,18 @@ describe('starter base levels (LVL)', () => {
 });
 
 describe('building upgrades (LVL)', () => {
+  /**
+   * The Town Center gate now asks for the Town Center's own level on every
+   * step, so any test that upgrades a Town Center has to start with the four
+   * pillars already built.
+   */
+  function addGatePillars(room: WorldRoom, level = 1) {
+    for (const type of ['HOUSE', 'BARRACKS', 'FARM', 'TOWER']) {
+      const pillar = addBuilding(room, { id: `b_${type}`, ownerId: 'player-a', type });
+      pillar.level = level;
+    }
+  }
+
   it('charges the next level, ticks, and applies HP + population', () => {
     const room = createRoom();
     const player = addPlayer(room, 'player-a', {
@@ -1698,10 +1956,17 @@ describe('building upgrades (LVL)', () => {
       gold: 5000,
       stone: 5000
     });
+    addGatePillars(room);
     const townCenter = addBuilding(room, { id: 'b_1', ownerId: 'player-a' });
     const client = createClient('player-a');
     const cost = getBuildingUpgradeCost('TOWN_CENTER', 1);
     const duration = getBuildingUpgradeTimeMs('TOWN_CENTER', 1);
+    // The gate pillars include a House, so the cap is the initial allowance plus
+    // the Town Center and that House — not just the Town Center's own number.
+    const populationBefore =
+      INITIAL_POPULATION_CAP +
+      getBuildingLevelStats('TOWN_CENTER', 1).populationProvided +
+      getBuildingLevelStats('HOUSE', 1).populationProvided;
 
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_1' });
 
@@ -1719,12 +1984,13 @@ describe('building upgrades (LVL)', () => {
     expect(townCenter.hp).toBe(expected.maxHp);
     expect(townCenter.upgradeProgressMs).toBe(0);
     expect(townCenter.upgradeTimeMs).toBe(0);
-    expect(player.populationCap).toBe(10 + expected.populationProvided);
+    expect(player.populationCap).toBe(populationBefore + 1);
   });
 
   it('keeps missing HP missing when the upgrade lands', () => {
     const room = createRoom();
     addPlayer(room, 'player-a', { wood: 5000, stone: 5000 });
+    addGatePillars(room);
     const townCenter = addBuilding(room, { id: 'b_1', ownerId: 'player-a' });
     townCenter.hp = townCenter.maxHp - 500;
     const duration = getBuildingUpgradeTimeMs('TOWN_CENTER', 1);
@@ -1734,6 +2000,46 @@ describe('building upgrades (LVL)', () => {
 
     expect(townCenter.maxHp).toBe(getBuildingLevelStats('TOWN_CENTER', 2).maxHp);
     expect(townCenter.hp).toBe(townCenter.maxHp - 500);
+  });
+
+  it('grows a farm harvest capacity when its upgrade lands', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 5000, stone: 5000 });
+    const farm = addBuilding(room, { id: 'b_farm', ownerId: 'player-a', type: 'FARM' });
+    farm.level = 1;
+    farm.resourceCapacity = BUILDING_BLUEPRINTS.FARM.gatherCapacity ?? 0;
+    farm.resourceAmount = 100;
+    const duration = getBuildingUpgradeTimeMs('FARM', 1);
+
+    internals(room).commands.handleUpgradeBuilding(createClient('player-a'), {
+      buildingId: 'b_farm'
+    });
+    internals(room).update(duration);
+
+    const before = BUILDING_BLUEPRINTS.FARM.gatherCapacity ?? 0;
+    const after = getBuildingLevelStats('FARM', 2).gatherCapacity;
+    expect(farm.level).toBe(2);
+    expect(farm.resourceCapacity).toBe(after);
+    // The upgrade adds capacity without refilling what was already harvested.
+    expect(farm.resourceAmount).toBe(100 + (after - before));
+  });
+
+  it('does not refill a fallow farm when its upgrade lands', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 5000, stone: 5000 });
+    const farm = addBuilding(room, { id: 'b_farm', ownerId: 'player-a', type: 'FARM' });
+    farm.resourceAmount = 0;
+    farm.resourceCapacity = BUILDING_BLUEPRINTS.FARM.gatherCapacity ?? 0;
+    const duration = getBuildingUpgradeTimeMs('FARM', 1);
+
+    internals(room).commands.handleUpgradeBuilding(createClient('player-a'), {
+      buildingId: 'b_farm'
+    });
+    internals(room).update(duration);
+
+    // Empty stays empty: the bigger field still has to be re-sown for its cost.
+    expect(farm.resourceAmount).toBe(0);
+    expect(farm.resourceCapacity).toBe(getBuildingLevelStats('FARM', 2).gatherCapacity);
   });
 
   it('rejects foundations, foreign buildings, max level and a second upgrade', () => {
@@ -1754,35 +2060,36 @@ describe('building upgrades (LVL)', () => {
 
     internals(room).commands.handleUpgradeBuilding(clientA, { buildingId: foundation.id });
     expect(clientA.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Building is still under construction'
+      message: 'Building is still under construction', code: RejectCode.PREREQUISITE
     });
 
     internals(room).commands.handleUpgradeBuilding(clientA, { buildingId: foreign.id });
     expect(clientA.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Not your building'
+      message: 'Not your building', code: RejectCode.FORBIDDEN
     });
 
     internals(room).commands.handleUpgradeBuilding(clientA, { buildingId: maxed.id });
     expect(clientA.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Building is already at max level'
+      message: 'Building is already at max level', code: RejectCode.LIMIT
     });
 
     internals(room).commands.handleUpgradeBuilding(clientA, { buildingId: busy.id });
     expect(clientA.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Building is already upgrading'
+      message: 'Building is already upgrading', code: RejectCode.BUSY
     });
   });
 
   it('rejects an upgrade the player cannot afford', () => {
     const room = createRoom();
     const player = addPlayer(room, 'player-a', { wood: 0, stone: 0 });
+    addGatePillars(room);
     addBuilding(room, { id: 'b_1', ownerId: 'player-a' });
     const client = createClient('player-a');
 
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_1' });
 
     expect(client.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Insufficient resources to upgrade building'
+      message: 'Insufficient resources to upgrade building', code: RejectCode.RESOURCE
     });
     expect(player.wood).toBe(0);
   });
@@ -1795,6 +2102,7 @@ describe('building upgrades (LVL)', () => {
       gold: 5000,
       stone: 5000
     });
+    addGatePillars(room);
     const townCenter = addBuilding(room, { id: 'b_1', ownerId: 'player-a' });
     const client = createClient('player-a');
     const cost = getBuildingUpgradeCost('TOWN_CENTER', 1);
@@ -1839,19 +2147,20 @@ describe('progression gate and slots (LVL2)', () => {
     return building;
   }
 
-  it('blocks the Town Center until the four pillars reach the step', () => {
+  it('blocks the Town Center until the four pillars reach its level', () => {
     const room = createRoom();
     addPlayer(room, 'player-a', RICH);
     const townCenter = addBuilding(room, { id: 'b_tc', ownerId: 'player-a' });
-    townCenter.level = 10;
+    townCenter.level = 4;
     const client = createClient('player-a');
 
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_tc' });
 
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
       message:
-        'Town Center upgrade requires House level 10 (have 0), Barracks level 10 (have 0), ' +
-        'Farm level 10 (have 0), Watch Tower level 10 (have 0)'
+        'Town Center upgrade requires House level 4 (have 0), Barracks level 4 (have 0), ' +
+        'Farm level 4 (have 0), Watch Tower level 4 (have 0)',
+      code: RejectCode.PREREQUISITE
     });
     expect(townCenter.upgradeTimeMs).toBe(0);
   });
@@ -1860,17 +2169,17 @@ describe('progression gate and slots (LVL2)', () => {
     const room = createRoom();
     addPlayer(room, 'player-a', RICH);
     const townCenter = addBuilding(room, { id: 'b_tc', ownerId: 'player-a' });
-    townCenter.level = 10;
+    townCenter.level = 9;
     for (const type of ['HOUSE', 'BARRACKS', 'FARM', 'TOWER']) {
-      addCore(room, type, 10);
+      addCore(room, type, 9);
     }
     const client = createClient('player-a');
 
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_tc' });
 
     expect(client.send).not.toHaveBeenCalled();
-    expect(townCenter.upgradeTimeMs).toBe(getBuildingUpgradeTimeMs('TOWN_CENTER', 10));
-    expect(townCenter.upgradeTimeMs).toBe(2_420_158);
+    expect(townCenter.upgradeTimeMs).toBe(getBuildingUpgradeTimeMs('TOWN_CENTER', 9));
+    expect(townCenter.upgradeTimeMs).toBe(49_207_500);
   });
 
   it('does not count a core foundation towards the gate', () => {
@@ -1878,7 +2187,7 @@ describe('progression gate and slots (LVL2)', () => {
     addPlayer(room, 'player-a', RICH);
     const townCenter = addBuilding(room, { id: 'b_tc', ownerId: 'player-a' });
     townCenter.level = 5;
-    // Level 5 only requires level 5, and the House here is still a foundation.
+    // The gate now asks for level 5, and this House is still a foundation.
     addCore(room, 'HOUSE', 5, false);
     addCore(room, 'BARRACKS', 5);
     addCore(room, 'FARM', 5);
@@ -1888,22 +2197,27 @@ describe('progression gate and slots (LVL2)', () => {
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_tc' });
 
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Town Center upgrade requires House level 5 (have 0)'
+      message: 'Town Center upgrade requires House level 5 (have 0)', code: RejectCode.PREREQUISITE
     });
     expect(townCenter.upgradeTimeMs).toBe(0);
   });
 
-  it('asks for nothing while the Town Center is below level 5', () => {
+  it('gates the very first Town Center upgrade on level-1 pillars', () => {
     const room = createRoom();
     addPlayer(room, 'player-a', RICH);
     const townCenter = addBuilding(room, { id: 'b_tc', ownerId: 'player-a' });
-    townCenter.level = 4;
+    townCenter.level = 1;
     const client = createClient('player-a');
 
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_tc' });
 
-    expect(client.send).not.toHaveBeenCalled();
-    expect(townCenter.upgradeTimeMs).toBe(getBuildingUpgradeTimeMs('TOWN_CENTER', 4));
+    expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
+      message:
+        'Town Center upgrade requires House level 1 (have 0), Barracks level 1 (have 0), ' +
+        'Farm level 1 (have 0), Watch Tower level 1 (have 0)',
+      code: RejectCode.PREREQUISITE
+    });
+    expect(townCenter.upgradeTimeMs).toBe(0);
   });
 
   it('allows two upgrades at a time and frees a slot when one is cancelled', () => {
@@ -1921,7 +2235,7 @@ describe('progression gate and slots (LVL2)', () => {
 
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'h3' });
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Building upgrade limit reached (2 at a time)'
+      message: 'Building upgrade limit reached (2 at a time)', code: RejectCode.LIMIT
     });
     expect(houses[2].upgradeTimeMs).toBe(0);
 
@@ -1932,17 +2246,17 @@ describe('progression gate and slots (LVL2)', () => {
     expect(houses[2].upgradeTimeMs).toBeGreaterThan(0);
   });
 
-  it('stops core buildings at level 100', () => {
+  it('stops core buildings at level 10', () => {
     const room = createRoom();
     addPlayer(room, 'player-a', RICH);
     const house = addBuilding(room, { id: 'b_house', ownerId: 'player-a', type: 'HOUSE' });
-    house.level = 100;
+    house.level = 10;
     const client = createClient('player-a');
 
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_house' });
 
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Building is already at max level'
+      message: 'Building is already at max level', code: RejectCode.LIMIT
     });
   });
 
@@ -1950,7 +2264,7 @@ describe('progression gate and slots (LVL2)', () => {
     const room = createRoom();
     addPlayer(room, 'player-a', RICH);
     const house = addBuilding(room, { id: 'b_house', ownerId: 'player-a', type: 'HOUSE' });
-    house.level = 90;
+    house.level = 8;
     const client = createClient('player-a');
 
     internals(room).commands.handleUpgradeBuilding(client, { buildingId: 'b_house' });
@@ -1995,6 +2309,21 @@ describe('progression gate and slots (LVL2)', () => {
     expect(house.upgradeProgressMs).toBe(0);
     expect(house.upgradeTimeMs).toBe(10_000);
   });
+
+  it('drops a timer saved for a building the new cap already maxed', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', RICH);
+    const house = addBuilding(room, { id: 'b_house', ownerId: 'player-a', type: 'HOUSE' });
+    // A save written under the old 100-level cap: level clamped to 10 on load,
+    // but the upgrade row still says the building was climbing.
+    house.level = getBuildingMaxLevel('HOUSE');
+
+    restoreBuildingUpgrade(house, 1_000, 20_000);
+
+    expect(house.level).toBe(10);
+    expect(house.upgradeProgressMs).toBe(0);
+    expect(house.upgradeTimeMs).toBe(0);
+  });
 });
 
 describe('unit research (LVL)', () => {
@@ -2006,7 +2335,7 @@ describe('unit research (LVL)', () => {
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'SPEARMAN' });
 
     expect(client.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Build a Barracks before researching unit upgrades'
+      message: 'Build a Barracks before researching unit upgrades', code: RejectCode.PREREQUISITE
     });
   });
 
@@ -2023,13 +2352,13 @@ describe('unit research (LVL)', () => {
 
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'SPEARMAN' });
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Build a Barracks before researching unit upgrades'
+      message: 'Build a Barracks before researching unit upgrades', code: RejectCode.PREREQUISITE
     });
 
     addBuilding(room, { id: 'b_ready', ownerId: 'player-a', type: 'BARRACKS' });
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'SPEARMAN' });
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Insufficient resources to research unit upgrade'
+      message: 'Insufficient resources to research unit upgrade', code: RejectCode.RESOURCE
     });
     expect(player.researchUnitType).toBe('');
   });
@@ -2134,19 +2463,19 @@ describe('unit research (LVL)', () => {
     player.unitLevels[1] = 10;
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'SPEARMAN' });
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Unit type is already at max level'
+      message: 'Unit type is already at max level', code: RejectCode.LIMIT
     });
 
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'DRAGON' as never });
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Invalid unit type'
+      message: 'Invalid unit type', code: RejectCode.INVALID
     });
 
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'ARCHER' });
     expect(player.researchUnitType).toBe('ARCHER');
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'CAVALRY' });
     expect(client.send).toHaveBeenLastCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Another unit research is already in progress'
+      message: 'Another unit research is already in progress', code: RejectCode.BUSY
     });
   });
 
@@ -2293,13 +2622,12 @@ describe('kingdom map layout (MAPS-V2)', () => {
     expect(townCenter!.gridX).toBe(53);
     expect(townCenter!.gridY).toBe(53);
 
+    // Phase 23: a kingdom has no gateway to a shared battlefield any more. The
+    // only portal that may appear is a raider's retreat gate, created on join.
     const portal = Array.from(room.state.buildings.values()).find(
       (b: BuildingState) => b.type === 'PORTAL'
     );
-    expect(portal).toBeDefined();
-    // Fixed gateway column: width - margin(5) - size(2), vertically centred.
-    expect(portal!.gridX).toBe(103);
-    expect(portal!.gridY).toBe(54);
+    expect(portal).toBeUndefined();
   });
 
   it('keeps the kingdom plaza free of resources and roads', () => {
@@ -2310,7 +2638,6 @@ describe('kingdom map layout (MAPS-V2)', () => {
     room.state.resourceNodes.forEach((node: ResourceNodeState) => {
       count++;
       expect(isPlazaTile(node.gridX, node.gridY, TERRAIN_KINGDOM)).toBe(false);
-      expect(isDirtRoadTile(node.gridX, node.gridY, TERRAIN_KINGDOM)).toBe(false);
       expect(node.gridX).toBeGreaterThanOrEqual(0);
       expect(node.gridX).toBeLessThan(KINGDOM_MAP_SIZE.width);
       expect(node.gridY).toBeGreaterThanOrEqual(0);
@@ -2360,8 +2687,149 @@ describe('kingdom map layout (MAPS-V2)', () => {
     });
 
     expect(client.send).toHaveBeenCalledWith(NetworkMessage.ERROR_NOTIFICATION, {
-      message: 'Cannot build outside map bounds'
+      message: 'Cannot build outside map bounds', code: RejectCode.PLACEMENT
     });
     expect(player.wood).toBe(5000);
+  });
+});
+
+describe('resource regrow (RES-02)', () => {
+  function addNode(room: WorldRoom, id: string, type: string, resourceType: string) {
+    const node = new ResourceNodeState();
+    node.id = id;
+    node.type = type;
+    node.resourceType = resourceType;
+    node.gridX = 10;
+    node.gridY = 10;
+    node.remainingAmount = 100;
+    node.maxAmount = 200;
+    room.state.resourceNodes.set(id, node);
+    return node;
+  }
+
+  it('waits longer for gold than for wood', () => {
+    const room = createRoom();
+    const wood = addNode(room, 'res_wood', 'TREE', 'wood');
+    const gold = addNode(room, 'res_gold', 'GOLD_MINE', 'gold');
+
+    const before = Date.now();
+    internals(room).scheduleResourceRespawn(wood);
+    internals(room).scheduleResourceRespawn(gold);
+
+    const respawnAt = internals(room).resourceRespawnAt as Map<string, number>;
+    expect(respawnAt.get('res_wood')).toBeGreaterThanOrEqual(before + RESOURCE_REGROW_MS.wood);
+    expect(respawnAt.get('res_gold')).toBeGreaterThanOrEqual(before + RESOURCE_REGROW_MS.gold);
+    expect(respawnAt.get('res_gold')! - respawnAt.get('res_wood')!).toBeGreaterThan(
+      RESOURCE_REGROW_MS.gold - RESOURCE_REGROW_MS.wood - 100
+    );
+  });
+
+  it('refills a depleted node once its deadline passes and drops the entry', () => {
+    const room = createRoom();
+    const node = addNode(room, 'res_stone', 'STONE_MINE', 'stone');
+    node.remainingAmount = 0;
+
+    const respawnAt = new Map<string, number>([['res_stone', Date.now() - 1]]);
+    internals(room).resourceRespawnAt = respawnAt;
+
+    internals(room).scanResourceRespawns(Date.now());
+
+    expect(node.remainingAmount).toBe(200);
+    expect(respawnAt.has('res_stone')).toBe(false);
+  });
+
+  it('fells a starter node for good instead of refilling it', () => {
+    const room = createRoom();
+    const node = addNode(room, `${STARTER_RESOURCE_PREFIX}1`, 'TREE', 'wood');
+    node.remainingAmount = 0;
+
+    internals(room).scheduleResourceRespawn(node);
+
+    // Unlike a generated node, the starter woodline next to the Town Center is a
+    // one-off supply: it leaves the state, so the client drops the sprite and the
+    // autosave sweep deletes the row.
+    expect(room.state.resourceNodes.has(node.id)).toBe(false);
+    const respawnAt = internals(room).resourceRespawnAt as Map<string, number>;
+    expect(respawnAt.has(node.id)).toBe(false);
+  });
+
+  it('fells a legacy starter node by its plaza position', () => {
+    const room = createRoom();
+    // A save from before the starter prefix existed: the node sits in the
+    // kingdom plaza, which the generator never populates.
+    room.state.zoneId = 'kingdom:player-a';
+    internals(room).zoneId = 'kingdom:player-a';
+    room.state.mapWidth = KINGDOM_MAP_SIZE.width;
+    room.state.mapHeight = KINGDOM_MAP_SIZE.height;
+
+    const node = addNode(room, 'res_legacy', 'TREE', 'wood');
+    node.gridX = 54;
+    node.gridY = 54;
+    node.remainingAmount = 0;
+
+    internals(room).scheduleResourceRespawn(node);
+
+    expect(room.state.resourceNodes.has('res_legacy')).toBe(false);
+  });
+
+  it('still regrows a generated node away from the plaza', () => {
+    const room = createRoom();
+    room.state.zoneId = 'kingdom:player-a';
+    internals(room).zoneId = 'kingdom:player-a';
+    room.state.mapWidth = KINGDOM_MAP_SIZE.width;
+    room.state.mapHeight = KINGDOM_MAP_SIZE.height;
+
+    const node = addNode(room, 'res_edge', 'GOLD_MINE', 'gold');
+    node.gridX = 10;
+    node.gridY = 10;
+    node.remainingAmount = 0;
+
+    internals(room).scheduleResourceRespawn(node);
+
+    expect(room.state.resourceNodes.has('res_edge')).toBe(true);
+    const respawnAt = internals(room).resourceRespawnAt as Map<string, number>;
+    expect(respawnAt.get('res_edge')).toBeGreaterThan(Date.now());
+  });
+
+  it('forgets a deadline whose node left the state', () => {
+    const room = createRoom();
+    const respawnAt = new Map<string, number>([['res_gone', Date.now() - 1]]);
+    internals(room).resourceRespawnAt = respawnAt;
+
+    internals(room).scanResourceRespawns(Date.now());
+
+    expect(respawnAt.has('res_gone')).toBe(false);
+  });
+});
+
+describe('unit separation (MOV-02)', () => {
+  /**
+   * The rule itself is covered by `unitSeparation.test.ts`; what a room test has
+   * to prove is that the tick actually runs it, after every order has set a
+   * position and before the next tick reads one.
+   */
+  it('runs the separation pass as part of the tick', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    const a = addUnit(room, { id: 'u_1', ownerId: 'player-a', x: 30, y: 30 });
+    const b = addUnit(room, { id: 'u_2', ownerId: 'player-a', x: 30, y: 30 });
+
+    internals(room).update(50);
+
+    expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeGreaterThan(0);
+  });
+
+  it('does not turn a walking unit around or drop its order', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    const unit = addUnit(room, { id: 'u_1', ownerId: 'player-a', x: 30, y: 30, actionState: 'MOVING' });
+    unit.targetX = 50;
+    unit.targetY = 30;
+    addUnit(room, { id: 'u_2', ownerId: 'player-a', x: 30, y: 30 });
+
+    internals(room).update(50);
+
+    expect(unit.actionState).toBe('MOVING');
+    expect(unit.targetX).toBe(50);
   });
 });

@@ -1,4 +1,4 @@
-import { MAX_SELECTION, screenToGrid } from '@chien-quoc/shared';
+import { MAX_SELECTION, TILE_HEIGHT, TILE_WIDTH, screenToGrid } from '@chien-quoc/shared';
 import type * as Phaser from 'phaser';
 import type { WorldScene } from '../scenes/WorldScene.js';
 import { findResourceAt, findUnitAt, getUnitBodyBox } from './hitTest.js';
@@ -148,8 +148,16 @@ export class SelectionController {
       const b = scene.room?.state.buildings.get(bId);
       if (!b) return;
       const visualY = (container.getData('visualCenterY') as number) ?? -30;
-      const width = b.sizeX * 64;
-      const height = b.sizeY * 32 + 60;
+      // LVL3: a tiered building's art grows taller with level (the manor is
+      // 304 px against the hut's 220), so the clickable box has to cover the
+      // artwork itself. The footprint box alone clipped the top of tall sprites.
+      const image = container.getData('buildingImage') as
+        | Phaser.GameObjects.Image
+        | undefined;
+      const footprintWidth = b.sizeX * TILE_WIDTH;
+      const footprintHeight = b.sizeY * TILE_HEIGHT + 60;
+      const width = Math.max(footprintWidth, image?.displayWidth ?? 0);
+      const height = Math.max(footprintHeight, image?.displayHeight ?? 0);
       if (
         Math.abs(worldPoint.x - container.x) <= width / 2 + pad &&
         worldPoint.y >= container.y + visualY - height / 2 - pad &&

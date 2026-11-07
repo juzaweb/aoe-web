@@ -25,12 +25,28 @@ chien-quoc/
 
 ## 🎮 Gameplay Features
 
-- **Persistent Isometric 2.5D World:** 60x60 grid map with terrain, natural forests (Wood), gold deposits (Gold), stone quarries (Stone), and berry bushes (Food).
+- **Persistent Isometric 2.5D World:** one private, safe kingdom per account (110x110) with
+  natural forests (Wood), gold deposits (Gold), stone quarries (Stone), and berry bushes (Food).
+  A kingdom's clusters ring the map border, leaving the centre open for the Town Center.
+- **World Map & Raids:** a hexagonal world map lists every empire within ±5 Town Center levels.
+  Choose an army, pick a neighbour and attack instantly: your troops fight inside their kingdom,
+  the defender can fight back live, and the raid ends when their Town Center drops to 25% HP,
+  your army is wiped, or you retreat through your gate. A win loots 20% of each resource (capped);
+  a loss locks that target for three days, and every defender gets a 72-hour shield afterwards.
+  Town Centers cannot be destroyed.
+- **Regrowing Resources:** a depleted node on the border ring refills to full after a per-type
+  delay (wood 60 s, food 90 s, stone 150 s, gold 240 s). The deadline is stored in SQLite, so a
+  restart resumes the wait instead of refilling the map. The starter woodline and berry patch
+  given with the Town Center are a one-off supply: once felled they are gone for good.
+- **Gathering Rates:** a villager stands at a source and takes whole units on a per-resource
+  interval — wood 2/s, food 2.5/s, stone 1.5/s, gold 1.25/s — so a 10-unit load takes 5 s (wood) to
+  8 s (gold) of standing there, and the walk to a drop-off no longer dominates a trip.
 - **Empire Base Building:**
   - **Town Center:** Base headquarters providing population and training Villagers.
   - **Barracks:** Military garrison to train Spearmen, Archers, and Cavalry.
   - **House:** Increases population capacity by +5.
-  - **Farm:** Sustainable food source for economy and troops.
+  - **Farm:** Renewable food field holding 600 food at level 1 (+10%/level). Villagers harvest it in
+    place and re-sow it for 60 wood once it runs dry.
   - **Watch Tower:** Defensive outpost.
 - **RTS Unit Controls:**
   - **Drag Box Selection:** Click and drag left mouse button to group-select units.

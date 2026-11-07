@@ -1,0 +1,121 @@
+name: Loop schedule
+
+# Dispatches `loop.yml` every five hours. A separate file, not an `on.schedule`
+# on the loop itself, for two reasons:
+#
+#   1. The loop is expensive and repair-risky. Keeping it manual-only means a
+#      broken schedule can be deleted without touching the pipeline it drives.
+#   2. A schedule event carries no inputs, so every `inputs.step` in loop.yml
+#      would need a fallback. Dispatching passes real inputs instead, and the
+#      loop stays exactly as it runs by hand.
+#
+# Cron is UTC. `0 */5 * * *` fires at 00:00, 05:00, 10:00, 15:00 and 20:00 UTC,
+# which is 07:00, 12:00, 17:00, 22:00 and 03:00 in Asia/Ho_Chi_Minh. GitHub runs
+# scheduled workflows on a best-effort basis; a busy queue can delay a slot.
+on:
+  schedule:
+    - cron: '0 */5 * * *'
+  workflow_dispatch:
+    inputs:
+      step:
+        description: What to dispatch. `auto` proposes when the queue is empty and builds when it is not.
+        type: choice
+        required: true
+        default: auto
+        options:
+          - auto
+          - full
+          - triage
+
+# Both schedulers share ONE concurrency group. `loop-schedule` and
+# `triage-schedule` used to hold different groups, so they could evaluate and
+# dispatch at the same moment; the loop's own `group: loop` would then queue the
+# second dispatch behind the first and run it half an hour later on a `develop`
+# the first run had already moved. Six runs piled up in two hours that way.
+# Sharing a group serialises the check-then-dispatch pair, which is what makes
+# the preflight below meaningful.
+concurrency:
+  group: loop-dispatch
+  cancel-in-progress: false
+
+permissions:
+  # `gh workflow run` needs this. `workflow_dispatch` is one of the few things a
+  # GITHUB_TOKEN may trigger (unlike `push`, which it suppresses).
+  actions: write
+  contents: read
+  # scripts/should-dispatch.sh reads `gh pr list` to notice an unmerged
+  # `loop/state-*` proposal. A `permissions:` block sets every scope it does not
+  # name to `none`, so without this the query 403s and the preflight silently
+  # reads "no proposal pending".
+  pull-requests: read
+
+jobs:
+  dispatch:
+    name: dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          # STATE.md to decide the step, scripts/ for the preflight. Nothing else.
+          sparse-checkout: |
+            STATE.md
+            scripts
+
+      # One slot either builds or proposes, never both: `full` already spends ten
+      # minutes on agents, and running triage in the same slot would double the
+      # cost. An idle queue therefore triggers triage, which is what refills it —
+      # without this the schedule would idle forever once every candidate shipped.
+      - name: Decide the step
+        id: pick
+        env:
+          REQUESTED: ${{ inputs.step || 'auto' }}
+        run: |
+          set -euo pipefail
+          if [ ! -f STATE.md ]; then
+            echo "::error::STATE.md is missing on develop."
+            exit 1
+          fi
+
+          candidates=$(grep -E '^\| `[A-Z0-9-]+`' STATE.md | grep -cF '`candidate`' || true)
+          echo "::notice::${candidates:-0} candidate slice(s) in STATE.md."
+
+          case "$REQUESTED" in
+            full|triage) step="$REQUESTED" ;;
+            *)
+              if [ "${candidates:-0}" -gt 0 ]; then step=full; else step=triage; fi
+              ;;
+          esac
+
+          echo "step=$step" >> "$GITHUB_OUTPUT"
+          echo "::notice::Dispatching loop.yml with step=$step"
+          if [ "$step" = "full" ]; then
+            grep -E '^\| `[A-Z0-9-]+`' STATE.md | grep -F '`candidate`' | head -3 || true
+          fi
+
+      - name: Dispatch the loop
+        env:
+          # `gh` reads GH_TOKEN, not the token context: a runner carries no stored
+          # auth, so the credential has to be exported for the CLI to find it.
+          # `github.token` is the built-in credential; `secrets.LOOP_PAT` is
+          # preferred only because a PAT's pushes can trigger CI, which the
+          # built-in token suppresses.
+          GH_TOKEN: ${{ secrets.LOOP_PAT || github.token }}
+          STEP: ${{ steps.pick.outputs.step }}
+        run: |
+          set -euo pipefail
+
+          # Preflight, dispatch and the registration wait are one script because
+          # the guard is only correct if the next scheduler can already see the
+          # run this one created. `gh workflow run` returns before the run
+          # appears in `gh run list`, and that gap is a second dispatch.
+          #
+          # merge stays on inside the script: the loop's gate, test and browser
+          # checks stand between an agent and develop, so the dispatch does not
+          # add a human step a schedule cannot provide anyway. chain=0: a slot
+          # does one slice; the loop's own default of one chained hop is for a
+          # human pressing the button and watching.
+          bash scripts/dispatch-loop.sh "$STEP" 0

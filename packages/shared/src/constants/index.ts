@@ -2,6 +2,7 @@ import {
   BuildingBlueprint,
   BuildingType,
   MapZoneKind,
+  ResourceType,
   Resources,
   UnitBlueprint,
   UnitStance,
@@ -84,8 +85,95 @@ export const MAX_TRAVEL_UNITS = 120;
 /** Server-side cooldown between two travel orders from the same account. */
 export const TRAVEL_COOLDOWN_MS = 2000;
 
-/** How long a depleted resource node stays empty before it refills. */
-export const RESOURCE_RESPAWN_MS = 90_000;
+// ---------------------------------------------------------------------------
+// Raids and the world map (Phase 23)
+// ---------------------------------------------------------------------------
+
+/**
+ * Units one raid order may carry. Reuses the travel bound so a raid is never a
+ * bigger transfer than the map switch used to be.
+ */
+export const RAID_MAX_UNITS = MAX_TRAVEL_UNITS;
+export const RAID_MIN_UNITS = 1;
+
+/**
+ * How many Town Center levels apart two empires may be and still see each other
+ * on the world map. The ladder caps at 10, so ±5 is effectively "everyone" —
+ * kept as a named constant so a later rebalance is a one-line change.
+ */
+export const RAID_LEVEL_RANGE = 5;
+
+/**
+ * Peace granted to the defender after any raid, so being attacked twice in a
+ * row is impossible while the owner is away. Three days matches the loss lock.
+ */
+export const RAID_SHIELD_MS = 72 * 60 * 60 * 1000;
+
+/**
+ * How long an attacker who lost must wait before raiding the same empire again.
+ * Without it a player with a bigger army could farm one neighbour forever.
+ */
+export const RAID_LOSS_LOCK_MS = 72 * 60 * 60 * 1000;
+
+/** Share of each resource the winner takes from the defender. */
+export const RAID_LOOT_PERCENT = 0.2;
+
+/** Absolute ceiling per resource, so one raid cannot empty a developed base. */
+export const RAID_LOOT_CAP_PER_RESOURCE = 2000;
+
+/**
+ * The defender's Town Center is not destructible: the raid ends as soon as it
+ * drops to this share of its maximum HP. Attacking the heart of an empire costs
+ * its owner a rebuild otherwise, which would be a griefing tool rather than a
+ * fight.
+ */
+export const RAID_TOWN_CENTER_HP_THRESHOLD = 0.25;
+
+/**
+ * A raid with no activity for this long is closed as a retreat. Covers both
+ * players losing their connection: without it the pair would stay locked and
+ * the defender's kingdom room would never dispose.
+ */
+export const RAID_RETREAT_TIMEOUT_MS = 30 * 60 * 1000;
+
+/**
+ * How long a depleted resource node stays empty before it refills to
+ * `maxAmount`.
+ *
+ * Split per resource so the map's economy has a shape: wood comes back fastest
+ * (a settlement always needs it), gold slowest (it gates research and cavalry).
+ */
+export const RESOURCE_REGROW_MS: Record<ResourceType, number> = {
+  wood: 60_000,
+  food: 90_000,
+  stone: 150_000,
+  gold: 240_000
+};
+
+/**
+ * Units one villager takes off a source per second of standing there.
+ *
+ * Split per resource, and far slower than the flat 10/s the first pass used:
+ * at 10 a villager filled its 10-slot load in one second, so gathering itself
+ * cost nothing and only the walk to a drop-off was ever felt. Rates here make
+ * standing at the node the visible half of a trip, and give each resource a
+ * different weight — food comes off a field fast, gold is a slow grind.
+ *
+ * Harvest is paid in whole units, one every `1000 / rate` milliseconds, so a
+ * fractional rate never leaves a fraction in the replicated amount.
+ */
+export const GATHER_UNITS_PER_SECOND: Record<ResourceType, number> = {
+  wood: 2,
+  food: 2.5,
+  stone: 1.5,
+  gold: 1.25
+};
+
+/** Milliseconds of standing at a source to take one unit of `resourceType`. */
+export function gatherIntervalMs(resourceType: string): number {
+  const rate = GATHER_UNITS_PER_SECOND[resourceType as ResourceType] ?? GATHER_UNITS_PER_SECOND.wood;
+  return 1000 / rate;
+}
 
 /**
  * Upper bound on how many unit ids a single client command may reference.
@@ -93,6 +181,55 @@ export const RESOURCE_RESPAWN_MS = 90_000;
  * in one message to force unbounded per-tick work.
  */
 export const MAX_SELECTION = 120;
+
+// ---------------------------------------------------------------------------
+// Player-built roads
+// ---------------------------------------------------------------------------
+
+/**
+ * Margin, in tiles, that every player-built structure keeps from the map edge.
+ *
+ * Shared because three places must agree: the server's footprint check, the
+ * server's road tile check, and the client's ghost. Drifting apart here means a
+ * ghost that looks placeable and a server that rejects it (or the reverse).
+ */
+export const MAP_BUILD_MARGIN_TILES = 6;
+
+/**
+ * Wood one road tile costs. A painted road has no blueprint, so its price lives
+ * here instead of in `BUILDING_BLUEPRINTS`.
+ */
+export const ROAD_COST_PER_TILE = 2;
+
+/**
+ * Movement multiplier while a unit stands on a road tile. Kept modest: a road
+ * is a convenience for base logistics, not a teleport.
+ */
+export const ROAD_SPEED_MULTIPLIER = 1.3;
+
+/**
+ * Upper bound on tiles one PLACE_ROAD/REMOVE_ROAD message may carry. A long
+ * drag is split into batches client-side; the cap keeps a single hostile
+ * message from forcing unbounded per-tick work.
+ */
+export const MAX_ROAD_TILES_PER_MESSAGE = 200;
+
+/**
+ * Upper bound on road tiles one zone may hold. Roads are replicated state and
+ * persisted rows, so an unbounded map is both a bandwidth and a disk problem.
+ */
+export const MAX_ROADS_PER_ZONE = 4000;
+
+/**
+ * Stable id of the road tile at `gx, gy`.
+ *
+ * Roads are 1x1 and addressed by position, so the coordinate pair *is* the id:
+ * it makes the primary key deterministic, keeps two placements of the same tile
+ * from duplicating, and lets the client address a tile it has not seen yet.
+ */
+export function roadTileKey(gx: number, gy: number): string {
+  return `${gx},${gy}`;
+}
 
 /**
  * Upper bound on how many future waypoints one unit may hold. Shift+right click
@@ -238,7 +375,10 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     // ECO-01: a farm is a source, not a drop-off. Villagers harvest it in place,
     // and a villager who empties it re-plants it for the farm's own cost.
     gatheredResource: 'food',
-    gatherCapacity: 250,
+    // ECO-02: sized so one field is a real shift rather than a few seconds of
+    // work. At the food gather rate (2.5/s) one villager needs four minutes to
+    // strip it, so a single field supports a whole crew of harvesters.
+    gatherCapacity: 600,
     description: 'Renewable source of food. Villagers harvest it in place and re-sow it when it runs dry.'
   },
   TOWER: {

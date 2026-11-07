@@ -98,6 +98,8 @@ export class CommandController {
   private shiftKey: Phaser.Input.Keyboard.Key | null = null;
   private waypointGraphics!: Phaser.GameObjects.Graphics;
   private rallyGraphics!: Phaser.GameObjects.Graphics;
+  /** CTL-06: one banner sprite standing on each rally point, rebuilt with the lines. */
+  private rallyFlags: Phaser.GameObjects.Image[] = [];
   /** Signature of the last drawn rally layer, so identical frames skip the redraw. */
   private rallySignature = '';
 
@@ -113,6 +115,16 @@ export class CommandController {
   }
 
   bindKeys(keyboard: Phaser.Input.Keyboard.KeyboardPlugin) {
+    // A spectator gets the camera keys only. Every other binding below arms or
+    // sends a command, which the room refuses; leaving the keys dead is the
+    // honest client-side mirror of that rule.
+    if (this.scene.readOnly) {
+      this.bindZoomKeys(keyboard);
+      this.bindCameraBookmarkKeys(keyboard);
+      this.bindEscapeKey(keyboard);
+      return;
+    }
+
     this.bindControlGroupKeys(keyboard);
     this.bindStopKey(keyboard);
     this.bindIdleCycleKeys(keyboard);
@@ -120,6 +132,7 @@ export class CommandController {
     this.bindCancelKey(keyboard);
     this.bindOrderKeys(keyboard);
     this.bindStanceKey(keyboard);
+    this.bindRoadKey(keyboard);
     this.bindBuildingKeys(keyboard);
     this.bindZoomKeys(keyboard);
     this.bindCameraBookmarkKeys(keyboard);
@@ -268,6 +281,40 @@ export class CommandController {
   }
 
   /**
+   * `X` toggles the road paint tool in a kingdom.
+   *
+   * Same ownership rules as the building hotkeys: no modifiers, nothing while a
+   * placement is active, and no key when a building or an army is selected.
+   */
+  private bindRoadKey(keyboard: Phaser.Input.Keyboard.KeyboardPlugin) {
+    keyboard.on(
+      'keydown-X',
+      guardKey((event: KeyboardEvent) => {
+        if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return false;
+        if (this.scene.terrainLayout.kind !== 'kingdom') return false;
+        if (this.scene.buildingToPlace) {
+          event.preventDefault();
+          this.scene.cancelBuildingPlacement();
+          this.scene.setRoadMode('build');
+          this.scene.onRoadModeChange?.('build');
+          return true;
+        }
+        if (!this.scene.hasVillagerSelected() && this.scene.roadMode === null) return false;
+
+        event.preventDefault();
+        if (this.scene.roadMode) {
+          this.scene.cancelRoadMode();
+          this.scene.onRoadModeChange?.(null);
+        } else {
+          this.scene.setRoadMode('build');
+          this.scene.onRoadModeChange?.('build');
+        }
+        return true;
+      })
+    );
+  }
+
+  /**
    * `Escape` gives up placement first, then the selection — the order the React
    * listener used before it moved here.
    *
@@ -282,6 +329,16 @@ export class CommandController {
 
       const now = performance.now();
       if (now - this.lastEscapeAt < CANCEL_KEY_DEBOUNCE_MS) return;
+
+      // The road tool is the most recent mode, so it backs out before the
+      // placement ghost and the selection under it.
+      if (this.scene.roadMode) {
+        this.lastEscapeAt = now;
+        event.preventDefault();
+        this.scene.cancelRoadMode();
+        this.scene.onRoadModeChange?.(null);
+        return;
+      }
 
       if (this.scene.buildingToPlace) {
         this.lastEscapeAt = now;
@@ -443,6 +500,7 @@ export class CommandController {
    */
   cycleSelectedStance() {
     const scene = this.scene;
+    if (scene.readOnly) return;
     if (!scene.room || scene.selectedUnitIds.size === 0) return;
 
     const firstId = scene.selectedUnitIds.values().next().value;
@@ -460,6 +518,7 @@ export class CommandController {
    */
   stopSelectedUnits() {
     const scene = this.scene;
+    if (scene.readOnly) return;
     if (!scene.room || scene.selectedUnitIds.size === 0) return;
 
     const unitIds = Array.from(scene.selectedUnitIds);
@@ -481,6 +540,7 @@ export class CommandController {
    */
   cancelSelectedFoundation(): boolean {
     const scene = this.scene;
+    if (scene.readOnly) return false;
     if (!scene.room || !scene.selectedBuildingId) return false;
 
     const building = scene.room.state.buildings.get(scene.selectedBuildingId);
@@ -500,6 +560,7 @@ export class CommandController {
    */
   armOrder(mode: OrderMode) {
     const scene = this.scene;
+    if (scene.readOnly) return;
     if (scene.buildingToPlace) return;
     if (scene.selectedUnitIds.size === 0) return;
     if (this.pendingOrder === mode) {
@@ -517,6 +578,7 @@ export class CommandController {
    */
   armContextualOrder() {
     const scene = this.scene;
+    if (scene.readOnly) return;
     if (scene.buildingToPlace) return;
     const hasUnits = scene.selectedUnitIds.size > 0;
     const hasBuilding = scene.selectedBuildingId !== null;
@@ -566,6 +628,10 @@ export class CommandController {
    * dispatch a right click would, which is why `handleRightClick` is called here.
    */
   commitPendingOrder(pointer: Phaser.Input.Pointer) {
+    if (this.scene.readOnly) {
+      this.dropArmed();
+      return;
+    }
     const mode = this.pendingOrder;
     const contextual = this.contextualArmed;
     this.dropArmed();
@@ -585,6 +651,7 @@ export class CommandController {
    */
   issueAttackMove(pointer: Phaser.Input.Pointer, mode: OrderMode) {
     const scene = this.scene;
+    if (scene.readOnly) return;
     if (!scene.room || scene.selectedUnitIds.size === 0) return;
     if (scene.buildingToPlace) return;
 
@@ -612,6 +679,7 @@ export class CommandController {
    */
   handleRightClick(pointer: Phaser.Input.Pointer, queue = false) {
     const scene = this.scene;
+    if (scene.readOnly) return;
     if (!scene.room) return;
 
     // CTL-06: with no unit selected, a right-click on the map sets the rally
@@ -648,18 +716,16 @@ export class CommandController {
       return;
     }
 
-    // MAPS: right-clicking your own portal while units are selected carries
-    // that selection to the other map. Checked before foundations/resources so
-    // a portal click never becomes a walk order under its footprint.
+    // Phase 23: a portal is only a retreat gate now. Right-clicking your own
+    // one asks the server to settle the raid and bring the army home. Checked
+    // before foundations/resources so the click never becomes a walk order
+    // under its footprint.
     const ownBuildingId = findBuildingAt(scene, targetGrid, scene.myOwnerId);
     if (ownBuildingId) {
       const building = scene.room.state.buildings.get(ownBuildingId);
       if (building?.type === 'PORTAL') {
-        scene.room.send(NetworkMessage.TRAVEL, {
-          portalId: ownBuildingId,
-          unitIds: Array.from(scene.selectedUnitIds)
-        });
-        this.showFeedback(worldPoint.x, worldPoint.y, 0xa855f7);
+        scene.room.send(NetworkMessage.RAID_RETREAT, {});
+        this.showFeedback(worldPoint.x, worldPoint.y, 0xef4444);
         return;
       }
     }
@@ -726,6 +792,7 @@ export class CommandController {
    */
   commandMoveTo(gridX: number, gridY: number) {
     const scene = this.scene;
+    if (scene.readOnly) return;
     if (!scene.room) return;
     if (scene.buildingToPlace) return;
     if (scene.selectedUnitIds.size === 0) return;
@@ -757,6 +824,7 @@ export class CommandController {
    */
   private handleSetRallyPoint(pointer: Phaser.Input.Pointer) {
     const scene = this.scene;
+    if (scene.readOnly) return;
     if (!scene.room || !scene.selectedBuildingId) return;
 
     const building = scene.room.state.buildings.get(scene.selectedBuildingId);
@@ -778,8 +846,8 @@ export class CommandController {
   }
 
   /**
-   * CTL-06: draws a flag on every own building's rally point plus a faint line
-   * back to the building it belongs to.
+   * CTL-06: draws a rally banner on every own building's rally point plus a
+   * faint line back to the building it belongs to.
    *
    * Runs from update(), so the frame-to-frame cost is what matters: the flags are
    * collected first and only redrawn when the collected signature actually
@@ -805,6 +873,8 @@ export class CommandController {
     this.rallySignature = signature;
 
     this.rallyGraphics.clear();
+    this.rallyFlags.forEach((banner) => banner.destroy());
+    this.rallyFlags = [];
 
     markers.forEach((m) => {
       const container = scene.buildingSprites.get(m.id);
@@ -819,11 +889,12 @@ export class CommandController {
       marker.fillStyle(0x0f172a, 0.55);
       marker.fillEllipse(flag.x, flag.y, 22, 11);
 
-      // Pole and a triangle pennant pointing left.
-      marker.lineStyle(2, 0xe2e8f0, 0.9);
-      marker.lineBetween(flag.x, flag.y, flag.x, flag.y - 34);
-      marker.fillStyle(0x38bdf8, 0.95);
-      marker.fillTriangle(flag.x, flag.y - 34, flag.x, flag.y - 20, flag.x - 16, flag.y - 27);
+      // Banner artwork standing on the rally point, pole tip at ground level.
+      const banner = scene.add.image(flag.x, flag.y, 'rally_flag');
+      banner.setOrigin(0.5, 1);
+      banner.setScale(0.8);
+      banner.setDepth(999990);
+      this.rallyFlags.push(banner);
     });
   }
 

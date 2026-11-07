@@ -19,9 +19,11 @@ import {
   terrainForZone
 } from '@chien-quoc/shared';
 import { generateProceduralTextures } from '../renderers/ProceduralSprites.js';
+import { buildingTierInfo, buildingVisualTierCount } from '../render/buildingArt.js';
 import { CommandController } from '../input/CommandController.js';
 import { CursorController } from '../input/CursorController.js';
 import { PlacementController } from '../input/PlacementController.js';
+import { RoadController, type RoadMode } from '../input/RoadController.js';
 import { SelectionController } from '../input/SelectionController.js';
 import type { BoxSelectFilter } from '../input/SelectionController.js';
 import { applyEdgeScroll, installCanvasPresence } from '../input/cameraInput.js';
@@ -36,6 +38,9 @@ import { DecorLayer } from '../render/DecorLayer.js';
 import { decorPreloadList } from '../render/decorArt.js';
 import { TerrainLayer } from '../render/TerrainLayer.js';
 import { OwnerColorRegistry, colorToCss } from '../render/ownerColor.js';
+import { UnderAttackTracker } from '../alerts/underAttack.js';
+import { shouldAlertOnBuildingRemoval } from '../alerts/foundationRemoval.js';
+import type { AttackPing, DamageResult } from '../alerts/underAttack.js';
 import { unitActionTexture } from '../render/unitDirections.js';
 import { UNIT_ART, unitArt, unitSheets } from '../render/unitArt.js';
 import { RENDER_DELAY_MS } from '../render/unitMotion.js';
@@ -136,6 +141,16 @@ export interface SelectedEntityData {
   /** LVL: building upgrade timer; `upgradeTimeMs = 0` means idle. */
   upgradeProgressMs?: number;
   upgradeTimeMs?: number;
+  /**
+   * LVL3: which of the building's shipped shapes is drawn at the current level.
+   * `visualTierCount` is 1 for types that never change shape, so the panel can
+   * hide the whole block with one check.
+   */
+  visualTier?: number;
+  visualTierCount?: number;
+  visualTierName?: string | null;
+  /** LVL3: level at which the next shape appears; `null` at the last tier. */
+  nextVisualTierLevel?: number | null;
   /** LVL: player-wide research levels, indexed by UNIT_UPGRADE_ORDER. */
   unitLevels?: number[];
   researchUnitType?: string;
@@ -211,6 +226,13 @@ export class WorldScene extends Phaser.Scene {
   public myPlayerName: string = '';
   private cachedOwnerId: string = '';
   private boundRoomId: string = '';
+
+  /** ATK-01: client-side under-attack detection from replicated hp. */
+  public underAttackTracker = new UnderAttackTracker();
+  /** FND-02: foundations locally cancelled (self) to suppress false alerts. */
+  private cancelledFoundations = new Set<string>();
+  /** ATK-05: raised when a banner should be shown. */
+  public onUnderAttack: (() => void) | null = null;
   private eventsBoundRoom: Room | null = null;
 
   /**
@@ -283,6 +305,20 @@ export class WorldScene extends Phaser.Scene {
   private worldFrozen: boolean = false;
 
   /**
+   * Spectator rooms render another empire without ever touching it.
+   *
+   * The server refuses every command from a watcher; this flag mirrors the same
+   * rule on the client so the pointer never even builds an order, placement
+   * ghost or road stroke that could be sent.
+   */
+  public readOnly: boolean = false;
+  /**
+   * Owner whose base the camera should find when there is no "own" base, i.e.
+   * in a spectator room. Empty for a normal player.
+   */
+  public focusOwnerId: string = '';
+
+  /**
    * MOB-03: the pointer currently driving the world is a finger.
    *
    * Set by every touch event and cleared by the next mouse event, so it gates the
@@ -324,6 +360,19 @@ export class WorldScene extends Phaser.Scene {
    */
   public onBuildingHotkey: ((type: BuildingType) => void) | null = null;
   /**
+   * The road tool was entered or left from the map itself (right-click backs
+   * out). React mirrors this so the HUD button and the map never disagree.
+   */
+  public onRoadModeChange: ((mode: RoadMode | null) => void) | null = null;
+  /** A road tile was added or removed; rebuild the terrain pool once per frame. */
+  private roadsDirty = false;
+  /**
+   * Bumped on every road add/remove. The minimap rasterises the road set, and a
+   * stroke that removes one tile and adds another leaves the count unchanged, so
+   * a counter is the only cheap signal that the tile set really changed.
+   */
+  public roadsVersion = 0;
+  /**
    * ECO-02: published whenever the number of this player's idle villagers
    * changes, so the HUD can show the AoE idle-counter without scanning state.
    */
@@ -353,6 +402,8 @@ export class WorldScene extends Phaser.Scene {
   public selection!: SelectionController;
   public cursor!: CursorController;
   public placement!: PlacementController;
+  /** Road paint tool; only enters a mode in a kingdom. */
+  public roadController!: RoadController;
   public commands!: CommandController;
   /** MOB-02: gestures, camera pan/pinch and the touch order dispatch. */
   public touch!: TouchController;
@@ -425,14 +476,21 @@ export class WorldScene extends Phaser.Scene {
     }
 
     // Preload generated building assets with cache-busting version (2x resolution)
-    // v=9: the house moved from hovel frame 00000 (a straight-on elevation
-    // whose base was a flat line as wide as the plot) to the 45-degree frame
-    // 60000, so its base converges on the tile's front corner. Bump the key
-    // whenever a PNG under public/assets/buildings or /resources changes.
-    const v = 'v=9';
+    // v=10: the house gained four level-tier sheets (`house_2..5.png`), which
+    // will ship alongside the existing level-1 sheet. Bump the key whenever a
+    // PNG under public/assets/buildings or /resources changes.
+    const v = 'v=10';
     this.load.image('building_TOWN_CENTER', `/assets/buildings/town_center.png?${v}`);
     this.load.image('building_BARRACKS', `/assets/buildings/barracks.png?${v}`);
     this.load.image('building_HOUSE', `/assets/buildings/house.png?${v}`);
+    // LVL3: the house changes silhouette at four level milestones. Keys follow
+    // `building_<TYPE>_<tier>`; `buildingArt` walks down from the requested tier
+    // so a sheet that fails to load degrades to the previous shape. The loop
+    // counts the *sheets the renderer knows about*, not the shared milestone
+    // table, so a milestone added before its art cannot 404 here.
+    for (let tier = 2; tier <= buildingVisualTierCount('HOUSE'); tier++) {
+      this.load.image(`building_HOUSE_${tier}`, `/assets/buildings/house_${tier}.png?${v}`);
+    }
     this.load.image('building_FARM', `/assets/buildings/farm.png?${v}`);
     this.load.image('building_TOWER', `/assets/buildings/tower.png?${v}`);
     this.load.image('building_PORTAL', `/assets/buildings/portal.png?${v}`);
@@ -453,28 +511,27 @@ export class WorldScene extends Phaser.Scene {
     this.load.image('res_node_BERRY_BUSH', `/assets/resources/berry.png?${v}`);
 
     // Preload Age of Empires 2 Grass Terrain textures
-    // tv=8: the road stamps were regenerated from the generated dirt texture.
     const tv = 'v=8';
     this.load.image('tile_grass_1', `/assets/terrain/grass_1.png?${tv}`);
     this.load.image('tile_grass_2', `/assets/terrain/grass_2.png?${tv}`);
     this.load.image('tile_grass_3', `/assets/terrain/grass_3.png?${tv}`);
     this.load.image('tile_grass', `/assets/terrain/grass.png?${tv}`);
 
-    // Preload Age of Empires 2 Dirt Road Terrain textures & organic road stamps
+    // Preload Age of Empires 2 Dirt Road Terrain textures
     this.load.image('tile_dirt_1', `/assets/terrain/dirt_1.png?${tv}`);
     this.load.image('tile_dirt_2', `/assets/terrain/dirt_2.png?${tv}`);
     this.load.image('tile_dirt_3', `/assets/terrain/dirt_3.png?${tv}`);
     this.load.image('tile_dirt', `/assets/terrain/dirt.png?${tv}`);
-    this.load.image('road_stamp', `/assets/terrain/road_stamp.png?${tv}`);
-    this.load.image('road_stamp_1', `/assets/terrain/road_stamp_1.png?${tv}`);
-    this.load.image('road_stamp_2', `/assets/terrain/road_stamp_2.png?${tv}`);
-    this.load.image('road_stamp_3', `/assets/terrain/road_stamp_3.png?${tv}`);
 
     // Decorative ground cover and the border forest. Single images built by
     // `scripts/assets/build.py` (targets `decor.*`), listed in `decorArt.ts`.
     for (const { key, url } of decorPreloadList('v=1')) {
       this.load.image(key, url);
     }
+
+    // CTL-06 rally-point banner. Derived from the `order` cursor artwork and
+    // regenerated offline; bump the query string whenever the PNG changes.
+    this.load.image('rally_flag', '/assets/markers/rally_flag.png?v=1');
   }
 
   create() {
@@ -488,7 +545,7 @@ export class WorldScene extends Phaser.Scene {
     this.entityRenderer = new EntityRenderer(this);
     this.entityRenderer.initUnitAnimations();
 
-    // 1. Terrain: pre-allocated tile and road-stamp pools, rendered per viewport
+    // 1. Terrain: pre-allocated tile and road-tile pools, rendered per viewport
     // across a 220x220 map.
     this.terrain = new TerrainLayer(this);
     this.terrain.create();
@@ -501,6 +558,9 @@ export class WorldScene extends Phaser.Scene {
     // 2. Building placement ghost
     this.placement = new PlacementController(this);
     this.placement.create();
+
+    // 2b. Road paint tool (kingdom only)
+    this.roadController = new RoadController(this);
 
     // 3. Drag selection box graphics
     this.dragSelectionGraphics = this.add.graphics();
@@ -659,7 +719,8 @@ export class WorldScene extends Phaser.Scene {
     // OWN-05: the cache belongs to the previous Room's snapshot. A reconnect may
     // restore a different profile colour, so re-resolve before repainting.
     this.ownerColorRegistry.invalidateAll();
-
+    this.underAttackTracker.clear();
+    this.cancelledFoundations.clear();
     // A travel freezes the old map on screen instead of going blank while the
     // destination room syncs. Unfreeze before binding the new snapshot.
     this.resumeWorld();
@@ -679,6 +740,26 @@ export class WorldScene extends Phaser.Scene {
       this.entityRenderer?.refreshOwnershipVisuals();
       this.centerOnOwnBaseIfNeeded();
     }
+  }
+
+  /**
+   * Pushes the room's current road set into the terrain layer.
+   *
+   * Called on bind and on every add/remove. `TerrainLayer` keeps only the tile
+   * coordinates and reuses one image pool, so a long drag does not allocate.
+   */
+  public refreshPlayerRoads() {
+    // Anything that rebuilds the visual road set (bind, patch, reset) also
+    // invalidates the minimap raster, which reads the same tiles.
+    this.roadsVersion++;
+    const roads = (this.room?.state as { roads?: { forEach: (cb: (road: any) => void) => void } } | null)
+      ?.roads;
+    const tiles: Array<{ gridX: number; gridY: number }> = [];
+    roads?.forEach((road: any) => {
+      tiles.push({ gridX: road.gridX, gridY: road.gridY });
+    });
+    this.terrain?.setPlayerRoads(tiles);
+    this.decor?.invalidateViewport();
   }
 
   /** Freezes the last rendered frame while a travel swaps rooms. */
@@ -765,6 +846,11 @@ export class WorldScene extends Phaser.Scene {
     this.commands?.resetControlGroups();
     this.commands?.cancelPendingOrder();
     this.placement?.cancel();
+    this.roadController?.cancel();
+    // The new map may have no roads at all (a battlefield always does not), so
+    // the painted quads of the previous map must not survive the switch.
+    this.terrain?.setPlayerRoads([]);
+    this.onRoadModeChange?.(null);
     this.cameraControl?.resetBookmarks();
     // The pool is repositioned only when the viewport moves; a new map can start
     // at a very different corner, so force the next frame to repaint it.
@@ -775,7 +861,8 @@ export class WorldScene extends Phaser.Scene {
     this.centerAttempts = 0;
     this.cachedOwnerId = '';
     this.ownerColorRegistry.invalidateAll();
-
+    this.underAttackTracker.clear();
+    this.cancelledFoundations.clear();
     // Repaint the overlays against the now-empty selection so nothing from the
     // old map survives the frame. The new Room may not have delivered its first
     // state patch yet, so the rally pass is guarded.
@@ -802,6 +889,56 @@ export class WorldScene extends Phaser.Scene {
   public isOwnBuilding(ownerId: string): boolean {
     if (!ownerId) return false;
     return ownerId === this.myOwnerId;
+  }
+
+  /** Turns the scene into (or back out of) a read-only spectator view. */
+  public setReadOnly(readOnly: boolean) {
+    this.readOnly = readOnly;
+    if (!readOnly) return;
+    this.buildingToPlace = null;
+    this.placement?.cancel();
+    this.roadController?.cancel();
+    this.commands?.cancelPendingOrder();
+  }
+
+  /**
+   * The empire the camera should settle on when the viewer owns nothing here.
+   * In a spectator room `myOwnerId` is empty, so the target takes its place.
+   */
+  public setFocusOwnerId(ownerId: string) {
+    this.focusOwnerId = ownerId;
+    this.hasCenteredOnSpawn = false;
+    this.centerAttempts = 0;
+    this.centerOnOwnBaseIfNeeded();
+  }
+
+  /** Seeds an owner colour for a room where that player has no PlayerState yet. */
+  public rememberOwnerColor(ownerId: string, css: string) {
+    this.ownerColorRegistry.remember(ownerId, css);
+  }
+
+  /**
+   * Turns this game's pointer and keyboard input on or off.
+   *
+   * A spectator overlay is a second full-screen canvas over this one; the game
+   * underneath must keep simulating, but its keyboard listeners would still see
+   * every key and issue orders from a map the player cannot even see.
+   */
+  public setInputEnabled(enabled: boolean) {
+    this.input.enabled = enabled;
+    if (!this.input.keyboard) return;
+
+    this.input.keyboard.enabled = enabled;
+    if (enabled) return;
+
+    // Dropping the listeners is not enough: a key held while the overlay opens
+    // would keep `isDown` true forever, and the update loop would scroll the
+    // camera with it. Reset the key state and any in-flight pointer gesture.
+    this.input.keyboard.resetKeys();
+    this.isDragSelecting = false;
+    this.dragSelectionGraphics?.clear();
+    this.cameraControl?.endMiddleDrag();
+    this.touch?.cancel();
   }
 
   /** OWN-04: CSS colour of an owner, so the canvas minimap matches the world. */
@@ -837,15 +974,28 @@ export class WorldScene extends Phaser.Scene {
     return target;
   }
 
+  /** Town Center of any owner, used by the spectator camera anchor. */
+  public findTownCenterOf(ownerId: string): any | null {
+    if (!ownerId || !this.room?.state?.buildings) return null;
+
+    let target: any = null;
+    this.room.state.buildings.forEach((b: any) => {
+      if (!target && b.type === 'TOWN_CENTER' && b.ownerId === ownerId) target = b;
+    });
+    return target;
+  }
+
   private centerOnOwnBaseIfNeeded() {
     if (this.hasCenteredOnSpawn || !this.room?.state) return;
 
-    // Player name may not be known yet; retry on the next tick instead.
-    if (!this.myPlayerName) return;
+    // A normal player resolves their own id from the player name; a spectator
+    // has no name in this room and follows the target they opened instead.
+    const ownerId = this.myOwnerId || this.focusOwnerId;
+    if (!ownerId) return;
 
     // A kingdom centres on its Town Center; the battlefield has no base, so the
     // account's arrival portal is the next-best anchor.
-    const target = this.findOwnTownCenter() ?? this.findOwnPortal();
+    const target = this.findTownCenterOf(ownerId) ?? this.findOwnPortal();
     if (!target) return;
 
     this.hasCenteredOnSpawn = true;
@@ -869,12 +1019,31 @@ export class WorldScene extends Phaser.Scene {
     this.centerOnOwnBaseIfNeeded();
   }
 
+  /** ATK-01: record an entity's replicated hp and raise a banner if warranted. */
+  public recordEntityHp(entityId: string, ownerId: string, hp: number, gx: number, gy: number): DamageResult {
+    const result = this.underAttackTracker.record(entityId, ownerId, this.myOwnerId, hp, gx, gy, Date.now());
+    if (result.showBanner) this.onUnderAttack?.();
+    return result;
+  }
+
+  /** FND-02/FND-06: mark a foundation as locally cancelled; self-heal after 2s. */
+  public markFoundationCancelled(id: string): void {
+    this.cancelledFoundations.add(id);
+    window.setTimeout(() => this.cancelledFoundations.delete(id), 2000);
+  }
+
+  /** ATK-04: active under-attack pings for the minimap. */
+  public getUnderAttackPings(now: number = Date.now()): AttackPing[] {
+    return this.underAttackTracker.activePings(now);
+  }
+
   public bindRoomEvents(room: Room) {
     // Called from create(), setRoom() and PhaserGame effects; binding the same
     // Room twice would register duplicate schema callbacks (duplicate sprites).
     if (this.eventsBoundRoom === room) return;
     this.eventsBoundRoom = room;
-
+    this.underAttackTracker.clear();
+    this.cancelledFoundations.clear();
     // Same reason as `setRoom`: a room bound directly from `create()` (page
     // refresh straight into a map) also has to publish its map size. The state
     // listener covers a join whose snapshot lands after the room was handed over.
@@ -885,6 +1054,21 @@ export class WorldScene extends Phaser.Scene {
     this.roomCallbacks = cb;
     this.pendingResources = [];
     this.pendingResourceKeys.clear();
+
+    // 0. Player-painted roads: a kingdom's entire network arrives as state, so
+    // the terrain layer is rebuilt from the map whenever a tile appears or goes.
+    this.roadsDirty = false;
+    this.refreshPlayerRoads();
+    // A loaded kingdom arrives one tile at a time, so the rebuild is deferred to
+    // the frame instead of running once per patch (which would be O(n^2)).
+    cb.onAdd('roads', () => {
+      this.roadsDirty = true;
+      this.roadsVersion++;
+    });
+    cb.onRemove('roads', () => {
+      this.roadsDirty = true;
+      this.roadsVersion++;
+    });
 
     // 1. Synchronize Resource Nodes
     cb.onAdd('resourceNodes', (node: any, key: any) => {
@@ -898,6 +1082,12 @@ export class WorldScene extends Phaser.Scene {
         sprite.destroy();
         this.resourceSprites.delete(key);
       }
+      // A felled starter node leaves the state for good, so a details panel
+      // still pinned to it would show a resource that no longer exists.
+      if (this.selectedResourceId === key) {
+        this.selection.clearEntity();
+        this.notifySelectionChange();
+      }
     });
 
     // 2. Synchronize Buildings
@@ -908,6 +1098,20 @@ export class WorldScene extends Phaser.Scene {
     });
 
     cb.onRemove('buildings', (building: any, key: any) => {
+      // ATK-01 / FND-02 fallback: one-shot kill may remove before an hp patch lands.
+      // Foundation (isConstructed !== true) dies in one hit, so any removal that
+      // is not a self-cancel counts as an attack.
+      const cancelled = this.cancelledFoundations.has(key);
+      const shouldAlert = shouldAlertOnBuildingRemoval(building, this.myOwnerId, cancelled);
+      if (shouldAlert) {
+        const gx = (building?.gridX ?? 0) + (building?.sizeX ?? 1) / 2;
+        const gy = (building?.gridY ?? 0) + (building?.sizeY ?? 1) / 2;
+        this.recordEntityHp(key, building.ownerId, 0, gx, gy);
+      } else {
+        this.underAttackTracker.forget(key);
+      }
+      this.cancelledFoundations.delete(key);
+
       const sprite = this.buildingSprites.get(key);
       if (sprite) {
         sprite.destroy();
@@ -926,6 +1130,14 @@ export class WorldScene extends Phaser.Scene {
     });
 
     cb.onRemove('units', (unit: any, key: any) => {
+      // ATK-01 fallback: one-shot kill may remove before an hp patch lands.
+      const fallbackUnit = unit?.ownerId === this.myOwnerId && (unit?.hp ?? 0) <= 0;
+      if (fallbackUnit) {
+        this.recordEntityHp(key, unit.ownerId, 0, unit.x ?? 0, unit.y ?? 0);
+      } else {
+        this.underAttackTracker.forget(key);
+      }
+
       const sprite = this.unitSprites.get(key);
       if (sprite) {
         sprite.destroy();
@@ -1065,6 +1277,14 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
+    // A road stroke owns the pointer while it is down; the ghost is redrawn by
+    // the controller itself.
+    if (this.roadController?.isDrawing) {
+      this.roadController.drag(pointer);
+      this.cursor.refresh();
+      return;
+    }
+
     // Placement ghost follows the pointer while the mode is active
     this.placement.updateGhost(hoverGridCoord.gridX, hoverGridCoord.gridY);
 
@@ -1119,11 +1339,32 @@ export class WorldScene extends Phaser.Scene {
 
     this.touchMode = false;
     const native = pointer.event as MouseEvent | undefined;
+
+    // A road tool owns the drag: left button starts a stroke, right button
+    // backs out of the tool (same gesture as leaving placement mode).
+    if (this.roadController?.active) {
+      if (pointer.rightButtonDown() && !native?.ctrlKey) {
+        this.cancelRoadMode();
+        this.onRoadModeChange?.(null);
+        return;
+      }
+      if (pointer.leftButtonDown()) {
+        native?.preventDefault();
+        this.roadController.begin(pointer);
+        return;
+      }
+    }
+
     // macOS: Phaser rewrites Ctrl+left-click into a right-click to match the OS
     // convention (see Pointer#down). Ctrl+click is our same-type-selection
     // modifier and the canvas context menu is disabled, so read the native
     // button instead of trusting `rightButtonDown()`.
     const ctrlLeftClick = !!native && native.button === 0 && native.ctrlKey;
+
+    // Spectators may look, select, pan and zoom, but no click may become an
+    // order. The server refuses them anyway; stopping here avoids building a
+    // cursor/armed state the viewer is not allowed to spend.
+    if (this.readOnly && pointer.rightButtonDown() && !ctrlLeftClick) return;
 
     // Middle-button drag pans the map (AoE2). The default is suppressed so the
     // browser does not start its own autoscroll on the canvas.
@@ -1187,8 +1428,17 @@ export class WorldScene extends Phaser.Scene {
   private handlePointerUp(pointer: Phaser.Input.Pointer, outside = false) {
     // MOB-02: a finger release is resolved by the gesture layer (tap, end of a
     // box drag, or the tail of a pinch); there is no button state to inspect.
+    // This runs first even for a road stroke: the gesture must be reset here, and
+    // `endTouchDrag` commits the stroke on the way through.
     if (pointer.wasTouch) {
       this.touch.end(pointer, outside);
+      return;
+    }
+
+    // A stroke is committed on release, even off-canvas: the tiles were already
+    // painted on screen, so dropping them would read as a lost drag.
+    if (this.roadController?.isDrawing) {
+      this.roadController.end();
       return;
     }
 
@@ -1234,10 +1484,12 @@ export class WorldScene extends Phaser.Scene {
   }
 
   public stopSelectedUnits() {
+    if (this.readOnly) return;
     this.commands.stopSelectedUnits();
   }
 
   public cancelSelectedFoundation(): boolean {
+    if (this.readOnly) return false;
     return this.commands.cancelSelectedFoundation();
   }
 
@@ -1261,6 +1513,11 @@ export class WorldScene extends Phaser.Scene {
   }
 
   public setBuildingMode(type: BuildingType) {
+    // A spectator cannot build here; the server refuses it and there is no
+    // villager of theirs on the map to own the ghost.
+    if (this.readOnly) return;
+    // The two tools are mutually exclusive: a click cannot mean both.
+    if (this.roadController?.active) this.cancelRoadMode();
     this.placement.enter(type);
   }
 
@@ -1268,11 +1525,31 @@ export class WorldScene extends Phaser.Scene {
     this.placement.cancel();
   }
 
+  /** Enters the road paint tool. Only meaningful on a kingdom map. */
+  public setRoadMode(mode: RoadMode) {
+    if (this.readOnly) return;
+    if (!this.roadController) return;
+    if (this.terrainLayout.kind !== 'kingdom') return;
+    if (this.buildingToPlace) this.placement.cancel();
+    this.roadController.enter(mode);
+    this.cursor.refresh();
+  }
+
+  public cancelRoadMode() {
+    this.roadController?.cancel();
+  }
+
+  public get roadMode(): RoadMode | null {
+    return this.roadController?.active ?? null;
+  }
+
   public commandMoveTo(gridX: number, gridY: number) {
+    if (this.readOnly) return;
     this.commands.commandMoveTo(gridX, gridY);
   }
 
   public cycleToIdleUnit(category: 'villager' | 'military') {
+    if (this.readOnly) return;
     this.commands.cycleToIdleUnit(category);
   }
 
@@ -1313,11 +1590,13 @@ export class WorldScene extends Phaser.Scene {
 
   /** MOB-05: arm attack-move / patrol, exactly like `A` / `P` on desktop. */
   public armOrder(mode: 'ATTACK_MOVE' | 'PATROL') {
+    if (this.readOnly) return;
     this.commands.armOrder(mode);
   }
 
   /** MOB-05: arm the contextual (right-click equivalent) order for the next tap. */
   public armContextualOrder() {
+    if (this.readOnly) return;
     this.commands.armContextualOrder();
   }
 
@@ -1343,6 +1622,7 @@ export class WorldScene extends Phaser.Scene {
 
   /** CMB-01: cycle the stance of the selection, the touch `D` key. */
   public cycleSelectedStance() {
+    if (this.readOnly) return;
     this.commands.cycleSelectedStance();
   }
 
@@ -1378,6 +1658,12 @@ export class WorldScene extends Phaser.Scene {
    */
   public touchPressPointer(pointer: Phaser.Input.Pointer) {
     this.touchMode = true;
+    // A road tool takes the finger: the press starts a one-tile stroke and a
+    // drag extends it, instead of panning the camera.
+    if (this.roadController?.active) {
+      this.roadController.begin(pointer);
+      return;
+    }
     if (!this.buildingToPlace) return;
 
     const grid = pointerWorldGrid(this.cameras.main, pointer);
@@ -1392,10 +1678,29 @@ export class WorldScene extends Phaser.Scene {
    * move order, because on a phone that is the whole point of tapping the map (D5).
    */
   public touchTapPointer(pointer: Phaser.Input.Pointer) {
+    // A tap with the road tool is one tile: `TouchController.begin` already
+    // started the stroke on press, so this only commits it. Starting one here
+    // would paint the tile under the release instead of the one pressed.
+    if (this.roadController?.active) {
+      if (this.roadController.isDrawing) this.roadController.end();
+      return;
+    }
+
     // A tap in armed box mode is a back-out, not a selection: the player picked a
     // drag mode and tapped instead of dragging.
     if (this.boxSelectArmed) {
       this.setBoxSelectMode(false);
+      return;
+    }
+
+    // A watcher may tap to inspect or clear a selection, but the tap must never
+    // become an order: the empty-ground fallback below is a move command.
+    if (this.readOnly) {
+      if (this.selection.hasTargetAt(pointer, TOUCH_PICK_SLACK)) {
+        this.selection.handleClick(pointer, false, false, TOUCH_PICK_SLACK);
+        return;
+      }
+      if (this.selectedBuildingId || this.selectedResourceId) this.selection.clear();
       return;
     }
 
@@ -1434,6 +1739,10 @@ export class WorldScene extends Phaser.Scene {
    * behave exactly as a right click would.
    */
   public touchLongPressPointer(pointer: Phaser.Input.Pointer) {
+    // A long press while the road tool owns the glass is part of the same
+    // stroke: firing a contextual order here would move the army mid-road.
+    if (this.readOnly) return;
+    if (this.roadController?.isDrawing) return;
     if (this.buildingToPlace) return;
 
     if (this.commands.pendingOrder || this.commands.contextualArmed) {
@@ -1451,6 +1760,13 @@ export class WorldScene extends Phaser.Scene {
    *   the caller pans the camera only when this is false.
    */
   public beginTouchDrag(pointer: Phaser.Input.Pointer): boolean {
+    // The road tool consumes the drag: returning true routes every subsequent
+    // pan sample into `updateTouchDrag` instead of the camera.
+    if (this.roadController?.active) {
+      this.roadController.begin(pointer);
+      return true;
+    }
+
     if (!this.boxSelectArmed) return false;
 
     this.touchBoxActive = true;
@@ -1463,12 +1779,20 @@ export class WorldScene extends Phaser.Scene {
   }
 
   public updateTouchDrag(pointer: Phaser.Input.Pointer) {
+    if (this.roadController?.isDrawing) {
+      this.roadController.drag(pointer);
+      return;
+    }
     if (!this.touchBoxActive) return;
     this.drawDragBox({ x: pointer.x, y: pointer.y });
   }
 
   /** MOB-04: finishes the armed box selection and disarms the mode (one shot). */
   public endTouchDrag(pointer: Phaser.Input.Pointer) {
+    if (this.roadController?.isDrawing) {
+      this.roadController.end();
+      return;
+    }
     if (!this.touchBoxActive) return;
 
     this.touchBoxActive = false;
@@ -1481,6 +1805,9 @@ export class WorldScene extends Phaser.Scene {
 
   /** MOB-04: a pinch took over, so the half-drawn rectangle is dropped unseen. */
   public cancelTouchDrag() {
+    // A pinch is a camera gesture: it drops the half-drawn stroke unseen, the
+    // same way it drops a box selection.
+    if (this.roadController?.isDrawing) this.roadController.abort();
     if (!this.touchBoxActive) return;
     this.touchBoxActive = false;
     this.isDragSelecting = false;
@@ -1546,6 +1873,9 @@ export class WorldScene extends Phaser.Scene {
       const b = this.room?.state?.buildings.get(this.selectedBuildingId);
       if (b) {
         const bp = BUILDING_BLUEPRINTS[b.type as BuildingType];
+        const tier = buildingTierInfo(b.type as BuildingType, b.level, (key) =>
+          this.textures.exists(key)
+        );
         this.onSelectionChange({
           id: this.selectedBuildingId,
           type: 'building',
@@ -1555,6 +1885,10 @@ export class WorldScene extends Phaser.Scene {
           maxHp: b.maxHp,
           level: b.level,
           maxLevel: getBuildingMaxLevel(b.type as BuildingType),
+          visualTier: tier.tier,
+          visualTierCount: tier.count,
+          visualTierName: tier.name,
+          nextVisualTierLevel: tier.nextLevel,
           upgradeProgressMs: b.upgradeProgressMs,
           upgradeTimeMs: b.upgradeTimeMs,
           ...(b.ownerId === this.myOwnerId
@@ -1606,6 +1940,11 @@ export class WorldScene extends Phaser.Scene {
     // synchronous burst right after a map switch.
     this.flushResourceSpawns();
 
+    if (this.roadsDirty) {
+      this.roadsDirty = false;
+      this.refreshPlayerRoads();
+    }
+
     this.terrain.render();
     this.decor.render();
     this.decor.update(time);
@@ -1643,6 +1982,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.commands.updateWaypointPreview();
     this.commands.updateRallyMarkers();
+    this.roadController?.render();
 
     this.updateUnitSprites(time, dtSeconds);
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Axe, Drumstick, Coins, Mountain, Users, ShieldCheck, Wifi, LogOut } from 'lucide-react';
+import { Axe, Drumstick, Coins, Mountain, Users, ShieldCheck, Wifi, LogOut, Map as MapIcon, Swords } from 'lucide-react';
 import { MOBILE_MIN_TAP_PX } from '../device/inputMode.js';
 
 interface HUDProps {
@@ -20,8 +20,16 @@ interface HUDProps {
   onSelectIdleVillager: () => void;
   /** MOB-06: render the one-row mobile bar instead of the three-panel desktop one. */
   compact?: boolean;
+  /** ATK-05/ALERT-02: whether the player is currently under attack. */
+  underAttack?: boolean;
   /** MOB-06: compact only; the desktop layout keeps its own floating button. */
   onLeaveGame?: () => void;
+  /** Phase 23: opens the world map overlay. */
+  onOpenWorldMap?: () => void;
+  /** Phase 23: true while the player is attacking somebody else's kingdom. */
+  inRaid?: boolean;
+  /** Phase 23: leaves the raid through the retreat gate. */
+  onRetreat?: () => void;
 }
 
 interface ResourceChipProps {
@@ -63,9 +71,13 @@ export const HUD: React.FC<HUDProps> = ({
   idleVillagers,
   onSelectIdleVillager,
   compact = false,
-  onLeaveGame
+  underAttack = false,
+  onLeaveGame,
+  onOpenWorldMap,
+  inRaid = false,
+  onRetreat
 }) => {
-  const zoneIsBattle = zoneLabel === 'CHIẾN TRƯỜNG';
+  const zoneIsBattle = zoneLabel !== 'VƯƠNG QUỐC';
 
   if (compact) {
     return (
@@ -86,6 +98,12 @@ export const HUD: React.FC<HUDProps> = ({
             }`}
             title={zoneLabel}
           />
+          {underAttack && (
+            <span
+              className="h-2 w-2 shrink-0 rounded-full bg-red-500 animate-pulse"
+              title="Đang bị tấn công"
+            />
+          )}
         </div>
 
         {/* Resources: icon + number only, dividers instead of labels. */}
@@ -130,7 +148,35 @@ export const HUD: React.FC<HUDProps> = ({
           </button>
         </div>
 
-        <div className="ml-auto pointer-events-auto flex items-center gap-1.5 rounded-md border border-slate-700/80 bg-slate-900/90 px-2 py-1 backdrop-blur-sm">
+        <div className="ml-auto pointer-events-auto flex items-center gap-1.5">
+          {inRaid ? (
+            <button
+              type="button"
+              onClick={onRetreat}
+              title="Rút quân"
+              aria-label="Rút quân"
+              style={{ minHeight: MOBILE_MIN_TAP_PX, minWidth: MOBILE_MIN_TAP_PX }}
+              className="flex items-center justify-center rounded-md border border-red-700 bg-red-950/80 px-2 text-red-200"
+            >
+              <Swords size={15} />
+            </button>
+          ) : (
+            onOpenWorldMap && (
+              <button
+                type="button"
+                onClick={onOpenWorldMap}
+                title="Bản đồ thế giới"
+                aria-label="Bản đồ thế giới"
+                style={{ minHeight: MOBILE_MIN_TAP_PX, minWidth: MOBILE_MIN_TAP_PX }}
+                className="flex items-center justify-center rounded-md border border-amber-700 bg-slate-900/90 px-2 text-amber-300"
+              >
+                <MapIcon size={15} />
+              </button>
+            )
+          )}
+        </div>
+
+        <div className="pointer-events-auto flex items-center gap-1.5 rounded-md border border-slate-700/80 bg-slate-900/90 px-2 py-1 backdrop-blur-sm">
           <span
             className={`h-2 w-2 rounded-full ${
               isConnected ? 'bg-emerald-400' : 'animate-pulse bg-red-500'
@@ -168,13 +214,30 @@ export const HUD: React.FC<HUDProps> = ({
         </span>
         <span
           className={`text-[9px] font-bold tracking-widest px-1.5 py-0.5 rounded border ${
-            zoneLabel === 'CHIẾN TRƯỜNG'
+            zoneIsBattle
               ? 'text-red-300 border-red-700/70 bg-red-950/50'
               : 'text-emerald-300 border-emerald-700/70 bg-emerald-950/50'
           }`}
         >
           {zoneLabel}
         </span>
+        {inRaid ? (
+          <button
+            type="button"
+            onClick={onRetreat}
+            className="flex items-center gap-1 rounded border border-red-600/80 bg-red-950/60 px-2 py-1 text-[11px] font-semibold text-red-200 hover:border-red-400"
+          >
+            <Swords size={13} /> Rút quân
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onOpenWorldMap}
+            className="flex items-center gap-1 rounded border border-amber-600/80 bg-amber-950/40 px-2 py-1 text-[11px] font-semibold text-amber-200 hover:border-amber-400"
+          >
+            <MapIcon size={13} /> Bản đồ thế giới
+          </button>
+        )}
       </div>
 
       {/* Central Resource Bar (AoE Classic Style) */}
@@ -287,6 +350,11 @@ export const HUD: React.FC<HUDProps> = ({
 
       {/* Network Status indicator */}
       <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-700/80 rounded-md px-3 py-2 text-xs backdrop-blur-sm pointer-events-auto">
+        {underAttack && (
+          <span className="text-xs font-bold text-red-200 border border-red-500/80 bg-red-950/80 px-1.5 py-0.5 rounded animate-pulse">
+            ĐANG BỊ TẤN CÔNG
+          </span>
+        )}
         <Wifi size={14} className={isConnected ? 'text-emerald-400' : 'text-red-500 animate-pulse'} />
         <span className={isConnected ? 'text-emerald-400' : 'text-red-400'}>
           {isConnected ? 'ONLINE' : 'OFFLINE'}

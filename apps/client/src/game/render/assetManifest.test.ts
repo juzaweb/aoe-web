@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { SHEET_OFFSET_Y, buildingHpBarY } from './buildingArt.js';
+import { SHEET_OFFSET_Y, buildingArt, buildingHpBarY, buildingTierInfo } from './buildingArt.js';
 import { decorPreloadList } from './decorArt.js';
 import { treeVariant } from './treeVariants.js';
 
@@ -95,7 +95,6 @@ describe('building health bar heights', () => {
     'building.house': 'HOUSE',
     'building.lumber-camp': 'LUMBER_CAMP'
   };
-
   // `HP_BAR_Y` is hand-maintained, but its value is derivable: the bar sits 8 px
   // above the first visible row of art. Recomputing it from the lock means a
   // sprite swap without re-measuring the bar fails here instead of shipping a
@@ -110,6 +109,100 @@ describe('building health bar heights', () => {
       expect(buildingHpBarY(buildingType)).toBe(expected);
     });
   }
+});
+
+/**
+ * LVL3: the house swaps sheets at four level milestones, so every tier is a
+ * separate contract with the pipeline.
+ *
+ * The renderer derives the lift and the bar from the canvas height and the
+ * measured art top, which is exactly what this recomputes from the lock. A tier
+ * whose sheet is re-cropped without touching `buildingArt.ts` fails here instead
+ * of shipping a bar floating over a roof or a house sunk into the tile.
+ */
+describe('house visual tiers', () => {
+  const lock = readLock();
+  const TIERS: { target: string; level: number; tier: number }[] = [
+    { target: 'building.house', level: 1, tier: 1 },
+    { target: 'building.house-2', level: 2, tier: 2 },
+    { target: 'building.house-3', level: 4, tier: 3 },
+    { target: 'building.house-4', level: 6, tier: 4 },
+    { target: 'building.house-5', level: 8, tier: 5 }
+  ];
+
+  it('ships every sheet the tier table names', () => {
+    for (const { target } of TIERS) {
+      expect(lock.targets[target], `missing lock target ${target}`).toBeDefined();
+    }
+  });
+
+  for (const { target, level, tier } of TIERS) {
+    it(`${target} places the bar from its own measurements`, () => {
+      const entry = lock.targets[target];
+      if (!entry) throw new Error(`missing lock target ${target}`);
+      const art = buildingArt('HOUSE', () => true, level);
+      expect(art.textureKey).toBe(tier === 1 ? 'building_HOUSE' : `building_HOUSE_${tier}`);
+      expect(buildingHpBarY('HOUSE', level)).toBe(
+        art.offsetY - entry.canvas[1] / 2 + entry.topInset - 8
+      );
+    });
+
+    it(`${target} stays bottom-anchored`, () => {
+      const entry = lock.targets[target];
+      if (!entry) throw new Error(`missing lock target ${target}`);
+      expect(entry.bottomInset).toBeGreaterThanOrEqual(0);
+      expect(entry.bottomInset).toBeLessThanOrEqual(3);
+    });
+  }
+
+  it('degrades to the previous shipped shape, never to a missing key', () => {
+    // Only the level-1 sheet survived a bad deploy. Every level must still
+    // resolve to a texture the renderer can draw.
+    const onlyTier1 = (key: string) => key === 'building_HOUSE';
+    for (const level of [1, 2, 4, 6, 8, 10]) {
+      expect(buildingArt('HOUSE', onlyTier1, level).textureKey).toBe('building_HOUSE');
+    }
+  });
+
+  it('walks down tier by tier when only the low sheets loaded', () => {
+    const upToTier3 = (key: string) => /^building_HOUSE(_[23])?$/.test(key);
+    expect(buildingArt('HOUSE', upToTier3, 8).textureKey).toBe('building_HOUSE_3');
+    expect(buildingArt('HOUSE', upToTier3, 6).textureKey).toBe('building_HOUSE_3');
+  });
+
+  it('reports the shape actually drawn when a sheet is missing', () => {
+    // Declared tier 5, but only tiers 1-3 loaded: the panel must not claim the
+    // manor is on screen, and must not promise a level-8 change it cannot draw.
+    const upToTier3 = (key: string) => /^building_HOUSE(_[23])?$/.test(key);
+    expect(buildingTierInfo('HOUSE', 8, upToTier3)).toEqual({
+      tier: 3,
+      count: 5,
+      name: 'Stone Cottage',
+      nextLevel: null
+    });
+  });
+
+  it('reports the shape the panel should name, clamped to shipped art', () => {
+    expect(buildingTierInfo('HOUSE', 1)).toEqual({
+      tier: 1,
+      count: 5,
+      name: 'Thatched Hut',
+      nextLevel: 2
+    });
+    expect(buildingTierInfo('HOUSE', 8)).toEqual({
+      tier: 5,
+      count: 5,
+      name: 'Manor',
+      nextLevel: null
+    });
+    // A level-invariant type never renders the panel block.
+    expect(buildingTierInfo('FARM', 10)).toEqual({
+      tier: 1,
+      count: 1,
+      name: null,
+      nextLevel: null
+    });
+  });
 });
 
 describe('tree variants', () => {

@@ -7,11 +7,22 @@ import {
   ControlGroupSummary,
   type ArmedOrder
 } from './scenes/WorldScene.js';
+import { SpectatorScene } from './scenes/SpectatorScene.js';
 import { BuildingType } from '@chien-quoc/shared';
+import type { RoadMode } from './input/RoadController.js';
 
 interface PhaserGameProps {
   room: Room | null;
   playerName: string;
+  /**
+   * Render another empire without letting this client command it. A spectator
+   * game runs its own scene instance, so the player's own map keeps running.
+   */
+  readOnly?: boolean;
+  /** Owner whose Town Center the camera should settle on in a spectator game. */
+  focusOwnerId?: string;
+  /** Colour of `focusOwnerId`, read from the world-map row when they are offline. */
+  ownerColor?: string;
   onSelectionChange: (entity: SelectedEntityData | null) => void;
   onPlacementCancelled: () => void;
   /** A build hotkey (`Q/W/E/R/T`) was pressed; opens React's placement state. */
@@ -24,6 +35,10 @@ interface PhaserGameProps {
   onArmedOrderChange: (armed: ArmedOrder | null) => void;
   /** MOB-04: the one-shot box-selection mode was armed or consumed. */
   onBoxSelectChange: (armed: boolean) => void;
+  /** The road tool was entered or left from the map itself. */
+  onRoadModeChange: (mode: RoadMode | null) => void;
+  /** ATK-05: raised when the player's entities lose HP. */
+  onUnderAttack: () => void;
   gameRef: React.MutableRefObject<Phaser.Game | null>;
   sceneRef: React.MutableRefObject<WorldScene | null>;
 }
@@ -31,6 +46,9 @@ interface PhaserGameProps {
 export const PhaserGame: React.FC<PhaserGameProps> = ({
   room,
   playerName,
+  readOnly = false,
+  focusOwnerId = '',
+  ownerColor = '',
   onSelectionChange,
   onPlacementCancelled,
   onBuildingHotkey,
@@ -38,6 +56,8 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
   onControlGroupsChange,
   onArmedOrderChange,
   onBoxSelectChange,
+  onRoadModeChange,
+  onUnderAttack,
   gameRef,
   sceneRef
 }) => {
@@ -50,13 +70,22 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
   const onControlGroupsRef = useRef(onControlGroupsChange);
   const onArmedOrderRef = useRef(onArmedOrderChange);
   const onBoxSelectRef = useRef(onBoxSelectChange);
+  const onRoadModeRef = useRef(onRoadModeChange);
+  const onUnderAttackRef = useRef(onUnderAttack);
+  const readOnlyRef = useRef(readOnly);
+  const focusOwnerIdRef = useRef(focusOwnerId);
+  const ownerColorRef = useRef(ownerColor);
   playerNameRef.current = playerName;
   roomRef.current = room;
+  focusOwnerIdRef.current = focusOwnerId;
+  ownerColorRef.current = ownerColor;
   onBuildingHotkeyRef.current = onBuildingHotkey;
   onIdleVillagersRef.current = onIdleVillagersChange;
   onControlGroupsRef.current = onControlGroupsChange;
   onArmedOrderRef.current = onArmedOrderChange;
   onBoxSelectRef.current = onBoxSelectChange;
+  onRoadModeRef.current = onRoadModeChange;
+  onUnderAttackRef.current = onUnderAttack;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -86,7 +115,7 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
         mode: Phaser.Scale.RESIZE,
         autoCenter: Phaser.Scale.CENTER_BOTH
       },
-      scene: [WorldScene]
+      scene: [readOnlyRef.current ? SpectatorScene : WorldScene]
     };
 
     let disposed = false;
@@ -131,6 +160,8 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
         scene.onControlGroupsChange = (groups) => onControlGroupsRef.current(groups);
         scene.onArmedOrderChange = (armed) => onArmedOrderRef.current(armed);
         scene.onBoxSelectChange = (armed) => onBoxSelectRef.current(armed);
+        scene.onRoadModeChange = (mode) => onRoadModeRef.current(mode);
+        scene.onUnderAttack = () => onUnderAttackRef.current();
 
         // Dev-only handle so browser tests can inspect state that the React HUD
         // does not expose (selection sets, camera, sprites).
@@ -143,6 +174,15 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
         }
         if (roomRef.current) {
           scene.setRoom(roomRef.current);
+        }
+        // Applied after `setRoom`: binding a room clears the owner-colour cache
+        // and the camera-centring state, so a seed set earlier would be lost.
+        if (readOnlyRef.current) scene.setReadOnly(true);
+        if (focusOwnerIdRef.current) {
+          if (ownerColorRef.current) {
+            scene.rememberOwnerColor(focusOwnerIdRef.current, ownerColorRef.current);
+          }
+          scene.setFocusOwnerId(focusOwnerIdRef.current);
         }
       });
     }, 0);
@@ -196,6 +236,17 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
       sceneRef.current.setRoom(room);
     }
   }, [room]);
+
+  // Spectator target: re-applied after every room change, because `setRoom`
+  // clears the owner-colour cache and the camera centring state.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    if (readOnly) scene.setReadOnly(true);
+    if (!focusOwnerId) return;
+    if (ownerColor) scene.rememberOwnerColor(focusOwnerId, ownerColor);
+    scene.setFocusOwnerId(focusOwnerId);
+  }, [readOnly, focusOwnerId, ownerColor, room]);
 
   // Keep the scene aware of the stable player name so the camera can find the base
   useEffect(() => {

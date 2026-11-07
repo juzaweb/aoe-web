@@ -1,0 +1,730 @@
+name: Loop
+
+# Runs when a human presses the button, and when `loop-schedule.yml` dispatches
+# it every five hours. Never on push: a push-triggered agent would react to its
+# own commits. Every run costs tokens and can write to the repository, so the
+# dispatch path goes through a separate file whose idle check skips a slot when
+# STATE.md holds no `candidate` row.
+on:
+  workflow_dispatch:
+    inputs:
+      step:
+        description: Pipeline step to run
+        type: choice
+        required: true
+        default: triage
+        options:
+          - triage
+          - pick
+          - plan
+          - build
+          - verify
+          - ship
+          - full
+      slice:
+        description: Slice ID from STATE.md. Blank picks the first candidate.
+        type: string
+        required: false
+        default: ''
+      model:
+        description: Provider/model override, empty uses opencode.json
+        type: string
+        required: false
+        default: ''
+      merge:
+        description: Merge the PR into develop. Leave on; turn off to inspect the PR first.
+        type: boolean
+        required: false
+        default: true
+      chain:
+        description: Automatic follow-up runs left. 0 stops after this slice; the schedule passes 0.
+        type: string
+        required: false
+        default: '1'
+
+# One run at a time: two agents editing STATE.md would overwrite each other's
+# status column, and the status column is what gates each step.
+concurrency:
+  group: loop
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  # `gh workflow run` needs this to dispatch the follow-up run. workflow_dispatch
+  # is one of the few events GITHUB_TOKEN may trigger (unlike `push`).
+  actions: write
+
+env:
+  # STATE.md and docs/plans are Vietnamese. Without UTF-8 the runner mangles it.
+  LANG: en_US.UTF-8
+  LC_ALL: en_US.UTF-8
+
+jobs:
+  loop:
+    name: ${{ inputs.step }}
+    runs-on: ubuntu-latest
+    # full mode runs five agents plus three test suites; 45 minutes was tight
+    # enough that a slow pnpm install alone could fail the run.
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      # develop is the integration branch.
+      #
+      # `checkout -B`, not `checkout`: actions/checkout already created a local
+      # `develop` at the SHA the workflow was dispatched from, and a plain
+      # `checkout develop` just switches back to it. The run then builds on a
+      # stale base and pushes commits GitHub has seen before, which is what made
+      # the push fail with a workflow-permission error.
+      - name: Ensure develop exists
+        id: base
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin develop >/dev/null 2>&1; then
+            git fetch origin develop
+            git checkout -B develop origin/develop
+          else
+            echo "::warning::origin/develop is missing; creating it from the default branch."
+            git checkout -B develop
+            git push -u origin develop
+          fi
+          git config user.name "loop-bot"
+          git config user.email "loop-bot@users.noreply.github.com"
+          # Everything the agents change is measured against this, not against
+          # HEAD: if an agent ever commits, a HEAD-relative diff would hide it and
+          # the gate would wave through files it never looked at.
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "::notice::Base commit $(git rev-parse --short HEAD) on develop"
+
+      # Runs after checkout, because it reads STATE.md from the working tree.
+      # A blank slice is not an error: triage needs none, and every other step
+      # falls back to the first `candidate` row. Forcing the operator to retype
+      # an ID that is already in the state file only produced failed runs.
+      - name: Resolve slice
+        id: slice
+        env:
+          STEP: ${{ inputs.step }}
+          # The raw input, not this step's own output.
+          REQUESTED: ${{ inputs.slice }}
+        run: |
+          set -euo pipefail
+          slice="$REQUESTED"
+
+          if [ ! -f STATE.md ]; then
+            echo "::error::STATE.md is missing after checkout; cannot resolve a slice."
+            exit 1
+          fi
+
+          if [ -z "$slice" ] && [ "$STEP" != "triage" ]; then
+            # First table row whose Next action says `candidate`, read from the
+            # backticked ID in the first column.
+            slice=$(grep -E '^\| `[A-Z0-9-]+`' STATE.md \
+              | grep -F '`candidate`' \
+              | head -1 \
+              | sed -E 's/^\| `([^`]+)`.*/\1/' || true)
+          fi
+
+          if [ -z "$slice" ] && [ "$STEP" != "triage" ]; then
+            echo "::error::No slice given and STATE.md has no 'candidate' row."
+            grep -E '^\| `[A-Z0-9-]+`' STATE.md || true
+            exit 1
+          fi
+
+          echo "slice=$slice" >> "$GITHUB_OUTPUT"
+          if [ -n "$slice" ]; then
+            echo "::notice::Slice: $slice"
+            grep -F "\`$slice\`" STATE.md | head -1 || true
+          fi
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Both apps import packages/shared through its compiled output. Without
+      # this, the agent's own `tsc --noEmit` fails with TS2307 "Cannot find
+      # module '@chien-quoc/shared'" and it spends turns chasing a phantom
+      # error that the test gate builds away later anyway.
+      - name: Build shared for the agents
+        run: pnpm --filter @chien-quoc/shared run build
+
+      - name: Install opencode
+        run: npm install --global opencode-ai
+
+      # The key is written to the file the CLI reads, never passed as an
+      # argument, so it cannot leak into a process listing or a log line.
+      # The provider id must match the `provider/model` prefix in opencode.json.
+      - name: Configure opencode auth
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_PROVIDER: ${{ secrets.OPENCODE_PROVIDER }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENCODE_API_KEY:-}" ]; then
+            echo "::error::Missing repository secret OPENCODE_API_KEY."
+            exit 1
+          fi
+          provider="${OPENCODE_PROVIDER:-opencode-go}"
+          mkdir -p "$HOME/.local/share/opencode"
+          jq -n --arg p "$provider" --arg key "$OPENCODE_API_KEY" \
+            '{($p):{type:"api",key:$key}}' \
+            > "$HOME/.local/share/opencode/auth.json"
+          chmod 600 "$HOME/.local/share/opencode/auth.json"
+          echo "Authenticated provider: $provider"
+
+      - name: Verify skills are discoverable
+        run: |
+          set -euo pipefail
+          opencode debug skill | grep -q '"name": "loop-triage"' \
+            || { echo "::error::loop-* skills are not discovered from .agents/skills."; exit 1; }
+
+      - name: Run step
+        id: run
+        env:
+          STEP: ${{ inputs.step }}
+          SLICE: ${{ steps.slice.outputs.slice }}
+          MODEL: ${{ inputs.model }}
+          # triage reads issues, PR feedback and CI history. Read-only use: the
+          # loop-triage agent denies every `gh` write below, and `--auto` cannot
+          # override a deny. The default token is enough here; LOOP_PAT is not
+          # used, and `github.token` is the same credential without the reserved
+          # `GITHUB_` secret name.
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          model_args=()
+          if [ -n "$MODEL" ]; then model_args=(--model "$MODEL"); fi
+
+          agent_for() {
+            case "$1" in
+              triage) echo loop-triage ;;
+              pick)   echo build ;;
+              plan)   echo planner ;;
+              build)  echo implementer ;;
+              verify) echo verifier ;;
+              ship)   echo shipper ;;
+            esac
+          }
+
+          prompt_for() {
+            # One definition of every prompt, in scripts/agent-prompt.sh: the
+            # retry loop in scripts/retry-gates.sh passes the same text, and two
+            # copies would drift until a retried build was asked for something
+            # the first attempt never was.
+            bash "${{ github.workspace }}/scripts/agent-prompt.sh" "$1" "$SLICE"
+          }
+
+          run_agent() {
+            local step="$1"
+            local agent
+            agent=$(agent_for "$step")
+            echo "::group::opencode $step ($agent)"
+            opencode run --agent "$agent" --auto "${model_args[@]}" "$(prompt_for "$step")"
+            echo "::endgroup::"
+          }
+
+          if [ "$STEP" = "full" ]; then
+            run_agent pick
+            run_agent plan
+            # The build/verify/test/browser/gate sequence lives in
+            # scripts/retry-gates.sh because a YAML job cannot loop back to a
+            # previous step, and a retry that re-enters only the agent is not a
+            # retry: the tree, the build and the gate all have to run again.
+            # loop-constraints.md caps the attempts at 3, and the browser check
+            # shares that budget with the verifier.
+            BASE="${{ steps.base.outputs.sha }}" SLICE="$SLICE" MODEL="$MODEL" \
+              bash "${{ github.workspace }}/scripts/retry-gates.sh"
+            run_agent ship
+          else
+            run_agent "$STEP"
+          fi
+
+      # gate.yaml is checked here, at build time, not only at ship time. A slice
+      # that needs a denylisted file is refused while it is still reversible: the
+      # step below reverts it. That is what keeps every PR this workflow opens
+      # auto-mergeable — there is never a PR waiting for a human to merge it.
+      #
+      # `always()` so a crashed agent run is still reverted, but only when a
+      # slice was actually resolved: with no task in STATE.md the run is already
+      # dead, and an empty path list makes the gate refuse a slice that does not
+      # exist, which reads as "denylisted" in the log.
+      - name: Check gate policy
+        id: gate
+        if: always() && steps.slice.outcome == 'success'
+        env:
+          BASE: ${{ steps.base.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # The policy lives in scripts/gate-check.sh so the retry loop and this
+          # one-shot check cannot disagree about what is denylisted.
+          set +e
+          bash "${{ github.workspace }}/scripts/gate-check.sh"
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+            echo "::error::gate check exited $code — this slice needs a denylisted path."
+          fi
+
+      # The slice is thrown away rather than handed over. Handing it over would
+      # mean a PR nobody may merge, which is the one outcome this workflow
+      # exists to avoid; throwing it away means the next triage simply picks a
+      # different slice.
+      - name: Reject slice that needs a denylisted path
+        if: steps.gate.outputs.allowed != 'true'
+        run: |
+          set -euo pipefail
+          echo "::error::Slice '${{ steps.slice.outputs.slice }}' touched a path in gate.yaml."
+          git checkout -- .
+          git clean -fd
+          {
+            echo "### Slice refused"
+            echo ""
+            echo "\`${{ steps.slice.outputs.slice }}\` needs a file that \`gate.yaml\` denies to"
+            echo "unattended agents. The working tree was reverted; no PR was opened."
+            echo ""
+            echo "Either split the slice so the denylisted part is a separate,"
+            echo "human-authored change, or drop it and let triage pick another."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      # triage/plan/verify write no feature code, but they DO write STATE.md and
+      # loop-run-log.md, and the runner is disposable. Those updates go to a PR
+      # instead of straight to develop, because for `triage` the STATE.md diff IS
+      # the deliverable: the proposal. Merging that PR is the approval.
+      #
+      # Skipped in ship/full: there the code PR already carries the state files,
+      # and branching a second PR off the first would make one depend on the
+      # other. One PR per run is the rule that keeps this readable.
+      - name: Open state PR
+        id: state
+        if: |
+          steps.run.outcome == 'success'
+          && steps.gate.outputs.allowed == 'true'
+          && inputs.step != 'ship' && inputs.step != 'full'
+        env:
+          STEP: ${{ inputs.step }}
+          SLICE: ${{ steps.slice.outputs.slice }}
+          GH_TOKEN: ${{ secrets.LOOP_PAT || github.token }}
+          LOOP_PAT: ${{ secrets.LOOP_PAT }}
+        run: |
+          set -euo pipefail
+          BASE="${{ steps.base.outputs.sha }}"
+          state_paths=(STATE.md loop-run-log.md)
+          [ -d docs/plans ] && state_paths+=(docs/plans)
+
+          # Same reasoning as the gate step: `git status --porcelain` C-quotes a
+          # path with a space and emits "old -> new" for a rename, so the old name
+          # would be staged. diff --name-only + ls-files yields the new name only.
+          list_state_paths() {
+            git -c core.quotePath=false diff --name-only -z "$BASE" -- "${state_paths[@]}"
+            git -c core.quotePath=false ls-files --others --exclude-standard -z -- "${state_paths[@]}"
+          }
+          changed=$(list_state_paths | tr '\0' '\n' | grep -v '^$' | sort -u || true)
+          if [ -z "$changed" ]; then
+            echo "::notice::No state change to propose."
+            exit 0
+          fi
+          echo "State files changed:"; echo "$changed"
+
+          slug=$(printf '%s' "${SLICE:-$STEP}" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
+          branch="loop/state-${slug:-run}-$(date +%Y%m%d-%H%M%S)"
+
+          {
+            printf '## Loop state — %s\n\n' "$STEP"
+            printf 'Merging this PR is the approval. Nothing was built yet.\n\n'
+            printf '### Files\n\n'
+            printf '%s\n' "$changed" | sed 's/^/- /'
+            printf '\n### What to do\n\n'
+            if [ "$STEP" = "triage" ]; then
+              printf '1. Read the `High Priority` table in `STATE.md`.\n'
+              printf '2. To approve a feature, change its `Next action` cell to\n'
+              printf '   `APPROVED <date> — awaiting plan` in **this PR**.\n'
+              printf '3. To reject one, leave it as `candidate`.\n'
+              printf '4. Merge. Then run the workflow with `step = plan`.\n'
+            else
+              printf '1. Review the diff.\n2. Merge to apply it.\n'
+            fi
+          } > /tmp/pr-body.txt
+
+          git checkout -b "$branch"
+          git add -- "${state_paths[@]}"
+          git commit -m "chore(loop): propose $STEP${SLICE:+ for $SLICE}" \
+            -m "State only; no source change. Merging this PR is the approval."
+          bash "${{ github.workspace }}/scripts/ci-push.sh" "$branch"
+          gh pr create --base develop --head "$branch" \
+            --title "loop(${STEP}): state update${SLICE:+ for $SLICE}" \
+            --body-file /tmp/pr-body.txt > pr-url.txt
+          echo "url=$(tail -1 pr-url.txt)" >> "$GITHUB_OUTPUT"
+          echo "::notice::Proposal PR opened: $(tail -1 pr-url.txt)"
+
+      # The test gate. It runs on the working tree that is about to be
+      # committed, so "the tests passed" describes exactly the tree that would
+      # land on develop — not a nearby commit and not a later one.
+      #
+      # The commands live in scripts/run-tests.sh, which ci.yml calls too. One
+      # definition, so the loop's "pass" and GitHub's `Tests` check can never
+      # disagree about what was run.
+      - name: Run tests
+        id: tests
+        if: |
+          inputs.step == 'ship'
+          && steps.gate.outputs.allowed == 'true'
+        run: |
+          set -euo pipefail
+          if ! bash "${{ github.workspace }}/scripts/run-tests.sh"; then
+            echo "::error::Tests failed. No PR was opened and nothing was merged."
+            exit 1
+          fi
+          echo "verdict=pass" >> "$GITHUB_OUTPUT"
+
+      # Unit tests cannot see a rendered page. This stage serves the very tree
+      # that is about to be committed and lets the browser-verifier judge it in
+      # real Chrome, via the chrome-devtools MCP server in opencode.json.
+      #
+      # The serve-and-judge sequence lives in scripts/browser-check.sh because
+      # `full` has to run it again on every retry attempt, and a gate buried in
+      # a YAML step cannot be re-entered from the shell loop that retries.
+      #
+      # Only `ship` runs it here. `full` already ran it inside
+      # scripts/retry-gates.sh, against a tree built by the same test gate;
+      # running it twice would double the most expensive stage for no new
+      # information.
+      - name: Browser check
+        id: browser
+        if: |
+          inputs.step == 'ship'
+          && steps.gate.outputs.allowed == 'true'
+          && steps.tests.outcome == 'success'
+        env:
+          SLICE: ${{ steps.slice.outputs.slice }}
+          MODEL: ${{ inputs.model }}
+        run: |
+          set -euo pipefail
+          if ! bash "${{ github.workspace }}/scripts/browser-check.sh"; then
+            echo "::error::No PR was opened; the next build attempt gets the findings."
+            exit 1
+          fi
+
+      # A failed browser check kills the job before it can commit, so the runner
+      # — and the log inside it — is gone by the time a human looks. Uploading it
+      # is the only way the next attempt can see what the page actually did.
+      #
+      # `always()` and no outcome test: in `full` mode the browser check runs
+      # inside scripts/retry-gates.sh, so the YAML step of that name is skipped
+      # even though a log exists.
+      - name: Keep the browser check log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-check-${{ steps.slice.outputs.slice || 'run' }}-${{ github.run_id }}
+          path: |
+            /tmp/browser-check.log
+            /tmp/game-logs/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # The verdict goes into loop-run-log.md so the next triage knows this slice
+      # failed and why, instead of proposing it again as if nothing happened.
+      # Best effort: a red run stays red for the real reason, not because a
+      # bookkeeping append was refused.
+      - name: Record the failed browser check
+        if: steps.browser.outcome == 'failure'
+        env:
+          SLICE: ${{ steps.slice.outputs.slice }}
+        run: |
+          set -euo pipefail
+          tail -5 /tmp/browser-check.log > /tmp/bc-tail.txt 2>/dev/null || echo "no log" > /tmp/bc-tail.txt
+          bash "${{ github.workspace }}/scripts/record-verdict.sh" FAIL "browser:${SLICE}" \
+            "$(tr '\n' ' ' < /tmp/bc-tail.txt)" || \
+            echo "::warning::Could not append the browser verdict to loop-run-log.md."
+
+      # Nothing below this line runs on a red suite or a failed browser check.
+      # `ship` needs both steps above; `full` needs its retry script to have
+      # passed, which is exactly `steps.run.outcome == 'success'` (the script
+      # exits non-zero once the attempt budget is spent).
+      - name: Commit, push and open PR
+        id: ship
+        if: |
+          (
+            inputs.step == 'ship'
+            && steps.gate.outputs.allowed == 'true'
+            && steps.tests.outcome == 'success'
+            && steps.browser.outcome == 'success'
+          ) || (
+            inputs.step == 'full'
+            && steps.gate.outputs.allowed == 'true'
+            && steps.run.outcome == 'success'
+          )
+        env:
+          SLICE: ${{ steps.slice.outputs.slice }}
+          GH_TOKEN: ${{ secrets.LOOP_PAT || github.token }}
+          LOOP_PAT: ${{ secrets.LOOP_PAT }}
+        run: |
+          set -euo pipefail
+          slug=$(printf '%s' "$SLICE" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
+          branch="loop/${slug:-slice}-$(date +%Y%m%d-%H%M%S)"
+
+          # Bodies go to files, not to -m/--body: a multi-line argument inside a
+          # YAML block scalar is fragile, a file is not. printf keeps the text
+          # flush-left (a heredoc would inherit the block scalar's indent).
+          {
+            printf 'feat(loop): %s\n\n' "$SLICE"
+            printf 'Implemented by the loop pipeline.\n\n'
+            printf 'Slice: %s\n' "$SLICE"
+            printf 'Plan: docs/plans/\n'
+            printf 'Verifier: PASS\n'
+          } > /tmp/commit-msg.txt
+
+          {
+            printf 'Slice `%s` implemented by the loop pipeline.\n\n' "$SLICE"
+            printf -- '- Plan: `docs/plans/`\n'
+            printf -- '- Verifier verdict: see `loop-run-log.md`\n'
+            printf -- '- Tests: client, server and build all ran in this workflow\n\n'
+            printf 'Merging moves agent-authored code onto `develop`.\n'
+          } > /tmp/pr-body.txt
+
+          git checkout -b "$branch"
+          git add -A
+          git commit -F /tmp/commit-msg.txt
+
+          # develop is not frozen while the agents work — a `full` run spends
+          # about ten minutes in opencode, and anyone can push in that window.
+          # A branch based on a stale develop is what got this push rejected:
+          # the tip carried the old side of every file develop had since
+          # changed, `.github/workflows/loop.yml` among them, and GitHub reads
+          # that as a workflow update no GITHUB_TOKEN may perform. Merging the
+          # current develop in first makes the push a plain fast-forward.
+          BASE="${{ steps.base.outputs.sha }}"
+          git fetch origin develop
+          if [ "$(git rev-parse origin/develop)" != "$BASE" ]; then
+            echo "::warning::develop moved while this run was working; merging it in."
+            if ! git merge --no-edit origin/develop; then
+              echo "::error::The slice conflicts with the current develop."
+              echo "::error::Resolve it by hand, or drop the slice and re-triage."
+              exit 1
+            fi
+            # The tree just changed under the tests that already ran, so they
+            # are re-run rather than assumed. Same script, same definition.
+            if ! bash "${{ github.workspace }}/scripts/run-tests.sh"; then
+              echo "::error::The merge with develop broke a suite. No PR was opened."
+              exit 1
+            fi
+          fi
+
+          bash "${{ github.workspace }}/scripts/ci-push.sh" "$branch"
+          # --auto makes the merge immediate and unattended, so the PR is never a
+          # thing waiting on a person. If the branch protection rules require a
+          # check, gh merges as soon as it goes green; otherwise it merges now.
+          gh pr create --base develop --head "$branch" \
+            --title "feat(loop): ${SLICE}" \
+            --body-file /tmp/pr-body.txt > pr-url.txt
+          echo "url=$(tail -1 pr-url.txt)" >> "$GITHUB_OUTPUT"
+
+      # The tests already ran in this job, on the exact tree that was committed.
+      # This step waits for the *recorded* verdict instead: the `Tests` check from
+      # ci.yml, the one branch protection reads and a reviewer sees. A merge is
+      # only as trustworthy as the check attached to it.
+      #
+      # A PR opened with GITHUB_TOKEN does not trigger a `pull_request` run at
+      # all (GitHub suppresses the recursion), so there is nothing to wait for
+      # when LOOP_PAT is unset. That case falls back to the in-job run and says
+      # so out loud, rather than pretending the PR went green.
+      - name: Wait for the Tests check on the code PR
+        id: wait
+        if: inputs.merge && steps.ship.outputs.url != ''
+        env:
+          GH_TOKEN: ${{ secrets.LOOP_PAT || github.token }}
+          LOOP_PAT: ${{ secrets.LOOP_PAT }}
+          PR_URL: ${{ steps.ship.outputs.url }}
+        run: |
+          set -euo pipefail
+          if [ -z "${LOOP_PAT:-}" ]; then
+            echo "::warning::LOOP_PAT is not set, so no CI run is attached to this PR."
+            echo "::warning::Relying on the in-job test run only; add LOOP_PAT to get a recorded check."
+            echo "verdict=unverified" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Checks register a few seconds to a minute after the PR is opened.
+          registered=false
+          for _ in $(seq 1 30); do
+            count=$(gh pr checks "$PR_URL" --json name --jq 'length' 2>/dev/null || echo 0)
+            if [ "${count:-0}" -gt 0 ]; then registered=true; break; fi
+            sleep 10
+          done
+          if [ "$registered" != "true" ]; then
+            echo "::error::No CI check appeared on $PR_URL within 5 minutes."
+            echo "::error::Check that .github/workflows/ci.yml runs on pull_request -> develop."
+            exit 1
+          fi
+
+          # --watch blocks until every check finishes; --fail-fast returns as
+          # soon as one fails, so a red run is not waited out in full.
+          if gh pr checks "$PR_URL" --watch --fail-fast; then
+            echo "verdict=pass" >> "$GITHUB_OUTPUT"
+            echo "::notice::Tests are green on $PR_URL."
+          else
+            echo "::error::Tests failed on $PR_URL; leaving the PR open and unmerged."
+            echo "verdict=fail" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+      # The code PR is the one that must never wait. The gate above refused
+      # anything denylisted, the tests passed in-job, and the Tests check is
+      # green on the PR, so merging here is the last step of an unattended
+      # pipeline.
+      - name: Merge code PR into develop
+        id: merge
+        if: |
+          inputs.merge
+          && steps.ship.outputs.url != ''
+          && (steps.wait.outcome == 'success' || steps.wait.outcome == 'skipped')
+          && (
+            (
+              inputs.step == 'ship'
+              && steps.tests.outcome == 'success'
+              && steps.browser.outcome == 'success'
+            ) || (
+              inputs.step == 'full'
+              && steps.run.outcome == 'success'
+            )
+          )
+        env:
+          GH_TOKEN: ${{ secrets.LOOP_PAT || github.token }}
+          PR_URL: ${{ steps.ship.outputs.url }}
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR_URL" --merge --delete-branch
+          echo "::notice::Merged $PR_URL into develop."
+
+      # The merge is the point of the pipeline, so the state file has to say so
+      # without a model deciding it. `mark-shipped.sh` rewrites exactly one cell
+      # and refuses if the table does not look the way it expects.
+      #
+      # Best effort by design: a green merge must not turn red because a
+      # bookkeeping push was refused. If it cannot push, the row stays at
+      # VERIFIED and the next triage reconciles it against git history.
+      - name: Mark the slice shipped
+        id: mark
+        if: steps.merge.outcome == 'success'
+        env:
+          SLICE: ${{ steps.slice.outputs.slice }}
+          PR_URL: ${{ steps.ship.outputs.url }}
+          LOOP_PAT: ${{ secrets.LOOP_PAT }}
+        run: |
+          set -euo pipefail
+          # Edit the merged tree, not the loop branch: it is develop's STATE.md
+          # that moved, and the loop branch is about to be irrelevant.
+          git fetch origin develop
+          git checkout -B develop origin/develop
+
+          if ! bash "${{ github.workspace }}/scripts/mark-shipped.sh" "$SLICE" "$PR_URL"; then
+            echo "::warning::Could not mark $SLICE shipped; leaving the row as it is."
+            exit 0
+          fi
+
+          if git diff --quiet -- STATE.md; then
+            echo "::notice::STATE.md already records $SLICE as shipped."
+            exit 0
+          fi
+
+          git add STATE.md
+          git commit -m "chore(loop): mark $SLICE shipped" \
+            -m "Merged as $PR_URL."
+          if ! bash "${{ github.workspace }}/scripts/ci-push.sh" develop; then
+            echo "::warning::Could not push the SHIPPED marker to develop (branch protection?)."
+            echo "::warning::The row stays at VERIFIED; the next triage reconciles it."
+            exit 0
+          fi
+          echo "::notice::Marked $SLICE shipped on develop."
+
+      # Chaining. A `full` run merges one verified slice and then stops, so the
+      # next slice waits for the five-hour slot. Dispatching from here removes
+      # that wait: the follow-up lands in the same `loop` concurrency group, so
+      # it queues behind this job and starts the moment this one ends — no
+      # sleep, no timer, no second scheduler.
+      #
+      # Bounded on purpose. `chain` counts the hops still allowed and the next
+      # run gets one fewer; with the default of 1 a slot does at most two
+      # slices, so an unexpected loop costs two runs, not a night of tokens.
+      # Only `full` chains: triage and verify open a state PR that nobody merged
+      # yet, so the follow-up would read the same STATE.md and repeat itself.
+      - name: Dispatch the next loop run
+        id: chain
+        if: |
+          inputs.step == 'full'
+          && inputs.merge
+          && steps.merge.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.LOOP_PAT || github.token }}
+          CHAIN: ${{ inputs.chain }}
+        run: |
+          set -euo pipefail
+          hops="${CHAIN:-0}"
+          # A non-numeric chain is treated as 0 (stop), not as an error: a
+          # malformed input must not turn a green merge into a red job.
+          if ! [ "$hops" -gt 0 ] 2>/dev/null; then
+            echo "::notice::Chain exhausted (chain=$hops); the next slice waits for the schedule."
+            exit 0
+          fi
+
+          # Read develop, not the working tree: `mark-shipped.sh` may have
+          # rewritten STATE.md without managing to push it, and the follow-up
+          # run reads whatever develop actually holds.
+          git fetch origin develop
+          candidates=$(git show origin/develop:STATE.md \
+            | grep -E '^\| `[A-Z0-9-]+`' \
+            | grep -cF '`candidate`' || true)
+          echo "::notice::${candidates:-0} candidate slice(s) left in STATE.md."
+          if [ "${candidates:-0}" -eq 0 ]; then
+            echo "::notice::Queue is empty; not chaining."
+            exit 0
+          fi
+
+          gh workflow run loop.yml \
+            --ref develop \
+            -f step=full \
+            -f merge=true \
+            -f "chain=$((hops - 1))"
+          echo "chained=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Dispatched the next full run with chain=$((hops - 1))."
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Loop — ${{ inputs.step }}"
+            echo ""
+            echo "- Slice: \`${{ steps.slice.outputs.slice }}\`"
+            echo "- Pipeline: ${{ steps.run.outcome || 'skipped' }}"
+            echo "- In-job tests: ${{ steps.tests.outputs.verdict || 'not run' }}"
+            echo "- Browser check: ${{ steps.browser.outputs.verdict || 'inside the retry script or not run' }}"
+            echo "- CI check on the PR: ${{ steps.wait.outputs.verdict || 'not run' }}"
+            echo "- Proposal PR (state): ${{ steps.state.outputs.url || 'none' }}"
+            echo "- Code PR: ${{ steps.ship.outputs.url || 'none' }}"
+            echo "- Code merged: ${{ steps.merge.outcome == 'success' && 'yes' || 'no' }}"
+            echo "- Slice marked shipped: ${{ steps.mark.outcome || 'skipped' }}"
+            echo "- Chained a follow-up run: ${{ steps.chain.outputs.chained || 'no' }}"
+            echo ""
+            echo "\`\`\`"
+            git status --porcelain || true
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"

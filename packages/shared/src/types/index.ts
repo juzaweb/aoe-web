@@ -94,7 +94,8 @@ export interface BuildingBlueprint {
    */
   gatheredResource?: ResourceType;
   /**
-   * ECO-01: units of `gatheredResource` the building holds when it is finished.
+   * ECO-01: units of `gatheredResource` the building holds at level 1. Each
+   * level above adds 10% (see `getBuildingLevelStats().gatherCapacity`).
    * Re-planting a depleted farm costs the building's own `cost` again.
    */
   gatherCapacity?: number;
@@ -306,8 +307,78 @@ export interface TravelReadyPayload {
   roomName: WorldRoomName;
 }
 
+// ---------------------------------------------------------------------------
+// Raids (Phase 23)
+// ---------------------------------------------------------------------------
+
+/** How a raid ended. `ACTIVE` is only ever a database status, never a result. */
+export type RaidOutcome = 'ATTACKER_WON' | 'DEFENDER_WON' | 'RETREATED';
+
+/**
+ * One empire on the world map, already filtered to the caller's ±5 Town Center
+ * levels. `canAttack` is computed server-side: the client renders the button
+ * from it and never decides eligibility itself.
+ */
+export interface WorldMapEntry {
+  userId: string;
+  name: string;
+  color: string;
+  townCenterLevel: number;
+  /** Epoch ms until which nobody may raid this empire; 0 when unshielded. */
+  shieldUntil: number;
+  /** Epoch ms until which *this caller* may not raid it again; 0 when unlocked. */
+  lockedUntil: number;
+  canAttack: boolean;
+  /** Localized reason `canAttack` is false. */
+  blockReason?: string;
+}
+
+export interface WorldMapPayload {
+  self: { userId: string; townCenterLevel: number };
+  neighbors: WorldMapEntry[];
+}
+
+/** Ack for a committed raid; the client joins `roomName` with `{ ownerId, raidId }`. */
+export interface RaidStartResponse {
+  raidId: string;
+  defenderId: string;
+  roomName: 'kingdom_room';
+}
+
+/** Sent to both sides when a raid closes; the attacker leaves the defender's room. */
+export interface RaidEndedPayload {
+  outcome: RaidOutcome;
+  loot: Resources;
+  returnRoom: 'kingdom_room';
+}
+
+/**
+ * One tile of a player-painted road. Roads are 1x1 and addressed by position,
+ * so a payload carries bare coordinates instead of entity ids.
+ */
+export interface RoadTilePayload {
+  x: number;
+  y: number;
+}
+
+/**
+ * Paints roads on the sender's own kingdom. Every tile costs
+ * `ROAD_COST_PER_TILE` wood; tiles that already hold a road, a building or a
+ * resource node are ignored rather than failing the whole drag.
+ */
+export interface PlaceRoadPayload {
+  tiles: RoadTilePayload[];
+}
+
+/** Removes the sender's own road tiles. Never refunds the wood. */
+export interface RemoveRoadPayload {
+  tiles: RoadTilePayload[];
+}
+
 export enum NetworkMessage {
   PLACE_BUILDING = 'PLACE_BUILDING',
+  PLACE_ROAD = 'PLACE_ROAD',
+  REMOVE_ROAD = 'REMOVE_ROAD',
   MOVE_UNITS = 'MOVE_UNITS',
   TRAIN_UNIT = 'TRAIN_UNIT',
   CANCEL_TRAIN = 'CANCEL_TRAIN',
@@ -326,7 +397,27 @@ export enum NetworkMessage {
   SET_STANCE = 'SET_STANCE',
   TRAVEL = 'TRAVEL',
   TRAVEL_READY = 'TRAVEL_READY',
+  /** The attacker walks out through their retreat gate; the raid is settled. */
+  RAID_RETREAT = 'RAID_RETREAT',
+  /** Server → both sides: the raid is closed, with its outcome and loot. */
+  RAID_ENDED = 'RAID_ENDED',
   ERROR_NOTIFICATION = 'ERROR_NOTIFICATION',
   SYSTEM_ANNOUNCEMENT = 'SYSTEM_ANNOUNCEMENT'
 }
 
+
+export enum RejectCode {
+  RESOURCE = 'RESOURCE',
+  PLACEMENT = 'PLACEMENT',
+  PREREQUISITE = 'PREREQUISITE',
+  BUSY = 'BUSY',
+  GONE = 'GONE',
+  INVALID = 'INVALID',
+  FORBIDDEN = 'FORBIDDEN',
+  LIMIT = 'LIMIT'
+}
+
+export interface ErrorNotificationPayload {
+  message: string;
+  code: RejectCode;
+}

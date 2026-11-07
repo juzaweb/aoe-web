@@ -66,6 +66,18 @@ export class OwnerColorRegistry {
     this.cached.delete(ownerId);
   }
 
+  /**
+   * Seeds a colour from a source other than the room snapshot.
+   *
+   * A spectator room can be created while the defender is offline, so its
+   * `state.players` has no entry to resolve; the world-map row already knows the
+   * colour and can hand it over here.
+   */
+  remember(ownerId: string, css: string | null | undefined): void {
+    const parsed = parseHexColor(css);
+    if (parsed !== null) this.cached.set(ownerId, parsed);
+  }
+
   /** Called when a new Room is bound, so the old world cannot leak in. */
   invalidateAll(): void {
     this.cached.clear();

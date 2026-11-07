@@ -10,8 +10,11 @@ import {
   Warehouse,
   Pickaxe,
   Hammer,
+  Route,
+  Eraser,
   X
 } from 'lucide-react';
+import type { RoadMode } from '../game/input/RoadController.js';
 import { BUILDING_HOTKEY_BY_TYPE } from '../game/input/buildingHotkeys';
 
 interface BuildMenuProps {
@@ -21,6 +24,13 @@ interface BuildMenuProps {
   onCancelBuilding: () => void;
   /** MOB-06: a collapsible 4x2 sheet instead of the always-open desktop dock. */
   compact?: boolean;
+  /**
+   * Roads only exist in a kingdom: the battlefield's road network is terrain,
+   * and a player-built tile there would have no price and no meaning.
+   */
+  showRoadTools?: boolean;
+  roadMode?: RoadMode | null;
+  onSelectRoad?: (mode: RoadMode) => void;
 }
 
 const BUILDINGS: { type: BuildingType; icon: React.ReactNode }[] = [
@@ -53,7 +63,10 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
   activeBuildingType,
   onSelectBuilding,
   onCancelBuilding,
-  compact = false
+  compact = false,
+  showRoadTools = false,
+  roadMode = null,
+  onSelectRoad
 }) => {
   const [open, setOpen] = useState(false);
 
@@ -157,6 +170,67 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
       );
     });
 
+  /**
+   * The road tool pair. Roads are a 1x1 click-drag instead of a footprint, so
+   * they are not building blueprints and cannot be listed in `BUILDINGS`.
+   */
+  const roadTiles = (compactTiles: boolean) => {
+    if (!showRoadTools) return null;
+    const tools: Array<{
+      mode: RoadMode;
+      label: string;
+      hint: string;
+      icon: React.ReactNode;
+    }> = [
+      {
+        mode: 'build',
+        label: 'Đường',
+        hint: 'Kéo để vẽ đường. 2 gỗ mỗi ô. Lính đi nhanh hơn 30% trên đường.',
+        icon: <Route size={20} />
+      },
+      {
+        mode: 'erase',
+        label: 'Xoá',
+        hint: 'Kéo để xoá đường của bạn. Không hoàn lại gỗ.',
+        icon: <Eraser size={20} />
+      }
+    ];
+
+    return tools.map(({ mode, label, hint, icon }) => {
+      const active = roadMode === mode;
+      return (
+        <button
+          key={mode}
+          type="button"
+          onClick={() => onSelectRoad?.(mode)}
+          title={hint}
+          className={`relative flex flex-col items-center justify-between rounded-md border transition-all ${
+            compactTiles ? 'h-12 w-12 p-0.5' : 'h-16 w-16 p-1'
+          } ${
+            active
+              ? 'border-amber-400 bg-amber-600/40 ring-2 ring-amber-400/60 shadow-lg'
+              : 'aoe-button text-slate-200'
+          }`}
+        >
+          <div
+            className={`relative flex items-center justify-center text-amber-300 ${
+              compactTiles ? 'mt-0.5 h-7 w-7' : 'mt-0.5 h-10 w-10'
+            }`}
+          >
+            {icon}
+          </div>
+          <span
+            className={`max-w-full truncate font-semibold leading-none text-slate-300 ${
+              compactTiles ? 'text-[8px]' : 'mb-0.5 max-w-[56px] text-[10px]'
+            }`}
+          >
+            {label}
+          </span>
+        </button>
+      );
+    });
+  };
+
   if (compact) {
     return (
       <div className="pointer-events-auto relative">
@@ -191,7 +265,10 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
                 <X size={14} />
               </button>
             </div>
-            <div className="grid grid-cols-4 gap-1.5">{tiles(true)}</div>
+            <div className="grid grid-cols-4 gap-1.5">
+              {tiles(true)}
+              {roadTiles(true)}
+            </div>
             {activeBuildingType && (
               <button
                 type="button"
@@ -226,7 +303,10 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
         )}
       </div>
 
-      <div className="grid grid-cols-4 gap-2">{tiles(false)}</div>
+      <div className="grid grid-cols-4 gap-2">
+        {tiles(false)}
+        {roadTiles(false)}
+      </div>
     </div>
   );
 };

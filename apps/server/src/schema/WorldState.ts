@@ -4,6 +4,7 @@ import { BuildingState } from './BuildingState.js';
 import { UnitState } from './UnitState.js';
 import { CorpseState } from './CorpseState.js';
 import { ResourceNodeState } from './ResourceNodeState.js';
+import { RoadState } from './RoadState.js';
 import { MAP_GRID_HEIGHT, MAP_GRID_WIDTH } from '@chien-quoc/shared';
 
 export class WorldState extends Schema {
@@ -29,5 +30,10 @@ export class WorldState extends Schema {
    */
   @type({ map: CorpseState }) corpses = new MapSchema<CorpseState>();
   @type({ map: ResourceNodeState }) resourceNodes = new MapSchema<ResourceNodeState>();
+  /**
+   * Player-painted roads. A kingdom starts empty; the battlefield has none of
+   * these because its road network is deterministic terrain.
+   */
+  @type({ map: RoadState }) roads = new MapSchema<RoadState>();
 }
 

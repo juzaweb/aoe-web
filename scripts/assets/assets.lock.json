@@ -15,6 +15,7 @@
     "apps/client/public/assets/icons/population.png": "180769ff35fce1caed1742bf2b9a34ec12d4c9d6119931f0853efa1a143d239c",
     "apps/client/public/assets/icons/stone.png": "c1680e489943ba56b0b61bc81409fc9b7cc5f9a42c4c9bf54ae5ca66b82868b0",
     "apps/client/public/assets/icons/wood.png": "30818d5a18b8a66d902b0b6ac5cfd640945a82cfe3bd21f0ec5082012ad38cf4",
+    "apps/client/public/assets/markers/rally_flag.png": "f515da658dbf6936ceb26d87ed728ff607e382d9e7a533a2116f87b5423188d9",
     "apps/client/public/assets/resources/berry.png": "ce748128384c966e6b5a5b00c31a8b3d1e713a9b5e55fe7d162d4ffaf78a4e04",
     "apps/client/public/assets/resources/gold.png": "57b287e3ea21d8d895051f4e091b8bdebef02e15002d037393e3142d10bf19b0",
     "apps/client/public/assets/resources/stone.png": "4835afa771115c2e35db48c6da144e0257c83b7a4d1c5345c93965c47e012a82",
@@ -62,6 +63,50 @@
       },
       "license": "CC-BY-4.0",
       "page": "https://opengameart.org/content/simple-isometric-hovel"
+    },
+    "oga.bleed-medieval-01": {
+      "author": "Bleed",
+      "files": {
+        "pack": {
+          "sha256": "7119d55abf2cf74264efe9dae1642b6d0413054936da89ef613900e53afa491a",
+          "url": "https://opengameart.org/sites/default/files/Medieval_Building_01.zip"
+        }
+      },
+      "license": "CC-BY-3.0",
+      "page": "https://opengameart.org/content/medieval-building-01-bleeds-game-art-0"
+    },
+    "oga.bleed-medieval-04": {
+      "author": "Bleed",
+      "files": {
+        "pack": {
+          "sha256": "f4c44159f3fb46e5e8aec02f59e97621e86cedb951b72d02b1ff375427804987",
+          "url": "https://opengameart.org/sites/default/files/Medieval_04.zip"
+        }
+      },
+      "license": "CC-BY-3.0",
+      "page": "https://opengameart.org/content/medieval-building-04-bleeds-game-art"
+    },
+    "oga.bleed-medieval-05": {
+      "author": "Bleed",
+      "files": {
+        "sprite": {
+          "sha256": "40baccfc5186df3081580c1a87442ec5a910b2b195346a4423eece595ca96841",
+          "url": "https://opengameart.org/sites/default/files/mb_0000.png"
+        }
+      },
+      "license": "CC-BY-3.0",
+      "page": "https://opengameart.org/content/medieval-building-05-bleeds-game-art"
+    },
+    "oga.bleed-medieval-06": {
+      "author": "Bleed",
+      "files": {
+        "pack": {
+          "sha256": "a469871dbeebfcaa11a416efeadfa81db5f0bad8b5f9063e991d385c755458ed",
+          "url": "https://opengameart.org/sites/default/files/Medieval_Building_06.zip"
+        }
+      },
+      "license": "CC-BY-3.0",
+      "page": "https://opengameart.org/content/medieval-building-06"
     },
     "oga.bleed-trees": {
       "author": "Bleed",
@@ -207,6 +252,98 @@
       "sha256": "2125172533e1e3f79264cd961e1d472c12603644934f059b39cdb3f6dcb2dc48",
       "source": "oga.bleed-hovel",
       "sourceSha256": "bafe4e0ffaf845fbd125d3dce395e56a5c5ad2e3e0233fa2496e29fbebfe6e9a",
+      "topInset": 0
+    },
+    "building.house-2": {
+      "author": "Bleed",
+      "bbox": [
+        1,
+        1,
+        317,
+        232
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        318,
+        232
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 0.6759,
+      "out": "apps/client/public/assets/buildings/house_2.png",
+      "page": "https://opengameart.org/content/medieval-building-05-bleeds-game-art",
+      "scale": 0.731,
+      "sha256": "32b2a8805461c85b6dc913fc3910829b86ea331e807f2696f242f5997b1be556",
+      "source": "oga.bleed-medieval-05",
+      "sourceSha256": "40baccfc5186df3081580c1a87442ec5a910b2b195346a4423eece595ca96841",
+      "topInset": 1
+    },
+    "building.house-3": {
+      "author": "Bleed",
+      "bbox": [
+        2,
+        0,
+        341,
+        256
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        341,
+        256
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.1283,
+      "out": "apps/client/public/assets/buildings/house_3.png",
+      "page": "https://opengameart.org/content/medieval-building-06",
+      "scale": 0.3133,
+      "sha256": "f52510a1b8bb390a506c67ce2e860337174a5d79ec33fb44c77f21b662d97455",
+      "source": "oga.bleed-medieval-06",
+      "sourceSha256": "d68dd009f1933aa85df24bdb9c57dc990ab4994a070161e1f6e620136d5239e0",
+      "topInset": 0
+    },
+    "building.house-4": {
+      "author": "Bleed",
+      "bbox": [
+        123,
+        0,
+        379,
+        280
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        379,
+        280
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 1.1934,
+      "out": "apps/client/public/assets/buildings/house_4.png",
+      "page": "https://opengameart.org/content/medieval-building-01-bleeds-game-art-0",
+      "scale": 0.3263,
+      "sha256": "7968cc21cf3b298ffff8dce833ca3f5f8eb92fbe26c964053c05006a4ece5c54",
+      "source": "oga.bleed-medieval-01",
+      "sourceSha256": "61c074850dba72cc5aa04ac471f7ce2f21046a2ffa8cb462ce0bd27d3d1514af",
+      "topInset": 0
+    },
+    "building.house-5": {
+      "author": "Bleed",
+      "bbox": [
+        21,
+        0,
+        405,
+        304
+      ],
+      "bottomInset": 0,
+      "canvas": [
+        405,
+        304
+      ],
+      "license": "CC-BY-3.0",
+      "lumGain": 0.6662,
+      "out": "apps/client/public/assets/buildings/house_5.png",
+      "page": "https://opengameart.org/content/medieval-building-04-bleeds-game-art",
+      "scale": 0.5429,
+      "sha256": "d3387ae7b416314537b833f2a01a608543d0c74b588f81d8fad28ef9cf0acacf",
+      "source": "oga.bleed-medieval-04",
+      "sourceSha256": "e9ebdbb30b731361e9dc4b6886a6befe9207b7a83c7c06e66f3786dab7627934",
       "topInset": 0
     },
     "building.lumber-camp": {

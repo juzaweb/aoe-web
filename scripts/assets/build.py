@@ -131,7 +131,14 @@ def extract_zip(archive: Path) -> None:
 
 
 def apply_op(im: Image.Image, op: dict, canvas: tuple[int, int]) -> tuple[Image.Image, float, float]:
-    if op.get("crop", "alpha") == "alpha":
+    # `alphaFloor` runs before the crop so a baked drop shadow does not widen
+    # the measured artwork box, and again after `fit` because resampling
+    # reintroduces faint pixels along the base which move the iso corner.
+    alpha_floor = int(op.get("alphaFloor", 0) or 0)
+    if alpha_floor:
+        im = ops.floor_alpha(im, alpha_floor)
+        im = ops.crop_to_alpha(im)
+    elif op.get("crop", "alpha") == "alpha":
         im = ops.crop_to_alpha(im)
     # Mirroring keeps a 2:1 iso render valid (it becomes the opposite visible
     # corner), which is how a single-direction source is turned to face the
@@ -149,6 +156,8 @@ def apply_op(im: Image.Image, op: dict, canvas: tuple[int, int]) -> tuple[Image.
     scale = 1.0
     if op.get("fit", True):
         im, scale = ops.fit(im, canvas)
+        if alpha_floor:
+            im = ops.floor_alpha(im, alpha_floor)
     return ops.place(im, canvas, op.get("anchor", "bottom-center")), scale, gain
 
 

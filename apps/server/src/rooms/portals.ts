@@ -1,9 +1,8 @@
-import { BUILDING_BLUEPRINTS, isDirtRoadTile, zoneKindOf } from '@chien-quoc/shared';
+import { BUILDING_BLUEPRINTS, roadTileKey, zoneKindOf } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { entityIds } from '../services/EntityIdAllocator.js';
-import { terrainOf } from './mapLayout.js';
 
 const PORTAL_BLUEPRINT = BUILDING_BLUEPRINTS.PORTAL;
 const PORTAL_MARGIN = 5;
@@ -43,11 +42,17 @@ function hashOwner(ownerId: string): number {
 }
 
 interface FreeSpotOptions {
-  /** The fixed kingdom gateway may sit on a road/resource tile. */
+  /**
+   * The fixed kingdom gateway may sit on a road/resource tile. This covers the
+   * deterministic battlefield roads and the player-painted kingdom roads alike:
+   * a gateway is server infrastructure, not a build order.
+   */
   ignoreRoads?: boolean;
   ignoreResources?: boolean;
   /** The portal being re-positioned must not block its own target spot. */
   ignoreBuildingId?: string;
+  /** Gap kept on the right edge; the kingdom gateway sits flush (0). */
+  rightMargin?: number;
 }
 
 function isPortalFootprintFree(
@@ -63,17 +68,16 @@ function isPortalFootprintFree(
   if (
     gx < PORTAL_MARGIN ||
     gy < PORTAL_MARGIN ||
-    gx + sizeX > width - PORTAL_MARGIN ||
+    gx + sizeX > width - (options.rightMargin ?? PORTAL_MARGIN) ||
     gy + sizeY > height - PORTAL_MARGIN
   ) {
     return false;
   }
 
   if (!options.ignoreRoads) {
-    const terrain = terrainOf(state);
     for (let x = gx; x < gx + sizeX; x++) {
       for (let y = gy; y < gy + sizeY; y++) {
-        if (isDirtRoadTile(x, y, terrain)) return false;
+        if (state.roads.has(roadTileKey(x, y))) return false;
       }
     }
   }
@@ -133,9 +137,9 @@ function findPortalSpot(
 }
 
 /**
- * Fixed gateway position for a kingdom: the right edge of the map, vertically
- * centred. Resources and roads may be under it (they are cleared when the
- * gateway is placed); only a building can push it along the edge.
+ * Fixed gateway position for a kingdom: flush against the right edge of the
+ * map, vertically centred. Resources and roads may be under it (they are cleared
+ * when the gateway is placed); only a building can push it inward.
  */
 function findKingdomPortalSpot(
   state: WorldState,
@@ -143,9 +147,14 @@ function findKingdomPortalSpot(
 ): { x: number; y: number } | null {
   const sizeX = PORTAL_BLUEPRINT.sizeX;
   const sizeY = PORTAL_BLUEPRINT.sizeY;
-  const edgeX = state.mapWidth - PORTAL_MARGIN - sizeX;
+  const edgeX = state.mapWidth - sizeX;
   const centreY = Math.floor(state.mapHeight / 2) - Math.floor(sizeY / 2);
-  const options = { ignoreRoads: true, ignoreResources: true, ignoreBuildingId };
+  const options = {
+    ignoreRoads: true,
+    ignoreResources: true,
+    ignoreBuildingId,
+    rightMargin: 0
+  };
 
   const tryColumn = (x: number): { x: number; y: number } | null => {
     for (let offset = 0; offset <= 80; offset += 2) {
@@ -163,7 +172,7 @@ function findKingdomPortalSpot(
 
   // A building already occupies the edge at the centre; step inward a little so
   // the gateway still reads as "on the right side" of the map.
-  for (let x = edgeX - 3; x >= edgeX - 30; x -= 3) {
+  for (let x = edgeX - 2; x >= edgeX - 30; x -= 2) {
     const spot = tryColumn(x);
     if (spot) return spot;
   }
@@ -282,6 +291,7 @@ export function ensurePortalFor(state: WorldState, ownerId: string): BuildingSta
 }
 
 const ARRIVAL_COLUMNS = 7;
+const ARRIVAL_SPACING = 0.8;
 
 function arrivalCandidate(
   portal: BuildingState,
@@ -292,11 +302,18 @@ function arrivalCandidate(
   const col = slot % ARRIVAL_COLUMNS;
   const row = Math.floor(slot / ARRIVAL_COLUMNS);
 
-  const x = portal.gridX + portal.sizeX / 2 + (col - (ARRIVAL_COLUMNS - 1) / 2) * 0.8;
-  const y = portal.gridY + portal.sizeY + 1 + row * 0.8;
+  // The fan is centred on the portal, then slid back inside the map. A kingdom
+  // gateway sits flush on the right edge, so a centred fan would clamp all seven
+  // columns onto the same x and arriving units would stack in one file.
+  const fanWidth = (ARRIVAL_COLUMNS - 1) * ARRIVAL_SPACING;
+  const centred = portal.gridX + portal.sizeX / 2 - fanWidth / 2;
+  const start = Math.max(0.5, Math.min(width - 0.5 - fanWidth, centred));
+
+  const x = start + col * ARRIVAL_SPACING;
+  const y = portal.gridY + portal.sizeY + 1 + row * ARRIVAL_SPACING;
 
   return {
-    x: Math.max(0.5, Math.min(width - 0.5, x)),
+    x,
     y: Math.max(0.5, Math.min(height - 0.5, y))
   };
 }

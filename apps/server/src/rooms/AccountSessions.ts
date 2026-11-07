@@ -112,6 +112,23 @@ export class AccountSessionCoordinator {
   }
 
   /**
+   * Whether the account still has a live room socket.
+   *
+   * A stale entry left by a socket that already died is dropped here rather
+   * than reported as live: the HTTP retreat fallback may only run when the
+   * player has no in-room path to command their army.
+   */
+  hasLiveSession(ownerId: string): boolean {
+    const active = this.activeByOwner.get(ownerId);
+    if (!active) return false;
+    if (!active.isAlive()) {
+      this.activeByOwner.delete(ownerId);
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * Marks that this account is moving between rooms. The destination join may
    * then claim the account even if the source socket has not finished closing.
    */
