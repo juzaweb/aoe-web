@@ -198,6 +198,13 @@ function addBuilding(
   return building;
 }
 
+/** Snapshot of the room's buildings, in insertion order. */
+function listedBuildings(room: WorldRoom): BuildingState[] {
+  const buildings: BuildingState[] = [];
+  room.state.buildings.forEach((b: BuildingState) => buildings.push(b));
+  return buildings;
+}
+
 function addResource(
   room: WorldRoom,
   options: { id: string; resourceType?: string; gridX?: number; gridY?: number; remainingAmount?: number }
@@ -468,6 +475,95 @@ describe('handlePlaceBuilding', () => {
 
     expect(room.state.buildings.size).toBe(1);
     expect(villager.actionState).toBe('IDLE');
+  });
+
+  it('queues a shift-placed foundation behind the site a crew already builds', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 500 });
+    const villager = addUnit(room, { id: 'u_1', ownerId: 'player-a', x: 30, y: 30 });
+    const clientA = createClient('player-a');
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 40, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const first = listedBuildings(room)[0];
+    expect(villager.targetEntityId).toBe(first.id);
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 44, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const second = listedBuildings(room).find((b) => b.id !== first.id)!;
+
+    // The crew stays on the first site; the second waits behind it.
+    expect(villager.targetEntityId).toBe(first.id);
+    expect(second.isConstructed).toBe(false);
+
+    // Finishing the first site hands the villager the queued foundation.
+    first.isConstructed = true;
+    internals(room).update(16);
+
+    expect(villager.actionState).toBe('BUILDING');
+    expect(villager.targetEntityId).toBe(second.id);
+  });
+
+  it('skips a queued foundation that was cancelled before the crew reached it', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 500 });
+    const villager = addUnit(room, { id: 'u_1', ownerId: 'player-a', x: 30, y: 30 });
+    const clientA = createClient('player-a');
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 40, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const first = listedBuildings(room)[0];
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 44, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const second = listedBuildings(room).find((b) => b.id !== first.id)!;
+    room.state.buildings.delete(second.id);
+
+    first.isConstructed = true;
+    internals(room).update(16);
+
+    // The vanished entry is dropped instead of stranding the villager on it.
+    expect(villager.actionState).toBe('IDLE');
+    expect(villager.targetEntityId).toBe('');
+  });
+
+  it('lets a plain drop replace the crew order and clear its build queue', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 500 });
+    const villager = addUnit(room, { id: 'u_1', ownerId: 'player-a', x: 30, y: 30 });
+    const clientA = createClient('player-a');
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 40, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const first = listedBuildings(room)[0];
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 44, gridY: 40, unitIds: ['u_1'], queue: true
+    });
+    const queued = listedBuildings(room).find((b) => b.id !== first.id)!;
+
+    internals(room).commands.handlePlaceBuilding(clientA, {
+      type: 'HOUSE', gridX: 48, gridY: 40, unitIds: ['u_1']
+    });
+    const replacement = listedBuildings(room).find(
+      (b) => b.id !== first.id && b.id !== queued.id
+    )!;
+
+    expect(villager.targetEntityId).toBe(replacement.id);
+
+    // The stale queue entry must not pull the crew away once the first site is done.
+    first.isConstructed = true;
+    internals(room).update(16);
+    expect(villager.targetEntityId).toBe(replacement.id);
+
+    replacement.isConstructed = true;
+    internals(room).update(16);
+    expect(villager.actionState).toBe('IDLE');
+    expect(villager.targetEntityId).toBe('');
   });
 });
 

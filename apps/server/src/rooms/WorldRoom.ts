@@ -1375,9 +1375,11 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   private processUnitBuilding(unit: UnitState) {
     const building = this.state.buildings.get(unit.targetEntityId);
 
-    // Cancelled, destroyed or finished: there is nothing left to build, so fall
-    // back to a queued waypoint (the site may have been a detour) or go idle.
+    // Cancelled, destroyed or finished: hand the villager the next foundation
+    // queued by a shift-placement chain; otherwise fall back to a queued
+    // waypoint (the site may have been a detour) or go idle.
     if (!building || building.isConstructed || building.ownerId !== unit.ownerId) {
+      if (this.commands.advanceBuildQueue(unit)) return;
       this.movement.resumeQueuedWaypoint(unit);
       return;
     }
