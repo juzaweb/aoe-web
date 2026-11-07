@@ -221,15 +221,22 @@ def build_target(target_id: str, target: dict, manifest: dict) -> dict:
 
 
 def write_lock(entries: dict, manifest: dict, legacy: dict | None = None) -> None:
+    previous = load_json(LOCK) if LOCK.exists() else {}
+    previous_sources = previous.get("sources", {})
     sources = {}
     for key, source in manifest["sources"].items():
         files = {}
         for file_key, file in source["files"].items():
             name = file["url"].rsplit("/", 1)[-1]
             cached = CACHE / name
+            # A command that does not fetch (notably `--legacy`) must not erase
+            # the recorded source hash just because the cache is empty. Keep the
+            # provenance from the lock and only replace it with a fresh hash when
+            # the source is actually on disk.
+            recorded = previous_sources.get(key, {}).get("files", {}).get(file_key, {}).get("sha256")
             files[file_key] = {
                 "url": file["url"],
-                "sha256": sha256(cached) if cached.exists() else None
+                "sha256": sha256(cached) if cached.exists() else recorded
             }
         sources[key] = {
             "page": source["page"],
@@ -240,7 +247,7 @@ def write_lock(entries: dict, manifest: dict, legacy: dict | None = None) -> Non
     # A plain `--all` rebuild must not drop the legacy hashes: they are recorded
     # by a separate command because they pin files this pipeline never builds.
     if legacy is None:
-        legacy = load_json(LOCK).get("legacy", {}) if LOCK.exists() else {}
+        legacy = previous.get("legacy", {})
     payload: dict = {"version": 1, "sources": sources, "targets": entries}
     if legacy:
         payload["legacy"] = legacy

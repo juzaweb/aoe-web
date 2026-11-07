@@ -1,8 +1,10 @@
 {
   "legacy": {
+    "apps/client/public/assets/buildings/archery_range.png": "aafa9d695e453b1699414935c4e800ebe6ee26f941aa606869891d31e642f605",
     "apps/client/public/assets/buildings/farm.png": "1b5612c859cf890c43f15a2ad2631a3c3b3eacf35418a31216477c49657d0c58",
     "apps/client/public/assets/buildings/mill.png": "b32adc29f88a739702706b9bfcbc1ab0a12be45a1624ffbea910ae199f5e393e",
     "apps/client/public/assets/buildings/mining_camp.png": "3ed077b00b2b44420a4a4e169f093e34f5ff6a8b6cbbf6f1c4c393fecb51e801",
+    "apps/client/public/assets/buildings/stable.png": "2eb8fd57d0fdd8d2f223960c5b59cd6d57cc1c5f28db7477c1701d23a6ae1d70",
     "apps/client/public/assets/buildings/tower.png": "d4e4fef1954c49f0ac03a72118d87d36fd6265790bc664794d7e3dad3040ed0a",
     "apps/client/public/assets/cursors/attack.png": "6a4969515fe20e59c79e2fc37d603ac3f5aa9f476bccbd66e93c67d0ebac325c",
     "apps/client/public/assets/cursors/build-blocked.png": "91cf73a85574ab0736ec89764b47930aa4a22ad3989d5f0281b42de4e1e7ce92",
@@ -49,7 +51,7 @@
     "apps/client/public/assets/units/raw/spearman_cutout_raw.png": "c4185ab37c1b890995f3fb9e69992b259c3661ea499873f2791a2447bb326589",
     "apps/client/public/assets/units/spearman_idle.png": "f1ad151727972670b66b28c40065bc0d357b234fd5383acbe1e85385c4546311",
     "apps/client/public/assets/units/spearman_sheet.png": "2c55e34221e23942911df3e15440ddf88807c0ce23a5b88fdbaf5410159616b5",
-    "apps/client/public/assets/units/villager_idle.png": "697b151fd4cc154acbc1d83647e6a46bc4a0f57f2c3125c4ad8437b66559d7ec",
+    "apps/client/public/assets/units/villager_idle.png": "1e1aadc5f8fe0969bd532b104a4fa798a8f07305c5c5657e8758c5854263a791",
     "apps/client/public/assets/units/villager_sheet.png": "c54f16566cc731e9b84cf64e45c4e031d0ff7da70bf035784548218257435877"
   },
   "sources": {

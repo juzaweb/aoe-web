@@ -84,8 +84,8 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
 }) => {
   const buildingBp = entity.type === 'building' ? BUILDING_BLUEPRINTS[entity.subType as BuildingType] : null;
   const trainableUnits = buildingBp ? buildingBp.trainableUnits : [];
-  // MIL-01: `null` for a building whose sheet is not in the repo yet, so the
-  // panel draws its placeholder instead of requesting a file that cannot exist.
+  // MIL-01: `null` only for a building type that ships no sheet, so the panel
+  // draws its placeholder instead of requesting a file that cannot exist.
   const buildingThumb = entity.type === 'building' ? buildingThumbnail(entity.subType ?? '') : null;
 
   const buildingIsOwnedAndFinished =

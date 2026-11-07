@@ -1,8 +1,8 @@
 """Script to generate building assets for Chien Quoc RTS using Local ComfyUI API."""
 
+import argparse
 import json
 import os
-import sys
 import time
 import urllib.parse
 import urllib.request
@@ -13,22 +13,38 @@ ROOT = Path(__file__).resolve().parent.parent
 CLIENT_PUBLIC = ROOT / "apps" / "client" / "public"
 OUTPUT_DIR = CLIENT_PUBLIC / "assets" / "buildings"
 
-API_HOST = "http://192.168.1.14:8090"
 
-def get_api_key() -> str:
+def read_env_file() -> dict[str, str]:
+    values: dict[str, str] = {}
     env_file = ROOT / ".env"
     if env_file.exists():
         with open(env_file, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
-                if line.startswith("LOCAL_API_KEY="):
-                    return line.split("=", 1)[1].strip().strip('"').strip("'")
-    api_key = os.environ.get("LOCAL_API_KEY")
-    if api_key:
-        return api_key
-    raise ValueError("LOCAL_API_KEY not found in .env or environment")
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
 
-API_KEY = get_api_key()
+
+ENV = read_env_file()
+
+
+def env_value(name: str) -> str | None:
+    value = os.environ.get(name) or ENV.get(name)
+    return value.strip() if value else None
+
+
+def require_env(name: str) -> str:
+    value = env_value(name)
+    if not value:
+        raise ValueError(f"{name} not found in .env or environment")
+    return value
+
+
+API_HOST = require_env("LOCAL_API_URL").rstrip("/")
+API_KEY = require_env("LOCAL_API_KEY")
 
 BUILDING_SPECS = [
     {
@@ -101,28 +117,34 @@ BUILDING_SPECS = [
         "id": "stable",
         "target_w": 400,
         "target_h": 320,
-        "gen_w": 1024,
+        "gen_w": 1280,
         "gen_h": 1024,
         "prompt": (
-            "A 2D game asset of an ancient East Asian cavalry stable and horse paddock, 2.5D isometric top-down view. "
-            "Timber and stone horse barn with a wide open stall door, hay bales, a wooden hitching rail, "
-            "tethering posts with saddles and tack hanging, small dirt exercise yard with hoof prints, "
-            "Warring States era military horse breeding building asset. "
-            "Solid pure white background, clean sharp silhouette, game asset ready --ar 1:1 --v 6.0 --style raw"
+            "A 2D RTS game building asset, ancient East Asian cavalry stable and horse paddock, "
+            "strict 2.5D isometric projection viewed from the south-east, 45 degree camera angle, "
+            "three-quarter aerial top-down view. Timber and stone horse barn with a wide open stall door, "
+            "hay bales, a wooden hitching rail, tethering posts with saddles and tack hanging, "
+            "a small dirt exercise yard, a war banner on the roof, Warring States era military horse breeding stable. "
+            "Hand-painted game art, crisp details, strong readable silhouette, warm daylight from the upper left. "
+            "Isolated on a solid pure white background, no cast shadow, no ground plane, no text, no border, "
+            "game asset ready --style raw"
         ),
     },
     {
         "id": "archery_range",
         "target_w": 400,
         "target_h": 320,
-        "gen_w": 1024,
+        "gen_w": 1280,
         "gen_h": 1024,
         "prompt": (
-            "A 2D game asset of an ancient East Asian archery range training ground, 2.5D isometric top-down view. "
-            "Low timber shooting pavilion with a thatched awning, straw target butts with arrows stuck in them, "
-            "a rack of bows and quivers leaning by the fence, a dirt firing lane with a backstop wall, "
-            "Warring States era military archery training building asset. "
-            "Solid pure white background, clean sharp silhouette, game asset ready --ar 1:1 --v 6.0 --style raw"
+            "A 2D RTS game building asset, ancient East Asian archery range training ground, "
+            "strict 2.5D isometric projection viewed from the south-east, 45 degree camera angle, "
+            "three-quarter aerial top-down view. Low timber shooting pavilion with a thatched awning, "
+            "straw target butts with arrows stuck in them, a rack of bows and quivers leaning by a wooden fence, "
+            "a dirt firing lane with a low backstop wall, Warring States era military archery training camp. "
+            "Hand-painted game art, crisp details, strong readable silhouette, warm daylight from the upper left. "
+            "Isolated on a solid pure white background, no cast shadow, no ground plane, no text, no border, "
+            "game asset ready --style raw"
         ),
     },
 ]
@@ -137,7 +159,7 @@ def api_request(path: str, data: dict = None) -> dict:
         body = json.dumps(data).encode("utf-8")
 
     req = urllib.request.Request(url, data=body, headers=headers)
-    with urllib.request.urlopen(req) as resp:
+    with urllib.request.urlopen(req, timeout=300) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -162,14 +184,17 @@ def download_file(url: str, dest_path: Path):
     direct_url = f"{API_HOST}{parsed.path}"
     req = urllib.request.Request(direct_url, headers={"X-API-Key": API_KEY})
     dest_path.parent.mkdir(parents=True, exist_ok=True)
-    with urllib.request.urlopen(req) as r, open(dest_path, "wb") as f:
+    with urllib.request.urlopen(req, timeout=300) as r, open(dest_path, "wb") as f:
         f.write(r.read())
 
 
 def process_building(raw_path: Path, output_path: Path, target_w: int, target_h: int):
     with Image.open(raw_path) as img:
         img = img.convert("RGBA")
-        bbox = img.getbbox()
+        # Crop on the alpha channel, not `img.getbbox()`: fully transparent
+        # pixels may still carry white RGB bytes after the key-out, which would
+        # make the plain RGB bbox the whole frame.
+        bbox = img.getchannel("A").getbbox()
         if bbox:
             img = img.crop(bbox)
 
@@ -187,27 +212,80 @@ def process_building(raw_path: Path, output_path: Path, target_w: int, target_h:
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         canvas.save(output_path, "PNG", optimize=True)
-        print(f"  Processed {output_path.name}: {target_w}x{target_h}")
+        alpha = canvas.getchannel("A")
+        art_box = alpha.getbbox()
+        top_inset = art_box[1] if art_box else target_h
+        bottom_inset = target_h - art_box[3] if art_box else target_h
+        print(
+            f"  Processed {output_path.name}: {target_w}x{target_h} "
+            f"art={nw}x{nh} topInset={top_inset} bottomInset={bottom_inset}"
+        )
 
 
-def main():
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    for idx, spec in enumerate(BUILDING_SPECS):
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--only",
+        metavar="IDS",
+        help="comma-separated building ids, e.g. stable,archery_range",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="regenerate every spec, including the five older buildings whose PNGs were replaced by the OpenGameArt pipeline",
+    )
+    parser.add_argument("--steps", type=int, default=8, help="sampling steps (default: 8)")
+    parser.add_argument("--seed", type=int, default=None, help="optional seed for a reproducible render")
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=OUTPUT_DIR,
+        help="output directory (default: apps/client/public/assets/buildings)",
+    )
+    parser.add_argument(
+        "--suffix",
+        default="",
+        help="append a suffix to output filenames, useful for comparing candidates",
+    )
+    parser.add_argument("--keep-raw", action="store_true", help="keep the cut-out PNG before processing")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    if args.only and args.all:
+        raise SystemExit("pass either --only <ids> or --all, not both")
+    if not args.only and not args.all:
+        # Five of the specs predate the OpenGameArt replacement and target half
+        # the shipped resolution. Running them by accident would overwrite the
+        # licensed art, so regenerating everything is an explicit choice.
+        ids = ", ".join(spec["id"] for spec in BUILDING_SPECS)
+        raise SystemExit(f"pass --only <ids> or --all; ids: {ids}")
+    wanted = {part.strip() for part in args.only.split(",")} if args.only else None
+    specs = [spec for spec in BUILDING_SPECS if args.all or spec["id"] in wanted]
+    if not specs:
+        raise SystemExit(f"no building spec matches --only {args.only!r}")
+
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    for idx, spec in enumerate(specs):
         b_id = spec["id"]
         print(f"\n==========================================")
-        print(f"[{idx+1}/{len(BUILDING_SPECS)}] Generating: {b_id.upper()}")
+        print(f"[{idx+1}/{len(specs)}] Generating: {b_id.upper()}")
         print(f"==========================================")
 
         # 1. Text to Image
-        img_resp = api_request("/v1/images", {
+        image_request = {
             "prompt": spec["prompt"],
             "width": spec["gen_w"],
             "height": spec["gen_h"],
-            "steps": 8
-        })
+            "steps": args.steps,
+        }
+        if args.seed is not None:
+            image_request["seed"] = args.seed
+        img_resp = api_request("/v1/images", image_request)
         img_job_id = img_resp["job_id"]
         print(f"Submitted image job: {img_job_id}")
-        img_job = wait_for_job(img_job_id, f"{b_id}-img")
+        wait_for_job(img_job_id, f"{b_id}-img")
 
         # 2. Key out white background via /v1/sprites
         sprite_resp = api_request("/v1/sprites", {
@@ -229,15 +307,18 @@ def main():
                 break
         if not target_file and sprite_job.get("files"):
             target_file = sprite_job["files"][0]
+        if not target_file:
+            raise RuntimeError(f"No output files returned by sprite cutout job for {b_id}")
 
-        temp_path = OUTPUT_DIR / f"{b_id}_raw.png"
+        temp_path = args.out_dir / f"{b_id}{args.suffix}_raw.png"
         download_file(target_file["url"], temp_path)
 
-        final_path = OUTPUT_DIR / f"{b_id}.png"
+        final_path = args.out_dir / f"{b_id}{args.suffix}.png"
         process_building(temp_path, final_path, spec["target_w"], spec["target_h"])
-        temp_path.unlink(missing_ok=True)
+        if not args.keep_raw:
+            temp_path.unlink(missing_ok=True)
 
-    print(f"\nAll {len(BUILDING_SPECS)} buildings generated successfully!")
+    print(f"\nAll {len(specs)} buildings generated successfully!")
 
 
 if __name__ == "__main__":
