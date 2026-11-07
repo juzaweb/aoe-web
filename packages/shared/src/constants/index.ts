@@ -169,10 +169,16 @@ export const GATHER_UNITS_PER_SECOND: Record<ResourceType, number> = {
   gold: 1.25
 };
 
-/** Milliseconds of standing at a source to take one unit of `resourceType`. */
-export function gatherIntervalMs(resourceType: string): number {
+/**
+ * Milliseconds of standing at a source to take one unit of `resourceType`.
+ *
+ * `multiplier` folds an owner's drop-off bonus into the rate (phase 26); the
+ * default of 1 keeps every pre-phase call site on the original cadence.
+ */
+export function gatherIntervalMs(resourceType: string, multiplier = 1): number {
   const rate = GATHER_UNITS_PER_SECOND[resourceType as ResourceType] ?? GATHER_UNITS_PER_SECOND.wood;
-  return 1000 / rate;
+  const safeMultiplier = Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
+  return 1000 / (rate * safeMultiplier);
 }
 
 /**
@@ -518,6 +524,41 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     description: 'Gateway between your kingdom and the shared battlefield.'
   }
 };
+
+/**
+ * The building that trains `unitType` (phase 26).
+ *
+ * Derived from the blueprints' `trainableUnits` so the roster still has one
+ * source of truth: adding a unit to a trainer automatically gives it that
+ * building's level effects. Returns `null` for a type nobody trains.
+ */
+export function getUnitTrainerBuilding(unitType: string): BuildingType | null {
+  for (const type of Object.keys(BUILDING_BLUEPRINTS) as BuildingType[]) {
+    if (BUILDING_BLUEPRINTS[type].trainableUnits.includes(unitType as UnitType)) return type;
+  }
+  return null;
+}
+
+/**
+ * The drop-off that accepts `resourceType` (phase 26).
+ *
+ * The Town Center accepts every resource but deliberately has no gather bonus;
+ * only the three specialised camps do, which is what makes placing one worth
+ * the wood.
+ */
+export function getGatherBuildingType(resourceType: string): BuildingType | null {
+  switch (resourceType) {
+    case 'wood':
+      return 'LUMBER_CAMP';
+    case 'food':
+      return 'MILL';
+    case 'gold':
+    case 'stone':
+      return 'MINING_CAMP';
+    default:
+      return null;
+  }
+}
 
 export const UNIT_BLUEPRINTS: Record<UnitType, UnitBlueprint> = {
   VILLAGER: {
