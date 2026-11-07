@@ -1522,6 +1522,22 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     // 1b. Update construction for unconstructed roads
     if (this.unconstructedRoadIds.size > 0) {
+      const roadBuilders = new Map<string, UnitState[]>();
+      this.state.units.forEach((unit: UnitState) => {
+        if (
+          unit.actionState === 'BUILDING' &&
+          unit.targetEntityId &&
+          this.unconstructedRoadIds.has(unit.targetEntityId)
+        ) {
+          let list = roadBuilders.get(unit.targetEntityId);
+          if (!list) {
+            list = [];
+            roadBuilders.set(unit.targetEntityId, list);
+          }
+          list.push(unit);
+        }
+      });
+
       for (const roadId of Array.from(this.unconstructedRoadIds)) {
         const road = this.state.roads.get(roadId);
         if (!road || road.isConstructed) {
@@ -1529,21 +1545,19 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           continue;
         }
 
+        const builders = roadBuilders.get(roadId);
+        if (!builders || builders.length === 0) continue;
+
         let buildPower = 0;
         const workingUnits: UnitState[] = [];
-        this.state.units.forEach((unit: UnitState) => {
-          if (
-            unit.actionState === 'BUILDING' &&
-            unit.targetEntityId === road.id &&
-            unit.ownerId === road.ownerId
-          ) {
-            const dist = Math.hypot(unit.x - (road.gridX + 0.5), unit.y - (road.gridY + 0.5));
-            if (dist <= 1.5) {
-              buildPower += UNIT_BLUEPRINTS[unit.type as UnitType]?.buildPower ?? 0;
-              workingUnits.push(unit);
-            }
+        for (const unit of builders) {
+          if (unit.ownerId !== road.ownerId) continue;
+          const dist = Math.hypot(unit.x - (road.gridX + 0.5), unit.y - (road.gridY + 0.5));
+          if (dist <= 1.5) {
+            buildPower += UNIT_BLUEPRINTS[unit.type as UnitType]?.buildPower ?? 0;
+            workingUnits.push(unit);
           }
-        });
+        }
 
         if (buildPower > 0) {
           road.constructionProgress += (deltaTime * 100 * buildPower) / ROAD_BUILD_TIME_MS;

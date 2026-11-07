@@ -136,7 +136,11 @@ export class SelectionController {
 
     if (findUnitAt(scene, worldPoint, undefined, pickSlack)) return true;
     if (this.buildingAt(worldPoint, grid, (pickSlack - 1) * 16)) return true;
-    return findResourceAt(scene, worldPoint, grid, pickSlack) !== null;
+    if (findResourceAt(scene, worldPoint, grid, pickSlack) !== null) return true;
+
+    const roads = (scene.room?.state as any)?.roads;
+    const road = roads?.get(`${grid.gridX},${grid.gridY}`);
+    return road?.isConstructed === false && road?.ownerId === scene.myOwnerId;
   }
 
   /**

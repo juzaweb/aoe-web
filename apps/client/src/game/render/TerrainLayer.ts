@@ -1,4 +1,4 @@
-import { MapTerrain, TERRAIN_BATTLEFIELD, gridToScreen, screenToGrid } from '@chien-quoc/shared';
+import { MapTerrain, TERRAIN_BATTLEFIELD, TILE_HEIGHT, TILE_WIDTH, gridToScreen, screenToGrid } from '@chien-quoc/shared';
 import type * as Phaser from 'phaser';
 import { MAP_APRON_TILES } from './decorScatter.js';
 import { grassTextureIndex, grassTint, hash2 } from './visualVariation.js';
@@ -23,7 +23,7 @@ export class TerrainLayer {
   private playerRoadPool: Phaser.GameObjects.Image[] = [];
   private unconstructedRoadTiles: Array<{ gridX: number; gridY: number; progress: number }> = [];
   private unconstructedRoadPool: Phaser.GameObjects.Image[] = [];
-  private foundationGraphicPool: Phaser.GameObjects.Graphics[] = [];
+  private foundationGraphics: Phaser.GameObjects.Graphics | null = null;
   private terrain: MapTerrain = TERRAIN_BATTLEFIELD;
   private lastViewportX = -999999;
   private lastViewportY = -999999;
@@ -45,6 +45,8 @@ export class TerrainLayer {
     // with the rest of the terrain, so a long road costs only the tiles on
     // screen instead of one object per tile in the map.
     this.playerRoadPool = [];
+    this.foundationGraphics = this.scene.add.graphics();
+    this.foundationGraphics.setDepth(-99994);
   }
 
   /**
@@ -208,6 +210,15 @@ export class TerrainLayer {
 
     // Unconstructed road tiles (foundations)
     let unbuiltIdx = 0;
+    const halfW = TILE_WIDTH / 2;
+    const halfH = TILE_HEIGHT / 2;
+
+    if (this.foundationGraphics) {
+      this.foundationGraphics.clear();
+      this.foundationGraphics.lineStyle(1.5, 0xf59e0b, 0.85);
+      this.foundationGraphics.beginPath();
+    }
+
     for (const tile of this.unconstructedRoadTiles) {
       if (tile.gridX < minGx || tile.gridX > maxGx || tile.gridY < minGy || tile.gridY > maxGy) continue;
 
@@ -217,14 +228,6 @@ export class TerrainLayer {
         image.setDepth(-99995);
         image.setVisible(false);
         this.unconstructedRoadPool.push(image);
-      }
-
-      let gfx = this.foundationGraphicPool[unbuiltIdx];
-      if (!gfx) {
-        gfx = this.scene.add.graphics();
-        gfx.setDepth(-99994);
-        gfx.setVisible(false);
-        this.foundationGraphicPool.push(gfx);
       }
       unbuiltIdx++;
 
@@ -241,20 +244,19 @@ export class TerrainLayer {
       image.setAlpha(0.45);
       image.setVisible(true);
 
-      gfx.clear();
-      gfx.lineStyle(1.5, 0xf59e0b, 0.85);
-      gfx.beginPath();
-      gfx.moveTo(pos.x, pos.y - 16);
-      gfx.lineTo(pos.x + 32, pos.y);
-      gfx.lineTo(pos.x, pos.y + 16);
-      gfx.lineTo(pos.x - 32, pos.y);
-      gfx.closePath();
-      gfx.strokePath();
-      gfx.setVisible(true);
+      if (this.foundationGraphics) {
+        this.foundationGraphics.moveTo(pos.x, pos.y - halfH);
+        this.foundationGraphics.lineTo(pos.x + halfW, pos.y);
+        this.foundationGraphics.lineTo(pos.x, pos.y + halfH);
+        this.foundationGraphics.lineTo(pos.x - halfW, pos.y);
+        this.foundationGraphics.closePath();
+      }
     }
+
+    this.foundationGraphics?.strokePath();
+
     for (let i = unbuiltIdx; i < this.unconstructedRoadPool.length; i++) {
       this.unconstructedRoadPool[i].setVisible(false);
-      this.foundationGraphicPool[i]?.setVisible(false);
     }
   }
 }

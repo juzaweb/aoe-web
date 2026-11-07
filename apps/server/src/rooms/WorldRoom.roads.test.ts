@@ -443,9 +443,10 @@ describe('villagers building roads', () => {
 
     expect(villager.actionState).toBe('BUILDING');
     expect(villager.targetEntityId).toBe(road.id);
+    expect(rejectionOf(client)).toBeNull();
   });
 
-  it('cancels unconstructed road via handleCancelBuilding and refunds full wood', () => {
+  it('cancels unconstructed road via handleCancelBuilding and refunds full wood without error', () => {
     const room = createRoom();
     const player = addPlayer(room, 'owner', 100);
     const client = createClient();
@@ -460,5 +461,39 @@ describe('villagers building roads', () => {
 
     expect(room.state.roads.has(road.id)).toBe(false);
     expect(player.wood).toBe(100);
+    expect(rejectionOf(client)).toBeNull();
+  });
+
+  it('does not divert villager to nearby unconstructed road after finishing a building', () => {
+    const room = createRoom();
+    addPlayer(room, 'owner', 1000);
+    const villager = addVillager(room, 'v1', 20, 20);
+    const client = createClient();
+
+    // Place an unconstructed road at (22, 20)
+    placeRoad(room, client, [{ x: 22, y: 20 }]);
+    const road = room.state.roads.get(roadTileKey(22, 20))!;
+    expect(road.isConstructed).toBe(false);
+
+    // Create a house foundation at (18, 20) and assign villager
+    const house = addBuilding(room, 'b_house', 18, 20, 2, 2);
+    house.type = 'HOUSE';
+    house.isConstructed = false;
+    house.constructionProgress = 90;
+
+    (room as any).commands.handleBuildTarget(client, {
+      unitIds: ['v1'],
+      buildingId: house.id
+    });
+    expect(villager.actionState).toBe('BUILDING');
+    expect(villager.targetEntityId).toBe(house.id);
+
+    // Complete the house
+    tickRoom(room, [1000, 1000, 1000]);
+    expect(house.isConstructed).toBe(true);
+
+    // Villager should become IDLE, NOT target the unconstructed road
+    expect(villager.actionState).toBe('IDLE');
+    expect(villager.targetEntityId).not.toBe(road.id);
   });
 });

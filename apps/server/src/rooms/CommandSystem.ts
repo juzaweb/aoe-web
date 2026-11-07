@@ -628,10 +628,14 @@ export class CommandSystem {
     const player = this.state.players.get(ownerIdOf(client));
     if (!player) return;
 
-    const building = this.requireOwnedBuilding(client, payload.buildingId);
+    const building = this.state.buildings.get(payload.buildingId);
     if (!building) {
       const road = this.state.roads.get(payload.buildingId);
-      if (road && road.ownerId === ownerIdOf(client)) {
+      if (road) {
+        if (road.ownerId !== ownerIdOf(client)) {
+          this.ports.rejectCommand(client, 'Not your building', RejectCode.FORBIDDEN);
+          return;
+        }
         if (road.isConstructed) {
           this.ports.rejectCommand(client, 'Cannot cancel a completed building', RejectCode.INVALID);
           return;
@@ -640,7 +644,14 @@ export class CommandSystem {
         this.state.roads.delete(road.id);
         this.ports.onRoadRemoved?.(road.id);
         this.ports.roadGrid().invalidate();
+        return;
       }
+      this.ports.rejectCommand(client, 'Building no longer exists', RejectCode.GONE);
+      return;
+    }
+
+    if (building.ownerId !== ownerIdOf(client)) {
+      this.ports.rejectCommand(client, 'Not your building', RejectCode.FORBIDDEN);
       return;
     }
 
@@ -949,10 +960,14 @@ export class CommandSystem {
       return;
     }
 
-    const building = this.requireOwnedBuilding(client, payload.buildingId);
+    const building = this.state.buildings.get(payload.buildingId);
     if (!building) {
       const road = this.state.roads.get(payload.buildingId);
-      if (road && road.ownerId === ownerIdOf(client)) {
+      if (road) {
+        if (road.ownerId !== ownerIdOf(client)) {
+          this.ports.rejectCommand(client, 'Not your building', RejectCode.FORBIDDEN);
+          return;
+        }
         if (road.isConstructed) {
           this.ports.rejectCommand(client, 'Building is already finished', RejectCode.INVALID);
           return;
@@ -968,6 +983,12 @@ export class CommandSystem {
         });
         return;
       }
+      this.ports.rejectCommand(client, 'Building no longer exists', RejectCode.GONE);
+      return;
+    }
+
+    if (building.ownerId !== ownerIdOf(client)) {
+      this.ports.rejectCommand(client, 'Not your building', RejectCode.FORBIDDEN);
       return;
     }
     if (building.isConstructed) {
@@ -1218,16 +1239,18 @@ export class CommandSystem {
       this.queuedBuilds.delete(unit);
     }
 
-    const nextRoad = this.findNearestUnconstructedRoad(unit);
-    if (nextRoad) {
-      this.sendBuilderToRoad(unit, nextRoad);
-      return true;
+    if (unit.targetEntityType === 'road') {
+      const nextRoad = this.findNearestUnconstructedRoad(unit);
+      if (nextRoad) {
+        this.sendBuilderToRoad(unit, nextRoad);
+        return true;
+      }
     }
 
     return false;
   }
 
-  /** Signs a crew up to build newly placed road tiles. */
+  /** Signs a crew up to build newly placed road tiles in a nearest-neighbor chain. */
   private assignBuildersToRoads(builders: UnitState[], roads: RoadState[]) {
     if (roads.length === 0) return;
     builders.forEach((unit, idx) => {
@@ -1244,9 +1267,21 @@ export class CommandSystem {
       this.queuedBuilds.delete(unit);
       this.sendBuilderToRoad(unit, firstRoad, idx, builders.length);
 
-      const otherRoads = roads.filter((r) => r.id !== firstRoad.id);
-      for (const r of otherRoads) {
-        this.enqueueBuild(unit, r.id);
+      const remaining = roads.filter((r) => r.id !== firstRoad.id);
+      let curr = firstRoad;
+      while (remaining.length > 0) {
+        let bestIdx = 0;
+        let bestDist = Math.hypot(curr.gridX - remaining[0].gridX, curr.gridY - remaining[0].gridY);
+        for (let j = 1; j < remaining.length; j++) {
+          const d = Math.hypot(curr.gridX - remaining[j].gridX, curr.gridY - remaining[j].gridY);
+          if (d < bestDist) {
+            bestDist = d;
+            bestIdx = j;
+          }
+        }
+        const next = remaining.splice(bestIdx, 1)[0];
+        this.enqueueBuild(unit, next.id);
+        curr = next;
       }
     });
   }

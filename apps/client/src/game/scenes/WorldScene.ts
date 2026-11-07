@@ -1842,6 +1842,7 @@ export class WorldScene extends Phaser.Scene {
         });
         return;
       }
+      this.selectedRoadId = null;
     }
 
     if (this.selectedResourceId) {
