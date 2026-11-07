@@ -37,7 +37,8 @@ import {
   RejectCode,
   canTrainUnitsAt,
   getBuildingMaxLevel,
-  getBuildingLevelStats,
+  getBuildingUnlockLevel,
+  getEffectiveBuildingMaxHp,
   getBuildingUpgradeCost,
   getBuildingUpgradeTimeMs,
   getCoreLevelGaps,
@@ -45,6 +46,7 @@ import {
   getUnitMaxLevel,
   getUnitUpgradeCost,
   getUnitUpgradeTimeMs,
+  isBuildingUnlocked,
   buildingTypeForUnit
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
@@ -101,6 +103,11 @@ export interface CommandPorts {
    * (Phase 23/R14).
    */
   canManageZone(ownerId: string): boolean;
+  /**
+   * Town Center level of `ownerId` (phase 25), used to gate drop-off camps and
+   * to seed a new building's `maxHp` with the empire aura.
+   */
+  townCenterLevelOf(ownerId: string): number;
 }
 
 /**
@@ -253,6 +260,19 @@ export class CommandSystem {
       return;
     }
 
+    // Phase 25/D5: the drop-off camps are unlocked by capital levels. The six
+    // core pillars are never gated (their `requiredTownCenterLevel` is 1), so
+    // the opening build menu and the Town Center's own upgrade gate stay intact.
+    const townCenterLevel = this.ports.townCenterLevelOf(ownerId);
+    if (!isBuildingUnlocked(payload.type, townCenterLevel)) {
+      this.ports.rejectCommand(
+        client,
+        `Requires Town Center level ${getBuildingUnlockLevel(payload.type)}`,
+        RejectCode.PREREQUISITE
+      );
+      return;
+    }
+
     // Check resource sufficiency
     if (
       player.wood < blueprint.cost.wood ||
@@ -325,7 +345,7 @@ export class CommandSystem {
     building.sizeX = blueprint.sizeX;
     building.sizeY = blueprint.sizeY;
     building.hp = 1; // CMD-05: a foundation is nearly defenceless until it is finished
-    building.maxHp = getBuildingLevelStats(payload.type, 1).maxHp;
+    building.maxHp = getEffectiveBuildingMaxHp(payload.type, 1, townCenterLevel);
     building.level = 1;
     building.upgradeProgressMs = 0;
     building.upgradeTimeMs = 0;

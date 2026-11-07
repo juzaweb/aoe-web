@@ -98,6 +98,10 @@ export const App: React.FC = () => {
   // Player state
   const [playerColor, setPlayerColor] = useState<string>('#3b82f6');
   const [resources, setResources] = useState<Resources>(INITIAL_PLAYER_RESOURCES);
+  /** Phase 25: own capital level, mirrored from the buildings collection. */
+  const [townCenterLevel, setTownCenterLevel] = useState<number>(1);
+  /** Account id of the joined player, used to filter the buildings collection. */
+  const myPlayerIdRef = useRef<string | null>(null);
   const [population, setPopulation] = useState<number>(0);
   const [populationCap, setPopulationCap] = useState<number>(INITIAL_POPULATION_CAP);
   /** ECO-02: idle villagers, published by the scene when the count changes. */
@@ -309,9 +313,41 @@ export const App: React.FC = () => {
 
       const cb = Callbacks.get(joinedRoom);
 
+      // Phase 25: the build menu needs the own capital level, and the buildings
+      // collection is the only live source. A TC added before the player row is
+      // re-read by `refreshOwnTownCenterLevel` once the owner id is known.
+      myPlayerIdRef.current = null;
+      setTownCenterLevel(1);
+      const refreshOwnTownCenterLevel = () => {
+        const ownerId = myPlayerIdRef.current;
+        if (!ownerId) return;
+        let level = 1;
+        joinedRoom.state.buildings?.forEach((b: any) => {
+          if (b.ownerId === ownerId && b.type === 'TOWN_CENTER') {
+            level = Math.max(level, b.level);
+          }
+        });
+        setTownCenterLevel(level);
+      };
+
+      cb.onAdd('buildings', (b: any) => {
+        // Only the capital changes this value; keeping a listener on every
+        // building would re-run the owner check on every HP/queue update.
+        if (b.type !== 'TOWN_CENTER') return;
+        const apply = () => {
+          if (b.ownerId === myPlayerIdRef.current) {
+            setTownCenterLevel(Math.max(1, b.level));
+          }
+        };
+        apply();
+        cb.onChange(b, apply);
+      });
+
       // Listen to player state
       cb.onAdd('players', (p: any) => {
         if (p.name === user.displayName) {
+          myPlayerIdRef.current = p.id;
+          refreshOwnTownCenterLevel();
           setPlayerColor(p.color);
           setResources({ wood: p.wood, food: p.food, gold: p.gold, stone: p.stone });
           setPopulation(p.population);
@@ -969,6 +1005,7 @@ export const App: React.FC = () => {
                   showRoadTools
                   roadMode={roadMode}
                   onSelectRoad={handleSelectRoad}
+                  townCenterLevel={townCenterLevel}
                 />
               )}
             </div>
@@ -1010,6 +1047,7 @@ export const App: React.FC = () => {
                 showRoadTools
                 roadMode={roadMode}
                 onSelectRoad={handleSelectRoad}
+                townCenterLevel={townCenterLevel}
               />
             )}
           </div>

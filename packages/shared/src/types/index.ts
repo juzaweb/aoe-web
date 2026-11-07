@@ -110,6 +110,12 @@ export interface BuildingBlueprint {
    * untargetable keeps a misclick from stranding an empire.
    */
   attackable?: boolean;
+  /**
+   * Town Center level a player needs before this building may be placed.
+   * Unset means level 1: every building is available from the start unless it
+   * is explicitly held back (the three drop-off camps).
+   */
+  requiredTownCenterLevel?: number;
   description: string;
 }
 

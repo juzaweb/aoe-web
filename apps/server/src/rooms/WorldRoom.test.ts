@@ -13,6 +13,10 @@ import {
   UNIT_BLUEPRINTS,
   INITIAL_POPULATION_CAP,
   getBuildingLevelStats,
+  getEffectiveBuildingMaxHp,
+  getEffectiveTrainTimeMs,
+  getEffectiveUnitAttackPower,
+  getEffectiveUnitMaxHp,
   isPlazaTile,
   getBuildingMaxLevel,
   getBuildingUpgradeCost,
@@ -2093,10 +2097,10 @@ describe('building upgrades (LVL)', () => {
 
     internals(room).update(duration);
 
-    const expected = getBuildingLevelStats('TOWN_CENTER', 2);
+    const expected = getEffectiveBuildingMaxHp('TOWN_CENTER', 2, 2);
     expect(townCenter.level).toBe(2);
-    expect(townCenter.maxHp).toBe(expected.maxHp);
-    expect(townCenter.hp).toBe(expected.maxHp);
+    expect(townCenter.maxHp).toBe(expected);
+    expect(townCenter.hp).toBe(expected);
     expect(townCenter.upgradeProgressMs).toBe(0);
     expect(townCenter.upgradeTimeMs).toBe(0);
     expect(player.populationCap).toBe(populationBefore + 1);
@@ -2113,7 +2117,7 @@ describe('building upgrades (LVL)', () => {
     internals(room).commands.handleUpgradeBuilding(createClient('player-a'), { buildingId: 'b_1' });
     internals(room).update(duration);
 
-    expect(townCenter.maxHp).toBe(getBuildingLevelStats('TOWN_CENTER', 2).maxHp);
+    expect(townCenter.maxHp).toBe(getEffectiveBuildingMaxHp('TOWN_CENTER', 2, 2));
     expect(townCenter.hp).toBe(townCenter.maxHp - 500);
   });
 
@@ -2991,5 +2995,146 @@ describe('unit separation (MOV-02)', () => {
 
     expect(unit.actionState).toBe('MOVING');
     expect(unit.targetX).toBe(50);
+  });
+});
+
+describe('building level effects (LVL4)', () => {
+  it('buffs living units of a trainer line when the trainer upgrades', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a', { wood: 5000, food: 5000, gold: 5000, stone: 5000 });
+    const barracks = addBuilding(room, {
+      id: 'b_barracks',
+      ownerId: 'player-a',
+      type: 'BARRACKS'
+    });
+    const spearman = addUnit(room, {
+      id: 'u_spear',
+      ownerId: 'player-a',
+      type: 'SPEARMAN'
+    });
+    spearman.level = 1;
+    spearman.maxHp = getEffectiveUnitMaxHp('SPEARMAN', 1, 1, 1);
+    spearman.hp = spearman.maxHp - 10;
+    const archer = addUnit(room, { id: 'u_archer', ownerId: 'player-a', type: 'ARCHER' });
+    archer.level = 1;
+    archer.maxHp = getEffectiveUnitMaxHp('ARCHER', 1, 1, 1);
+    archer.hp = archer.maxHp;
+
+    const duration = getBuildingUpgradeTimeMs('BARRACKS', 1);
+    internals(room).commands.handleUpgradeBuilding(createClient('player-a'), {
+      buildingId: 'b_barracks'
+    });
+    internals(room).update(duration);
+
+    expect(barracks.level).toBe(2);
+    expect(spearman.maxHp).toBe(getEffectiveUnitMaxHp('SPEARMAN', 1, 1, 2));
+    // The buff is not a free heal: the 10 missing points stay missing.
+    expect(spearman.hp).toBe(spearman.maxHp - 10);
+    expect(archer.maxHp).toBe(getEffectiveUnitMaxHp('ARCHER', 1, 1, 1));
+  });
+
+  it('spawns a trained unit with its trainer level applied', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    const barracks = addBuilding(room, {
+      id: 'b_barracks',
+      ownerId: 'player-a',
+      type: 'BARRACKS'
+    });
+    barracks.level = 10;
+
+    internals(room).spawnTrainedUnit(barracks, 'SPEARMAN');
+
+    const spawned = Array.from(room.state.units.values())[0];
+    expect(spawned.maxHp).toBe(getEffectiveUnitMaxHp('SPEARMAN', 1, 1, 10));
+    expect(spawned.hp).toBe(spawned.maxHp);
+  });
+
+  it('scales live attack by the trainer level without touching other lines', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const barracks = addBuilding(room, {
+      id: 'b_barracks',
+      ownerId: 'player-a',
+      type: 'BARRACKS'
+    });
+    barracks.level = 10;
+    const attacker = addUnit(room, {
+      id: 'u_spear',
+      ownerId: 'player-a',
+      type: 'SPEARMAN',
+      x: 10,
+      y: 10,
+      actionState: 'ATTACKING'
+    });
+    attacker.level = 1;
+    const victim = addUnit(room, {
+      id: 'u_victim',
+      ownerId: 'player-b',
+      type: 'VILLAGER',
+      x: 11,
+      y: 10
+    });
+    attacker.targetEntityId = victim.id;
+    attacker.targetEntityType = 'unit';
+
+    internals(room).update(100);
+
+    expect(victim.hp).toBe(
+      UNIT_BLUEPRINTS.VILLAGER.maxHp -
+        getEffectiveUnitAttackPower('SPEARMAN', 1, 1, 10)
+    );
+  });
+
+  it('uses the tallest barracks and falls back when it is razed', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    const tall = addBuilding(room, {
+      id: 'b_tall',
+      ownerId: 'player-a',
+      type: 'BARRACKS'
+    });
+    tall.level = 8;
+    const short = addBuilding(room, {
+      id: 'b_short',
+      ownerId: 'player-a',
+      type: 'BARRACKS',
+      gridX: 50,
+      gridY: 50
+    });
+    short.level = 2;
+
+    expect(internals(room).buildingLevelOf('player-a', 'BARRACKS')).toBe(8);
+
+    room.state.buildings.delete(tall.id);
+    internals(room).invalidateBuildingLevel('player-a', 'BARRACKS');
+
+    expect(internals(room).buildingLevelOf('player-a', 'BARRACKS')).toBe(2);
+  });
+
+  it('reads the camp bonus for the resource it accepts', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    const camp = addBuilding(room, {
+      id: 'b_camp',
+      ownerId: 'player-a',
+      type: 'LUMBER_CAMP'
+    });
+    camp.level = 10;
+
+    expect(internals(room).gatherMultiplierOf('player-a', 'wood')).toBeCloseTo(1.45, 2);
+    // No mill yet: food stays on the baseline cadence.
+    expect(internals(room).gatherMultiplierOf('player-a', 'food')).toBe(1);
+  });
+
+  it('shortens training time from the trainer level', () => {
+    expect(getEffectiveTrainTimeMs('SPEARMAN', 1, 10)).toBe(
+      Math.round(UNIT_BLUEPRINTS.SPEARMAN.trainTimeMs * 0.73)
+    );
+    // Villagers keep only the Town Center aura.
+    expect(getEffectiveTrainTimeMs('VILLAGER', 10, 10)).toBe(
+      Math.round(UNIT_BLUEPRINTS.VILLAGER.trainTimeMs * 0.82)
+    );
   });
 });

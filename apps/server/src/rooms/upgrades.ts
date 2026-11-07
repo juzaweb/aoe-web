@@ -4,9 +4,9 @@ import {
   MAX_UNIT_LEVEL,
   UNIT_UPGRADE_ORDER,
   UnitType,
-  getBuildingLevelStats,
   getBuildingMaxLevel,
-  getUnitLevelStats,
+  getEffectiveBuildingMaxHp,
+  getEffectiveUnitMaxHp,
   getUnitUpgradeIndex
 } from '@chien-quoc/shared';
 import type { BuildingState } from '../schema/BuildingState.js';
@@ -99,8 +99,11 @@ export function restoreBuildingUpgrade(
  *
  * The HP delta is added instead of restoring to full: a damaged building keeps
  * every point it was missing, so an upgrade is not a free heal under siege.
+ *
+ * `townCenterLevel` folds the owner's empire aura into the new maximum; the
+ * default of 1 keeps every pre-phase-25 call site (and its tests) unchanged.
  */
-export function applyBuildingUpgrade(building: BuildingState): void {
+export function applyBuildingUpgrade(building: BuildingState, townCenterLevel = 1): void {
   const oldMaxHp = building.maxHp;
   const maxLevel = getBuildingMaxLevel(building.type as BuildingType);
   const previousLevel = Math.max(1, building.level);
@@ -109,9 +112,13 @@ export function applyBuildingUpgrade(building: BuildingState): void {
   // ECO-01: a field's harvest grows with its level, same as its HP.
   growGatheredCapacity(building, previousLevel, building.level);
 
-  const stats = getBuildingLevelStats(building.type as BuildingType, building.level);
-  building.maxHp = stats.maxHp;
-  building.hp = Math.min(stats.maxHp, building.hp + Math.max(0, stats.maxHp - oldMaxHp));
+  const nextMaxHp = getEffectiveBuildingMaxHp(
+    building.type as BuildingType,
+    building.level,
+    townCenterLevel
+  );
+  building.maxHp = nextMaxHp;
+  building.hp = Math.min(nextMaxHp, building.hp + Math.max(0, nextMaxHp - oldMaxHp));
   building.upgradeProgressMs = 0;
   building.upgradeTimeMs = 0;
 }
@@ -126,7 +133,9 @@ export function applyBuildingUpgrade(building: BuildingState): void {
 export function applyUnitResearch(
   state: WorldState,
   player: PlayerState,
-  unitType: UnitType
+  unitType: UnitType,
+  townCenterLevel = 1,
+  trainerLevel = 1
 ): void {
   const index = getUnitUpgradeIndex(unitType);
   if (index < 0) {
@@ -137,14 +146,21 @@ export function applyUnitResearch(
   const nextLevel = Math.min(MAX_UNIT_LEVEL, (player.unitLevels[index] ?? 1) + 1);
   player.unitLevels[index] = nextLevel;
 
-  const stats = getUnitLevelStats(unitType, nextLevel);
   state.units.forEach((unit: UnitState) => {
     if (unit.ownerId !== player.id || unit.type !== unitType) return;
 
     const oldMaxHp = unit.maxHp;
     unit.level = nextLevel;
-    unit.maxHp = stats.maxHp;
-    unit.hp = Math.min(stats.maxHp, unit.hp + Math.max(0, stats.maxHp - oldMaxHp));
+    // Combat reads the attack live, but `maxHp`/`hp` are snapshots; research,
+    // the Town Center aura and the trainer level must all be folded in here.
+    const nextMaxHp = getEffectiveUnitMaxHp(
+      unitType,
+      nextLevel,
+      townCenterLevel,
+      trainerLevel
+    );
+    unit.maxHp = nextMaxHp;
+    unit.hp = Math.min(nextMaxHp, unit.hp + Math.max(0, nextMaxHp - oldMaxHp));
   });
 
   clearUnitResearch(player);

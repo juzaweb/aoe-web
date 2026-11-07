@@ -13,6 +13,38 @@ export const BUILDING_STAT_GROWTH_PER_LEVEL = 0.02;
 export const UNIT_STAT_GROWTH_PER_LEVEL = 0.05;
 
 /**
+ * Town Center aura (phase 25): the capital buffs every asset its owner has.
+ *
+ * HP and training speed scale by 2% per Town Center level, unit attack by 1%.
+ * The multiplier starts at 1.0 when the owner has no Town Center (level 0), so
+ * a missing or freshly wiped capital never makes a unit weaker than its
+ * blueprint. All three are derived, never persisted, so a save written under a
+ * different formula is recalculated on restore instead of double-buffed.
+ */
+export const TOWN_CENTER_AURA_PER_LEVEL = 0.02;
+export const TOWN_CENTER_UNIT_ATTACK_PER_LEVEL = 0.01;
+
+/**
+ * Building-level effects (phase 26).
+ *
+ * A trainer's own level speeds up and strengthens the line it trains, while a
+ * drop-off camp's level speeds up the resource it accepts and widens the ring a
+ * villager may unload in. All of them are linear in the level number and start
+ * at 1.0 on level 1, so a level-1 building never changes baseline behaviour.
+ *
+ * Trainer bonuses deliberately skip the Town Center (its aura already covers
+ * villagers) and multiply with the aura and with unit research instead of
+ * adding to them: three independent ramps stay readable at the cap.
+ */
+export const TRAINER_SPEED_PER_LEVEL = 0.03;
+export const TRAINER_UNIT_BUFF_PER_LEVEL = 0.03;
+export const DROP_OFF_GATHER_PER_LEVEL = 0.05;
+export const DROP_OFF_RANGE_PER_LEVEL = 0.25;
+
+/** Ring a level-1 drop-off accepts loads in, in tiles (SIM-02). */
+export const BASE_DROP_OFF_RANGE = 1.5;
+
+/**
  * Extra field capacity per level for gatherable buildings (ECO-01).
  *
  * Faster than the generic building growth: a farm's harvest is the whole point
@@ -295,6 +327,161 @@ export function getUnitLevelStats(type: UnitType, rawLevel: number): UnitLevelSt
 }
 
 /**
+ * Multiplier of the Town Center aura at a raw level (phase 25).
+ *
+ * Level 0, a missing Town Center and non-finite input all mean 1.0, not an
+ * error: rooms restore before the capital is known and a dataless guest must
+ * still fight with blueprint stats. The cap is the shared ten-level ladder.
+ */
+export function townCenterAuraMultiplier(rawLevel: number): number {
+  const level = Math.max(1, clampTownCenterLevel(rawLevel));
+  return 1 + TOWN_CENTER_AURA_PER_LEVEL * (level - 1);
+}
+
+/** Attack share of the aura; kept separate so it can be retuned on its own. */
+export function townCenterUnitAttackMultiplier(rawLevel: number): number {
+  const level = Math.max(1, clampTownCenterLevel(rawLevel));
+  return 1 + TOWN_CENTER_UNIT_ATTACK_PER_LEVEL * (level - 1);
+}
+
+/** A building's `maxHp` including its own level and its owner's Town Center. */
+export function getEffectiveBuildingMaxHp(
+  type: BuildingType,
+  rawLevel: number,
+  rawTownCenterLevel: number
+): number {
+  return Math.round(
+    getBuildingLevelStats(type, rawLevel).maxHp * townCenterAuraMultiplier(rawTownCenterLevel)
+  );
+}
+
+/** A unit's `maxHp` including research, the capital aura and its trainer. */
+export function getEffectiveUnitMaxHp(
+  type: UnitType,
+  rawLevel: number,
+  rawTownCenterLevel: number,
+  rawTrainerLevel = 1
+): number {
+  return Math.round(
+    getUnitLevelStats(type, rawLevel).maxHp *
+      townCenterAuraMultiplier(rawTownCenterLevel) *
+      unitTrainerBuffMultiplier(type, rawTrainerLevel)
+  );
+}
+
+/** A unit's attack including research, the capital aura and its trainer (D9). */
+export function getEffectiveUnitAttackPower(
+  type: UnitType,
+  rawLevel: number,
+  rawTownCenterLevel: number,
+  rawTrainerLevel = 1
+): number {
+  return round2(
+    getUnitLevelStats(type, rawLevel).attackPower *
+      townCenterUnitAttackMultiplier(rawTownCenterLevel) *
+      unitTrainerBuffMultiplier(type, rawTrainerLevel)
+  );
+}
+
+/** Training time after the Town Center speed-up and the trainer's own bonus. */
+export function getEffectiveTrainTimeMs(
+  type: UnitType,
+  rawTownCenterLevel: number,
+  rawTrainerLevel = 1
+): number {
+  const blueprint = UNIT_BLUEPRINTS[type];
+  if (!blueprint) return 0;
+  const level = Math.max(1, clampTownCenterLevel(rawTownCenterLevel));
+  const tcFactor = Math.max(0, 1 - TOWN_CENTER_AURA_PER_LEVEL * (level - 1));
+  return Math.round(
+    blueprint.trainTimeMs * tcFactor * unitTrainerSpeedMultiplier(type, rawTrainerLevel)
+  );
+}
+
+/** How much faster a trainer's own level makes its line's training (phase 26). */
+export function trainerSpeedMultiplier(rawLevel: number): number {
+  const level = clampLevel(rawLevel, MAX_BUILDING_LEVEL);
+  return Math.max(0, 1 - TRAINER_SPEED_PER_LEVEL * (level - 1));
+}
+
+/** How much stronger a trainer's own level makes its line (phase 26). */
+export function trainerUnitBuffMultiplier(rawLevel: number): number {
+  const level = clampLevel(rawLevel, MAX_BUILDING_LEVEL);
+  return 1 + TRAINER_UNIT_BUFF_PER_LEVEL * (level - 1);
+}
+
+/**
+ * Trainer buff for one unit type.
+ *
+ * Villagers are trained at the Town Center, whose aura already covers them; a
+ * second trainer multiplier would silently double-dip, so they stay at 1.0.
+ */
+export function unitTrainerBuffMultiplier(
+  unitType: UnitType,
+  rawTrainerLevel: number
+): number {
+  return unitType === 'VILLAGER' ? 1 : trainerUnitBuffMultiplier(rawTrainerLevel);
+}
+
+/** Trainer speed bonus for one unit type; villagers never receive it. */
+export function unitTrainerSpeedMultiplier(
+  unitType: UnitType,
+  rawTrainerLevel: number
+): number {
+  return unitType === 'VILLAGER' ? 1 : trainerSpeedMultiplier(rawTrainerLevel);
+}
+
+/** How much faster a camp's own level makes the resource it accepts (D6). */
+export function dropOffGatherMultiplier(rawLevel: number): number {
+  const level = clampLevel(rawLevel, MAX_BUILDING_LEVEL);
+  return 1 + DROP_OFF_GATHER_PER_LEVEL * (level - 1);
+}
+
+/** Unload ring of a camp at `rawLevel`, in tiles (D8). */
+export function dropOffRange(rawLevel: number): number {
+  const level = clampLevel(rawLevel, MAX_BUILDING_LEVEL);
+  return BASE_DROP_OFF_RANGE + DROP_OFF_RANGE_PER_LEVEL * (level - 1);
+}
+
+/**
+ * Unload ring of one building.
+ *
+ * Only the three specialised camps scale; the Town Center keeps the baseline
+ * even though it accepts every resource, because its value is position (the
+ * map centre), not drop-off reach.
+ */
+export function dropOffRangeFor(type: BuildingType, rawLevel: number): number {
+  const blueprint = BUILDING_BLUEPRINTS[type];
+  if (!blueprint || type === 'TOWN_CENTER' || blueprint.dropOffs.length === 0) {
+    return BASE_DROP_OFF_RANGE;
+  }
+  return dropOffRange(rawLevel);
+}
+
+/**
+ * Town Center level a building needs before it may be placed (D5).
+ *
+ * Unset means 1, so every blueprint stays buildable from the start unless it
+ * opts in. The six core pillars are deliberately not gated: the Town Center
+ * gate already requires them at level 1, and locking them would make the first
+ * upgrade impossible.
+ */
+export function getBuildingUnlockLevel(type: BuildingType): number {
+  return BUILDING_BLUEPRINTS[type]?.requiredTownCenterLevel ?? 1;
+}
+
+/**
+ * Whether a Town Center level has unlocked a building type.
+ *
+ * A missing capital is treated as level 1 here: the kingdom always spawns one,
+ * and a transient restore gap should not strip the opening build menu.
+ */
+export function isBuildingUnlocked(type: BuildingType, rawTownCenterLevel: number): boolean {
+  const level = Math.max(1, clampTownCenterLevel(rawTownCenterLevel));
+  return level >= getBuildingUnlockLevel(type);
+}
+
+/**
  * Cost to take a building from `level` to `level + 1` (LVL2/D2).
  *
  * Two phases: the first ten levels stay on the gentle ramp the opening hours
@@ -387,6 +574,12 @@ function costScale(level: number): number {
 function clampLevel(level: number, maxLevel: number): number {
   if (!Number.isFinite(level)) return 1;
   return Math.min(maxLevel, Math.max(1, Math.floor(level)));
+}
+
+/** Town Center levels may be 0 ("no capital"), unlike entity levels. */
+function clampTownCenterLevel(level: number): number {
+  if (!Number.isFinite(level)) return 0;
+  return Math.min(MAX_BUILDING_LEVEL, Math.max(0, Math.floor(level)));
 }
 
 function round2(value: number): number {

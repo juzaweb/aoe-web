@@ -282,7 +282,10 @@ export class KingdomRoom extends WorldRoom {
       ensurePortalFor(this.state, this.raidAttackerId);
     }
     if (this.ownerScope) {
-      void RaidService.syncTownCenterLevel(this.ownerScope, this.townCenterLevelOf(this.ownerScope));
+      void RaidService.syncTownCenterLevel(
+        this.ownerScope,
+        this.townCenterOf(this.ownerScope)?.level ?? 0
+      );
     }
   }
 
@@ -315,6 +318,11 @@ export class KingdomRoom extends WorldRoom {
     if (this.unitsOf(ownerId).length > 0) return;
 
     try {
+      // Phase 26: the raider's trainer and camp levels live in their own
+      // kingdom rows, not in this room; load them before any unit maxHp is
+      // derived so the army keeps the stats it was trained with.
+      await this.hydrateBuildingLevels(ownerId);
+      await this.hydrateTownCenterLevel(ownerId);
       const rows = await DatabaseService.loadZoneEntities(this.zoneId, ownerId);
       if (rows.length === 0) return;
       this.restoreSavedEntities(rows);
@@ -492,7 +500,10 @@ export class KingdomRoom extends WorldRoom {
       if (townCenter) townCenter.hp = townCenter.maxHp;
 
       if (defenderId) {
-        void RaidService.syncTownCenterLevel(defenderId, this.townCenterLevelOf(defenderId));
+        void RaidService.syncTownCenterLevel(
+          defenderId,
+          this.townCenterOf(defenderId)?.level ?? 0
+        );
       }
     } catch (err) {
       console.error(`❌ [KingdomRoom] Could not settle raid ${raidId}:`, err);
@@ -533,10 +544,6 @@ export class KingdomRoom extends WorldRoom {
       if (building.ownerId === ownerId && building.type === 'TOWN_CENTER') found = building;
     });
     return found;
-  }
-
-  private townCenterLevelOf(ownerId: string): number {
-    return this.townCenterOf(ownerId)?.level ?? 0;
   }
 
   private removeUnitsOf(ownerId: string): void {

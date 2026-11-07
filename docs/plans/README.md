@@ -33,6 +33,8 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | [`23-world-map-raids.md`](./23-world-map-raids.md) | Bỏ cổng chiến trường; bản đồ thế giới lục giác lọc ±5 cấp Nhà chính; tập kích vương quốc địch (cướp 20%, khiên 72 h, khoá 3 ngày) (`RD-01..RD-12`) | IMPLEMENTED — chờ verify tay UI |
 | [`24-spectator-mode.md`](./24-spectator-mode.md) | Quan sát vương quốc khác ở cửa sổ thứ hai: join read-only vào `kingdom_room`, chặn mọi lệnh, camera tự do, ẩn danh (`SPEC-01..SPEC-06`) | IMPLEMENTED — chờ verify tay UI |
 | [`24-military-buildings-split.md`](./24-military-buildings-split.md) | Tách nhà lính làm 3: `BARRACKS` bộ binh / `STABLE` kỵ binh / `ARCHERY_RANGE` cung thủ; nghiên cứu cấp lính theo đúng nhà train; 6 trụ cột gate TC (`MIL-01a..j`) | IMPLEMENTED — chờ verify tay, art 2 nhà mới đã sinh |
+| [`25-town-center-empire-buffs.md`](./25-town-center-empire-buffs.md) | Nhà chính buff toàn đế chế: +2%/cấp HP công trình + HP quân, +1%/cấp attack lính, −2%/cấp thời gian train, mở khoá 3 camp theo Lv1/2/3 (`D1–D9`) | IMPLEMENTED — chờ verify tay |
+| [`26-building-level-effects.md`](./26-building-level-effects.md) | Cấp công trình có hiệu ứng riêng: nhà train −3%/cấp thời gian train và +3%/cấp HP/attack lính; camp +5%/cấp tốc độ gom và +0,25 tile/cấp bán kính dỡ hàng (`D1–D10`) | IMPLEMENTED 2026-11-07 — mở rộng phase 03; còn verify tay §9 |
 Status: `DRAFT` (chưa chốt quyết định) → `APPROVED` (bắt đầu code) → `DONE`.
 
 Phase 01 đã chốt 4 quyết định D1–D4 ngày 2026-11-01 (xem §11 của file phase); chưa có dòng code nào

@@ -186,6 +186,12 @@ export interface SelectedEntityData {
    * AoE hides it when a military unit or a building is selected.
    */
   villagerSelected?: boolean;
+  /**
+   * Phase 25: Town Center level of the owner this entity belongs to. The panel
+   * uses it to show effective training time, attack and HP instead of the raw
+   * blueprint values, which would drift once the capital is upgraded.
+   */
+  ownerTownCenterLevel?: number;
 }
 
 /**
@@ -973,8 +979,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /** Own portal, used as the camera anchor when the map has no Town Center. */
-  public findOwnPortal(): any | null {
-    if (!this.room?.state?.buildings) return null;
+  public findOwnPortal(): any | null {    if (!this.room?.state?.buildings) return null;
 
     let target: any = null;
     this.room.state.buildings.forEach((b: any) => {
@@ -994,6 +999,22 @@ export class WorldScene extends Phaser.Scene {
       if (!target && b.type === 'TOWN_CENTER' && b.ownerId === ownerId) target = b;
     });
     return target;
+  }
+
+  /**
+   * Phase 25: Town Center level of an owner in this room.
+   *
+   * A battlefield has no capital to read, so the fallback is 1. That mirrors the
+   * server's own fallback and keeps the panel's numbers conservative rather than
+   * promising a buff the simulation would not apply.
+   */
+  public townCenterLevelFor(ownerId: string): number {
+    return this.findTownCenterOf(ownerId)?.level ?? 1;
+  }
+
+  /** Phase 25: level of this player's own capital, for the hotkey gate. */
+  public ownTownCenterLevel(): number {
+    return this.findOwnTownCenter()?.level ?? 1;
   }
 
   private centerOnOwnBaseIfNeeded() {
@@ -1887,7 +1908,8 @@ export class WorldScene extends Phaser.Scene {
           carryingAmount: unit.carryingAmount,
           carryingResourceType: unit.carryingResourceType,
           stance: unit.stance,
-          villagerSelected
+          villagerSelected,
+          ownerTownCenterLevel: this.townCenterLevelFor(unit.ownerId)
         });
         return;
       }
@@ -1924,6 +1946,7 @@ export class WorldScene extends Phaser.Scene {
           isOwner: b.ownerId === this.myOwnerId,
           isPortal: b.type === 'PORTAL',
           trainingQueue: Array.from(b.trainingQueue),
+          ownerTownCenterLevel: this.townCenterLevelFor(b.ownerId),
           isConstructed: b.isConstructed,
           constructionProgress: b.constructionProgress,
           // ECO-01: what is left to gather from a farm, shown with the same
