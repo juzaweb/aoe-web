@@ -8,6 +8,7 @@ const SALT_BYTES = 16;
 const TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 
 const USERNAME_PATTERN = /^[a-z0-9_.-]{3,24}$/;
+const DISPLAY_NAME_PATTERN = /^[a-zA-Z0-9_]+$/;
 const MIN_PASSWORD_LENGTH = 6;
 const MAX_PASSWORD_LENGTH = 128;
 const MAX_DISPLAY_NAME_LENGTH = 24;
@@ -355,6 +356,10 @@ export class AuthService {
     // Collapse inner whitespace so "Đại  Việt" and "Đại Việt" cannot both exist
     // as visually identical lords.
     const displayName = raw.replace(/\s+/g, ' ');
+
+    if (!DISPLAY_NAME_PATTERN.test(displayName)) {
+      throw new AuthError('The lord name contains invalid characters.', 422);
+    }
 
     if (displayName.length < 2 || displayName.length > MAX_DISPLAY_NAME_LENGTH) {
       // I18N: carry a key + params; the HTTP boundary renders the language.

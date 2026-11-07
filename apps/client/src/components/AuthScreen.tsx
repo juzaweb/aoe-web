@@ -121,6 +121,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder={t('auth.displayNamePlaceholder')}
+                pattern="[a-zA-Z0-9_]+"
+                title={t('auth.displayNameHint')}
                 maxLength={24}
                 className="w-full min-h-[44px] rounded border border-amber-800 bg-slate-900 px-3 py-2 text-base text-slate-100 placeholder-slate-500 focus:border-amber-400 focus:outline-none"
               />
