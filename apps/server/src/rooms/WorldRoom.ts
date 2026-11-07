@@ -444,7 +444,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     // I18N: live language switch while inside the room. Accepted both as a
     // bare string and as `{ locale }` from the client helpers.
     this.onMessage('SET_LOCALE', (client, payload: unknown) => {
-      const locale = normalizeLocale(typeof payload === 'string' ? payload : payload);
+      const locale = normalizeLocale(payload);
       if (locale) this.localeBySession.set(client.sessionId, locale);
     });
 
@@ -1754,19 +1754,14 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   rejectCommand(client: Client, message: string | LocalizedSpec, code: RejectCode) {
     client.send(
       NetworkMessage.ERROR_NOTIFICATION,
-      { message: this.localizedMessage(client, message), code }
+      { message: this.localizedFor(client, message), code }
     );
   }
 
   /** I18N: resolve a plain message or a key-based spec for one client. */
-  protected localizedMessage(client: Client, message: string | LocalizedSpec): string {
+  protected localizedFor(client: Client, message: string | LocalizedSpec): string {
     const locale = this.localeBySession.get(client.sessionId);
     return typeof message === 'string' ? translate(locale, message) : render(locale, message);
-  }
-
-  /** I18N: translate a plain message for one client, honouring its locale. */
-  protected localizedFor(client: Client, message: string): string {
-    return this.localizedMessage(client, message);
   }
 
   private scheduleResourceRespawn(node: ResourceNodeState): void {

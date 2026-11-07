@@ -14,7 +14,8 @@
 import { staticTranslate, templateTranslate } from './messages.js';
 
 export type Locale = 'vi' | 'en';
-export const DEFAULT_LOCALE: Locale = 'vi';
+
+/** The languages the server can render; also the source of truth for checks. */
 export const SUPPORTED_LOCALES: readonly Locale[] = ['vi', 'en'];
 
 export function normalizeLocale(value: unknown): Locale | null {
@@ -28,7 +29,7 @@ export function normalizeLocale(value: unknown): Locale | null {
         : null;
   if (!raw || typeof raw !== 'string') return null;
   const base = raw.toLowerCase().split('-')[0];
-  return base === 'vi' || base === 'en' ? (base as Locale) : null;
+  return SUPPORTED_LOCALES.find((code) => code === base) ?? null;
 }
 
 /** `Accept-Language`-style header, reduced to the first supported locale. */
@@ -36,7 +37,8 @@ export function localeFromHeader(header: string | undefined | null): Locale | nu
   if (!header) return null;
   for (const part of String(header).split(',')) {
     const code = part.split(';')[0]?.trim().toLowerCase().split('-')[0];
-    if (code === 'vi' || code === 'en') return code;
+    const match = SUPPORTED_LOCALES.find((supported) => supported === code);
+    if (match) return match;
   }
   return null;
 }
@@ -58,8 +60,7 @@ export interface LocalizedSpec {
   fallback: string;
 }
 
-/** Anything a reject site may hand over: a plain message or a key-based spec. */
-export type RejectMessage = string | LocalizedSpec;
+/** Renders a spec in `locale`, or the untouched fallback when there is none. */
 export function render(
   locale: Locale | null | undefined,
   spec: LocalizedSpec
@@ -82,7 +83,7 @@ export function translateError(
   const message = (err as { message?: unknown } | null | undefined)?.message;
   return typeof message === 'string'
     ? translate(locale, message)
-    : translate(locale, 'Lỗi hệ thống. Vui lòng thử lại.');
+    : translate(locale, 'System error. Please try again.');
 }
 
 /**
