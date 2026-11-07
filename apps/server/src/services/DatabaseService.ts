@@ -903,6 +903,7 @@ export class DatabaseService {
 
         const roads: Array<{ id: string; ownerId: string; gridX: number; gridY: number }> = [];
         state.roads.forEach((road) => {
+          if (road.isConstructed === false) return;
           roads.push({ id: road.id, ownerId: road.ownerId, gridX: road.gridX, gridY: road.gridY });
         });
         await this.saveZoneRoads(zone, roads, stmts);

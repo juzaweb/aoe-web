@@ -528,7 +528,21 @@ export class CommandController {
    */
   cancelSelectedFoundation(): boolean {
     const scene = this.scene;
-    if (!scene.room || !scene.selectedBuildingId) return false;
+    if (!scene.room) return false;
+
+    if (scene.selectedRoadId) {
+      const road = (scene.room.state as any)?.roads?.get(scene.selectedRoadId);
+      if (road && road.isConstructed === false && road.ownerId === scene.myOwnerId) {
+        scene.room.send(NetworkMessage.REMOVE_ROAD, {
+          tiles: [{ x: road.gridX, y: road.gridY }]
+        });
+        scene.selectedRoadId = null;
+        scene.notifySelectionChange();
+        return true;
+      }
+    }
+
+    if (!scene.selectedBuildingId) return false;
 
     const building = scene.room.state.buildings.get(scene.selectedBuildingId);
     if (!building) return false;

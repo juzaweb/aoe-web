@@ -42,6 +42,7 @@ export class RoadGrid {
     const grid = this.grid ?? new Uint8Array(mapWidth * mapHeight);
     grid.fill(0);
     this.state.roads.forEach((road: RoadState) => {
+      if (road.isConstructed === false) return;
       if (road.gridX < 0 || road.gridY < 0) return;
       if (road.gridX >= mapWidth || road.gridY >= mapHeight) return;
       grid[road.gridY * mapWidth + road.gridX] = 1;

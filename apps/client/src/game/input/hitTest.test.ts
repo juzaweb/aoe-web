@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type * as Phaser from 'phaser';
-import { findUnitAt, getUnitBodyBox, hitTestUnit } from './hitTest.js';
+import { findOwnFoundationAt, findUnitAt, getUnitBodyBox, hitTestUnit } from './hitTest.js';
 
 /**
  * A container stand-in with just the two fields the hit tests read: a world
@@ -85,5 +85,30 @@ describe('findUnitAt', () => {
     // 45 px away is outside the authored box but inside the 1.5x tap box.
     expect(findUnitAt(scene, { x: 45, y: 0 }, 'enemy')).toBeNull();
     expect(findUnitAt(scene, { x: 45, y: 0 }, 'enemy', 1.5)).toBe('enemy');
+  });
+});
+
+describe('findOwnFoundationAt', () => {
+  it('recognizes an unconstructed road of the local player', () => {
+    const roads = new Map([
+      ['20,20', { id: '20,20', ownerId: 'me', isConstructed: false }],
+      ['21,20', { id: '21,20', ownerId: 'me', isConstructed: true }],
+      ['22,20', { id: '22,20', ownerId: 'other', isConstructed: false }]
+    ]);
+
+    const scene = {
+      myOwnerId: 'me',
+      room: {
+        state: {
+          buildings: new Map(),
+          roads
+        }
+      }
+    } as any;
+
+    expect(findOwnFoundationAt(scene, { gridX: 20, gridY: 20 })).toBe('20,20');
+    expect(findOwnFoundationAt(scene, { gridX: 21, gridY: 20 })).toBeNull();
+    expect(findOwnFoundationAt(scene, { gridX: 22, gridY: 20 })).toBeNull();
+    expect(findOwnFoundationAt(scene, { gridX: 25, gridY: 25 })).toBeNull();
   });
 });

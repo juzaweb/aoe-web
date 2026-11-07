@@ -100,10 +100,14 @@ export class RoadController {
     this.redraw();
     if (tiles.length === 0) return;
 
+    const unitIds = Array.from(this.scene.selectedUnitIds);
     for (const batch of batchTiles(tiles, MAX_ROAD_TILES_PER_MESSAGE)) {
       this.scene.room?.send(
         this.mode === 'erase' ? NetworkMessage.REMOVE_ROAD : NetworkMessage.PLACE_ROAD,
-        { tiles: batch }
+        {
+          tiles: batch,
+          ...(this.mode === 'build' && unitIds.length > 0 ? { unitIds } : {})
+        }
       );
     }
   }

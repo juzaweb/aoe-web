@@ -293,6 +293,7 @@ export class WorldScene extends Phaser.Scene {
   public selectedUnitIds: Set<string> = new Set();
   public selectedBuildingId: string | null = null;
   public selectedResourceId: string | null = null;
+  public selectedRoadId: string | null = null;
 
   private hasCenteredOnSpawn: boolean = false;
   private centerAttempts: number = 0;
@@ -745,10 +746,15 @@ export class WorldScene extends Phaser.Scene {
     const roads = (this.room?.state as { roads?: { forEach: (cb: (road: any) => void) => void } } | null)
       ?.roads;
     const tiles: Array<{ gridX: number; gridY: number }> = [];
+    const unconstructedTiles: Array<{ gridX: number; gridY: number; progress: number }> = [];
     roads?.forEach((road: any) => {
-      tiles.push({ gridX: road.gridX, gridY: road.gridY });
+      if (road.isConstructed !== false) {
+        tiles.push({ gridX: road.gridX, gridY: road.gridY });
+      } else {
+        unconstructedTiles.push({ gridX: road.gridX, gridY: road.gridY, progress: road.constructionProgress ?? 0 });
+      }
     });
-    this.terrain?.setPlayerRoads(tiles);
+    this.terrain?.setPlayerRoads(tiles, unconstructedTiles);
     this.decor?.invalidateViewport();
   }
 
@@ -830,6 +836,7 @@ export class WorldScene extends Phaser.Scene {
     this.selectedUnitIds.clear();
     this.selectedBuildingId = null;
     this.selectedResourceId = null;
+    this.selectedRoadId = null;
     this.isDragSelecting = false;
     this.dragSelectionGraphics?.clear();
 
@@ -988,13 +995,24 @@ export class WorldScene extends Phaser.Scene {
     this.refreshPlayerRoads();
     // A loaded kingdom arrives one tile at a time, so the rebuild is deferred to
     // the frame instead of running once per patch (which would be O(n^2)).
-    cb.onAdd('roads', () => {
+    cb.onAdd('roads', (road: any) => {
       this.roadsDirty = true;
       this.roadsVersion++;
+      road.onChange?.(() => {
+        this.roadsDirty = true;
+        this.roadsVersion++;
+        if (this.selectedRoadId === road.id) {
+          this.notifySelectionChange();
+        }
+      });
     });
-    cb.onRemove('roads', () => {
+    cb.onRemove('roads', (_road: any, key: any) => {
       this.roadsDirty = true;
       this.roadsVersion++;
+      if (this.selectedRoadId === key) {
+        this.selectedRoadId = null;
+        this.notifySelectionChange();
+      }
     });
 
     // 1. Synchronize Resource Nodes
@@ -1810,6 +1828,25 @@ export class WorldScene extends Phaser.Scene {
         });
         return;
       }
+    }
+
+    if (this.selectedRoadId) {
+      const road = (this.room?.state as any)?.roads?.get(this.selectedRoadId);
+      if (road && road.isConstructed === false) {
+        this.onSelectionChange({
+          id: road.id,
+          type: 'building',
+          name: 'Đường (đang xây)',
+          subType: 'ROAD',
+          hp: 1,
+          maxHp: 1,
+          isOwner: road.ownerId === this.myOwnerId,
+          isConstructed: false,
+          constructionProgress: road.constructionProgress ?? 0
+        });
+        return;
+      }
+      this.selectedRoadId = null;
     }
 
     if (this.selectedResourceId) {

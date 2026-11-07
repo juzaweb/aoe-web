@@ -103,6 +103,17 @@ export class SelectionController {
 
     if (clickedResId) {
       scene.selectedResourceId = clickedResId;
+      scene.notifySelectionChange();
+      return;
+    }
+
+    // Check click on unconstructed roads
+    const roads = (scene.room?.state as any)?.roads;
+    const clickedRoad = roads?.get(`${clickGrid.gridX},${clickGrid.gridY}`);
+    if (clickedRoad && clickedRoad.isConstructed === false && clickedRoad.ownerId === scene.myOwnerId) {
+      scene.selectedRoadId = clickedRoad.id;
+      scene.notifySelectionChange();
+      return;
     }
 
     scene.notifySelectionChange();
@@ -125,7 +136,11 @@ export class SelectionController {
 
     if (findUnitAt(scene, worldPoint, undefined, pickSlack)) return true;
     if (this.buildingAt(worldPoint, grid, (pickSlack - 1) * 16)) return true;
-    return findResourceAt(scene, worldPoint, grid, pickSlack) !== null;
+    if (findResourceAt(scene, worldPoint, grid, pickSlack) !== null) return true;
+
+    const roads = (scene.room?.state as any)?.roads;
+    const road = roads?.get(`${grid.gridX},${grid.gridY}`);
+    return road?.isConstructed === false && road?.ownerId === scene.myOwnerId;
   }
 
   /**
@@ -331,6 +346,7 @@ export class SelectionController {
 
     scene.selectedBuildingId = null;
     scene.selectedResourceId = null;
+    scene.selectedRoadId = null;
   }
 
   /**

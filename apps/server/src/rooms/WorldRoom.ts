@@ -16,6 +16,7 @@ import {
   PlaceBuildingPayload,
   PlaceRoadPayload,
   RemoveRoadPayload,
+  ROAD_BUILD_TIME_MS,
   ROAD_SPEED_MULTIPLIER,
   MoveUnitsPayload,
   TrainUnitPayload,
@@ -132,6 +133,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    * grid inside is rebuilt only when the road count changes, so movement and
    * placement can query it freely.
    */
+  public unconstructedRoadIds = new Set<string>();
   private roadGridInstance: RoadGrid | null = null;
   private roadGridState: WorldState | null = null;
   private get roads(): RoadGrid {
@@ -174,6 +176,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       allocateEntityId: () => entityIds.nextId(),
       updatePlayerPopulation: (ownerId) => this.updatePlayerPopulation(ownerId),
       roadGrid: () => this.roads,
+      onRoadPlaced: (road) => this.unconstructedRoadIds.add(road.id),
+      onRoadRemoved: (roadId) => this.unconstructedRoadIds.delete(roadId),
       canManageZone: (ownerId) => this.canManageZone(ownerId)
     });
     return this.commandSystem;
@@ -518,6 +522,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         road.ownerId = row.ownerId;
         road.gridX = row.gridX;
         road.gridY = row.gridY;
+        road.isConstructed = true;
+        road.constructionProgress = 100;
         this.state.roads.set(road.id, road);
       }
       if (savedRoads.length > 0) {
@@ -1373,6 +1379,16 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    * up to the crew.
    */
   private processUnitBuilding(unit: UnitState) {
+    if (unit.targetEntityType === 'road' || this.state.roads.has(unit.targetEntityId)) {
+      const road = this.state.roads.get(unit.targetEntityId);
+      if (!road || road.isConstructed || road.ownerId !== unit.ownerId) {
+        if (this.commands.advanceBuildQueue(unit)) return;
+        this.movement.resumeQueuedWaypoint(unit);
+        return;
+      }
+      return;
+    }
+
     const building = this.state.buildings.get(unit.targetEntityId);
 
     // Cancelled, destroyed or finished: hand the villager the next foundation
@@ -1503,6 +1519,63 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         }
       }
     });
+
+    // 1b. Update construction for unconstructed roads
+    if (this.unconstructedRoadIds.size > 0) {
+      const roadBuilders = new Map<string, UnitState[]>();
+      this.state.units.forEach((unit: UnitState) => {
+        if (
+          unit.actionState === 'BUILDING' &&
+          unit.targetEntityId &&
+          this.unconstructedRoadIds.has(unit.targetEntityId)
+        ) {
+          let list = roadBuilders.get(unit.targetEntityId);
+          if (!list) {
+            list = [];
+            roadBuilders.set(unit.targetEntityId, list);
+          }
+          list.push(unit);
+        }
+      });
+
+      for (const roadId of Array.from(this.unconstructedRoadIds)) {
+        const road = this.state.roads.get(roadId);
+        if (!road || road.isConstructed) {
+          this.unconstructedRoadIds.delete(roadId);
+          continue;
+        }
+
+        const builders = roadBuilders.get(roadId);
+        if (!builders || builders.length === 0) continue;
+
+        let buildPower = 0;
+        const workingUnits: UnitState[] = [];
+        for (const unit of builders) {
+          if (unit.ownerId !== road.ownerId) continue;
+          const dist = Math.hypot(unit.x - (road.gridX + 0.5), unit.y - (road.gridY + 0.5));
+          if (dist <= 1.5) {
+            buildPower += UNIT_BLUEPRINTS[unit.type as UnitType]?.buildPower ?? 0;
+            workingUnits.push(unit);
+          }
+        }
+
+        if (buildPower > 0) {
+          road.constructionProgress += (deltaTime * 100 * buildPower) / ROAD_BUILD_TIME_MS;
+          if (road.constructionProgress >= 100) {
+            road.constructionProgress = 100;
+            road.isConstructed = true;
+            this.unconstructedRoadIds.delete(road.id);
+            this.roads.invalidate();
+
+            for (const unit of workingUnits) {
+              if (!this.commands.advanceBuildQueue(unit)) {
+                this.movement.resumeQueuedWaypoint(unit);
+              }
+            }
+          }
+        }
+      }
+    }
 
     // LVL: one player-wide unit research at a time. Offline players have no
     // PlayerState in the room, so their research pauses until they rejoin.
