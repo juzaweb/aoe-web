@@ -96,6 +96,12 @@ python scripts/process_generated_assets.py --check   # canvas, anchoring, lum, d
 That script needs Pillow and numpy; the OpenGameArt pipeline itself only needs
 Pillow.
 
+`buildings/stable.png` and `buildings/archery_range.png` are also project-original
+generated art (`scripts/generate_buildings_assets.py`). They are not third-party
+and have no upstream URL, so they are pinned under `legacy` like the earlier
+AI-generated farm/tower sprites: rerun `python scripts/assets/build.py --legacy`
+after regenerating them, otherwise `--check` treats the new bytes as a hand edit.
+
 ## Not migrated
 
 `terrain/{grass,dirt}*.png`, `resources/{gold,stone,berry}.png`, `buildings/{farm,mill,

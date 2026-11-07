@@ -84,9 +84,9 @@ const FALLBACK_ART: Partial<
   Record<BuildingType, { textureKey: string; offsetY: number; hpBarY: number }>
 > = {
   BARRACKS: { textureKey: 'b_barracks', offsetY: -70, hpBarY: -126 },
-  // MIL-01: both new buildings borrow the barracks silhouette until their own
-  // sheet exists. A blank tile would be worse than a shared placeholder: it
-  // still reads as a military building on the map and in the minimap.
+  // MIL-01: both new buildings now ship a 400x320 sheet, so this only draws when
+  // that PNG failed to load. A blank tile would be worse than a shared
+  // placeholder: it still reads as a military building on the map and minimap.
   STABLE: { textureKey: 'b_barracks', offsetY: -70, hpBarY: -126 },
   ARCHERY_RANGE: { textureKey: 'b_barracks', offsetY: -70, hpBarY: -126 },
   HOUSE: { textureKey: 'b_house', offsetY: -50, hpBarY: -90 },
@@ -143,9 +143,10 @@ const HP_BAR_Y: Partial<Record<BuildingType, number>> = {
   TOWN_CENTER: -358,
   TOWER: -350,
   BARRACKS: -260,
-  // MIL-01: same 400x320 canvas as the barracks, so the same bar height.
-  STABLE: -260,
-  ARCHERY_RANGE: -260,
+  // MIL-01: same 400x320 canvas, but each generated sheet crops to its own
+  // artwork height: -264 + topInset (Stable 42, Archery Range 28).
+  STABLE: -222,
+  ARCHERY_RANGE: -236,
   HOUSE: -188,
   FARM: -100,
   LUMBER_CAMP: -171,

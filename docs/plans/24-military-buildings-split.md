@@ -1,8 +1,9 @@
 # Phase 24 — Tách nhà lính thành 3 loại (bộ binh / kỵ binh / cung thủ) (`MIL-01`)
 
-**Status: `IMPLEMENTED`** (2026-11-07). Server + client + test xanh; **art 2 nhà mới chưa sinh**
-(ComfyUI `192.168.1.14:8090` không truy cập được lúc code) — hiện rơi về fallback procedural
-`b_barracks`.
+**Status: `IMPLEMENTED`** (2026-11-07). Server + client + test xanh. Art 2 nhà mới đã sinh
+bằng `scripts/generate_buildings_assets.py` qua ComfyUI local (`LOCAL_API_URL` trong `.env`):
+`stable.png` và `archery_range.png` trên canvas 400x320, preload `v=12`, thumbnail + thanh máu
+đo theo `topInset` riêng của từng sheet.
 
 Phạm vi: `packages/shared` (types + constants + levels), `apps/server` (CommandSystem + tests),
 `apps/client` (BuildMenu, hotkeys, EntityDetails, UpgradePanels, buildingArt, WorldScene preload),
@@ -26,7 +27,7 @@ Phạm vi: `packages/shared` (types + constants + levels), `apps/server` (Comman
 | D1 | Giữ `BARRACKS` = **nhà bộ binh** (chỉ `SPEARMAN`); thêm `STABLE` (kỵ binh) và `ARCHERY_RANGE` (cung thủ). Không rename, không migrate DB (`Building.type` là `String`, save cũ tự thành nhà bộ binh). |
 | D2 | `CORE_BUILDING_TYPES` mở rộng thành **6 trụ cột**: `HOUSE, BARRACKS, STABLE, ARCHERY_RANGE, FARM, TOWER`. Gate Nhà chính đòi cả 6 đạt đúng cấp hiện tại của TC. |
 | D3 | Nghiên cứu cấp lính gắn với **đúng nhà train loại đó** (`buildingTypeForUnit`): `BARRACKS→SPEARMAN`, `STABLE→CAVALRY`, `ARCHERY_RANGE→ARCHER`, `TOWN_CENTER→VILLAGER`. Panel chỉ hiện loại lính của nhà đang chọn. |
-| D4 | Art 2 nhà mới sinh bằng `scripts/generate_buildings_assets.py` (ComfyUI local), canvas 400×320 để dùng lại `SHEET_OFFSET_Y`/`HP_BAR_Y` của Barracks. |
+| D4 | Art 2 nhà mới sinh bằng `scripts/generate_buildings_assets.py` (ComfyUI local), canvas 400×320 để dùng lại `SHEET_OFFSET_Y` của Barracks; `HP_BAR_Y` đo theo `topInset` riêng của từng sheet (Stable 42 → -222, Archery Range 28 → -236). |
 | D5 | Chỉ số: `STABLE` 200 gỗ + 50 đá; `ARCHERY_RANGE` 150 gỗ. Cả hai 3×3, 1200 HP, 10 s — cùng footprint/thời gian với Barracks để khác biệt nằm ở giá và loại lính. |
 | D6 | Hotkey thêm `C` (Stable) và `B` (Archery Range), append cuối danh sách; 8 hotkey cũ giữ nguyên. `P` bị bỏ qua vì đã là lệnh patrol. |
 | D7 | `MAX_CONCURRENT_BUILDING_UPGRADES` **giữ 2** ở phase này. Gate 6 trụ cột nặng hơn bản 4 trụ cột; nâng slot là quyết định cân bằng riêng, ghi ở §5. |
@@ -64,11 +65,12 @@ Chưa chạy được / cần verify tay:
 - `python scripts/assets/build.py --check` — **đỏ từ trước phase này**: `villager_idle.png` đã bị
   sửa ở commit `fd77182` mà không chạy lại `--legacy`. Không liên quan `MIL-01`; cần
   `python scripts/assets/build.py --legacy` ở một lần riêng.
-- Art 2 nhà mới: ComfyUI không truy cập được (`http://192.168.1.14:8090` timeout), nên
-  `stable.png`/`archery_range.png` chưa tồn tại. Bản build hiện vẽ fallback `b_barracks` và
-  `onError` ẩn thumbnail trong BuildMenu. Khi có mạng nội bộ:
+- Art 2 nhà mới: đã sinh ngày 2026-11-07 qua ComfyUI local (`LOCAL_API_URL` trong `.env`):
+  `stable.png` (seed 12345, topInset 42) và `archery_range.png` (seed 67890, topInset 28).
+  Script đọc `LOCAL_API_URL`/`LOCAL_API_KEY` từ `.env`, có `--only`, `--seed`, `--steps`,
+  `--out-dir` và `--suffix` để tái tạo / so sánh ứng viên:
   ```bash
-  python scripts/generate_buildings_assets.py   # chỉ chạy 2 spec mới nếu bỏ 5 spec cũ
+  python scripts/generate_buildings_assets.py --only stable,archery_range --steps 10
   python scripts/assets/build.py --legacy       # pin hash 2 PNG mới
   ```
 - Manual trên `http://localhost:5173/`: dựng đủ 3 nhà quân, train đúng loại ở đúng nhà, panel

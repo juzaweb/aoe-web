@@ -134,6 +134,8 @@ Third-party art is used under its own license.
 - House: *Simple Isometric Hovel* by **Bleed**, **CC-BY 4.0**.
 - Barracks, lumber camp and town centre: *Medieval Barracks* / *Medieval Stable* /
   *Western-European Castle* by **feudalwars**, **CC0 1.0**.
+- Stable and archery range buildings: project-original art generated locally with
+  ComfyUI (`scripts/generate_buildings_assets.py`); not third-party.
 
 The CC-BY assets are modified (cropped, scaled, luminance-matched) as described in
 [CREDITS.md](CREDITS.md). All of them are rebuilt by `scripts/assets/build.py`
