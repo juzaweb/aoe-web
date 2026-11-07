@@ -12,10 +12,14 @@ import {
   TERRAIN_BATTLEFIELD,
   TILE_HEIGHT,
   TILE_WIDTH,
+  UNIT_BLUEPRINTS,
+  UnitType,
   citadelStatus,
   type CitadelStatus,
   getBuildingMaxLevel,
+  getEffectiveUnitAttackPower,
   getIsoDepth,
+  getUnitTrainerBuilding,
   gridToScreen,
   screenToGrid,
   terrainForZone
@@ -197,6 +201,16 @@ export interface SelectedEntityData {
    * in the panel so the stance cycle is observable without opening a menu.
    */
   stance?: string;
+  /**
+   * CMB-01: effective combat stats for a selected unit. Attack already folds in
+   * the unit's research level, the owner's Town Center aura and the trainer's
+   * own level, matching what CombatSystem deals; range/cooldown/speed are
+   * blueprint or state values and stay raw.
+   */
+  attackPower?: number;
+  attackRange?: number;
+  attackCooldownMs?: number;
+  speed?: number;
   /**
    * UIX-06: whether the current unit selection includes one of this player's
    * villagers. The build command card belongs to villagers only, the same way
@@ -1048,6 +1062,25 @@ export class WorldScene extends Phaser.Scene {
    */
   public townCenterLevelFor(ownerId: string): number {
     return this.findTownCenterOf(ownerId)?.level ?? 1;
+  }
+
+  /**
+   * Phase 26/D9: level of the building that trains `unitType` for `ownerId`.
+   *
+   * Mirrors the server's `trainerLevelOf`, so the attack shown on a selected
+   * unit is the damage it deals. A battlefield snapshot has no enemy trainer
+   * building, which falls back to level 1 exactly like the simulation.
+   */
+  public trainerLevelFor(ownerId: string, unitType: string): number {
+    const trainerType = getUnitTrainerBuilding(unitType);
+    if (!trainerType || !this.room?.state?.buildings) return 1;
+    let level = 1;
+    this.room.state.buildings.forEach((b: any) => {
+      if (b.type === trainerType && b.ownerId === ownerId && b.isConstructed !== false) {
+        level = Math.max(level, b.level ?? 1);
+      }
+    });
+    return level;
   }
 
   /** Phase 25: level of this player's own capital, for the hotkey gate. */
@@ -1938,6 +1971,8 @@ export class WorldScene extends Phaser.Scene {
       const firstId = Array.from(this.selectedUnitIds)[0];
       const unit = this.room?.state?.units.get(firstId);
       if (unit) {
+        const unitBlueprint = UNIT_BLUEPRINTS[unit.type as UnitType];
+        const ownerTownCenterLevel = this.townCenterLevelFor(unit.ownerId);
         this.onSelectionChange({
           id: firstId,
           type: 'unit',
@@ -1952,8 +1987,19 @@ export class WorldScene extends Phaser.Scene {
           carryingAmount: unit.carryingAmount,
           carryingResourceType: unit.carryingResourceType,
           stance: unit.stance,
+          attackPower: unitBlueprint
+            ? getEffectiveUnitAttackPower(
+                unit.type as UnitType,
+                unit.level,
+                ownerTownCenterLevel,
+                this.trainerLevelFor(unit.ownerId, unit.type)
+              )
+            : undefined,
+          attackRange: unitBlueprint?.attackRange,
+          attackCooldownMs: unitBlueprint?.attackCooldownMs,
+          speed: unit.speed,
           villagerSelected,
-          ownerTownCenterLevel: this.townCenterLevelFor(unit.ownerId)
+          ownerTownCenterLevel
         });
         return;
       }

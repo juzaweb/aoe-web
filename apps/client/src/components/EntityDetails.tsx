@@ -18,7 +18,7 @@ import {
   townCenterAuraMultiplier,
   townCenterUnitAttackMultiplier
 } from '@chien-quoc/shared';
-import { Shield, UserPlus, Heart, Hammer, X, Boxes } from 'lucide-react';
+import { Shield, UserPlus, Heart, Hammer, X, Boxes, Swords, Crosshair, Timer, Gauge } from 'lucide-react';
 import { BuildingUpgradePanel, UnitResearchPanel } from './UpgradePanels.js';
 import { buildingThumbnail } from './buildingThumbnails.js';
 import { useTranslation } from 'react-i18next';
@@ -233,6 +233,51 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
               }`}
               style={{ width: `${Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100))}%` }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* CMB-01: combat stats of the selected unit. Attack is the effective
+          value (research + Town Center aura + trainer), so it matches the
+          damage the simulation deals instead of the raw blueprint number. */}
+      {entity.type === 'unit' && entity.attackPower !== undefined && (
+        <div className="border-t border-slate-800 pt-2 space-y-1" data-unit-power>
+          <span className="text-[10px] font-bold tracking-wider text-amber-300">
+            {t('details.unitPower')}
+          </span>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-slate-300">
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1">
+                <Swords size={12} className="text-red-400" /> {t('details.attackPower')}
+              </span>
+              <span className="font-mono text-emerald-300" data-unit-attack>
+                {entity.attackPower}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1">
+                <Crosshair size={12} className="text-sky-400" /> {t('details.attackRange')}
+              </span>
+              <span className="font-mono text-slate-200" data-unit-range>
+                {(entity.attackRange ?? 0).toFixed(1)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1">
+                <Timer size={12} className="text-amber-400" /> {t('details.cooldown')}
+              </span>
+              <span className="font-mono text-slate-200" data-unit-cooldown>
+                {((entity.attackCooldownMs ?? 0) / 1000).toFixed(1)}s
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1">
+                <Gauge size={12} className="text-emerald-400" /> {t('details.speed')}
+              </span>
+              <span className="font-mono text-slate-200" data-unit-speed>
+                {(entity.speed ?? 0).toFixed(1)}
+              </span>
+            </div>
           </div>
         </div>
       )}
