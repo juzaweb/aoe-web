@@ -264,40 +264,43 @@ export const HUD: React.FC<HUDProps> = ({
   return (
     <>
     <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none select-none z-20">
-      {/* Player Emblem & Name */}
-      <div className="flex items-center gap-3 bg-slate-900/90 border border-amber-600/70 rounded-md px-4 py-2 shadow-lg backdrop-blur-sm pointer-events-auto">
-        <div
-          className="w-4 h-4 rounded-full border border-white/50 shadow-sm"
-          style={{ backgroundColor: playerColor || '#3b82f6' }}
-        />
-        <span className="font-medieval text-amber-300 font-bold tracking-wide text-base">
-          {playerName || t('hud.emperor')}
-        </span>
-        <span
-          className={`text-[9px] font-bold tracking-widest px-1.5 py-0.5 rounded border ${
-            zoneIsBattle
-              ? 'text-red-300 border-red-700/70 bg-red-950/50'
-              : 'text-emerald-300 border-emerald-700/70 bg-emerald-950/50'
-          }`}
-        >
-          {zoneLabel}
-        </span>
+      {/* Left Section: Player Emblem & Name + Separate World Map Button */}
+      <div className="flex items-center gap-2 pointer-events-none">
+        <div className="flex items-center gap-2.5 bg-slate-900/90 border border-amber-600/70 rounded-md px-3.5 py-2 shadow-lg backdrop-blur-sm pointer-events-auto">
+          <div
+            className="w-4 h-4 rounded-full border border-white/50 shadow-sm shrink-0"
+            style={{ backgroundColor: playerColor || '#3b82f6' }}
+            title={zoneLabel}
+          />
+          <span className="font-medieval text-amber-300 font-bold tracking-wide text-base whitespace-nowrap">
+            {playerName || t('hud.emperor')}
+          </span>
+        </div>
+
         {inRaid ? (
           <button
             type="button"
             onClick={onRetreat}
-            className="flex items-center gap-1 rounded border border-red-600/80 bg-red-950/60 px-2 py-1 text-[11px] font-semibold text-red-200 hover:border-red-400"
+            title={t('hud.retreat')}
+            aria-label={t('hud.retreat')}
+            className="flex items-center gap-1.5 rounded-md border border-red-600/80 bg-slate-900/90 hover:bg-red-950/70 px-3 py-2 text-xs font-semibold text-red-200 hover:border-red-400 shadow-lg backdrop-blur-sm pointer-events-auto cursor-pointer transition-colors whitespace-nowrap active:scale-95"
           >
-            <Swords size={13} /> {t('hud.retreat')}
+            <Swords size={14} className="text-red-400" />
+            <span>{t('hud.retreat')}</span>
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={onOpenWorldMap}
-            className="flex items-center gap-1 rounded border border-amber-600/80 bg-amber-950/40 px-2 py-1 text-[11px] font-semibold text-amber-200 hover:border-amber-400"
-          >
-            <MapIcon size={13} /> {t('hud.worldMap')}
-          </button>
+          onOpenWorldMap && (
+            <button
+              type="button"
+              onClick={onOpenWorldMap}
+              title={t('hud.worldMap')}
+              aria-label={t('hud.worldMap')}
+              className="flex items-center gap-1.5 rounded-md border border-amber-600/70 bg-slate-900/90 hover:bg-amber-950/60 px-3 py-2 text-xs font-semibold text-amber-200 hover:text-amber-100 hover:border-amber-400 shadow-lg backdrop-blur-sm pointer-events-auto cursor-pointer transition-colors whitespace-nowrap active:scale-95"
+            >
+              <MapIcon size={14} className="text-amber-400" />
+              <span>{t('hud.worldMap')}</span>
+            </button>
+          )
         )}
       </div>
 
