@@ -66,6 +66,7 @@ import { RoadState } from '../schema/RoadState.js';
 import { generateWorldResources } from './worldGeneration.js';
 import { isOneOffResourceNode, regrowDelayMs, starterResourceId } from './resources.js';
 import { isTravelCoolingDown, markTravel } from './travelCooldowns.js';
+import { releaseSpectatorWatch } from './spectatorWatch.js';
 import { entityIds } from '../services/EntityIdAllocator.js';
 import type { TravelUnitSnapshot } from '../services/DatabaseService.js';
 import {
@@ -112,6 +113,17 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   protected zoneId: string = 'world';
   /** Account that owns this kingdom room; null on the shared battlefield. */
   protected ownerScope: string | null = null;
+  /**
+   * Sessions watching this map without owning an account in it.
+   *
+   * A spectator is a full read-only client: it receives the same snapshot as
+   * the players, but never becomes a `PlayerState`, never claims the account
+   * session (the viewer is already playing their own kingdom) and every
+   * command message is refused at the room boundary.
+   */
+  protected readonly spectatorSessions = new Set<string>();
+  /** Viewer account behind each spectator session, for the watch-slot registry. */
+  protected readonly spectatorViewers = new Map<string, string>();
   /** See `ZonePersistence`; a stale room must never flush over its successor. */
   private persistenceToken = 0;
   protected zoneReady = false;
@@ -215,8 +227,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     return this.economySystem;
   }
 
-  private readyPromise: Promise<void> | null = null;
-  private worldRestoreError: Error | null = null;
+  protected readyPromise: Promise<void> | null = null;
+  protected worldRestoreError: Error | null = null;
 
   /**
    * SESS-03: which session drives each account, plus the join currently
@@ -317,8 +329,33 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    * constructed without `onCreate` (the unit-test harness), which has no zone
    * to compete for.
    */
-  private isZoneOwner(): boolean {
+  protected isZoneOwner(): boolean {
     return this.persistenceToken === 0 || zonePersistence.isCurrent(this.zoneId, this.persistenceToken);
+  }
+
+  /**
+   * Registers a client message that must never run for a spectator.
+   *
+   * Ownership checks already stop a watcher from touching the defending
+   * empire, but they still let the request enter the simulation. This guard
+   * answers at the room boundary instead, so "read-only" is one rule rather
+   * than a promise spread across every command handler.
+   */
+  protected onCommandMessage<T>(
+    type: NetworkMessage,
+    handler: (client: Client, message: T) => void
+  ): void {
+    this.onMessage<T>(type, (client: Client, message: T) => {
+      if (this.spectatorSessions.has(client.sessionId)) {
+        this.rejectCommand(
+          client,
+          'Bạn đang ở chế độ quan sát và không thể ra lệnh.',
+          RejectCode.FORBIDDEN
+        );
+        return;
+      }
+      handler(client, message);
+    });
   }
 
   /** Terrain layout of this room; see `terrainOf`. */
@@ -347,84 +384,84 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.readyPromise = this.initializeWorldPersistence();
 
     // Setup network message listeners
-    this.onMessage(NetworkMessage.PLACE_BUILDING, (client, message: PlaceBuildingPayload) => {
+    this.onCommandMessage(NetworkMessage.PLACE_BUILDING, (client, message: PlaceBuildingPayload) => {
       this.commands.handlePlaceBuilding(client, message);
     });
 
     // A road is walkable, so it never invalidates a route; only the step size
     // in `updateUnitMovement` reads it.
-    this.onMessage(NetworkMessage.PLACE_ROAD, (client, message: PlaceRoadPayload) => {
+    this.onCommandMessage(NetworkMessage.PLACE_ROAD, (client, message: PlaceRoadPayload) => {
       this.commands.handlePlaceRoad(client, message);
     });
 
-    this.onMessage(NetworkMessage.REMOVE_ROAD, (client, message: RemoveRoadPayload) => {
+    this.onCommandMessage(NetworkMessage.REMOVE_ROAD, (client, message: RemoveRoadPayload) => {
       this.commands.handleRemoveRoad(client, message);
     });
 
-    this.onMessage(NetworkMessage.MOVE_UNITS, (client, message: MoveUnitsPayload) => {
+    this.onCommandMessage(NetworkMessage.MOVE_UNITS, (client, message: MoveUnitsPayload) => {
       this.commands.handleMoveUnits(client, message);
     });
 
-    this.onMessage(NetworkMessage.TRAIN_UNIT, (client, message: TrainUnitPayload) => {
+    this.onCommandMessage(NetworkMessage.TRAIN_UNIT, (client, message: TrainUnitPayload) => {
       this.commands.handleTrainUnit(client, message);
     });
 
-    this.onMessage(NetworkMessage.ATTACK_TARGET, (client, message: AttackTargetPayload) => {
+    this.onCommandMessage(NetworkMessage.ATTACK_TARGET, (client, message: AttackTargetPayload) => {
       this.commands.handleAttackTarget(client, message);
     });
 
-    this.onMessage(NetworkMessage.ATTACK_MOVE, (client, message: AttackMovePayload) => {
+    this.onCommandMessage(NetworkMessage.ATTACK_MOVE, (client, message: AttackMovePayload) => {
       this.commands.handleAttackMove(client, message, 'ATTACK_MOVE');
     });
 
-    this.onMessage(NetworkMessage.PATROL, (client, message: AttackMovePayload) => {
+    this.onCommandMessage(NetworkMessage.PATROL, (client, message: AttackMovePayload) => {
       this.commands.handleAttackMove(client, message, 'PATROL');
     });
 
-    this.onMessage(NetworkMessage.BUILD_TARGET, (client, message: BuildTargetPayload) => {
+    this.onCommandMessage(NetworkMessage.BUILD_TARGET, (client, message: BuildTargetPayload) => {
       this.commands.handleBuildTarget(client, message);
     });
 
-    this.onMessage(NetworkMessage.HARVEST_RESOURCE, (client, message: HarvestResourcePayload) => {
+    this.onCommandMessage(NetworkMessage.HARVEST_RESOURCE, (client, message: HarvestResourcePayload) => {
       this.commands.handleHarvestResource(client, message);
     });
 
-    this.onMessage(NetworkMessage.STOP_UNITS, (client, message: StopUnitsPayload) => {
+    this.onCommandMessage(NetworkMessage.STOP_UNITS, (client, message: StopUnitsPayload) => {
       this.commands.handleStopUnits(client, message);
     });
 
-    this.onMessage(NetworkMessage.SET_RALLY_POINT, (client, message: SetRallyPointPayload) => {
+    this.onCommandMessage(NetworkMessage.SET_RALLY_POINT, (client, message: SetRallyPointPayload) => {
       this.commands.handleSetRallyPoint(client, message);
     });
 
-    this.onMessage(NetworkMessage.SET_STANCE, (client, message: SetStancePayload) => {
+    this.onCommandMessage(NetworkMessage.SET_STANCE, (client, message: SetStancePayload) => {
       this.commands.handleSetStance(client, message);
     });
 
-    this.onMessage(NetworkMessage.CANCEL_TRAIN, (client, message: CancelTrainPayload) => {
+    this.onCommandMessage(NetworkMessage.CANCEL_TRAIN, (client, message: CancelTrainPayload) => {
       this.commands.handleCancelTrain(client, message);
     });
 
-    this.onMessage(NetworkMessage.CANCEL_BUILDING, (client, message: CancelBuildingPayload) => {
+    this.onCommandMessage(NetworkMessage.CANCEL_BUILDING, (client, message: CancelBuildingPayload) => {
       this.commands.handleCancelBuilding(client, message);
     });
 
-    this.onMessage(NetworkMessage.UPGRADE_BUILDING, (client, message: UpgradeBuildingPayload) => {
+    this.onCommandMessage(NetworkMessage.UPGRADE_BUILDING, (client, message: UpgradeBuildingPayload) => {
       this.commands.handleUpgradeBuilding(client, message);
     });
 
-    this.onMessage(
+    this.onCommandMessage(
       NetworkMessage.CANCEL_BUILDING_UPGRADE,
       (client, message: CancelBuildingUpgradePayload) => {
         this.commands.handleCancelBuildingUpgrade(client, message);
       }
     );
 
-    this.onMessage(NetworkMessage.UPGRADE_UNIT_TYPE, (client, message: UpgradeUnitTypePayload) => {
+    this.onCommandMessage(NetworkMessage.UPGRADE_UNIT_TYPE, (client, message: UpgradeUnitTypePayload) => {
       this.commands.handleUpgradeUnitType(client, message);
     });
 
-    this.onMessage(
+    this.onCommandMessage(
       NetworkMessage.CANCEL_UNIT_UPGRADE,
       (client, message: CancelUnitUpgradePayload) => {
         this.commands.handleCancelUnitUpgrade(client, message);
@@ -434,7 +471,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     // Phase 23: the battlefield is retired, so the old travel order is now a
     // clear rejection instead of a silent no-op. Clients from before the update
     // get an explanation rather than a stuck portal.
-    this.onMessage(NetworkMessage.TRAVEL, (client) => {
+    this.onCommandMessage(NetworkMessage.TRAVEL, (client) => {
       this.rejectCommand(client, 'Chiến trường đã đóng. Hãy dùng bản đồ thế giới để tập kích.', RejectCode.FORBIDDEN);
     });
 
@@ -1739,6 +1776,16 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   }
 
   async onLeave(client: Client, code?: number) {
+    // A watcher never owned the account in this room: no session to release and
+    // no empire to save. Dropping it from the set is the whole cleanup.
+    if (this.spectatorSessions.delete(client.sessionId)) {
+      const viewerId = this.spectatorViewers.get(client.sessionId);
+      this.spectatorViewers.delete(client.sessionId);
+      if (viewerId) releaseSpectatorWatch(viewerId, client.sessionId);
+      console.log(`[WorldRoom] Spectator ${client.sessionId} left ${this.zoneId}.`);
+      return;
+    }
+
     const ownerId = ownerIdOf(client);
 
     // SESS-05/D1: a rejected join and a superseded socket both leave without

@@ -13,6 +13,7 @@ import { CommandController } from './CommandController.js';
 function fakeScene() {
   return {
     buildingToPlace: null,
+    readOnly: false,
     selectedUnitIds: new Set<string>(['u1']),
     selectedBuildingId: null as string | null,
     cursor: { refresh: vi.fn() },
@@ -25,9 +26,12 @@ const pointer = {} as never;
 /** Enough of Phaser's keyboard plugin to register and then fire one hotkey. */
 function fakeKeyboard() {
   const handlers = new Map<string, (event: KeyboardEvent) => void>();
+  const events: string[] = [];
   return {
+    events,
     addKey: () => ({}),
     on(event: string, handler: (event: KeyboardEvent) => void) {
+      events.push(event);
       handlers.set(event, handler);
     },
     press(event: string) {
@@ -90,6 +94,25 @@ describe('CommandController armed orders', () => {
 
     expect(commands.pendingOrder).toBe('ATTACK_MOVE');
     expect(commands.contextualArmed).toBe(false);
+  });
+
+  it('binds only camera keys in read-only mode', () => {
+    scene.readOnly = true;
+    const keyboard = fakeKeyboard();
+    commands.bindKeys(keyboard as never);
+
+    // Camera controls stay live: the spectator may look anywhere.
+    expect(keyboard.events).toContain('keydown-PLUS');
+    expect(keyboard.events).toContain('keydown-MINUS');
+    expect(keyboard.events).toContain('keydown-F2');
+    expect(keyboard.events).toContain('keydown-ESC');
+    // Every command hotkey is dead: the room would refuse it anyway.
+    expect(keyboard.events).not.toContain('keydown-A');
+    expect(keyboard.events).not.toContain('keydown-P');
+    expect(keyboard.events).not.toContain('keydown-S');
+    expect(keyboard.events).not.toContain('keydown-ONE');
+    expect(keyboard.events).not.toContain('keydown-H');
+    expect(keyboard.events).not.toContain('keydown-X');
   });
 
   it('replaces an explicit mode when the contextual button is armed', () => {

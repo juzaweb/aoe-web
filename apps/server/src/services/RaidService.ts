@@ -25,6 +25,14 @@ import { DatabaseService, prisma } from './DatabaseService.js';
  * two zones or loot granted twice.
  */
 
+/** Public identity of a kingdom another account is allowed to watch. */
+export interface SpectateTarget {
+  id: string;
+  name: string;
+  color: string;
+  townCenterLevel: number;
+}
+
 /** A rejection the HTTP layer can turn into a 4xx with a readable message. */
 export class RaidError extends Error {
   constructor(
@@ -430,6 +438,31 @@ export class RaidService {
       outcome: 'RETREATED',
       survivingUnitIds: survivors.map((unit) => unit.id)
     });
+  }
+
+  /**
+   * Looks up a kingdom another account may watch.
+   *
+   * Watching is deliberately open to every logged-in account, so the only gate
+   * is that the target really has a Town Center: an empire without one is not
+   * on the world map and its map room would be an empty plain.
+   */
+  public static async findSpectateTarget(ownerId: string): Promise<SpectateTarget | null> {
+    await DatabaseService.initialize();
+    if (!ownerId) return null;
+
+    const player = await prisma.player.findUnique({
+      where: { id: ownerId },
+      select: { id: true, name: true, color: true, townCenterLevel: true }
+    });
+    if (!player) return null;
+
+    return {
+      id: player.id,
+      name: player.name,
+      color: player.color ?? '#64748b',
+      townCenterLevel: player.townCenterLevel ?? 0
+    };
   }
 
   /** The live raid on a defender, if any. Used by the room when it boots. */

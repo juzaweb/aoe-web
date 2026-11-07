@@ -13,6 +13,7 @@ import { RaidService } from '../services/RaidService.js';
 import { BuildingState } from '../schema/BuildingState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { arrivalPoint, ensurePortalFor, findOwnPortal } from './portals.js';
+import { claimSpectatorWatch } from './spectatorWatch.js';
 import { WorldRoom } from './WorldRoom.js';
 import type { RoomAuth } from './identity.js';
 
@@ -78,9 +79,15 @@ export class KingdomRoom extends WorldRoom {
 
   static async onAuth(
     token: string | undefined,
-    options?: { ownerId?: unknown; raidId?: unknown }
+    options?: { ownerId?: unknown; raidId?: unknown; spectate?: unknown }
   ): Promise<RoomAuth> {
     const auth = await super.onAuth(token);
+
+    // A spectator names somebody else's kingdom. The static hook has no room
+    // state, so the target and its Town Center are verified in `onJoin`.
+    if (options?.spectate === true) {
+      return auth;
+    }
 
     // A raid join names the defender as `ownerId`, which the plain rule would
     // reject. This static hook has no room state, so the real proof happens in
@@ -104,13 +111,23 @@ export class KingdomRoom extends WorldRoom {
   onCreate(options: any) {
     super.onCreate(options);
 
-    this.onMessage(NetworkMessage.RAID_RETREAT, (client: Client) => {
+    this.onCommandMessage(NetworkMessage.RAID_RETREAT, (client: Client) => {
       void this.handleRetreat(client);
     });
   }
 
   async onJoin(client: Client, options: any) {
     const raidId = typeof options?.raidId === 'string' ? options.raidId : '';
+
+    // A watcher enters the same room as the defender, but takes no part in the
+    // simulation: no player row, no starter base and no account session. That
+    // separation is the whole feature, so it never falls through to the owner
+    // path in `super.onJoin`.
+    if (!raidId && options?.spectate === true) {
+      await this.joinAsSpectator(client, options);
+      return;
+    }
+
     if (raidId) {
       const auth = client.auth as Partial<RoomAuth> | undefined;
       const defenderId = typeof options?.ownerId === 'string' ? options.ownerId : '';
@@ -146,6 +163,68 @@ export class KingdomRoom extends WorldRoom {
       // keeps the same gate instead of stacking a second one.
       ensurePortalFor(this.state, this.raidAttackerId);
     }
+  }
+
+  /**
+   * Read-only join for a spectator.
+   *
+   * The target is verified from the database rather than the client's word: the
+   * account must exist, must have a Town Center, and must not be the viewer's
+   * own kingdom. The room restore is awaited before the Town Center is checked,
+   * so a stale cache cannot let a watcher into an empty map.
+   */
+  private async joinAsSpectator(client: Client, options: any): Promise<void> {
+    const viewerId = (client.auth as Partial<RoomAuth> | undefined)?.userId;
+    const ownerId = typeof options?.ownerId === 'string' ? options.ownerId : '';
+
+    if (!viewerId || !ownerId) {
+      throw new ServerError(ErrorCode.APPLICATION_ERROR, 'Không xác định được vương quốc cần xem.');
+    }
+    if (ownerId === viewerId) {
+      throw new ServerError(
+        ErrorCode.APPLICATION_ERROR,
+        'Bạn đang ở trong vương quốc của chính mình.'
+      );
+    }
+
+    const target = await RaidService.findSpectateTarget(ownerId);
+    if (!target || target.townCenterLevel <= 0) {
+      throw new ServerError(
+        ErrorCode.APPLICATION_ERROR,
+        'Vương quốc này không tồn tại hoặc chưa có Nhà chính.'
+      );
+    }
+
+    if (this.readyPromise) await this.readyPromise;
+    if (this.worldRestoreError) {
+      throw new ServerError(
+        ErrorCode.APPLICATION_ERROR,
+        `World restore failed: ${this.worldRestoreError.message}`
+      );
+    }
+    if (!this.isZoneOwner() || this.ownerScope !== ownerId) {
+      throw new ServerError(ErrorCode.APPLICATION_ERROR, 'Bản đồ này đã được thay thế. Hãy thử lại.');
+    }
+    if (!this.townCenterOf(ownerId)) {
+      throw new ServerError(
+        ErrorCode.APPLICATION_ERROR,
+        'Vương quốc này không còn Nhà chính để xem.'
+      );
+    }
+
+    // Last check before committing: the account gets one watcher window, the
+    // same way it gets one playing session. Taken after every throwable check so
+    // a refused join never leaks the slot.
+    if (!claimSpectatorWatch(viewerId, client.sessionId)) {
+      throw new ServerError(
+        ErrorCode.APPLICATION_ERROR,
+        'Bạn đang quan sát một vương quốc khác. Hãy đóng cửa sổ đó trước.'
+      );
+    }
+
+    this.spectatorSessions.add(client.sessionId);
+    this.spectatorViewers.set(client.sessionId, viewerId);
+    console.log(`👁️  [KingdomRoom] ${viewerId} is spectating ${ownerId}.`);
   }
 
   protected resolveOwnerScope(options: any): string | null {

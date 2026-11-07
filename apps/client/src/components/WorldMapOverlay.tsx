@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronRight, Map as MapIcon, Shield, Swords, X } from 'lucide-react';
+import { ChevronRight, Eye, Map as MapIcon, Shield, Swords, X } from 'lucide-react';
 import { RAID_MAX_UNITS, WorldMapEntry, WorldMapPayload } from '@chien-quoc/shared';
 import { fetchWorldMap } from '../auth/api.js';
 import {
@@ -19,6 +19,8 @@ interface WorldMapOverlayProps {
   busy: boolean;
   onClose: () => void;
   onAttack: (entry: WorldMapEntry, unitIds: string[]) => void;
+  /** Open a read-only view of this empire, in a second window. */
+  onSpectate: (entry: WorldMapEntry) => void;
 }
 
 /**
@@ -34,7 +36,8 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   selectedUnitIds,
   busy,
   onClose,
-  onAttack
+  onAttack,
+  onSpectate
 }) => {
   const [payload, setPayload] = useState<WorldMapPayload | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -283,6 +286,16 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 <Swords size={15} />
                 {busy ? 'Đang xuất quân...' : 'Tập kích'}
                 <ChevronRight size={14} />
+              </button>
+
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onSpectate(selected)}
+                className="flex min-h-[42px] items-center justify-center gap-2 rounded border border-amber-600/70 bg-slate-950/60 text-xs font-bold uppercase tracking-wider text-amber-200 transition-all enabled:hover:border-amber-400 disabled:cursor-not-allowed disabled:border-slate-700 disabled:text-slate-500"
+              >
+                <Eye size={15} />
+                {busy ? 'Đang mở...' : 'Quan sát'}
               </button>
             </div>
           )}
