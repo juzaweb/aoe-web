@@ -127,7 +127,7 @@ export const CATALOG: Record<string, Entry> = {
   'That lord name is already taken.': { vi: 'Tên lãnh chúa này đã có người sử dụng.' },
   'That username or lord name is already taken.': { vi: 'Tên đăng nhập hoặc tên lãnh chúa đã được sử dụng.' },
   'Wrong username or password.': { vi: 'Sai tên đăng nhập hoặc mật khẩu.' },
-  'The lord name contains invalid characters.': { vi: 'Tên lãnh chúa chứa ký tự không hợp lệ.' },
+  'The lord name may only contain letters, digits and underscores (_).': { vi: 'Tên lãnh chúa chỉ gồm chữ cái, số và dấu gạch dưới (_).' },
   'Usernames are 3-24 characters: lowercase letters, digits and _ . -': { vi: 'Tên đăng nhập phải dài 3-24 ký tự, chỉ gồm chữ thường, số và _ . -' }
 };
 

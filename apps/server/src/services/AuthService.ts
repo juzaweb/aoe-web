@@ -344,21 +344,25 @@ export class AuthService {
   }
 
   private static normalizeDisplayName(value: unknown, fallback: string): string {
-    const raw = (typeof value === 'string' ? value.trim() : '') || fallback;
+    const provided = typeof value === 'string' ? value.trim() : '';
+    // When the player leaves the lord name blank we fall back to their username.
+    // Usernames may contain "." and "-", which the display-name pattern rejects,
+    // so sanitize the fallback instead of failing a valid registration.
+    const raw = provided || fallback.replace(/[^a-zA-Z0-9_]/g, '_');
 
     // Checked before whitespace collapsing: a newline would otherwise be
     // silently rewritten to a space, hiding the fact that the player tried to
     // inject a log line. Reject it instead of guessing their intent.
     if (FORBIDDEN_NAME_CHARS.test(raw)) {
-      throw new AuthError('The lord name contains invalid characters.', 422);
+      throw new AuthError('The lord name may only contain letters, digits and underscores (_).', 422);
     }
 
-    // Collapse inner whitespace so "Đại  Việt" and "Đại Việt" cannot both exist
+    // Collapse inner whitespace so "Dai  Viet" and "Dai Viet" cannot both exist
     // as visually identical lords.
     const displayName = raw.replace(/\s+/g, ' ');
 
     if (!DISPLAY_NAME_PATTERN.test(displayName)) {
-      throw new AuthError('The lord name contains invalid characters.', 422);
+      throw new AuthError('The lord name may only contain letters, digits and underscores (_).', 422);
     }
 
     if (displayName.length < 2 || displayName.length > MAX_DISPLAY_NAME_LENGTH) {
