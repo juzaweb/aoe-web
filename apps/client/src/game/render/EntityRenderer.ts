@@ -3,6 +3,7 @@ import { TILE_HEIGHT, TILE_WIDTH, UNIT_BLUEPRINTS, getIsoDepth, gridToScreen } f
 import type { BuildingType } from '@chien-quoc/shared';
 import type { WorldScene } from '../scenes/WorldScene.js';
 import { buildingArt, buildingHpBarY } from './buildingArt.js';
+import { syncBuildingFire } from './buildingFire.js';
 import {
   DEFAULT_DIRECTION_INDEX,
   DIRECTION_NAMES,
@@ -299,6 +300,7 @@ export class EntityRenderer {
 
     this.refreshOwnerBase(container, id, building.ownerId);
     this.updateBuildingBar(container, building);
+    syncBuildingFire(this.scene, container, building);
 
     // ATK-03: seed the under-attack tracker with the initial hp (no alert).
     const initialGx = building.gridX + building.sizeX / 2;
@@ -313,6 +315,7 @@ export class EntityRenderer {
         scene.recordEntityHp(id, building.ownerId, building.hp, gx, gy);
         this.applyBuildingTier(container, building);
         this.updateBuildingBar(container, building);
+        syncBuildingFire(this.scene, container, building);
         if (scene.selectedBuildingId === id) {
           scene.notifySelectionChange();
         }
