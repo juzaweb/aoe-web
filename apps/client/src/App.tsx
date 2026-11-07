@@ -31,6 +31,7 @@ import { ControlGroups } from './components/ControlGroups.js';
 import { AuthScreen } from './components/AuthScreen.js';
 import { SessionBlocked } from './components/SessionBlocked.js';
 import { WorldMapOverlay } from './components/WorldMapOverlay.js';
+import { SpectatorOverlay } from './components/SpectatorOverlay.js';
 import { OrientationGate } from './components/mobile/OrientationGate.js';
 import { MobileCommandBar } from './components/mobile/MobileCommandBar.js';
 import { useInputMode, useIsPortrait } from './device/useInputMode.js';
@@ -70,6 +71,16 @@ export const App: React.FC = () => {
   const [worldMapOpen, setWorldMapOpen] = useState<boolean>(false);
   /** A raid order is being committed to the server. */
   const [raidBusy, setRaidBusy] = useState<boolean>(false);
+  /**
+   * The empire being watched in the second window. `room` is null while the
+   * spectator join is in flight; the overlay shows its loading state.
+   */
+  const [spectator, setSpectator] = useState<{
+    target: WorldMapEntry;
+    room: Room | null;
+  } | null>(null);
+  /** A spectator join is in flight. */
+  const [spectateBusy, setSpectateBusy] = useState<boolean>(false);
   /** MAPS: a room switch is being applied (enter a raid, or go home). */
   const [isSwitchingZone, setIsSwitchingZone] = useState<boolean>(false);
   const [switchError, setSwitchError] = useState<string | null>(null);
@@ -123,6 +134,16 @@ export const App: React.FC = () => {
    */
   const clientRef = useRef<Client | null>(null);
   const roomRef = useRef<Room | null>(null);
+  /** The separate read-only room, kept apart from the player's own room. */
+  const spectateRoomRef = useRef<Room | null>(null);
+  /**
+   * In-flight leave of the spectator room. A new join must wait for it: the
+   * server allows one watcher window per account, and a join that beats the
+   * leave would be refused for no reason the player can see.
+   */
+  const spectateLeaveRef = useRef<Promise<unknown> | null>(null);
+  /** Bumped on every open/close, so a slow join cannot resurrect a closed window. */
+  const spectateRequestRef = useRef(0);
   /** True while a room switch is being applied; suppresses the leave banner. */
   const switchingRef = useRef<boolean>(false);
   /** The switch being applied (null = going home), kept so a failure can be retried. */
@@ -158,6 +179,20 @@ export const App: React.FC = () => {
     if (!import.meta.env.DEV) return;
     (window as unknown as { __room?: Room | null }).__room = room;
   }, [room]);
+
+  /**
+   * The own map keeps simulating while a spectator window is open, but it must
+   * not keep listening to the keyboard: Phaser binds keys at the window level,
+   * so `A`/`P`/`Q`… would still order the player's own army from behind the
+   * overlay. Input is restored when the viewer closes the window.
+   */
+  const spectateOpen = spectator !== null;
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    scene.setInputEnabled(!spectateOpen);
+    return () => scene.setInputEnabled(true);
+  }, [spectateOpen]);
 
   // Restore a previous session on load so a refresh drops straight back in.
   useEffect(() => {
@@ -355,6 +390,111 @@ export const App: React.FC = () => {
   };
 
   /**
+   * Leaves a spectator room and tracks the in-flight close.
+   *
+   * The server allows one watcher window per account, so a join that starts
+   * before the previous socket has finished closing would be refused. Tracking
+   * the promise lets the next open wait instead of surfacing a false error.
+   */
+  const leaveSpectateRoom = async (active: Room | null) => {
+    if (!active) return;
+    const leaving = active.leave().catch((err) => {
+      console.warn('[SPECTATE] Leave failed.', err);
+    });
+    spectateLeaveRef.current = leaving;
+    await leaving;
+    if (spectateLeaveRef.current === leaving) spectateLeaveRef.current = null;
+  };
+
+  /**
+   * Leaves the spectator room, if one is open.
+   *
+   * The viewer's own room is untouched: watching is a second socket, so closing
+   * it never disturbs the empire the player is actually playing. Resolves once
+   * the server has processed the leave, which is what lets `handleSpectate` swap
+   * targets without tripping the one-window-per-account guard.
+   */
+  const closeSpectate = async () => {
+    spectateRequestRef.current += 1;
+    const active = spectateRoomRef.current;
+    spectateRoomRef.current = null;
+    setSpectator(null);
+    setSpectateBusy(false);
+    await leaveSpectateRoom(active);
+  };
+
+  /**
+   * Opens a read-only view of another empire.
+   *
+   * A new room is joined next to the player's own one; the server recognises
+   * `spectate: true` and skips every owner join step, so no session is claimed
+   * and no starter base is created. The world map closes so the target is
+   * visible immediately.
+   */
+  const handleSpectate = async (entry: WorldMapEntry) => {
+    if (!authUser || spectateBusy) return;
+    if (entry.userId === authUser.id) return;
+
+    // Switching targets reuses the same slot. Wait for the old socket to close
+    // first: the server allows one watcher window per account, and a join that
+    // beats the leave would be refused.
+    setSpectateBusy(true);
+    setWorldMapOpen(false);
+    spectateRequestRef.current += 1;
+    const request = spectateRequestRef.current;
+    const previous = spectateRoomRef.current;
+    spectateRoomRef.current = null;
+    setSpectator({ target: entry, room: null });
+    await leaveSpectateRoom(previous);
+    // A close started by a room switch may still be in flight; the join would
+    // race the one-window-per-account cap if it went out now.
+    if (spectateLeaveRef.current) await spectateLeaveRef.current;
+    // Closed (or retargeted) while the old room was going away.
+    if (spectateRequestRef.current !== request) return;
+
+    try {
+      const client = clientRef.current;
+      if (!client) throw new Error('Mất kết nối với máy chủ.');
+
+      const joined = await client.joinOrCreate('kingdom_room', {
+        ownerId: entry.userId,
+        spectate: true
+      });
+      // The viewer closed the window (or picked another target) while the join
+      // was in flight: drop the room instead of resurrecting the overlay.
+      if (spectateRequestRef.current !== request) {
+        void joined.leave().catch(() => undefined);
+        return;
+      }
+      spectateRoomRef.current = joined;
+
+      joined.onMessage(NetworkMessage.ERROR_NOTIFICATION, (data: ErrorNotificationPayload) => {
+        showNotification(data.message, data.code);
+      });
+      // The target's map closing (they left, or the room was released) ends the
+      // view instead of leaving a frozen canvas behind.
+      joined.onLeave(() => {
+        if (spectateRoomRef.current !== joined) return;
+        spectateRoomRef.current = null;
+        setSpectator(null);
+      });
+
+      setSpectator({ target: entry, room: joined });
+    } catch (err) {
+      if (spectateRequestRef.current === request) {
+        spectateRoomRef.current = null;
+        setSpectator(null);
+        showNotification((err as Error).message || 'Không thể quan sát vương quốc này.');
+        // The map was hidden to show the target; bring it back so another
+        // empire can be picked without reopening the panel from the HUD.
+        setWorldMapOpen(true);
+      }
+    } finally {
+      if (spectateRequestRef.current === request) setSpectateBusy(false);
+    }
+  };
+
+  /**
    * Leaves the current room and joins another one.
    *
    * Used for both directions of a raid: entering the defender's kingdom
@@ -368,6 +508,9 @@ export const App: React.FC = () => {
     setIsSwitchingZone(true);
     setSwitchError(null);
     pendingRaidRef.current = raid;
+    // A raid replaces the map this client is playing; a watcher would be left
+    // looking at a kingdom the player no longer has a reason to see.
+    void closeSpectate();
     // Freeze the old map instead of clearing it, so the player keeps seeing the
     // map they left while the destination syncs.
     sceneRef.current?.pauseWorld();
@@ -548,6 +691,8 @@ export const App: React.FC = () => {
   };
 
   const handleLeaveGame = () => {
+    // The spectator socket is separate, so it must be closed explicitly.
+    void closeSpectate();
     // Only suppress the disconnect banner when a live room is being closed;
     // setting the flag with no room would swallow the next real disconnect.
     const active = roomRef.current;
@@ -1019,10 +1164,25 @@ export const App: React.FC = () => {
         open={worldMapOpen}
         selfName={playerName}
         selectedUnitIds={sceneRef.current ? Array.from(sceneRef.current.selectedUnitIds) : []}
-        busy={raidBusy || isSwitchingZone}
+        busy={raidBusy || isSwitchingZone || spectateBusy}
         onClose={() => setWorldMapOpen(false)}
         onAttack={handleAttack}
+        onSpectate={handleSpectate}
       />
+
+      {/* Read-only second window: the player's own room keeps running behind it. */}
+      {spectator && (
+        <SpectatorOverlay
+          room={spectator.room}
+          target={{
+            userId: spectator.target.userId,
+            name: spectator.target.name,
+            color: spectator.target.color,
+            townCenterLevel: spectator.target.townCenterLevel
+          }}
+          onClose={closeSpectate}
+        />
+      )}
 
       {/* MOB-02: landscape-only layout; the game keeps running behind the gate. */}
       <OrientationGate visible={showOrientationGate} />

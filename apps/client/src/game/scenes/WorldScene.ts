@@ -306,6 +306,20 @@ export class WorldScene extends Phaser.Scene {
   private worldFrozen: boolean = false;
 
   /**
+   * Spectator rooms render another empire without ever touching it.
+   *
+   * The server refuses every command from a watcher; this flag mirrors the same
+   * rule on the client so the pointer never even builds an order, placement
+   * ghost or road stroke that could be sent.
+   */
+  public readOnly: boolean = false;
+  /**
+   * Owner whose base the camera should find when there is no "own" base, i.e.
+   * in a spectator room. Empty for a normal player.
+   */
+  public focusOwnerId: string = '';
+
+  /**
    * MOB-03: the pointer currently driving the world is a finger.
    *
    * Set by every touch event and cleared by the next mouse event, so it gates the
@@ -888,6 +902,56 @@ export class WorldScene extends Phaser.Scene {
     return ownerId === this.myOwnerId;
   }
 
+  /** Turns the scene into (or back out of) a read-only spectator view. */
+  public setReadOnly(readOnly: boolean) {
+    this.readOnly = readOnly;
+    if (!readOnly) return;
+    this.buildingToPlace = null;
+    this.placement?.cancel();
+    this.roadController?.cancel();
+    this.commands?.cancelPendingOrder();
+  }
+
+  /**
+   * The empire the camera should settle on when the viewer owns nothing here.
+   * In a spectator room `myOwnerId` is empty, so the target takes its place.
+   */
+  public setFocusOwnerId(ownerId: string) {
+    this.focusOwnerId = ownerId;
+    this.hasCenteredOnSpawn = false;
+    this.centerAttempts = 0;
+    this.centerOnOwnBaseIfNeeded();
+  }
+
+  /** Seeds an owner colour for a room where that player has no PlayerState yet. */
+  public rememberOwnerColor(ownerId: string, css: string) {
+    this.ownerColorRegistry.remember(ownerId, css);
+  }
+
+  /**
+   * Turns this game's pointer and keyboard input on or off.
+   *
+   * A spectator overlay is a second full-screen canvas over this one; the game
+   * underneath must keep simulating, but its keyboard listeners would still see
+   * every key and issue orders from a map the player cannot even see.
+   */
+  public setInputEnabled(enabled: boolean) {
+    this.input.enabled = enabled;
+    if (!this.input.keyboard) return;
+
+    this.input.keyboard.enabled = enabled;
+    if (enabled) return;
+
+    // Dropping the listeners is not enough: a key held while the overlay opens
+    // would keep `isDown` true forever, and the update loop would scroll the
+    // camera with it. Reset the key state and any in-flight pointer gesture.
+    this.input.keyboard.resetKeys();
+    this.isDragSelecting = false;
+    this.dragSelectionGraphics?.clear();
+    this.cameraControl?.endMiddleDrag();
+    this.touch?.cancel();
+  }
+
   /** OWN-04: CSS colour of an owner, so the canvas minimap matches the world. */
   public ownerColorCss(ownerId: string): string {
     return colorToCss(this.ownerColorRegistry.colorOf(ownerId));
@@ -921,15 +985,28 @@ export class WorldScene extends Phaser.Scene {
     return target;
   }
 
+  /** Town Center of any owner, used by the spectator camera anchor. */
+  public findTownCenterOf(ownerId: string): any | null {
+    if (!ownerId || !this.room?.state?.buildings) return null;
+
+    let target: any = null;
+    this.room.state.buildings.forEach((b: any) => {
+      if (!target && b.type === 'TOWN_CENTER' && b.ownerId === ownerId) target = b;
+    });
+    return target;
+  }
+
   private centerOnOwnBaseIfNeeded() {
     if (this.hasCenteredOnSpawn || !this.room?.state) return;
 
-    // Player name may not be known yet; retry on the next tick instead.
-    if (!this.myPlayerName) return;
+    // A normal player resolves their own id from the player name; a spectator
+    // has no name in this room and follows the target they opened instead.
+    const ownerId = this.myOwnerId || this.focusOwnerId;
+    if (!ownerId) return;
 
     // A kingdom centres on its Town Center; the battlefield has no base, so the
     // account's arrival portal is the next-best anchor.
-    const target = this.findOwnTownCenter() ?? this.findOwnPortal();
+    const target = this.findTownCenterOf(ownerId) ?? this.findOwnPortal();
     if (!target) return;
 
     this.hasCenteredOnSpawn = true;
@@ -1306,6 +1383,11 @@ export class WorldScene extends Phaser.Scene {
     // button instead of trusting `rightButtonDown()`.
     const ctrlLeftClick = !!native && native.button === 0 && native.ctrlKey;
 
+    // Spectators may look, select, pan and zoom, but no click may become an
+    // order. The server refuses them anyway; stopping here avoids building a
+    // cursor/armed state the viewer is not allowed to spend.
+    if (this.readOnly && pointer.rightButtonDown() && !ctrlLeftClick) return;
+
     // Middle-button drag pans the map (AoE2). The default is suppressed so the
     // browser does not start its own autoscroll on the canvas.
     if (pointer.middleButtonDown()) {
@@ -1426,10 +1508,12 @@ export class WorldScene extends Phaser.Scene {
   }
 
   public stopSelectedUnits() {
+    if (this.readOnly) return;
     this.commands.stopSelectedUnits();
   }
 
   public cancelSelectedFoundation(): boolean {
+    if (this.readOnly) return false;
     return this.commands.cancelSelectedFoundation();
   }
 
@@ -1453,6 +1537,9 @@ export class WorldScene extends Phaser.Scene {
   }
 
   public setBuildingMode(type: BuildingType) {
+    // A spectator cannot build here; the server refuses it and there is no
+    // villager of theirs on the map to own the ghost.
+    if (this.readOnly) return;
     // The two tools are mutually exclusive: a click cannot mean both.
     if (this.roadController?.active) this.cancelRoadMode();
     this.placement.enter(type);
@@ -1464,6 +1551,7 @@ export class WorldScene extends Phaser.Scene {
 
   /** Enters the road paint tool. Only meaningful on a kingdom map. */
   public setRoadMode(mode: RoadMode) {
+    if (this.readOnly) return;
     if (!this.roadController) return;
     if (this.terrainLayout.kind !== 'kingdom') return;
     if (this.buildingToPlace) this.placement.cancel();
@@ -1480,10 +1568,12 @@ export class WorldScene extends Phaser.Scene {
   }
 
   public commandMoveTo(gridX: number, gridY: number) {
+    if (this.readOnly) return;
     this.commands.commandMoveTo(gridX, gridY);
   }
 
   public cycleToIdleUnit(category: 'villager' | 'military') {
+    if (this.readOnly) return;
     this.commands.cycleToIdleUnit(category);
   }
 
@@ -1524,11 +1614,13 @@ export class WorldScene extends Phaser.Scene {
 
   /** MOB-05: arm attack-move / patrol, exactly like `A` / `P` on desktop. */
   public armOrder(mode: 'ATTACK_MOVE' | 'PATROL') {
+    if (this.readOnly) return;
     this.commands.armOrder(mode);
   }
 
   /** MOB-05: arm the contextual (right-click equivalent) order for the next tap. */
   public armContextualOrder() {
+    if (this.readOnly) return;
     this.commands.armContextualOrder();
   }
 
@@ -1554,6 +1646,7 @@ export class WorldScene extends Phaser.Scene {
 
   /** CMB-01: cycle the stance of the selection, the touch `D` key. */
   public cycleSelectedStance() {
+    if (this.readOnly) return;
     this.commands.cycleSelectedStance();
   }
 
@@ -1624,6 +1717,17 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
+    // A watcher may tap to inspect or clear a selection, but the tap must never
+    // become an order: the empty-ground fallback below is a move command.
+    if (this.readOnly) {
+      if (this.selection.hasTargetAt(pointer, TOUCH_PICK_SLACK)) {
+        this.selection.handleClick(pointer, false, false, TOUCH_PICK_SLACK);
+        return;
+      }
+      if (this.selectedBuildingId || this.selectedResourceId) this.selection.clear();
+      return;
+    }
+
     if (this.buildingToPlace) {
       this.placement.commit(pointer);
       return;
@@ -1661,6 +1765,7 @@ export class WorldScene extends Phaser.Scene {
   public touchLongPressPointer(pointer: Phaser.Input.Pointer) {
     // A long press while the road tool owns the glass is part of the same
     // stroke: firing a contextual order here would move the army mid-road.
+    if (this.readOnly) return;
     if (this.roadController?.isDrawing) return;
     if (this.buildingToPlace) return;
 

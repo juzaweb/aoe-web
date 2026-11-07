@@ -115,6 +115,16 @@ export class CommandController {
   }
 
   bindKeys(keyboard: Phaser.Input.Keyboard.KeyboardPlugin) {
+    // A spectator gets the camera keys only. Every other binding below arms or
+    // sends a command, which the room refuses; leaving the keys dead is the
+    // honest client-side mirror of that rule.
+    if (this.scene.readOnly) {
+      this.bindZoomKeys(keyboard);
+      this.bindCameraBookmarkKeys(keyboard);
+      this.bindEscapeKey(keyboard);
+      return;
+    }
+
     this.bindControlGroupKeys(keyboard);
     this.bindStopKey(keyboard);
     this.bindIdleCycleKeys(keyboard);
@@ -490,6 +500,7 @@ export class CommandController {
    */
   cycleSelectedStance() {
     const scene = this.scene;
+    if (scene.readOnly) return;
     if (!scene.room || scene.selectedUnitIds.size === 0) return;
 
     const firstId = scene.selectedUnitIds.values().next().value;
@@ -507,6 +518,7 @@ export class CommandController {
    */
   stopSelectedUnits() {
     const scene = this.scene;
+    if (scene.readOnly) return;
     if (!scene.room || scene.selectedUnitIds.size === 0) return;
 
     const unitIds = Array.from(scene.selectedUnitIds);
@@ -528,7 +540,8 @@ export class CommandController {
    */
   cancelSelectedFoundation(): boolean {
     const scene = this.scene;
-    if (!scene.room) return false;
+    if (scene.readOnly) return false;
+    if (!scene.room || !scene.selectedBuildingId) return false;
 
     if (scene.selectedRoadId) {
       const road = (scene.room.state as any)?.roads?.get(scene.selectedRoadId);
@@ -561,6 +574,7 @@ export class CommandController {
    */
   armOrder(mode: OrderMode) {
     const scene = this.scene;
+    if (scene.readOnly) return;
     if (scene.buildingToPlace) return;
     if (scene.selectedUnitIds.size === 0) return;
     if (this.pendingOrder === mode) {
@@ -578,6 +592,7 @@ export class CommandController {
    */
   armContextualOrder() {
     const scene = this.scene;
+    if (scene.readOnly) return;
     if (scene.buildingToPlace) return;
     const hasUnits = scene.selectedUnitIds.size > 0;
     const hasBuilding = scene.selectedBuildingId !== null;
@@ -627,6 +642,10 @@ export class CommandController {
    * dispatch a right click would, which is why `handleRightClick` is called here.
    */
   commitPendingOrder(pointer: Phaser.Input.Pointer) {
+    if (this.scene.readOnly) {
+      this.dropArmed();
+      return;
+    }
     const mode = this.pendingOrder;
     const contextual = this.contextualArmed;
     this.dropArmed();
@@ -646,6 +665,7 @@ export class CommandController {
    */
   issueAttackMove(pointer: Phaser.Input.Pointer, mode: OrderMode) {
     const scene = this.scene;
+    if (scene.readOnly) return;
     if (!scene.room || scene.selectedUnitIds.size === 0) return;
     if (scene.buildingToPlace) return;
 
@@ -673,6 +693,7 @@ export class CommandController {
    */
   handleRightClick(pointer: Phaser.Input.Pointer, queue = false) {
     const scene = this.scene;
+    if (scene.readOnly) return;
     if (!scene.room) return;
 
     // CTL-06: with no unit selected, a right-click on the map sets the rally
@@ -785,6 +806,7 @@ export class CommandController {
    */
   commandMoveTo(gridX: number, gridY: number) {
     const scene = this.scene;
+    if (scene.readOnly) return;
     if (!scene.room) return;
     if (scene.buildingToPlace) return;
     if (scene.selectedUnitIds.size === 0) return;
@@ -816,6 +838,7 @@ export class CommandController {
    */
   private handleSetRallyPoint(pointer: Phaser.Input.Pointer) {
     const scene = this.scene;
+    if (scene.readOnly) return;
     if (!scene.room || !scene.selectedBuildingId) return;
 
     const building = scene.room.state.buildings.get(scene.selectedBuildingId);
