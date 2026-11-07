@@ -8,6 +8,7 @@ import {
   RAID_SHIELD_MS,
   zoneForOwner
 } from '@chien-quoc/shared';
+import { accountSessions } from '../rooms/AccountSessions.js';
 
 let RaidService: typeof import('./RaidService.js').RaidService;
 let RaidError: typeof import('./RaidService.js').RaidError;
@@ -34,6 +35,7 @@ beforeEach(async () => {
   await prisma.raid.deleteMany();
   await prisma.raidLock.deleteMany();
   await prisma.player.deleteMany();
+  accountSessions.reset();
 });
 afterAll(async () => {
   await prisma.$disconnect();
@@ -44,7 +46,7 @@ afterAll(async () => {
 });
 
 async function addPlayer(id: string, overrides: Record<string, unknown> = {}) {
-  return prisma.player.create({
+  const player = await prisma.player.create({
     data: {
       id,
       name: id,
@@ -56,6 +58,14 @@ async function addPlayer(id: string, overrides: Record<string, unknown> = {}) {
       ...overrides
     }
   });
+  // A raid only targets an online empire, so a fixture player is online unless
+  // a test deliberately takes them offline.
+  accountSessions.activate(id, `session-${id}`, zoneForOwner(id));
+  return player;
+}
+
+function markOffline(id: string) {
+  accountSessions.release(id, `session-${id}`);
 }
 
 async function addUnit(id: string, ownerId: string, zone?: string) {
@@ -96,6 +106,17 @@ describe('RaidService.listNeighbors', () => {
 
     const map = await RaidService.listNeighbors('attacker');
     expect(map.neighbors).toEqual([]);
+  });
+
+  it('blocks an offline defender and explains why', async () => {
+    await addPlayer('attacker', { townCenterLevel: 3 });
+    await addPlayer('offline', { townCenterLevel: 3 });
+    markOffline('offline');
+
+    const map = await RaidService.listNeighbors('attacker');
+    const entry = map.neighbors.find((n) => n.userId === 'offline')!;
+    expect(entry.canAttack).toBe(false);
+    expect(entry.blockReason).toBe('Chủ thành đang ngoại tuyến');
   });
 
   it('blocks a shielded defender and explains why', async () => {
@@ -168,6 +189,17 @@ describe('RaidService.startRaid', () => {
 
     const stayed = await prisma.unit.findUnique({ where: { id: 'home-extra' } });
     expect(stayed.zone).toBe(zoneForOwner('attacker'));
+  });
+
+  it('refuses an offline defender', async () => {
+    await addPlayer('attacker');
+    await addPlayer('defender');
+    markOffline('defender');
+    await addUnit('u1', 'attacker');
+
+    await expect(
+      RaidService.startRaid({ attackerId: 'attacker', defenderId: 'defender', unitIds: ['u1'] })
+    ).rejects.toThrow('ngoại tuyến');
   });
 
   it('refuses a target outside the level range', async () => {

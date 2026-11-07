@@ -178,7 +178,8 @@ export class RaidService {
       const shieldUntil = shieldAt > now ? shieldAt : 0;
 
       let blockReason: string | undefined;
-      if (shieldUntil > now) blockReason = 'Đang được bảo vệ';
+      if (!accountSessions.hasLiveSession(p.id)) blockReason = 'Chủ thành đang ngoại tuyến';
+      else if (shieldUntil > now) blockReason = 'Đang được bảo vệ';
       else if (lockedUntil > now) blockReason = 'Bạn vừa thua nước này';
       else if (contestedDefenders.has(p.id)) blockReason = 'Đang bị nước khác tấn công';
 
@@ -237,6 +238,12 @@ export class RaidService {
 
     if (!isRaidLevelInRange(attacker.townCenterLevel, defender.townCenterLevel)) {
       throw new RaidError('Chênh lệch cấp Nhà chính quá lớn để tập kích.');
+    }
+
+    // Only an empire whose owner is actually playing can be raided: an offline
+    // base cannot fight back, so attacking it would be a free hit.
+    if (!accountSessions.hasLiveSession(defenderId)) {
+      throw new RaidError('Chủ thành đang ngoại tuyến, hãy chọn mục tiêu khác.');
     }
 
     const now = Date.now();
