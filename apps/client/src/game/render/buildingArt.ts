@@ -114,17 +114,7 @@ interface TierArtSpec {
   topInset: number;
 }
 
-const HOUSE_TIERS: readonly TierArtSpec[] = [
-  { canvasHeight: 220, topInset: 0 },
-  { canvasHeight: 232, topInset: 1 },
-  { canvasHeight: 256, topInset: 0 },
-  { canvasHeight: 280, topInset: 0 },
-  { canvasHeight: 304, topInset: 0 }
-];
-
-const TIER_ART: Partial<Record<BuildingType, readonly TierArtSpec[]>> = {
-  HOUSE: HOUSE_TIERS
-};
+const TIER_ART: Partial<Record<BuildingType, readonly TierArtSpec[]>> = {};
 
 const DEFAULT_ART = { textureKey: 'b_town_center', offsetY: -130, hpBarY: -203 };
 

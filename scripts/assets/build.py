@@ -288,6 +288,8 @@ def cmd_legacy() -> None:
 def cmd_build(manifest: dict, only: str | None) -> None:
     lock = load_json(LOCK) if LOCK.exists() else {"targets": {}}
     entries = dict(lock.get("targets", {}))
+    if only is None:
+        entries = {k: entries[k] for k in manifest["targets"] if k in entries}
     selected = {k: v for k, v in manifest["targets"].items() if only is None or only in k}
     if not selected:
         raise SystemExit(f"no target matches {only!r}")

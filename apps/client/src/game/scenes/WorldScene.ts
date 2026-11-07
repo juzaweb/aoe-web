@@ -521,9 +521,9 @@ export class WorldScene extends Phaser.Scene {
     }
 
     // Preload generated building assets with cache-busting version (2x resolution)
-    // v=14: the tower swapped to Bleed's Galata Tower pack.
+    // v=16: house swapped to rubberduck's isometric medieval building (level-invariant).
     // Bump the key whenever a PNG under public/assets/buildings or /resources changes.
-    const v = 'v=14';
+    const v = 'v=16';
     this.load.image('building_TOWN_CENTER', `/assets/buildings/town_center.png?${v}`);
     this.load.image('building_BARRACKS', `/assets/buildings/barracks.png?${v}`);
     // MIL-01: both military branches now ship their own 400x320 sheet. The
@@ -532,11 +532,6 @@ export class WorldScene extends Phaser.Scene {
     this.load.image('building_STABLE', `/assets/buildings/stable.png?${v}`);
     this.load.image('building_ARCHERY_RANGE', `/assets/buildings/archery_range.png?${v}`);
     this.load.image('building_HOUSE', `/assets/buildings/house.png?${v}`);
-    // LVL3: the house changes silhouette at four level milestones. Keys follow
-    // `building_<TYPE>_<tier>`; `buildingArt` walks down from the requested tier
-    // so a sheet that fails to load degrades to the previous shape. The loop
-    // counts the *sheets the renderer knows about*, not the shared milestone
-    // table, so a milestone added before its art cannot 404 here.
     for (let tier = 2; tier <= buildingVisualTierCount('HOUSE'); tier++) {
       this.load.image(`building_HOUSE_${tier}`, `/assets/buildings/house_${tier}.png?${v}`);
     }

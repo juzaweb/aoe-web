@@ -113,28 +113,15 @@ export const UNIT_UPGRADE_ORDER: readonly UnitType[] = [
 ];
 
 /**
- * Level milestones where a building's artwork changes (LVL3).
+ * Level milestones where a building's artwork changes.
  *
- * A building has one sprite per "visual tier". With a ten-level ladder the
- * house changes shape four times: a hut, a cottage, a timber house, a stone
- * house and finally a manor. The tiers are a pure function of the level, so the
- * server never has to replicate anything and a client that reconnects redraws
- * the same shape.
- *
- * Element `i` is the first level of tier `i + 1`: level 1 is tier 1, level 2
- * tier 2, level 4 tier 3, level 6 tier 4 and level 8 tier 5, so every tier is
- * reachable inside the cap.
+ * All buildings currently share a level-invariant silhouette (including House).
+ * Exported for backwards-compatibility with callers and tests.
  */
-export const HOUSE_VISUAL_TIER_LEVELS: readonly number[] = [1, 2, 4, 6, 8];
+export const HOUSE_VISUAL_TIER_LEVELS: readonly number[] = [];
 
-/** Display names of the house tiers, index-aligned with the milestones. */
-export const HOUSE_VISUAL_TIER_NAMES: readonly string[] = [
-  'Thatched Hut',
-  'Timber Cottage',
-  'Stone Cottage',
-  'Town House',
-  'Manor'
-];
+/** Display names of the house tiers, empty now that houses are level-invariant. */
+export const HOUSE_VISUAL_TIER_NAMES: readonly string[] = [];
 
 export interface BuildingLevelStats {
   maxHp: number;
@@ -227,8 +214,8 @@ export function getNextVisualTierLevel(type: BuildingType, rawLevel: number): nu
 }
 
 /** Per-type tier milestones; `null` for types whose art is level-invariant. */
-function visualTierLevels(type: BuildingType): readonly number[] | null {
-  return type === 'HOUSE' ? HOUSE_VISUAL_TIER_LEVELS : null;
+function visualTierLevels(_type: BuildingType): readonly number[] | null {
+  return null;
 }
 
 /**

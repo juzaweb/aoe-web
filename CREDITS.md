@@ -101,36 +101,16 @@ duller saturation to the client's grass), luminance-matches it, and fits it into
 a 160x96 (forbs) or 80x64 (rocks) canvas, anchored bottom-centre. Rocks are not
 gain-corrected. No sprite is redrawn.
 
-### Simple Isometric Hovel — Bleed
+### Isometric medieval buildings — rubberduck
 
-- **Author:** Bleed
-- **Source:** https://opengameart.org/content/simple-isometric-hovel
-- **License:** [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+- **Author:** rubberduck
+- **Source:** https://opengameart.org/content/isometric-medieval-buildings
+- **License:** CC0 1.0 (public domain dedication — attribution not required, kept here for provenance)
 - **Used for:** `assets/buildings/house.png`.
 
-**Changes made.** One of the pack's 16 directions (`00000`) is cropped to alpha,
-scaled to 256x220 and luminance-matched. The separate shadow layer in the pack
-is not shipped as a second sprite; the game has no dynamic shadow system, so the
-building stands on its own footprint.
-
-### Medieval Buildings 01, 04, 05 and 06 — Bleed
-
-- **Author:** Bleed
-- **Source:** https://opengameart.org/content/medieval-building-01-bleeds-game-art-0,
-  https://opengameart.org/content/medieval-building-04-bleeds-game-art,
-  https://opengameart.org/content/medieval-building-05-bleeds-game-art,
-  https://opengameart.org/content/medieval-building-06
-- **License:** [CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/)
-- **Used for:** `assets/buildings/house_2.png` (building 05),
-  `house_3.png` (building 06), `house_4.png` (building 01) and `house_5.png`
-  (building 04) — the four level tiers above the hovel above.
-
-**Changes made.** Each sheet is cropped to alpha, luminance-matched to the map's
-`107.3` target and fitted to its own canvas, anchored bottom-centre. Three of the
-four pack a soft drop shadow into the sprite itself; `scripts/assets/ops.py`
-`floor_alpha` fades it out (alpha ≤ 96 → 0, the rest rescaled) before the crop and
-again after the fit, because the shadow otherwise drags the measured iso base
-corner ~12–17% off centre and fails `build.py --check`. Nothing is redrawn.
+**Changes made.** Building 1, direction `00` from the 128x64 shaded set is cropped
+to alpha, luminance-matched, fitted to the 256x220 canvas and anchored bottom-centre.
+No artwork is redrawn.
 
 ### Galata Tower — Bleed
 

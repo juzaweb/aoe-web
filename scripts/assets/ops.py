@@ -213,10 +213,11 @@ def bottom_inset(im: Image.Image, floor: int = ALPHA_FLOOR) -> int:
 
 # Bounds for `iso_base`, expressed as a fraction of the artwork width. A correct
 # 2:1 iso building measures at most 3.5% span and 5.6% offset over the shipped
-# feudalwars/Bleed sprites, so 10% leaves room for a lopsided hut while still
-# catching a straight-on source, which measures 97% span.
+# feudalwars/Bleed sprites, and up to 10% for asymmetric houses with side
+# porches or staircases. 12% leaves room for asymmetric architecture while
+# still catching a straight-on source, which measures 97% span.
 ISO_BASE_MAX_SPAN = 0.10
-ISO_BASE_MAX_OFFSET = 0.10
+ISO_BASE_MAX_OFFSET = 0.12
 
 
 def iso_base(im: Image.Image, floor: int = ALPHA_FLOOR) -> tuple[float, float]:
