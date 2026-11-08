@@ -50,7 +50,7 @@ import { shouldAlertOnBuildingRemoval } from '../alerts/foundationRemoval.js';
 import type { AttackPing, DamageResult } from '../alerts/underAttack.js';
 import { unitActionTexture } from '../render/unitDirections.js';
 import { UNIT_ART, unitArt, unitSheets } from '../render/unitArt.js';
-import { RENDER_DELAY_MS } from '../render/unitMotion.js';
+import { RENDER_DELAY_MS, visualActionState } from '../render/unitMotion.js';
 import type { UnitMotion } from '../render/unitMotion.js';
 
 /**
@@ -2241,7 +2241,7 @@ export class WorldScene extends Phaser.Scene {
       if (updateVisualState) {
         // While the sprite is gliding it is walking, whatever the server has
         // already moved on to (arrival, harvest, build).
-        const effectiveState = step.gliding ? 'MOVING' : unit.actionState;
+        const effectiveState = visualActionState(unit.actionState, step.gliding);
         updateVisualState(effectiveState, step.facing, unit.speed);
       }
     });

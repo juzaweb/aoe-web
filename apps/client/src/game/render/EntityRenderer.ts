@@ -749,6 +749,12 @@ export class EntityRenderer {
 
     // Expose the state-driven animation helper so update() never has to guess
     // which animation key belongs to this unit type.
+    //
+    // The scene's per-frame pass is its ONLY caller: it also knows whether the
+    // sprite is still gliding, so it can keep the walk cycle running while the
+    // server has already switched to the order being executed (harvest, build).
+    // Never call this from the replicated `onChange` callback below — a patch
+    // carrying a new x/y arrives every tick and would cut the walk short.
     container.setData('updateVisualState', updateVisualState);
     container.setData('hasDirectionalSheet', hasDirectionalSheet);
     container.setData('facingDirection', DEFAULT_DIRECTION_INDEX);
@@ -763,8 +769,11 @@ export class EntityRenderer {
         // ATK-03: detect hp loss before repainting the bar.
         scene.recordEntityHp(id, unit.ownerId, unit.hp, unit.x, unit.y);
         this.updateUnitBar(container, unit.hp, unit.maxHp, isCavalry);
-        const facing = (container.getData('facingDirection') as number | undefined) ?? DEFAULT_DIRECTION_INDEX;
-        updateVisualState(unit.actionState, facing, unit.speed);
+        // Animation is deliberately not touched here: this callback fires on
+        // every replicated field change, including x/y each tick, and the
+        // server keeps a villager on HARVESTING while it is still walking to
+        // the node. The per-frame clip in `updateUnitSprites` owns that
+        // decision (see the note where `updateVisualState` is exposed).
       });
     }
   }

@@ -13,6 +13,7 @@ import {
   motionSpeed,
   rotateTowards,
   sampleMotionSegment,
+  visualActionState,
   walkTimeScale
 } from './unitMotion.js';
 
@@ -290,5 +291,22 @@ describe('UnitMotion', () => {
     // Drawing restarts from where the unit stood, not from the middle of the gap.
     expect(resumed.x).toBeCloseTo(parkedAt);
     expect(resumed.gliding).toBe(true);
+  });
+});
+
+describe('visualActionState', () => {
+  it('walks while gliding, whatever order the server has moved on to', () => {
+    // A gather order flips the server to HARVESTING before the villager has
+    // finished walking, so the walk clip must win until the segment is spent.
+    expect(visualActionState('HARVESTING', true)).toBe('MOVING');
+    expect(visualActionState('BUILDING', true)).toBe('MOVING');
+    expect(visualActionState('ATTACKING', true)).toBe('MOVING');
+    expect(visualActionState('RETURNING', true)).toBe('MOVING');
+  });
+
+  it('uses the replicated state once the sprite is parked', () => {
+    expect(visualActionState('HARVESTING', false)).toBe('HARVESTING');
+    expect(visualActionState('BUILDING', false)).toBe('BUILDING');
+    expect(visualActionState('IDLE', false)).toBe('IDLE');
   });
 });
