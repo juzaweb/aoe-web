@@ -2,7 +2,8 @@ import {
   MAP_BUILD_MARGIN_TILES,
   MAX_ROAD_TILES_PER_MESSAGE,
   NetworkMessage,
-  ROAD_COST_PER_TILE
+  ROAD_COST_PER_TILE,
+  citadelLayoutFor
 } from '@chien-quoc/shared';
 import type { WorldScene } from '../scenes/WorldScene.js';
 import { batchTiles } from './roadPaint.js';
@@ -42,6 +43,16 @@ export class RoadController extends StrokeBrushController<RoadMode> {
       }
     });
     resources?.forEach((n: any) => occupied.add(`${n.gridX},${n.gridY}`));
+
+    // Stair flights are citadel structures, not pavement; the server rejects
+    // roads on them, so the ghost overlay must too.
+    buildings?.forEach((b: any) => {
+      if (b.type !== 'TOWN_CENTER') return;
+      for (const stair of citadelLayoutFor(b.gridX, b.gridY).stairs) {
+        occupied.add(`${stair.bottom.gridX},${stair.bottom.gridY}`);
+        occupied.add(`${stair.top.gridX},${stair.top.gridY}`);
+      }
+    });
 
     const pending = this.pending;
     const valid: RoadTile[] = [];

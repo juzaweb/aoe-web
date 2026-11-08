@@ -43,6 +43,7 @@ import { FocusIndicator } from '../render/FocusIndicator.js';
 import { DecorLayer } from '../render/DecorLayer.js';
 import { MAP_APRON_TILES } from '../render/decorScatter.js';
 import { CitadelLayer } from '../render/CitadelLayer.js';
+import { CitadelSurface, citadelSurfaceFor } from '../render/citadelSurface.js';
 import { decorPreloadList } from '../render/decorArt.js';
 import { TerrainLayer } from '../render/TerrainLayer.js';
 import { OwnerColorRegistry, colorToCss } from '../render/ownerColor.js';
@@ -468,6 +469,9 @@ export class WorldScene extends Phaser.Scene {
   public decor!: DecorLayer;
   /** Stone floor and indestructible walls of the kingdom citadel. */
   public citadel!: CitadelLayer;
+  /** Wall-top height lookup, rebuilt only when a Town Center moves. */
+  private citadelSurface: CitadelSurface | null = null;
+  private citadelSurfaceKey = '';
   /**
    * Size of the map currently joined. A kingdom is 110x110, the battlefield
    * 220x220; the room replicates both numbers so camera, terrain culling,
@@ -593,9 +597,10 @@ export class WorldScene extends Phaser.Scene {
 
     // Citadel stone: floor tile, wall block, gatehouse and its portcullis.
     // Built by `scripts/process_citadel_assets.py`; bump when a PNG changes.
-    const cv = 'v=6';
+    const cv = 'v=7';
     this.load.image('citadel_floor', `/assets/citadel/floor.png?${cv}`);
     this.load.image('citadel_wall', `/assets/citadel/wall.png?${cv}`);
+    this.load.image('citadel_stairs', `/assets/citadel/stairs.png?${cv}`);
     this.load.image('citadel_gate', `/assets/citadel/gate.png?${cv}`);
     this.load.image('citadel_gate_door', `/assets/citadel/gate_door.png?${cv}`);
     this.load.image('citadel_tc_platform', `/assets/citadel/tc_platform.png?${cv}`);
@@ -2102,7 +2107,13 @@ export class WorldScene extends Phaser.Scene {
           carryingAmount: unit.carryingAmount,
           carryingResourceType: unit.carryingResourceType,
           stance: unit.stance,
-          ...unitCombatStats(unit.type, unit.level, ownerTownCenterLevel, trainerLevel),
+          ...unitCombatStats(
+            unit.type,
+            unit.level,
+            ownerTownCenterLevel,
+            trainerLevel,
+            unit.onWall === true
+          ),
           speed: unit.speed,
           villagerSelected,
           ownerTownCenterLevel
@@ -2280,8 +2291,40 @@ export class WorldScene extends Phaser.Scene {
    * rate. The rule itself lives in `UnitMotion`; this loop only projects and
    * paints it.
    */
+  /**
+   * Height a unit at `(x, y)` is drawn above the ground.
+   *
+   * The surface is rebuilt only when a Town Center moves, so the per-unit frame
+   * loop below pays a set lookup, not a layout rebuild.
+   */
+  citadelLiftAt(x: number, y: number): number {
+    this.ensureCitadelSurface();
+    return this.citadelSurface?.liftAt(x, y) ?? 0;
+  }
+
+  private ensureCitadelSurface() {
+    if (!this.room?.state) {
+      this.citadelSurface = null;
+      this.citadelSurfaceKey = '';
+      return;
+    }
+
+    let key = '';
+    const townCenters: Array<{ gridX: number; gridY: number }> = [];
+    this.room.state.buildings?.forEach((building: any) => {
+      if (building.type !== 'TOWN_CENTER') return;
+      key += `${building.ownerId}:${building.gridX},${building.gridY}|`;
+      townCenters.push(building);
+    });
+    if (key === this.citadelSurfaceKey) return;
+
+    this.citadelSurfaceKey = key;
+    this.citadelSurface = citadelSurfaceFor(townCenters);
+  }
+
   private updateUnitSprites(time: number, dtSeconds: number) {
     const renderTime = time - RENDER_DELAY_MS;
+    this.ensureCitadelSurface();
     this.unitMotion.forEach((motion, unitId) => {
       const container = this.unitSprites.get(unitId);
       const unit = this.room?.state?.units.get(unitId);
@@ -2294,13 +2337,17 @@ export class WorldScene extends Phaser.Scene {
 
       // Inline isometric projection: `gridToScreen` allocates an object, and this
       // runs for every unit on every frame.
+      const lift = this.citadelSurface?.liftAt(step.x, step.y) ?? 0;
       container.x = (step.x - step.y) * HALF_TILE_WIDTH;
-      container.y = (step.x + step.y) * HALF_TILE_HEIGHT;
+      container.y = (step.x + step.y) * HALF_TILE_HEIGHT - lift;
 
       // Assigning `depth` queues a display-list sort in Phaser even when the value
       // is unchanged, and parked units keep the same depth frame after frame, so
-      // only touch it when it actually moves.
-      const depth = getIsoDepth(step.x, step.y, 25);
+      // only touch it when it actually moves. A figure on a wall-top tile sorts
+      // above the wall blocks at that tile; stair walkers keep ground depth.
+      const onWallTile =
+        this.citadelSurface?.isWallTop(Math.floor(step.x), Math.floor(step.y)) ?? false;
+      const depth = getIsoDepth(step.x, step.y, onWallTile ? 30 : 25);
       if (container.depth !== depth) container.setDepth(depth);
 
       const unitDisplay = container.getData('unitDisplay') as

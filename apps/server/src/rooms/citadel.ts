@@ -5,9 +5,12 @@ import {
   CitadelSlot,
   citadelLayoutFor,
   citadelStatus,
+  citadelWallTopTileKeys,
   citadelTownCenterFor,
   getBuildingLevelStats,
   isCitadelAvenueTile,
+  isCitadelInteriorTile,
+  isCitadelWallTopTile,
   roadTileKey,
   zoneKindOf
 } from '@chien-quoc/shared';
@@ -165,6 +168,33 @@ interface CompoundRect {
 
 function insideCompound(building: BuildingState, rect: CompoundRect): boolean {
   return footprintOverlaps(building, rect.x, rect.y, rect.sizeX, rect.sizeY);
+}
+
+/**
+ * Tiles a structure may never cover: the wall ring plus both stair flights.
+ *
+ * They are grouped because placement and migration only need "is this tile
+ * reserved?", not which of the two it is.
+ */
+function citadelReservedTileKeys(
+  layout: ReturnType<typeof citadelLayoutFor>
+): Set<string> {
+  const keys = new Set(layout.walls.map((tile) => `${tile.gridX},${tile.gridY}`));
+  for (const stair of layout.stairs) {
+    keys.add(`${stair.bottom.gridX},${stair.bottom.gridY}`);
+    keys.add(`${stair.top.gridX},${stair.top.gridY}`);
+  }
+  return keys;
+}
+
+/** Removes player-painted road tiles from the stair flights. */
+function clearStairRoads(state: WorldState, townCenter: BuildingState): void {
+  const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+  for (const stair of layout.stairs) {
+    for (const tile of [stair.bottom, stair.top]) {
+      state.roads.delete(roadTileKey(tile.gridX, tile.gridY));
+    }
+  }
 }
 
 /**
@@ -451,10 +481,13 @@ function canonicalizeCitadel(
 
     const spot = spots[spotIndex % spots.length];
     spotIndex++;
+    unit.onWall = false;
     unit.x = spot.x + 0.5;
     unit.y = spot.y + 0.5;
     unit.targetX = unit.x;
     unit.targetY = unit.y;
+    unit.pathX.clear();
+    unit.pathY.clear();
   });
 
   console.log(`🏰 [Citadel] Rebuilt ${ownerId}'s citadel at the map centre.`);
@@ -468,21 +501,31 @@ function rescueUnitsFromWalls(
   townCenter: BuildingState
 ): void {
   const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
-  const wallKeys = new Set(layout.walls.map((tile) => `${tile.gridX},${tile.gridY}`));
+  const wallKeys = new Set(
+    [...layout.walls, ...layout.gates].map((tile) => `${tile.gridX},${tile.gridY}`)
+  );
   const spots = walkwaySpots(layout);
   let spotIndex = 0;
 
   state.units.forEach((unit) => {
     if (unit.ownerId !== ownerId) return;
     const key = `${Math.floor(unit.x)},${Math.floor(unit.y)}`;
-    if (!wallKeys.has(key)) return;
+    const onCurrentWall = wallKeys.has(key);
+    // A unit that legitimately climbed the wall keeps its post. Anything else
+    // that ended up on a wall tile (a legacy save, or a stale `onWall` after the
+    // citadel moved) is pulled back into the courtyard.
+    if (onCurrentWall && unit.onWall) return;
+    if (!onCurrentWall && !unit.onWall) return;
 
+    unit.onWall = false;
     const spot = spots[spotIndex % spots.length];
     spotIndex++;
     unit.x = spot.x + 0.5;
     unit.y = spot.y + 0.5;
     unit.targetX = unit.x;
     unit.targetY = unit.y;
+    unit.pathX.clear();
+    unit.pathY.clear();
   });
 }
 
@@ -501,7 +544,7 @@ function migrateHouseSetback(
   townCenter: BuildingState
 ): number {
   const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
-  const wallKeys = new Set(layout.walls.map((tile) => `${tile.gridX},${tile.gridY}`));
+  const wallKeys = citadelReservedTileKeys(layout);
   const oldGridX = layout.originX + 1;
   const houseSlots = layout.slots.filter((slot) => slot.type === 'HOUSE');
   let moved = 0;
@@ -540,7 +583,7 @@ function resolveBuildingsOnWalls(
   townCenter: BuildingState
 ): number {
   const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
-  const wallKeys = new Set(layout.walls.map((tile) => `${tile.gridX},${tile.gridY}`));
+  const wallKeys = citadelReservedTileKeys(layout);
   const centreX = layout.originX + layout.sizeX / 2;
   const centreY = layout.originY + layout.sizeY / 2;
 
@@ -620,9 +663,13 @@ export function ensureCitadel(state: WorldState, ownerId: string): void {
   // Clear buried nodes first: the migrations below look for a free tile, and a
   // node that is about to be removed must not block it.
   clearCitadelResources(state, townCenter);
+  clearStairRoads(state, townCenter);
   migrateHouseSetback(state, ownerId, townCenter);
   resolveBuildingsOnWalls(state, ownerId, townCenter);
   rescueUnitsFromWalls(state, ownerId, townCenter);
+  // The gate is sealed to non-owners, so a raider left inside by an older save
+  // (or by a raid that started before this rule) is moved back outside.
+  evictForeignUnitsFromCitadel(state);
 
   // Retrofit missing compound buildings only if the empire was saved before
   // citadels existed (Town-Center-only save). Existing empires that deleted a
@@ -692,6 +739,173 @@ export function citadelWallTileSet(state: WorldState): Set<string> {
 }
 
 /**
+ * Every wall-top and gate-roof tile on this map, as `x,y` keys.
+ *
+ * Units stand on these tiles when they climb a stair; the gate roof is included
+ * so the wall run stays continuous over the gatehouse.
+ */
+export function citadelWallTopTileSet(state: WorldState): Set<string> {
+  const tiles = new Set<string>();
+  if (!hasCitadel(state)) return tiles;
+
+  state.buildings.forEach((building: BuildingState) => {
+    if (building.type !== 'TOWN_CENTER') return;
+    for (const key of citadelWallTopTileKeys(citadelLayoutFor(building.gridX, building.gridY))) {
+      tiles.add(key);
+    }
+  });
+
+  return tiles;
+}
+
+/** Every gate tile on this map, as `x,y` keys. */
+export function citadelGateTileSet(state: WorldState): Set<string> {
+  const tiles = new Set<string>();
+  if (!hasCitadel(state)) return tiles;
+
+  state.buildings.forEach((building: BuildingState) => {
+    if (building.type !== 'TOWN_CENTER') return;
+    for (const gate of citadelLayoutFor(building.gridX, building.gridY).gates) {
+      tiles.add(`${gate.gridX},${gate.gridY}`);
+    }
+  });
+
+  return tiles;
+}
+
+/** Every stair tile on this map, as `x,y` keys. */
+export function citadelStairTileSet(state: WorldState): Set<string> {
+  const tiles = new Set<string>();
+  if (!hasCitadel(state)) return tiles;
+
+  state.buildings.forEach((building: BuildingState) => {
+    if (building.type !== 'TOWN_CENTER') return;
+    const layout = citadelLayoutFor(building.gridX, building.gridY);
+    for (const stair of layout.stairs) {
+      tiles.add(`${stair.bottom.gridX},${stair.bottom.gridY}`);
+      tiles.add(`${stair.top.gridX},${stair.top.gridY}`);
+    }
+  });
+
+  return tiles;
+}
+
+/** Owner of the kingdom's citadel, or null when this map has none. */
+export function citadelOwnerIdOf(state: WorldState): string | null {
+  if (!hasCitadel(state)) return null;
+  let ownerId: string | null = null;
+  state.buildings.forEach((building: BuildingState) => {
+    if (ownerId || building.type !== 'TOWN_CENTER') return;
+    ownerId = building.ownerId;
+  });
+  return ownerId;
+}
+
+/** Whether `(x, y)` lies inside the citadel courtyard (walls excluded). */
+export function isInsideCitadelInterior(state: WorldState, x: number, y: number): boolean {
+  if (!hasCitadel(state)) return false;
+  let inside = false;
+  state.buildings.forEach((building: BuildingState) => {
+    if (inside || building.type !== 'TOWN_CENTER') return;
+    inside = isCitadelInteriorTile(
+      citadelLayoutFor(building.gridX, building.gridY),
+      Math.floor(x),
+      Math.floor(y)
+    );
+  });
+  return inside;
+}
+
+/**
+ * Whether `(x, y)` is the wall top or gate roof of the citadel owned by
+ * `ownerId`. A wall belongs to the compound, not to whichever player asks.
+ */
+export function isOwnCitadelWallTop(
+  state: WorldState,
+  ownerId: string,
+  x: number,
+  y: number
+): boolean {
+  if (!hasCitadel(state)) return false;
+  let owned = false;
+  state.buildings.forEach((building: BuildingState) => {
+    if (owned || building.type !== 'TOWN_CENTER' || building.ownerId !== ownerId) return;
+    owned = isCitadelWallTopTile(citadelLayoutFor(building.gridX, building.gridY), x, y);
+  });
+  return owned;
+}
+
+/**
+ * The nearest point outside the east gate, used to push foreign units out of a
+ * sealed compound and to redirect a raider order that landed inside.
+ *
+ * The avenue east of the gate is always open ground, so this never needs a
+ * pathfinder.
+ */
+export function outsideCitadelGatePoint(
+  state: WorldState,
+  _fromX: number,
+  fromY: number
+): { x: number; y: number } | null {
+  if (!hasCitadel(state)) return null;
+  let result: { x: number; y: number } | null = null;
+  state.buildings.forEach((building: BuildingState) => {
+    if (result || building.type !== 'TOWN_CENTER') return;
+    const layout = citadelLayoutFor(building.gridX, building.gridY);
+    const gateMiddle = layout.gates[Math.floor(layout.gates.length / 2)] ?? layout.gates[0];
+    const gateY = gateMiddle ? gateMiddle.gridY : layout.originY + layout.sizeY / 2;
+    const preferredY = Math.max(layout.innerMinY, Math.min(layout.innerMaxY, fromY));
+    const y = Math.abs(preferredY - gateY) <= 6 ? preferredY : gateY;
+    result = {
+      x: Math.min(state.mapWidth - 1, layout.originX + layout.sizeX + 1),
+      y: Math.max(0, Math.min(state.mapHeight - 1, y))
+    };
+  });
+  return result;
+}
+
+/**
+ * Moves every foreign unit out of the citadel into the avenue outside the gate.
+ *
+ * The gate is sealed to non-owners, so a unit that predates that rule would
+ * otherwise be trapped inside a compound it can never leave. Returns how many
+ * units were moved.
+ */
+export function evictForeignUnitsFromCitadel(state: WorldState): number {
+  const ownerId = citadelOwnerIdOf(state);
+  if (!ownerId) return 0;
+
+  let moved = 0;
+  state.units.forEach((unit) => {
+    if (unit.ownerId === ownerId) return;
+    if (
+      !isInsideCitadelInterior(state, unit.x, unit.y) &&
+      !isOwnCitadelWallTop(state, ownerId, Math.floor(unit.x), Math.floor(unit.y))
+    ) {
+      return;
+    }
+
+    const point = outsideCitadelGatePoint(state, unit.x, unit.y);
+    if (!point) return;
+    const offset = moved % 5;
+    unit.x = point.x + 0.5;
+    unit.y = Math.max(0, Math.min(state.mapHeight - 1, point.y - 2 + offset)) + 0.5;
+    unit.targetX = unit.x;
+    unit.targetY = unit.y;
+    unit.onWall = false;
+    unit.pathX.clear();
+    unit.pathY.clear();
+    unit.queueTargetX.clear();
+    unit.queueTargetY.clear();
+    unit.targetEntityId = '';
+    unit.targetEntityType = '';
+    unit.actionState = 'IDLE';
+    moved++;
+  });
+  return moved;
+}
+
+/**
  * Whether a building footprint would cover any citadel wall tile.
  *
  * Only the wall tile itself is off-limits; a building may stand on the tile
@@ -706,10 +920,10 @@ export function footprintTouchesCitadelWall(
 ): boolean {
   if (!hasCitadel(state)) return false;
 
-  const walls = citadelWallTileSet(state);
-  if (walls.size === 0) return false;
+  const reserved = new Set([...citadelWallTileSet(state), ...citadelStairTileSet(state)]);
+  if (reserved.size === 0) return false;
 
-  return footprintCoversWalls(walls, gridX, gridY, sizeX, sizeY);
+  return footprintCoversWalls(reserved, gridX, gridY, sizeX, sizeY);
 }
 
 /**

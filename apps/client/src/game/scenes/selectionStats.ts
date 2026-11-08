@@ -1,6 +1,8 @@
 import {
+  RANGED_MIN_RANGE,
   UNIT_BLUEPRINTS,
   UnitType,
+  WALL_RANGE_BONUS,
   getEffectiveUnitAttackPower,
   getUnitTrainerBuilding
 } from '@chien-quoc/shared';
@@ -65,11 +67,14 @@ export function unitCombatStats(
   unitType: string,
   unitLevel: number,
   ownerTownCenterLevel: number,
-  trainerLevel: number
+  trainerLevel: number,
+  onWall = false
 ): UnitCombatStats {
   const blueprint = UNIT_BLUEPRINTS[unitType as UnitType];
   if (!blueprint) return {};
 
+  const wallBonus =
+    onWall && blueprint.attackRange >= RANGED_MIN_RANGE ? WALL_RANGE_BONUS : 0;
   return {
     attackPower: getEffectiveUnitAttackPower(
       unitType as UnitType,
@@ -77,7 +82,7 @@ export function unitCombatStats(
       ownerTownCenterLevel,
       trainerLevel
     ),
-    attackRange: blueprint.attackRange,
+    attackRange: blueprint.attackRange + wallBonus,
     attackCooldownMs: blueprint.attackCooldownMs
   };
 }

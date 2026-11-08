@@ -59,8 +59,13 @@ export class WallController extends StrokeBrushController<WallMode> {
     // so a wall stroke cannot be drawn on top of the capital's own masonry.
     buildings?.forEach((b: any) => {
       if (b.type !== 'TOWN_CENTER') return;
-      for (const wall of citadelLayoutFor(b.gridX, b.gridY).walls) {
+      const layout = citadelLayoutFor(b.gridX, b.gridY);
+      for (const wall of layout.walls) {
         occupied.add(`${wall.gridX},${wall.gridY}`);
+      }
+      for (const stair of layout.stairs) {
+        occupied.add(`${stair.bottom.gridX},${stair.bottom.gridY}`);
+        occupied.add(`${stair.top.gridX},${stair.top.gridY}`);
       }
     });
 

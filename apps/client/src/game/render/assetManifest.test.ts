@@ -167,9 +167,9 @@ describe('wall art', () => {
   it('reuses the citadel masonry and aligns its base with the tile', () => {
     const art = buildingArt('WALL', () => true);
     expect(art.textureKey).toBe('citadel_wall');
-    expect(art.offsetY).toBe(-45);
+    expect(art.offsetY).toBe(-60);
     expect(art.scale).toBe(1);
-    expect(buildingHpBarY('WALL')).toBe(-130);
+    expect(buildingHpBarY('WALL')).toBe(-160);
   });
 
   it('falls back to a stone silhouette when the citadel sheet is missing', () => {

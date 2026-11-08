@@ -15,7 +15,12 @@ import { RaidService } from '../services/RaidService.js';
 import { BuildingState } from '../schema/BuildingState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { arrivalPoint, ensurePortalFor, findOwnPortal } from './portals.js';
-import { ensureCitadel, ensureCitadelEntity, restoreCitadel } from './citadel.js';
+import {
+  ensureCitadel,
+  ensureCitadelEntity,
+  evictForeignUnitsFromCitadel,
+  restoreCitadel
+} from './citadel.js';
 import { claimSpectatorWatch } from './spectatorWatch.js';
 import { WorldRoom } from './WorldRoom.js';
 import { normalizeLocale, render, type Locale } from '../i18n/index.js';
@@ -355,6 +360,9 @@ export class KingdomRoom extends WorldRoom {
       this.restoreSavedEntities(rows);
       this.bumpEntityIdsFromState();
       this.updatePlayerPopulation(ownerId);
+      // The gate is sealed to non-owners: a raider army restored inside the
+      // compound (an older save, or a raid that predates the rule) goes back out.
+      evictForeignUnitsFromCitadel(this.state);
     } catch (err) {
       console.error(`❌ [KingdomRoom] Could not restore the army of ${ownerId}:`, err);
     }

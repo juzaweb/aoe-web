@@ -53,7 +53,11 @@ import {
   getUnitUpgradeTimeMs,
   isBuildingUnlocked,
   buildingTypeForUnit,
-  isDefaultTownCenter
+  isDefaultTownCenter,
+  CitadelLayout,
+  citadelLayoutFor,
+  isCitadelStairTile,
+  isCitadelWallTopTile
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { RoadState } from '../schema/RoadState.js';
@@ -66,7 +70,11 @@ import {
   footprintTouchesCitadelWall,
   isProtectedCitadelInteriorBuilding,
   isVirtualCitadelCompound,
-  citadelWallTileSet
+  citadelOwnerIdOf,
+  citadelStairTileSet,
+  citadelWallTileSet,
+  isInsideCitadelInterior,
+  outsideCitadelGatePoint
 } from './citadel.js';
 import { getBuildApproachPoint } from './construction.js';
 import { RoadGrid } from './roads.js';
@@ -90,6 +98,8 @@ export interface CommandPorts {
   rejectCommand(client: Client, message: string | LocalizedSpec, code: RejectCode): void;
   /** Replaces the unit's route with one to this point (SIM-01). */
   setWalkTarget(unit: UnitState, targetX: number, targetY: number): void;
+  /** Drops a pending stair transition when the order is cancelled. */
+  cancelElevationTransition(unitId: string): void;
   /** Pops the next queued waypoint into the active order (CTL-05). */
   advanceQueuedWaypoint(unit: UnitState): boolean;
   /** Drops the economy system's retarget type for a unit that got a new order. */
@@ -448,7 +458,11 @@ export class CommandSystem {
     }
 
     const roads = this.ports.roadGrid();
-    const buildable = tiles.filter((tile) => this.isRoadTileBuildable(tile, roads));
+    const stairs = citadelStairTileSet(this.state);
+    const buildable = tiles.filter(
+      (tile) =>
+        !stairs.has(roadTileKey(tile.x, tile.y)) && this.isRoadTileBuildable(tile, roads)
+    );
     if (buildable.length === 0) {
       this.ports.rejectCommand(client, 'Those tiles are already occupied', RejectCode.PLACEMENT);
       return;
@@ -699,6 +713,7 @@ export class CommandSystem {
     });
 
     for (const wall of citadelWallTileSet(this.state)) occupied.add(wall);
+    for (const stair of citadelStairTileSet(this.state)) occupied.add(stair);
 
     return { occupied, wallCount };
   }
@@ -765,8 +780,19 @@ export class CommandSystem {
     // Validate first, then spread the surviving units over one formation. Doing
     // it in a single pass would size the block off the payload length, so ids
     // that are foreign or stale would leave holes in the shape.
+    const ownerId = ownerIdOf(client);
     const ownedUnits = this.collectOwnedUnits(client, payload.unitIds);
-    const targets = this.assignFormationTargets(ownedUnits, payload.targetGridX, payload.targetGridY);
+    const destination = this.foreignTargetOutsideCitadel(
+      ownerId,
+      payload.targetGridX,
+      payload.targetGridY
+    );
+    const targets = this.assignFormationTargets(
+      ownedUnits,
+      destination.x,
+      destination.y,
+      ownerId
+    );
 
     ownedUnits.forEach((unit, idx) => {
       const { x: targetX, y: targetY } = targets[idx];
@@ -1218,6 +1244,25 @@ export class CommandSystem {
       return;
     }
 
+    // WALL: the citadel is sealed. A target standing on the courtyard floor is
+    // protected by the walls; raiders must break the compound from outside.
+    const citadelOwnerId = citadelOwnerIdOf(this.state);
+    if (
+      payload.targetType === 'unit' &&
+      citadelOwnerId !== null &&
+      ownerId !== citadelOwnerId
+    ) {
+      const targetUnit = target as UnitState;
+      if (isInsideCitadelInterior(this.state, targetUnit.x, targetUnit.y)) {
+        this.ports.rejectCommand(
+          client,
+          'Defenders inside the citadel are protected. Attack the Citadel walls!',
+          RejectCode.FORBIDDEN
+        );
+        return;
+      }
+    }
+
     // D8/D7: a portal is travel infrastructure, not a raid target. Making it
     // attackable would let an opponent strand an empire on the other map.
     if (payload.targetType === 'building') {
@@ -1237,9 +1282,24 @@ export class CommandSystem {
       }
     }
 
+    const targetInsideCitadel = this.targetInsideCitadel(target);
+    let blockedByWalls = false;
+    let ordered = 0;
+
     payload.unitIds.forEach((uId) => {
       const unit = this.state.units.get(uId);
       if (unit && unit.ownerId === ownerId) {
+        // A defender on the courtyard floor cannot fire through its own wall;
+        // only a unit on the wall top may engage an outside target.
+        if (
+          citadelOwnerId === unit.ownerId &&
+          !unit.onWall &&
+          isInsideCitadelInterior(this.state, unit.x, unit.y) &&
+          !targetInsideCitadel
+        ) {
+          blockedByWalls = true;
+          return;
+        }
         // A new order replaces any queued path; leaving waypoints behind would
         // make the unit resume an old route after the attack finishes.
         unit.queueTargetX.clear();
@@ -1253,8 +1313,17 @@ export class CommandSystem {
         unit.targetEntityId = payload.targetEntityId;
         unit.targetEntityType = payload.targetType;
         unit.actionState = 'ATTACKING';
+        ordered++;
       }
     });
+
+    if (blockedByWalls && ordered === 0) {
+      this.ports.rejectCommand(
+        client,
+        'Units on the courtyard floor cannot fire through the citadel wall',
+        RejectCode.FORBIDDEN
+      );
+    }
   }
 
   /**
@@ -1281,8 +1350,19 @@ export class CommandSystem {
 
     // Same validate-then-spread order as `handleMoveUnits`: a foreign or repeated
     // id must not leave a hole in the block.
+    const ownerId = ownerIdOf(client);
     const ownedUnits = this.collectOwnedUnits(client, payload.unitIds);
-    const targets = this.assignFormationTargets(ownedUnits, payload.targetGridX, payload.targetGridY);
+    const destination = this.foreignTargetOutsideCitadel(
+      ownerId,
+      payload.targetGridX,
+      payload.targetGridY
+    );
+    const targets = this.assignFormationTargets(
+      ownedUnits,
+      destination.x,
+      destination.y,
+      ownerId
+    );
 
     ownedUnits.forEach((unit, idx) => {
       const { x: targetX, y: targetY } = targets[idx];
@@ -1434,6 +1514,7 @@ export class CommandSystem {
       unit.targetY = unit.y;
       unit.pathX.clear();
       unit.pathY.clear();
+      this.ports.cancelElevationTransition(unit.id);
       // SIM-02: the load stays in hand (it was already taken from the world),
       // but the trip to a drop-off is cancelled with everything else.
       unit.dropOffId = '';
@@ -1819,22 +1900,124 @@ export class CommandSystem {
   }
 
   /**
-   * Lays `units` out as a centred block around one grid destination (CMD-02) and
-   * clamps every cell to the map. Shared by every group order so a squad keeps
-   * its shape whether it walks or attack-moves.
+   * Lays `units` out around one grid destination (CMD-02).
+   *
+   * Ground orders use the centred block and are clamped to the map and off the
+   * citadel wall. A wall-top destination instead spreads the squad along the
+   * wall run, because a 2D block around a 1-tile-wide parapet would send half
+   * the group back down into the courtyard.
    *
    * @returns One destination per input unit, in the same order.
    */
   private assignFormationTargets(
     units: UnitState[],
     destX: number,
-    destY: number
+    destY: number,
+    ownerId?: string
   ): Array<{ x: number; y: number }> {
+    const layout = this.citadelLayoutOf(ownerId);
+    const targetIsGate =
+      layout?.gates.some((gate) => gate.gridX === destX && gate.gridY === destY) ?? false;
+    const allOnWall = units.length > 0 && units.every((unit) => unit.onWall);
+    if (
+      layout &&
+      isCitadelWallTopTile(layout, destX, destY) &&
+      // A ground order on the gate means "walk through"; only a squad already
+      // on the wall treats the gate click as the gatehouse roof.
+      (!targetIsGate || allOnWall)
+    ) {
+      return this.assignWallFormation(units.length, layout, destX, destY, allOnWall);
+    }
+
     const offsets = computeFormationOffsets(units.length, FORMATION_SPACING);
-    return units.map((_, idx) => ({
-      x: Math.max(0, Math.min(this.state.mapWidth - 1, destX + offsets[idx].x)),
-      y: Math.max(0, Math.min(this.state.mapHeight - 1, destY + offsets[idx].y))
-    }));
+    return units.map((_, idx) => {
+      const x = Math.max(0, Math.min(this.state.mapWidth - 1, destX + offsets[idx].x));
+      const y = Math.max(0, Math.min(this.state.mapHeight - 1, destY + offsets[idx].y));
+      // A ground formation cell that lands on a wall would otherwise read as a
+      // wall order; pull it back into the courtyard.
+      return layout ? this.snapToCourtyard(layout, x, y) : { x, y };
+    });
+  }
+
+  /** Whether an attack target sits on the citadel courtyard floor. */
+  private targetInsideCitadel(target: UnitState | BuildingState): boolean {
+    if ('x' in target) {
+      return isInsideCitadelInterior(this.state, target.x, target.y);
+    }
+    // The virtual CITADEL box spans the courtyard; its wall is the target edge.
+    if (target.type === 'CITADEL') return false;
+    return isInsideCitadelInterior(
+      this.state,
+      target.gridX + target.sizeX / 2,
+      target.gridY + target.sizeY / 2
+    );
+  }
+
+  /** The citadel layout owned by `ownerId`, or null outside a kingdom. */
+  private citadelLayoutOf(ownerId?: string): CitadelLayout | null {
+    if (!ownerId) return null;
+    let layout: CitadelLayout | null = null;
+    this.state.buildings.forEach((building: BuildingState) => {
+      if (layout || building.type !== 'TOWN_CENTER' || building.ownerId !== ownerId) return;
+      layout = citadelLayoutFor(building.gridX, building.gridY);
+    });
+    return layout;
+  }
+
+  /** Spreads a wall order along the wall run near the clicked tile. */
+  private assignWallFormation(
+    count: number,
+    layout: CitadelLayout,
+    destX: number,
+    destY: number,
+    includeGates: boolean
+  ): Array<{ x: number; y: number }> {
+    const tiles = [...layout.walls, ...(includeGates ? layout.gates : [])]
+      .map((tile) => ({
+        x: tile.gridX,
+        y: tile.gridY,
+        distance: Math.hypot(tile.gridX - destX, tile.gridY - destY)
+      }))
+      .sort((a, b) => a.distance - b.distance || a.y - b.y || a.x - b.x);
+    if (tiles.length === 0) return Array.from({ length: count }, () => ({ x: destX, y: destY }));
+
+    return Array.from({ length: count }, (_, index) => {
+      const tile = tiles[index % tiles.length];
+      return { x: tile.x, y: tile.y };
+    });
+  }
+
+  /** Clamps a ground destination off the wall ring into the courtyard. */
+  private snapToCourtyard(
+    layout: CitadelLayout,
+    x: number,
+    y: number
+  ): { x: number; y: number } {
+    if (isCitadelStairTile(layout, x, y)) return { x, y };
+    // The gate is ground-level traffic, not a wall cell to clamp off.
+    if (layout.gates.some((gate) => gate.gridX === x && gate.gridY === y)) {
+      return { x, y };
+    }
+    if (!isCitadelWallTopTile(layout, x, y)) return { x, y };
+    return {
+      x: Math.max(layout.innerMinX, Math.min(layout.innerMaxX, x)),
+      y: Math.max(layout.innerMinY, Math.min(layout.innerMaxY, y))
+    };
+  }
+
+  /**
+   * A foreign player's order that lands inside the sealed citadel is redirected
+   * to the avenue outside the gate: the raid can only be fought from outside.
+   */
+  private foreignTargetOutsideCitadel(
+    ownerId: string,
+    x: number,
+    y: number
+  ): { x: number; y: number } {
+    const citadelOwnerId = citadelOwnerIdOf(this.state);
+    if (!citadelOwnerId || ownerId === citadelOwnerId) return { x, y };
+    if (!isInsideCitadelInterior(this.state, x, y)) return { x, y };
+    return outsideCitadelGatePoint(this.state, x, y) ?? { x, y };
   }
 
   /**

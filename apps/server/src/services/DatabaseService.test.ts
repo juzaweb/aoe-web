@@ -306,6 +306,7 @@ describe('saveFullWorldState', () => {
     unit.hp = 50;
     unit.maxHp = 50;
     unit.actionState = 'IDLE';
+    unit.onWall = true;
     state.units.set('u1', unit);
     const resNode = new ResourceNodeState();
     resNode.id = 'res1';
@@ -328,6 +329,7 @@ describe('saveFullWorldState', () => {
     expect(await prisma.unit.count()).toBe(1);
     const u = await prisma.unit.findUnique({ where: { id: 'u1' } });
     expect(u.type).toBe('VILLAGER');
+    expect(u.onWall).toBe(true);
     expect(await prisma.worldResourceNode.count()).toBe(1);
     const r = await prisma.worldResourceNode.findUnique({ where: { id: 'res1' } });
     expect(r.remainingAmount).toBe(10);

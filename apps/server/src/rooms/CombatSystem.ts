@@ -2,19 +2,30 @@ import {
   BUILDING_BLUEPRINTS,
   BuildingBlueprint,
   BuildingType,
+  CitadelLayout,
   UNIT_BLUEPRINTS,
   UnitBlueprint,
   UnitType,
+  WALL_RANGE_BONUS,
+  RANGED_MIN_RANGE,
+  citadelLayoutFor,
   clampRaidTownCenterHp,
   getBuildingLevelStats,
-  getEffectiveUnitAttackPower
+  getEffectiveUnitAttackPower,
+  isCitadelInteriorTile
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { CorpseState } from '../schema/CorpseState.js';
-import { findNearestCitadelWallOrGate, isCitadelBuilding, isProtectedCitadelInteriorBuilding } from './citadel.js';
+import {
+  findNearestCitadelWallOrGate,
+  hasCitadel,
+  isCitadelBuilding,
+  isProtectedCitadelInteriorBuilding
+} from './citadel.js';
 import { distanceToFootprint } from './geometry.js';
+
 
 /**
  * What the combat system needs from the rest of the room. Kept as an interface
@@ -102,11 +113,49 @@ export class CombatSystem {
    * direct order and is pursued anywhere, like AoE2.
    */
   private readonly engageAnchors: Map<string, { x: number; y: number }> = new Map();
+  /**
+   * Cached citadel geometry for this tick's target scans.
+   *
+   * `canEngagePosition` runs for every candidate of every unit, so rebuilding a
+   * 100-tile wall layout per candidate would dwarf the combat work. The cache
+   * is keyed by building count; a Town Center move only happens during the join
+   * migration, before combat starts.
+   */
+  private citadelCacheSize = -1;
+  private citadelCacheLayout: CitadelLayout | null = null;
+  private citadelCacheOwnerId: string | null = null;
 
   constructor(
     private readonly state: WorldState,
     private readonly ports: CombatPorts
   ) {}
+
+  /** Refreshes the cached citadel layout when the building set changes. */
+  private citadelContext(): { layout: CitadelLayout | null; ownerId: string | null } {
+    const size = this.state.buildings.size;
+    if (size !== this.citadelCacheSize) {
+      this.citadelCacheSize = size;
+      this.citadelCacheLayout = null;
+      this.citadelCacheOwnerId = null;
+      if (!hasCitadel(this.state)) {
+        return { layout: null, ownerId: null };
+      }
+      this.state.buildings.forEach((building: BuildingState) => {
+        if (this.citadelCacheLayout || building.type !== 'TOWN_CENTER') return;
+        this.citadelCacheLayout = citadelLayoutFor(building.gridX, building.gridY);
+        this.citadelCacheOwnerId = building.ownerId;
+      });
+    }
+    return { layout: this.citadelCacheLayout, ownerId: this.citadelCacheOwnerId };
+  }
+
+  /** Whether `(x, y)` is on the citadel courtyard floor. */
+  private isInterior(x: number, y: number): boolean {
+    const layout = this.citadelContext().layout;
+    return layout
+      ? isCitadelInteriorTile(layout, Math.floor(x), Math.floor(y))
+      : false;
+  }
 
   /**
    * CMD-01: before taking a step, a unit that is not already fighting checks for
@@ -165,6 +214,12 @@ export class CombatSystem {
    */
   canChaseTarget(unit: UnitState): boolean {
     if (unit.stance === 'STAND_GROUND') return false;
+    // WALL: a defender on the wall holds the wall; a ground unit cannot follow a
+    // target up a stair it is not allowed to use. Both sides still shoot when in
+    // range, they just never walk across layers to close the gap.
+    if (unit.onWall) return false;
+    const targetPoint = this.targetPoint(unit);
+    if (targetPoint?.onWall) return false;
     const anchor = this.engageAnchors.get(unit.id);
     if (unit.stance !== 'DEFENSIVE' || !anchor) return true;
     return Math.hypot(unit.x - anchor.x, unit.y - anchor.y) < DEFENSIVE_LEASH_TILES;
@@ -226,18 +281,87 @@ export class CombatSystem {
       return false;
     }
 
-    if (unit.stance === 'STAND_GROUND') {
+    // STAND_GROUND, a defensive unit past its leash, a wall archer and a
+    // shooter facing a wall target all have one thing in common: they may not
+    // step towards the target. They still keep the fight while it is in range.
+    if (!this.canChaseTarget(unit)) {
       if (this.isTargetInWeaponRange(unit, blueprint)) return true;
       this.endAttackOrder(unit);
       return false;
     }
 
-    if (unit.stance === 'DEFENSIVE' && !this.canChaseTarget(unit)) {
-      this.endAttackOrder(unit);
-      return false;
+    return true;
+  }
+
+  /**
+   * Current target position and elevation, or null when the target is gone.
+   *
+   * The citadel compound is measured at the nearest wall/gate point, the same
+   * point its attack range uses, so "inside the courtyard" never mistakes the
+   * virtual 26x26 box for an interior target.
+   */
+  private targetPoint(
+    unit: UnitState
+  ): { x: number; y: number; onWall: boolean } | null {
+    if (unit.targetEntityType === 'unit') {
+      const target = this.state.units.get(unit.targetEntityId);
+      if (!target) return null;
+      return { x: target.x, y: target.y, onWall: target.onWall };
     }
 
-    return true;
+    if (unit.targetEntityType === 'building') {
+      const target = this.state.buildings.get(unit.targetEntityId);
+      if (!target) return null;
+      if (target.type === 'CITADEL') {
+        const nearest = findNearestCitadelWallOrGate(this.state, target, unit.x, unit.y);
+        return { x: nearest.x, y: nearest.y, onWall: false };
+      }
+      return {
+        x: target.gridX + target.sizeX / 2,
+        y: target.gridY + target.sizeY / 2,
+        onWall: false
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * WALL: whether a weapon may reach a point at all.
+   *
+   * Melee cannot cross elevations. A defender standing on the courtyard floor
+   * cannot shoot through its own wall; only a unit on the wall top can fire out.
+   * Conversely, a foreign attacker cannot reach a target sealed inside the
+   * compound — the raid must break the walls from outside.
+   */
+  private canEngagePosition(
+    unit: UnitState,
+    blueprint: UnitBlueprint,
+    x: number,
+    y: number,
+    targetOnWall: boolean
+  ): boolean {
+    const melee = blueprint.attackRange < RANGED_MIN_RANGE;
+    if (melee && unit.onWall !== targetOnWall) return false;
+
+    const targetInside = this.isInterior(x, y);
+    const citadelOwnerId = this.citadelContext().ownerId;
+    if (citadelOwnerId === null) return true;
+
+    if (unit.ownerId === citadelOwnerId) {
+      const shooterInside = !unit.onWall && this.isInterior(unit.x, unit.y);
+      if (shooterInside && !targetInside) return false;
+      return true;
+    }
+
+    return !targetInside;
+  }
+
+  /** Whether the unit's current order still has a reachable target. */
+  private canEngageTarget(unit: UnitState, blueprint: UnitBlueprint): boolean {
+    const point = this.targetPoint(unit);
+    if (!point) return false;
+    return this.canEngagePosition(unit, blueprint, point.x, point.y, point.onWall);
   }
 
   /**
@@ -273,11 +397,18 @@ export class CombatSystem {
    * the reach feels the same against a 1x1 tower and a 4x4 town centre.
    */
   private attackRangeAgainstTarget(unit: UnitState, blueprint: UnitBlueprint): number {
-    return blueprint.attackRange + (unit.targetEntityType === 'building' ? 1.5 : 0.5);
+    const wallBonus =
+      unit.onWall && blueprint.attackRange >= RANGED_MIN_RANGE ? WALL_RANGE_BONUS : 0;
+    return (
+      blueprint.attackRange +
+      wallBonus +
+      (unit.targetEntityType === 'building' ? 1.5 : 0.5)
+    );
   }
 
   /** Whether the target sits inside weapon range right now. */
   private isTargetInWeaponRange(unit: UnitState, blueprint: UnitBlueprint): boolean {
+    if (!this.canEngageTarget(unit, blueprint)) return false;
     const dist = this.distanceToTarget(unit);
     return dist !== null && dist <= this.attackRangeAgainstTarget(unit, blueprint);
   }
@@ -286,6 +417,13 @@ export class CombatSystem {
   updateUnitCombat(unit: UnitState, deltaTime: number) {
     const blueprint = UNIT_BLUEPRINTS[unit.type as UnitType];
     if (!blueprint) return;
+
+    // WALL: drop an order that can never connect (a melee unit ordered onto a
+    // wall target, or a wall order on a defender sealed inside the courtyard).
+    if (!this.canEngageTarget(unit, blueprint)) {
+      this.endAttackOrder(unit);
+      return;
+    }
 
     // LVL/D9: the unit's research level and its owner's Town Center aura both
     // scale damage; range and cooldown stay blueprint rules.
@@ -450,6 +588,7 @@ export class CombatSystem {
     corpse.unitType = victim.type;
     corpse.x = victim.x;
     corpse.y = victim.y;
+    corpse.onWall = victim.onWall;
     this.state.corpses.set(corpse.id, corpse);
     this.ports.scheduleCorpseRemoval(corpse.id);
   }
@@ -474,6 +613,9 @@ export class CombatSystem {
    * A building the world cannot attack (the portal) is never auto-acquired.
    */
   private findAutoTarget(unit: UnitState, radius: number): AutoTarget | null {
+    const blueprint = UNIT_BLUEPRINTS[unit.type as UnitType];
+    if (!blueprint) return null;
+
     let best: AutoTarget | null = null;
     let bestPriority = Number.POSITIVE_INFINITY;
     let bestDistance = Number.POSITIVE_INFINITY;
@@ -489,6 +631,7 @@ export class CombatSystem {
 
     this.state.units.forEach((other: UnitState) => {
       if (other.ownerId === unit.ownerId) return;
+      if (!this.canEngagePosition(unit, blueprint, other.x, other.y, other.onWall)) return;
       const otherBlueprint = UNIT_BLUEPRINTS[other.type as UnitType];
       const priority =
         otherBlueprint?.canHarvest === true
@@ -505,14 +648,19 @@ export class CombatSystem {
       if (building.ownerId === unit.ownerId) return;
       if (building.hp <= 0) return;
       if (isProtectedCitadelInteriorBuilding(this.state, building)) return;
-      const blueprint = BUILDING_BLUEPRINTS[building.type as BuildingType];
-      if (blueprint?.attackable === false) return;
+      const buildingBlueprint = BUILDING_BLUEPRINTS[building.type as BuildingType];
+      if (buildingBlueprint?.attackable === false) return;
+      const point =
+        building.type === 'CITADEL'
+          ? findNearestCitadelWallOrGate(this.state, building, unit.x, unit.y)
+          : {
+              x: building.gridX + building.sizeX / 2,
+              y: building.gridY + building.sizeY / 2
+            };
+      if (!this.canEngagePosition(unit, blueprint, point.x, point.y, false)) return;
       const dist =
         building.type === 'CITADEL'
-          ? Math.hypot(
-              findNearestCitadelWallOrGate(this.state, building, unit.x, unit.y).x - unit.x,
-              findNearestCitadelWallOrGate(this.state, building, unit.x, unit.y).y - unit.y
-            )
+          ? Math.hypot(point.x - unit.x, point.y - unit.y)
           : distanceToFootprint(unit.x, unit.y, building);
       consider(
         { id: building.id, type: 'building' },

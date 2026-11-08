@@ -245,6 +245,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.commandSystem ??= new CommandSystem(this.state, {
       rejectCommand: (client, message, code) => this.rejectCommand(client, message, code),
       setWalkTarget: (unit, x, y) => this.movement.setWalkTarget(unit, x, y),
+      cancelElevationTransition: (unitId) => this.movement.cancelElevationTransition(unitId),
       advanceQueuedWaypoint: (unit) => this.movement.advanceQueuedWaypoint(unit),
       clearHarvestOrder: (unitId) => this.economy.clearHarvestOrder(unitId),
       forgetBuilding: (buildingId) => this.combat.forgetBuilding(buildingId),
@@ -816,6 +817,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         unit.maxHp = effectiveMaxHp;
         unit.hp = Math.min(u.hp, effectiveMaxHp);
         unit.actionState = u.actionState;
+        // A wall only exists in a kingdom. A row restored onto a battlefield
+        // (or a stale save) must fall back to the ground layer.
+        unit.onWall = Boolean(u.onWall) && hasCitadel(this.state);
         this.state.units.set(u.id, unit);
       }
     }
@@ -2133,11 +2137,14 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       ) {
         let destinationX = unit.targetX;
         let destinationY = unit.targetY;
+        // WALL: reaching a stair landing flips the route layer and queues the
+        // final leg. Hold this tick so the unit does not walk the old straight
+        // line while the new route is still being computed.
+        let holdPosition = this.movement.tryCompleteElevationTransition(unit);
         // An attacker already in weapon range, or one that must not chase,
         // stays put this tick. Attack range is enforced here, not by the path
         // stop distance: otherwise a long-ranged unit would consume its whole
         // route without ever taking a step.
-        let holdPosition = false;
         const attackRange = blueprint.attackRange;
 
         // If pursuing attack target, update destination towards target position
@@ -2209,7 +2216,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
         const stopDist = 0.15;
 
-        if (dist > stopDist) {
+        if (!holdPosition && dist > stopDist) {
           // A painted road speeds the unit up while it stands on one. The
           // multiplier is applied here, not stored on the unit, so the
           // replicated `speed` stays the blueprint value the client animates.
@@ -2220,7 +2227,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           const nextY = unit.y + (dy / dist) * moveStep;
           // A straight-line tick (route still queued, or no route at all) must
           // not step onto a citadel wall: the wall is terrain, not scenery.
-          if (!this.movement.blocksCitadelWallStep(unit.x, unit.y, nextX, nextY)) {
+          if (!this.movement.blocksStep(unit, unit.x, unit.y, nextX, nextY)) {
             unit.x = nextX;
             unit.y = nextY;
           }
@@ -2229,7 +2236,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           // the following tick. The order only completes when the path is spent.
           unit.pathX.shift();
           unit.pathY.shift();
-        } else {
+        } else if (!holdPosition) {
           if (unit.actionState === 'MOVING' || unit.actionState === 'ATTACK_MOVE') {
             // Arrived: walk on to the next queued waypoint if there is one. An
             // attack-move ends here (IDLE), like in AoE.

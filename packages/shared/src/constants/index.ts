@@ -724,6 +724,14 @@ export const UNIT_BLUEPRINTS: Record<UnitType, UnitBlueprint> = {
  * it, which is what keeps Barracks/Stable/Archery Range from becoming three
  * copies of the same panel.
  */
+/**
+ * WALL: extra attack range a ranged unit gets while standing on the citadel
+ * wall top. Melee (attackRange below `RANGED_MIN_RANGE`) never crosses
+ * elevations, so it gets no equivalent.
+ */
+export const WALL_RANGE_BONUS = 1.5;
+export const RANGED_MIN_RANGE = 2;
+
 export function buildingTypeForUnit(unitType: string): BuildingType | null {
   for (const blueprint of Object.values(BUILDING_BLUEPRINTS) as BuildingBlueprint[]) {
     if (blueprint.trainableUnits.includes(unitType as UnitType)) return blueprint.type;

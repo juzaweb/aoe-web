@@ -110,10 +110,14 @@ export class PlacementController {
         if (!townCenter && b.type === 'TOWN_CENTER') townCenter = b;
       });
       if (townCenter) {
-        const walls = citadelLayoutFor(townCenter.gridX, townCenter.gridY).walls;
+        const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+        const reserved = [
+          ...layout.walls,
+          ...layout.stairs.flatMap((stair) => [stair.bottom, stair.top])
+        ];
         blocked =
           blocked ||
-          footprintTouchesWalls(walls, gx, gy, blueprint.sizeX, blueprint.sizeY);
+          footprintTouchesWalls(reserved, gx, gy, blueprint.sizeX, blueprint.sizeY);
       }
     }
 

@@ -37,14 +37,14 @@ const PORTAL_HP_BAR_Y =
 /**
  * Wall art geometry, shared with `CitadelLayer`.
  *
- * `citadel/wall.png` is a 128x154 canvas whose base centre sits 122 px down; a
- * normal centre-origin image therefore sits at `-(122 - 154 / 2) = -45` so the
+ * `citadel/wall.png` is a 128x184 canvas whose base centre sits 152 px down; a
+ * normal centre-origin image therefore sits at `-(152 - 184 / 2) = -60` so the
  * player-built segment lines up with the citadel's own wall run. The bar sits
- * just above the cap, whose top edge is 122 px above the tile centre.
+ * just above the cap, whose top edge is 152 px above the tile centre.
  */
 const WALL_TEXTURE_KEY = 'citadel_wall';
-const WALL_ART_OFFSET_Y = -45;
-const WALL_HP_BAR_Y = -130;
+const WALL_ART_OFFSET_Y = -60;
+const WALL_HP_BAR_Y = -160;
 
 /**
  * Lift of the generated `building_<TYPE>` sheet above the tile centre.

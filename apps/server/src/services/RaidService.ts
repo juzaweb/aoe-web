@@ -302,7 +302,13 @@ export class RaidService {
           const point = stagingPoint(index);
           await tx.unit.update({
             where: { id: units[index].id },
-            data: { zone: raidZone, x: point.x, y: point.y, actionState: 'IDLE' }
+            data: {
+              zone: raidZone,
+              x: point.x,
+              y: point.y,
+              actionState: 'IDLE',
+              onWall: false
+            }
           });
         }
 
@@ -419,7 +425,13 @@ export class RaidService {
         const point = stagingPoint(slot++);
         await tx.unit.update({
           where: { id: unit.id },
-          data: { zone: homeZone, x: point.x, y: point.y, actionState: 'IDLE' }
+          data: {
+            zone: homeZone,
+            x: point.x,
+            y: point.y,
+            actionState: 'IDLE',
+            onWall: false
+          }
         });
       }
 
