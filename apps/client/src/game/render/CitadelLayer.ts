@@ -58,14 +58,15 @@ interface GateSprite {
 }
 
 /**
- * Stone floor, indestructible walls and the gatehouse of every kingdom citadel.
+ * Stone floor, indestructible walls, the gatehouse and the Town Center terrace
+ * of every kingdom citadel.
  *
  * The compound is not replicated as entities: it is a pure function of the Town
  * Center's position (see `citadelLayoutFor`), so the client redraws exactly what
  * the server uses for collision. Only a kingdom gets one; the battlefield has no
  * citadel and this layer stays empty.
  *
- * Art is shipped (`assets/citadel/{floor,wall,gate}.png`), built by
+ * Art is shipped (`assets/citadel/{floor,wall,gate,tc_platform}.png`), built by
  * `scripts/process_citadel_assets.py`. The procedural textures below are only a
  * fallback for a failed load, so a missing file degrades to the old blocky look
  * instead of a green box.

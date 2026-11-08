@@ -227,11 +227,7 @@ export class EntityRenderer {
 
     // The Town Center stands on the citadel terrace, so its art is lifted by the
     // same rise as the platform `CitadelLayer` draws beneath it.
-    const lift = townCenterLift(
-      building.type,
-      (key) => scene.textures.exists(key),
-      scene.terrainLayout.kind === 'kingdom'
-    );
+    const lift = this.buildingLift(building.type);
     const artY = offsetY - lift;
 
     const container = scene.add.container(screenPos.x, screenPos.y);
@@ -251,6 +247,7 @@ export class EntityRenderer {
     foundation.fillStyle(0x0284c7, 0.2);
     foundation.fillPath();
     foundation.setVisible(false);
+    if (lift !== 0) foundation.setY(-lift);
     container.add(foundation);
     container.setData('foundation', foundation);
 
@@ -259,6 +256,7 @@ export class EntityRenderer {
     // before the art so the outline never covers the building itself.
     const ownerBase = scene.add.graphics();
     ownerBase.setVisible(false);
+    if (lift !== 0) ownerBase.setY(-lift);
     container.add(ownerBase);
     container.setData('ownerBase', ownerBase);
     container.setData('ownerBaseHalfW', halfW);
@@ -340,6 +338,21 @@ export class EntityRenderer {
   }
 
   /**
+   * How far this building's art sits above its footprint, in container pixels.
+   *
+   * Only a Town Center in a kingdom stands on the terrace, and only while the
+   * terrace PNG is actually loaded; otherwise the building must stay on the
+   * ground instead of hovering.
+   */
+  private buildingLift(type: string): number {
+    return townCenterLift(
+      type,
+      (key) => this.scene.textures.exists(key),
+      this.scene.terrainLayout.kind === 'kingdom'
+    );
+  }
+
+  /**
    * LVL3: swaps the artwork when a building crosses a visual tier.
    *
    * A level-up finishes on the server, so the client only sees `level` jump in
@@ -362,11 +375,7 @@ export class EntityRenderer {
     );
     if (image.texture.key === art.textureKey) return;
 
-    const lift = townCenterLift(
-      building.type,
-      (key) => this.scene.textures.exists(key),
-      this.scene.terrainLayout.kind === 'kingdom'
-    );
+    const lift = this.buildingLift(building.type);
     image.setTexture(art.textureKey);
     image.setY(art.offsetY - lift);
     image.setScale(art.scale);
@@ -375,7 +384,7 @@ export class EntityRenderer {
     if (badge) badge.setY(art.offsetY - lift - image.displayHeight / 2 - 6);
 
     const hpBar = container.getData('hpBar') as Phaser.GameObjects.Graphics | undefined;
-    if (hpBar && lift !== 0) hpBar.setY(-lift);
+    if (hpBar) hpBar.setY(-lift);
 
     container.setData('visualCenterY', art.offsetY - lift);
   }

@@ -13,7 +13,7 @@
 export const TC_PLATFORM_TEXTURE = 'citadel_tc_platform';
 
 /** Pixels the terrace top sits above the citadel floor. */
-export const TC_PLATFORM_RISE = 48;
+export const TC_PLATFORM_RISE = 112;
 
 /**
  * Origin of the terrace image: the top-face centre, in texture pixels over the
