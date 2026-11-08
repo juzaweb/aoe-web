@@ -22,9 +22,11 @@ import {
   Lock,
   Route,
   Eraser,
+  BrickWall,
   X
 } from 'lucide-react';
 import type { RoadMode } from '../game/input/RoadController.js';
+import type { WallMode } from '../game/input/WallController.js';
 import { BUILDING_HOTKEY_BY_TYPE } from '../game/input/buildingHotkeys';
 import { buildingThumbnail } from './buildingThumbnails.js';
 import { buildingDescription, buildingName, resourceName } from '../i18n/labels.js';
@@ -43,6 +45,9 @@ interface BuildMenuProps {
   showRoadTools?: boolean;
   roadMode?: RoadMode | null;
   onSelectRoad?: (mode: RoadMode) => void;
+  /** Kingdom-only wall erase brush; null when the tool is not open. */
+  wallMode?: WallMode | null;
+  onSelectWallErase?: () => void;
   /**
    * Phase 25: the player's Town Center level. The three drop-off camps are
    * locked until the capital reaches 1/2/3; every other building is open at 1.
@@ -59,6 +64,7 @@ const BUILDINGS: { type: BuildingType; icon: React.ReactNode }[] = [
   { type: 'HOUSE', icon: <House size={20} /> },
   { type: 'FARM', icon: <Wheat size={20} /> },
   { type: 'TOWER', icon: <TowerControl size={20} /> },
+  { type: 'WALL', icon: <BrickWall size={20} /> },
   { type: 'LUMBER_CAMP', icon: <TreePine size={20} /> },
   { type: 'MILL', icon: <Warehouse size={20} /> },
   { type: 'MINING_CAMP', icon: <Pickaxe size={20} /> }
@@ -80,6 +86,8 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
   showRoadTools = false,
   roadMode = null,
   onSelectRoad,
+  wallMode = null,
+  onSelectWallErase,
   townCenterLevel = 1
 }) => {
   const { t } = useTranslation();
@@ -209,38 +217,56 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
     });
 
   /**
-   * The road tool pair. Roads are a 1x1 click-drag instead of a footprint, so
-   * they are not building blueprints and cannot be listed in `BUILDINGS`.
+   * The brush tools. Roads are a 1x1 click-drag instead of a footprint, so they
+   * are not building blueprints and cannot be listed in `BUILDINGS`. The wall
+   * build brush lives in `BUILDINGS` (picking WALL enters it); only its erase
+   * counterpart needs a separate button.
    */
-  const roadTiles = (compactTiles: boolean) => {
+  const brushTiles = (compactTiles: boolean) => {
     if (!showRoadTools) return null;
     const tools: Array<{
-      mode: RoadMode;
+      key: string;
       label: string;
       hint: string;
       icon: React.ReactNode;
+      active: boolean;
+      onClick: () => void;
     }> = [
       {
-        mode: 'build',
+        key: 'road-build',
         label: t('build.road'),
         hint: t('build.roadHint'),
-        icon: <Route size={20} />
+        icon: <Route size={20} />,
+        active: roadMode === 'build',
+        onClick: () => onSelectRoad?.('build')
       },
       {
-        mode: 'erase',
+        key: 'road-erase',
         label: t('build.erase'),
         hint: t('build.eraseHint'),
-        icon: <Eraser size={20} />
+        icon: <Eraser size={20} />,
+        active: roadMode === 'erase',
+        onClick: () => onSelectRoad?.('erase')
       }
     ];
 
-    return tools.map(({ mode, label, hint, icon }) => {
-      const active = roadMode === mode;
+    if (onSelectWallErase) {
+      tools.push({
+        key: 'wall-erase',
+        label: t('build.eraseWall'),
+        hint: t('build.eraseWallHint'),
+        icon: <BrickWall size={20} />,
+        active: wallMode === 'erase',
+        onClick: onSelectWallErase
+      });
+    }
+
+    return tools.map(({ key, label, hint, icon, active, onClick }) => {
       return (
         <button
-          key={mode}
+          key={key}
           type="button"
-          onClick={() => onSelectRoad?.(mode)}
+          onClick={onClick}
           title={hint}
           className={`relative flex flex-col items-center justify-between rounded-md border transition-all ${
             compactTiles ? 'h-12 w-12 p-0.5' : 'h-16 w-16 p-1'
@@ -305,7 +331,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
             </div>
             <div className="grid grid-cols-4 gap-1.5">
               {tiles(true)}
-              {roadTiles(true)}
+              {brushTiles(true)}
             </div>
             {activeBuildingType && (
               <button
@@ -343,7 +369,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
 
       <div className="grid grid-cols-4 gap-2">
         {tiles(false)}
-        {roadTiles(false)}
+        {brushTiles(false)}
       </div>
     </div>
   );

@@ -28,6 +28,7 @@ import { CommandController } from '../input/CommandController.js';
 import { CursorController } from '../input/CursorController.js';
 import { PlacementController } from '../input/PlacementController.js';
 import { RoadController, type RoadMode } from '../input/RoadController.js';
+import { WallController, type WallMode } from '../input/WallController.js';
 import { SelectionController } from '../input/SelectionController.js';
 import { trainerLevelFor, unitCombatStats } from './selectionStats.js';
 import type { BoxSelectFilter } from '../input/SelectionController.js';
@@ -404,6 +405,11 @@ export class WorldScene extends Phaser.Scene {
    * out). React mirrors this so the HUD button and the map never disagree.
    */
   public onRoadModeChange: ((mode: RoadMode | null) => void) | null = null;
+  /**
+   * The wall brush was entered or left from the map itself (right-click backs
+   * out). React mirrors this so the HUD button and the map never disagree.
+   */
+  public onWallModeChange: ((mode: WallMode | null) => void) | null = null;
   /** A road tile was added or removed; rebuild the terrain pool once per frame. */
   private roadsDirty = false;
   /**
@@ -452,6 +458,8 @@ export class WorldScene extends Phaser.Scene {
   public placement!: PlacementController;
   /** Road paint tool; only enters a mode in a kingdom. */
   public roadController!: RoadController;
+  /** Stone-wall brush; only enters a mode in a kingdom. */
+  public wallController!: WallController;
   public commands!: CommandController;
   /** MOB-02: gestures, camera pan/pinch and the touch order dispatch. */
   public touch!: TouchController;
@@ -625,6 +633,7 @@ export class WorldScene extends Phaser.Scene {
 
     // 2b. Road paint tool (kingdom only)
     this.roadController = new RoadController(this);
+    this.wallController = new WallController(this);
 
     // 3. Drag selection box graphics
     this.dragSelectionGraphics = this.add.graphics();
@@ -951,11 +960,13 @@ export class WorldScene extends Phaser.Scene {
     this.commands?.cancelPendingOrder();
     this.placement?.cancel();
     this.roadController?.cancel();
+    this.wallController?.cancel();
     // The new map may have no roads at all (a battlefield always does not), so
     // the painted quads of the previous map must not survive the switch.
     this.terrain?.setPlayerRoads([]);
     this.citadel?.clear();
     this.onRoadModeChange?.(null);
+    this.onWallModeChange?.(null);
     this.cameraControl?.resetBookmarks();
     // The pool is repositioned only when the viewport moves; a new map can start
     // at a very different corner, so force the next frame to repaint it.
@@ -1005,6 +1016,7 @@ export class WorldScene extends Phaser.Scene {
     this.buildingToPlace = null;
     this.placement?.cancel();
     this.roadController?.cancel();
+    this.wallController?.cancel();
     this.commands?.cancelPendingOrder();
   }
 
@@ -1433,6 +1445,12 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
+    if (this.wallController?.isDrawing) {
+      this.wallController.drag(pointer);
+      this.cursor.refresh();
+      return;
+    }
+
     // Placement ghost follows the pointer while the mode is active
     this.placement.updateGhost(hoverGridCoord.gridX, hoverGridCoord.gridY);
 
@@ -1499,6 +1517,20 @@ export class WorldScene extends Phaser.Scene {
       if (pointer.leftButtonDown()) {
         native?.preventDefault();
         this.roadController.begin(pointer);
+        return;
+      }
+    }
+
+    // The wall brush owns the drag the same way: left paints, right backs out.
+    if (this.wallController?.active) {
+      if (pointer.rightButtonDown() && !native?.ctrlKey) {
+        this.cancelWallMode();
+        this.onWallModeChange?.(null);
+        return;
+      }
+      if (pointer.leftButtonDown()) {
+        native?.preventDefault();
+        this.wallController.begin(pointer);
         return;
       }
     }
@@ -1592,6 +1624,11 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
+    if (this.wallController?.isDrawing) {
+      this.wallController.end();
+      return;
+    }
+
     // The middle button can be released outside the drag state (e.g. pressed
     // while placing a building), so this is unconditional.
     this.cameraControl.endMiddleDrag();
@@ -1666,13 +1703,18 @@ export class WorldScene extends Phaser.Scene {
     // A spectator cannot build here; the server refuses it and there is no
     // villager of theirs on the map to own the ghost.
     if (this.readOnly) return;
-    // The two tools are mutually exclusive: a click cannot mean both.
+    // The paint tools are mutually exclusive with a footprint ghost.
     if (this.roadController?.active) this.cancelRoadMode();
+    if (this.wallController?.active) this.cancelWallMode();
     this.placement.enter(type);
   }
 
   public cancelBuildingPlacement() {
     this.placement.cancel();
+    if (this.wallController?.active) {
+      this.cancelWallMode();
+      this.onWallModeChange?.(null);
+    }
   }
 
   /** Enters the road paint tool. Only meaningful on a kingdom map. */
@@ -1681,6 +1723,7 @@ export class WorldScene extends Phaser.Scene {
     if (!this.roadController) return;
     if (this.terrainLayout.kind !== 'kingdom') return;
     if (this.buildingToPlace) this.placement.cancel();
+    if (this.wallController?.active) this.cancelWallMode();
     this.roadController.enter(mode);
     this.cursor.refresh();
   }
@@ -1691,6 +1734,25 @@ export class WorldScene extends Phaser.Scene {
 
   public get roadMode(): RoadMode | null {
     return this.roadController?.active ?? null;
+  }
+
+  /** Enters the stone-wall brush. Only meaningful on a kingdom map. */
+  public setWallMode(mode: WallMode) {
+    if (this.readOnly) return;
+    if (!this.wallController) return;
+    if (this.terrainLayout.kind !== 'kingdom') return;
+    if (this.buildingToPlace) this.placement.cancel();
+    if (this.roadController?.active) this.cancelRoadMode();
+    this.wallController.enter(mode);
+    this.cursor.refresh();
+  }
+
+  public cancelWallMode() {
+    this.wallController?.cancel();
+  }
+
+  public get wallMode(): WallMode | null {
+    return this.wallController?.active ?? null;
   }
 
   public commandMoveTo(gridX: number, gridY: number) {
@@ -1814,6 +1876,10 @@ export class WorldScene extends Phaser.Scene {
       this.roadController.begin(pointer);
       return;
     }
+    if (this.wallController?.active) {
+      this.wallController.begin(pointer);
+      return;
+    }
     if (!this.buildingToPlace) return;
 
     const grid = pointerWorldGrid(this.cameras.main, pointer);
@@ -1833,6 +1899,10 @@ export class WorldScene extends Phaser.Scene {
     // would paint the tile under the release instead of the one pressed.
     if (this.roadController?.active) {
       if (this.roadController.isDrawing) this.roadController.end();
+      return;
+    }
+    if (this.wallController?.active) {
+      if (this.wallController.isDrawing) this.wallController.end();
       return;
     }
 
@@ -1893,6 +1963,7 @@ export class WorldScene extends Phaser.Scene {
     // stroke: firing a contextual order here would move the army mid-road.
     if (this.readOnly) return;
     if (this.roadController?.isDrawing) return;
+    if (this.wallController?.isDrawing) return;
     if (this.buildingToPlace) return;
 
     if (this.commands.pendingOrder || this.commands.contextualArmed) {
@@ -1916,6 +1987,10 @@ export class WorldScene extends Phaser.Scene {
       this.roadController.begin(pointer);
       return true;
     }
+    if (this.wallController?.active) {
+      this.wallController.begin(pointer);
+      return true;
+    }
 
     if (!this.boxSelectArmed) return false;
 
@@ -1933,6 +2008,10 @@ export class WorldScene extends Phaser.Scene {
       this.roadController.drag(pointer);
       return;
     }
+    if (this.wallController?.isDrawing) {
+      this.wallController.drag(pointer);
+      return;
+    }
     if (!this.touchBoxActive) return;
     this.drawDragBox({ x: pointer.x, y: pointer.y });
   }
@@ -1941,6 +2020,10 @@ export class WorldScene extends Phaser.Scene {
   public endTouchDrag(pointer: Phaser.Input.Pointer) {
     if (this.roadController?.isDrawing) {
       this.roadController.end();
+      return;
+    }
+    if (this.wallController?.isDrawing) {
+      this.wallController.end();
       return;
     }
     if (!this.touchBoxActive) return;
@@ -1958,6 +2041,7 @@ export class WorldScene extends Phaser.Scene {
     // A pinch is a camera gesture: it drops the half-drawn stroke unseen, the
     // same way it drops a box selection.
     if (this.roadController?.isDrawing) this.roadController.abort();
+    if (this.wallController?.isDrawing) this.wallController.abort();
     if (!this.touchBoxActive) return;
     this.touchBoxActive = false;
     this.isDragSelecting = false;
@@ -2170,6 +2254,7 @@ export class WorldScene extends Phaser.Scene {
     this.commands.updateWaypointPreview();
     this.commands.updateRallyMarkers();
     this.roadController?.render();
+    this.wallController?.render();
 
     this.updateUnitSprites(time, dtSeconds);
     this.citadel?.update(delta);

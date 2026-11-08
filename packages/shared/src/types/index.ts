@@ -31,6 +31,8 @@ export type BuildingType =
   | 'HOUSE'
   | 'FARM'
   | 'TOWER'
+  /** WALL: player-painted stone wall segment (1x1, attackable). */
+  | 'WALL'
   /** ECO: wood drop-off, placed next to a forest. */
   | 'LUMBER_CAMP'
   /** ECO: food drop-off, placed next to berries or a cluster of farms. */
@@ -401,10 +403,27 @@ export interface RemoveRoadPayload {
   tiles: RoadTilePayload[];
 }
 
+/**
+ * Paints stone wall segments on the sender's own kingdom. Every tile is a
+ * separate 1x1 building foundation, priced from the WALL blueprint. Tiles that
+ * already hold something are ignored rather than failing the whole drag.
+ */
+export interface PlaceWallPayload {
+  tiles: RoadTilePayload[];
+  unitIds?: string[];
+}
+
+/** Removes the sender's own wall segments. Refunds only unfinished foundations. */
+export interface RemoveWallPayload {
+  tiles: RoadTilePayload[];
+}
+
 export enum NetworkMessage {
   PLACE_BUILDING = 'PLACE_BUILDING',
   PLACE_ROAD = 'PLACE_ROAD',
   REMOVE_ROAD = 'REMOVE_ROAD',
+  PLACE_WALL = 'PLACE_WALL',
+  REMOVE_WALL = 'REMOVE_WALL',
   MOVE_UNITS = 'MOVE_UNITS',
   TRAIN_UNIT = 'TRAIN_UNIT',
   CANCEL_TRAIN = 'CANCEL_TRAIN',

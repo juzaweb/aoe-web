@@ -17,10 +17,14 @@ import {
   MAX_SELECTION,
   MAX_ROAD_TILES_PER_MESSAGE,
   MAX_ROADS_PER_ZONE,
+  MAX_WALL_TILES_PER_MESSAGE,
+  MAX_WALLS_PER_ZONE,
   MoveUnitsPayload,
   PlaceBuildingPayload,
   PlaceRoadPayload,
+  PlaceWallPayload,
   RemoveRoadPayload,
+  RemoveWallPayload,
   MAP_BUILD_MARGIN_TILES,
   ROAD_COST_PER_TILE,
   roadTileKey,
@@ -61,7 +65,8 @@ import {
   findNearestCitadelWallOrGate,
   footprintTouchesCitadelWall,
   isProtectedCitadelInteriorBuilding,
-  isVirtualCitadelCompound
+  isVirtualCitadelCompound,
+  citadelWallTileSet
 } from './citadel.js';
 import { getBuildApproachPoint } from './construction.js';
 import { RoadGrid } from './roads.js';
@@ -148,24 +153,25 @@ interface RoadTile {
 }
 
 /**
- * Normalises an untrusted road payload into unique integer tiles.
+ * Normalises an untrusted tile-list payload into unique integer tiles.
  *
  * Anything that is not a finite integer is dropped, and the list is capped so
  * one message can never expand into unbounded work. The map bounds are not
- * checked here: `isRoadTileBuildable` already rejects the margin, and a remove
- * needs the same coordinate shape for tiles that may sit anywhere.
+ * checked here: the callers reject the margin and occupied tiles themselves, and
+ * a remove needs the same coordinate shape for tiles that may sit anywhere.
  */
-function sanitizeRoadTiles(
+function sanitizeTiles(
   raw: unknown,
   mapWidth: number,
-  mapHeight: number
+  mapHeight: number,
+  maxTiles: number
 ): RoadTile[] {
   if (!Array.isArray(raw)) return [];
 
   const seen = new Set<string>();
   const tiles: RoadTile[] = [];
   for (const entry of raw) {
-    if (tiles.length >= MAX_ROAD_TILES_PER_MESSAGE) break;
+    if (tiles.length >= maxTiles) break;
     if (!entry || typeof entry !== 'object') continue;
     const { x, y } = entry as { x?: unknown; y?: unknown };
     if (!Number.isInteger(x) || !Number.isInteger(y)) continue;
@@ -268,6 +274,13 @@ export class CommandSystem {
     const blueprint = BUILDING_BLUEPRINTS[payload.type];
     if (!blueprint) {
       this.ports.rejectCommand(client, 'Invalid building type', RejectCode.INVALID);
+      return;
+    }
+
+    // Walls are a kingdom fortification; the shared battlefield has no owner
+    // base to enclose, and the drag tool is only offered there.
+    if (payload.type === 'WALL' && zoneKindOf(this.state.zoneId) !== 'kingdom') {
+      this.ports.rejectCommand(client, 'Walls can only be built in a kingdom', RejectCode.PLACEMENT);
       return;
     }
 
@@ -423,10 +436,11 @@ export class CommandSystem {
       return;
     }
 
-    const tiles = sanitizeRoadTiles(
+    const tiles = sanitizeTiles(
       payload?.tiles,
       this.state.mapWidth,
-      this.state.mapHeight
+      this.state.mapHeight,
+      MAX_ROAD_TILES_PER_MESSAGE
     );
     if (tiles.length === 0) {
       this.ports.rejectCommand(client, 'No buildable road tiles', RejectCode.PLACEMENT);
@@ -487,7 +501,12 @@ export class CommandSystem {
       return;
     }
 
-    const tiles = sanitizeRoadTiles(payload?.tiles, this.state.mapWidth, this.state.mapHeight);
+    const tiles = sanitizeTiles(
+      payload?.tiles,
+      this.state.mapWidth,
+      this.state.mapHeight,
+      MAX_ROAD_TILES_PER_MESSAGE
+    );
     for (const tile of tiles) {
       const id = roadTileKey(tile.x, tile.y);
       const road = this.state.roads.get(id);
@@ -501,6 +520,187 @@ export class CommandSystem {
       this.ports.onRoadRemoved?.(id);
     }
     this.ports.roadGrid().invalidate();
+  }
+
+  /**
+   * Paints stone wall segments on the sender's own kingdom.
+   *
+   * Every tile is a 1x1 building foundation, priced from the WALL blueprint.
+   * Tiles that already hold a building, resource, road or citadel wall are
+   * skipped rather than failing the whole drag, so a stroke that clips a
+   * courtyard still builds its valid length.
+   */
+  handlePlaceWall(client: Client, payload: PlaceWallPayload) {
+    if (!this.ensureZoneManager(client)) return;
+    const ownerId = ownerIdOf(client);
+    const player = this.state.players.get(ownerId);
+    if (!player) return;
+
+    if (zoneKindOf(this.state.zoneId) !== 'kingdom') {
+      this.ports.rejectCommand(client, 'Walls can only be built in a kingdom', RejectCode.PLACEMENT);
+      return;
+    }
+
+    const tiles = sanitizeTiles(
+      payload?.tiles,
+      this.state.mapWidth,
+      this.state.mapHeight,
+      MAX_WALL_TILES_PER_MESSAGE
+    );
+    if (tiles.length === 0) {
+      this.ports.rejectCommand(client, 'No buildable wall tiles', RejectCode.PLACEMENT);
+      return;
+    }
+
+    const occupancy = this.wallOccupancy();
+    const buildable = tiles.filter((tile) => !occupancy.occupied.has(roadTileKey(tile.x, tile.y)));
+    if (buildable.length === 0) {
+      this.ports.rejectCommand(client, 'Those tiles are already occupied', RejectCode.PLACEMENT);
+      return;
+    }
+
+    if (occupancy.wallCount + buildable.length > MAX_WALLS_PER_ZONE) {
+      this.ports.rejectCommand(client, 'This kingdom has reached its wall limit', RejectCode.LIMIT);
+      return;
+    }
+
+    const blueprint = BUILDING_BLUEPRINTS.WALL;
+    const cost = {
+      wood: blueprint.cost.wood * buildable.length,
+      food: blueprint.cost.food * buildable.length,
+      gold: blueprint.cost.gold * buildable.length,
+      stone: blueprint.cost.stone * buildable.length
+    };
+    if (
+      player.wood < cost.wood ||
+      player.food < cost.food ||
+      player.gold < cost.gold ||
+      player.stone < cost.stone
+    ) {
+      this.ports.rejectCommand(client, 'Not enough resources to build that wall', RejectCode.RESOURCE);
+      return;
+    }
+
+    player.wood -= cost.wood;
+    player.food -= cost.food;
+    player.gold -= cost.gold;
+    player.stone -= cost.stone;
+
+    const townCenterLevel = this.ports.townCenterLevelOf(ownerId);
+    const placed: BuildingState[] = [];
+    for (const tile of buildable) {
+      const wall = new BuildingState();
+      wall.id = `b_${this.ports.allocateEntityId()}`;
+      wall.ownerId = ownerId;
+      wall.type = 'WALL';
+      wall.gridX = tile.x;
+      wall.gridY = tile.y;
+      wall.sizeX = blueprint.sizeX;
+      wall.sizeY = blueprint.sizeY;
+      wall.hp = 1; // A foundation is nearly defenceless until it is finished.
+      wall.maxHp = getEffectiveBuildingMaxHp('WALL', 1, townCenterLevel);
+      wall.level = 1;
+      wall.upgradeProgressMs = 0;
+      wall.upgradeTimeMs = 0;
+      wall.isConstructed = false;
+      wall.constructionProgress = 0;
+      this.state.buildings.set(wall.id, wall);
+      placed.push(wall);
+    }
+    this.ports.updatePlayerPopulation(ownerId);
+
+    const builders = this.collectBuilders(client, payload.unitIds);
+    if (builders.length > 0 && placed.length > 0) {
+      this.assignBuildersToWallSites(builders, placed);
+    }
+  }
+
+  /**
+   * Removes the sender's own wall segments.
+   *
+   * Finished walls are demolished for no refund (the same rule as a completed
+   * building); an unfinished foundation returns its cost using the CANCEL_BUILDING
+   * ratio. Foreign walls are ignored, never removed.
+   */
+  handleRemoveWall(client: Client, payload: RemoveWallPayload) {
+    if (!this.ensureZoneManager(client)) return;
+    const ownerId = ownerIdOf(client);
+    const player = this.state.players.get(ownerId);
+    if (!player) return;
+
+    if (zoneKindOf(this.state.zoneId) !== 'kingdom') {
+      this.ports.rejectCommand(client, 'Walls can only be removed in a kingdom', RejectCode.PLACEMENT);
+      return;
+    }
+
+    const tiles = sanitizeTiles(
+      payload?.tiles,
+      this.state.mapWidth,
+      this.state.mapHeight,
+      MAX_WALL_TILES_PER_MESSAGE
+    );
+    if (tiles.length === 0) return;
+
+    const wanted = new Set(tiles.map((tile) => roadTileKey(tile.x, tile.y)));
+    const removed: BuildingState[] = [];
+    this.state.buildings.forEach((building: BuildingState) => {
+      if (building.type !== 'WALL' || building.ownerId !== ownerId) return;
+      if (!wanted.has(roadTileKey(building.gridX, building.gridY))) return;
+      removed.push(building);
+    });
+
+    const blueprint = BUILDING_BLUEPRINTS.WALL;
+    for (const wall of removed) {
+      if (!wall.isConstructed) {
+        const ratio =
+          wall.constructionProgress < CANCEL_BUILDING_FULL_REFUND_BELOW
+            ? 1
+            : CANCEL_BUILDING_PARTIAL_REFUND_RATIO;
+        this.refundResources(player, blueprint.cost, ratio);
+      }
+      this.state.buildings.delete(wall.id);
+      this.ports.forgetBuilding(wall.id);
+      this.ports.onBuildingRemoved?.(wall);
+    }
+    if (removed.length > 0) this.ports.updatePlayerPopulation(ownerId);
+  }
+
+  /**
+   * Occupancy snapshot for one wall stroke.
+   *
+   * Built once per message instead of rescanning every building and resource
+   * for every painted tile: a 200-tile stroke against a full 3,000-wall kingdom
+   * would otherwise do 600,000 footprint tests. Walls follow the same occupancy
+   * rules as a building footprint (roads, resources, other buildings and the
+   * citadel wall ring all block), but deliberately ignore the road margin: a
+   * wall should be able to close the edge of the buildable area the way a
+   * building can.
+   */
+  private wallOccupancy(): { occupied: Set<string>; wallCount: number } {
+    const occupied = new Set<string>();
+    let wallCount = 0;
+
+    this.state.buildings.forEach((building: BuildingState) => {
+      if (building.type === 'WALL') wallCount++;
+      if (isVirtualCitadelCompound(building)) return;
+      for (let y = building.gridY; y < building.gridY + building.sizeY; y++) {
+        for (let x = building.gridX; x < building.gridX + building.sizeX; x++) {
+          occupied.add(roadTileKey(x, y));
+        }
+      }
+    });
+
+    this.state.resourceNodes.forEach((node: ResourceNodeState) => {
+      occupied.add(roadTileKey(node.gridX, node.gridY));
+    });
+
+    this.state.roads.forEach((road) => {
+      occupied.add(roadTileKey(road.gridX, road.gridY));
+    });
+
+    for (const wall of citadelWallTileSet(this.state)) occupied.add(wall);
+
+    return { occupied, wallCount };
   }
 
   /** Whether one road tile may be painted: inside the margin, empty of everything else. */
@@ -827,7 +1027,7 @@ export class CommandSystem {
       this.ports.rejectCommand(client, 'Unknown building type', RejectCode.INVALID);
       return;
     }
-    if (type === 'PORTAL' || type === 'CITADEL') {
+    if (type === 'PORTAL' || type === 'CITADEL' || type === 'WALL') {
       this.ports.rejectCommand(client, 'This structure cannot be upgraded directly', RejectCode.FORBIDDEN);
       return;
     }
@@ -1436,6 +1636,63 @@ export class CommandSystem {
     }
 
     return false;
+  }
+
+  /**
+   * Signs a crew up to a freshly painted wall line.
+   *
+   * The wall is a chain of foundations, so the same nearest-neighbour walk the
+   * road tool uses keeps each builder working along the line instead of walking
+   * back across the map after every segment. A site someone else finished is
+   * skipped by `advanceBuildQueue`, which already understands building ids.
+   */
+  private assignBuildersToWallSites(builders: UnitState[], walls: BuildingState[]) {
+    if (walls.length === 0) return;
+
+    builders.forEach((unit) => {
+      let firstWall = walls[0];
+      let minDist = Math.hypot(
+        unit.x - (firstWall.gridX + 0.5),
+        unit.y - (firstWall.gridY + 0.5)
+      );
+      for (let i = 1; i < walls.length; i++) {
+        const distance = Math.hypot(
+          unit.x - (walls[i].gridX + 0.5),
+          unit.y - (walls[i].gridY + 0.5)
+        );
+        if (distance < minDist) {
+          minDist = distance;
+          firstWall = walls[i];
+        }
+      }
+
+      this.queuedBuilds.delete(unit);
+      const heading = this.countUnitsHeadingTo(firstWall.id);
+      this.sendBuilderToSite(unit, firstWall, heading, heading + 1);
+
+      const remaining = walls.filter((wall) => wall.id !== firstWall.id);
+      let current = firstWall;
+      while (remaining.length > 0) {
+        let bestIndex = 0;
+        let bestDistance = Math.hypot(
+          current.gridX - remaining[0].gridX,
+          current.gridY - remaining[0].gridY
+        );
+        for (let i = 1; i < remaining.length; i++) {
+          const distance = Math.hypot(
+            current.gridX - remaining[i].gridX,
+            current.gridY - remaining[i].gridY
+          );
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = i;
+          }
+        }
+        const next = remaining.splice(bestIndex, 1)[0];
+        this.enqueueBuild(unit, next.id);
+        current = next;
+      }
+    });
   }
 
   /** Signs a crew up to build newly placed road tiles in a nearest-neighbor chain. */

@@ -35,6 +35,18 @@ const PORTAL_HP_BAR_Y =
   8;
 
 /**
+ * Wall art geometry, shared with `CitadelLayer`.
+ *
+ * `citadel/wall.png` is a 128x154 canvas whose base centre sits 122 px down; a
+ * normal centre-origin image therefore sits at `-(122 - 154 / 2) = -45` so the
+ * player-built segment lines up with the citadel's own wall run. The bar sits
+ * just above the cap, whose top edge is 122 px above the tile centre.
+ */
+const WALL_TEXTURE_KEY = 'citadel_wall';
+const WALL_ART_OFFSET_Y = -45;
+const WALL_HP_BAR_Y = -130;
+
+/**
  * Lift of the generated `building_<TYPE>` sheet above the tile centre.
  *
  * Every sheet is bottom-anchored (art touches the last row), so the lift is what
@@ -97,6 +109,9 @@ const FALLBACK_ART: Partial<
   HOUSE: { textureKey: 'b_house', offsetY: -50, hpBarY: -90 },
   FARM: { textureKey: 'b_farm', offsetY: 0, hpBarY: -40 },
   TOWER: { textureKey: 'b_tower', offsetY: -90, hpBarY: -148 },
+  // Fallback only when neither the wall sheet nor the citadel masonry loaded;
+  // the tower silhouette is at least a stone fortification.
+  WALL: { textureKey: 'b_tower', offsetY: -90, hpBarY: -148 },
   // The gate has its own sheet now (`GATE-01`); this only draws when that PNG
   // failed to load, so it keeps the tower silhouette rather than a blank tile.
   PORTAL: { textureKey: 'b_tower', offsetY: -90, hpBarY: -148 }
@@ -177,6 +192,17 @@ export function buildingArt(
     return {
       textureKey: `building_${type}_${drawn}`,
       offsetY: tierOffsetY(type, drawn),
+      scale: 1
+    };
+  }
+
+  // The wall reuses the citadel masonry so a player-built segment reads as the
+  // same stone as the capital's ring. Checked before the stand-alone sheet name
+  // so a stray `building_WALL` file cannot silently change the alignment.
+  if (type === 'WALL' && hasTexture(WALL_TEXTURE_KEY)) {
+    return {
+      textureKey: WALL_TEXTURE_KEY,
+      offsetY: WALL_ART_OFFSET_Y,
       scale: 1
     };
   }
@@ -296,6 +322,9 @@ export function buildingHpBarY(
   level = 1,
   hasTexture: (textureKey: string) => boolean = () => true
 ): number {
+  // The wall uses the citadel sheet, whose bar height is part of that art's
+  // geometry rather than the stand-alone building tables below.
+  if (type === 'WALL' && hasTexture(WALL_TEXTURE_KEY)) return WALL_HP_BAR_Y;
   // Ask the same function that picked the sprite. A texture key that does not
   // start with `building_` is the procedural placeholder, whose own bar height
   // is part of its `FALLBACK_ART` entry.

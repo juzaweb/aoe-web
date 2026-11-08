@@ -2,8 +2,9 @@ import type { BuildingType } from '@chien-quoc/shared';
 
 /**
  * `Q/W/E/R/T/Y/U/I/C/B/N` start a building placement, in the same order as the
- * HUD's build buttons. This is the only list: `CommandController` binds these
- * keys and `BuildMenu` prints the same letters on its buttons.
+ * HUD's build buttons. `G` enters the stone-wall paint tool. This is the only
+ * list: `CommandController` binds these keys and `BuildMenu` prints the same
+ * letters on its buttons.
  *
  * MIL-01: `C` (cavalry) and `B` (bow) were appended instead of reshuffling the
  * military buildings next to the Barracks. The first eight letters are muscle
@@ -22,7 +23,8 @@ export const BUILDING_HOTKEYS: ReadonlyArray<{ key: string; type: BuildingType }
   { key: 'I', type: 'MINING_CAMP' },
   { key: 'C', type: 'STABLE' },
   { key: 'B', type: 'ARCHERY_RANGE' },
-  { key: 'N', type: 'SIEGE_WORKSHOP' }
+  { key: 'N', type: 'SIEGE_WORKSHOP' },
+  { key: 'G', type: 'WALL' }
 ];
 
 /** Reverse lookup for the build menu, which renders one button per type. */

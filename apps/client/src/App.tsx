@@ -26,6 +26,7 @@ import { PhaserGame } from './game/PhaserGame.js';
 import { HUD } from './components/HUD.js';
 import { BuildMenu } from './components/BuildMenu.js';
 import type { RoadMode } from './game/input/RoadController.js';
+import type { WallMode } from './game/input/WallController.js';
 import { EntityDetails } from './components/EntityDetails.js';
 import { Minimap } from './components/Minimap.js';
 import { ControlGroups } from './components/ControlGroups.js';
@@ -124,6 +125,8 @@ export const App: React.FC = () => {
   const [activeBuildingType, setActiveBuildingType] = useState<BuildingType | null>(null);
   /** Kingdom-only road paint tool; null when the tool is not open. */
   const [roadMode, setRoadMode] = useState<RoadMode | null>(null);
+  /** Kingdom-only wall brush; build mode also drives `activeBuildingType`. */
+  const [wallMode, setWallMode] = useState<WallMode | null>(null);
 
   // Notifications
   const [notification, setNotification] = useState<{ message: string; code: RejectCode | null } | null>(null);
@@ -777,10 +780,30 @@ export const App: React.FC = () => {
     // A raider may only fight: the server rejects building orders there, so the
     // hotkey must not even arm a ghost the player cannot place.
     if (raidSessionRef.current) return;
-    // The two tools are mutually exclusive: one click cannot mean both.
+    // The three tools are mutually exclusive: one click cannot mean more than one.
     if (roadMode) {
       setRoadMode(null);
       sceneRef.current?.cancelRoadMode();
+    }
+
+    // WALL is a paint brush, not a footprint. Picking it opens the same stroke
+    // tool the road uses, and picking it again backs out.
+    if (type === 'WALL') {
+      if (sceneRef.current && sceneRef.current.terrainLayout.kind !== 'kingdom') return;
+      const next = activeBuildingType === 'WALL' && wallMode === 'build' ? null : 'build';
+      // Enter the brush before touching React state: leaving a placement ghost
+      // fires `onPlacementCancelled`, which would otherwise clear the WALL
+      // highlight we are about to set.
+      if (next) sceneRef.current?.setWallMode(next);
+      else sceneRef.current?.cancelWallMode();
+      setActiveBuildingType(next ? 'WALL' : null);
+      setWallMode(next);
+      return;
+    }
+
+    if (wallMode) {
+      setWallMode(null);
+      sceneRef.current?.cancelWallMode();
     }
     setActiveBuildingType(type);
     if (sceneRef.current) {
@@ -790,6 +813,7 @@ export const App: React.FC = () => {
 
   const handleCancelBuilding = () => {
     setActiveBuildingType(null);
+    setWallMode(null);
     if (sceneRef.current) {
       sceneRef.current.cancelBuildingPlacement();
     }
@@ -802,10 +826,36 @@ export const App: React.FC = () => {
     if (!sceneRef.current) return;
     if (next) {
       setActiveBuildingType(null);
+      setWallMode(null);
       sceneRef.current.setRoadMode(next);
     } else {
       sceneRef.current.cancelRoadMode();
     }
+  };
+
+  /** Opens or closes the wall erase brush. Picking it again closes it. */
+  const handleSelectWallErase = () => {
+    if (raidSessionRef.current) return;
+    if (sceneRef.current && sceneRef.current.terrainLayout.kind !== 'kingdom') return;
+    const next = wallMode === 'erase' ? null : 'erase';
+    setWallMode(next);
+    setActiveBuildingType(null);
+    if (roadMode) {
+      setRoadMode(null);
+      sceneRef.current?.cancelRoadMode();
+    }
+    if (!sceneRef.current) return;
+    if (next) sceneRef.current.setWallMode(next);
+    else sceneRef.current.cancelWallMode();
+  };
+
+  /**
+   * The scene backs the wall brush out from the map (right-click, map switch),
+   * so React mirrors it. Build mode also owns the highlighted WALL tile.
+   */
+  const handleWallModeChange = (mode: WallMode | null) => {
+    setWallMode(mode);
+    setActiveBuildingType(mode === 'build' ? 'WALL' : null);
   };
 
   const handleTrainUnit = (buildingId: string, unitType: UnitType) => {
@@ -920,6 +970,7 @@ export const App: React.FC = () => {
           onArmedOrderChange={setArmedOrder}
           onBoxSelectChange={setBoxSelectArmed}
           onRoadModeChange={setRoadMode}
+          onWallModeChange={handleWallModeChange}
           gameRef={gameRef}
           sceneRef={sceneRef}
           onUnderAttack={triggerUnderAttack}
@@ -1025,6 +1076,8 @@ export const App: React.FC = () => {
                   showRoadTools
                   roadMode={roadMode}
                   onSelectRoad={handleSelectRoad}
+                  wallMode={wallMode}
+                  onSelectWallErase={handleSelectWallErase}
                   townCenterLevel={townCenterLevel}
                 />
               )}
@@ -1067,6 +1120,8 @@ export const App: React.FC = () => {
                 showRoadTools
                 roadMode={roadMode}
                 onSelectRoad={handleSelectRoad}
+                wallMode={wallMode}
+                onSelectWallErase={handleSelectWallErase}
                 townCenterLevel={townCenterLevel}
               />
             )}

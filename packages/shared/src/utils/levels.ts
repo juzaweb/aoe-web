@@ -146,8 +146,11 @@ export interface CoreLevelGap {
 }
 
 export function getBuildingMaxLevel(_type: BuildingType): number {
-  // Every type shares one cap now, so the parameter only keeps the call sites
-  // readable at the point where they ask "how high may this one go?".
+  // Walls are a line of interchangeable segments, not an investment ladder;
+  // letting one segment upgrade would make a long wall a research project.
+  if (_type === 'WALL') return 1;
+  // Every other type shares one cap now, so the parameter only keeps the call
+  // sites readable at the point where they ask "how high may this one go?".
   return MAX_BUILDING_LEVEL;
 }
 

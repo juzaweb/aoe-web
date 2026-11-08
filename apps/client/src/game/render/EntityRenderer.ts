@@ -307,7 +307,14 @@ export class EntityRenderer {
     container.add(levelBadge);
     container.setData('levelBadge', levelBadge);
 
-    container.setDepth(getIsoDepth(building.gridX + building.sizeX, building.gridY + building.sizeY, 15));
+    // A wall tile shares the citadel layer's depth key, so a run of player-built
+    // segments sorts exactly like the capital's ring and never draws across a
+    // unit standing in front of it.
+    const depth =
+      building.type === 'WALL'
+        ? getIsoDepth(building.gridX, building.gridY, 12)
+        : getIsoDepth(building.gridX + building.sizeX, building.gridY + building.sizeY, 15);
+    container.setDepth(depth);
     container.setData('entityId', id);
     container.setData('entityType', 'building');
     container.setData('buildingType', building.type);

@@ -15,7 +15,9 @@ import {
   TravelReadyPayload,
   PlaceBuildingPayload,
   PlaceRoadPayload,
+  PlaceWallPayload,
   RemoveRoadPayload,
+  RemoveWallPayload,
   ROAD_BUILD_TIME_MS,
   ROAD_SPEED_MULTIPLIER,
   MoveUnitsPayload,
@@ -475,6 +477,14 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     this.onCommandMessage(NetworkMessage.REMOVE_ROAD, (client, message: RemoveRoadPayload) => {
       this.commands.handleRemoveRoad(client, message);
+    });
+
+    this.onCommandMessage(NetworkMessage.PLACE_WALL, (client, message: PlaceWallPayload) => {
+      this.commands.handlePlaceWall(client, message);
+    });
+
+    this.onCommandMessage(NetworkMessage.REMOVE_WALL, (client, message: RemoveWallPayload) => {
+      this.commands.handleRemoveWall(client, message);
     });
 
     this.onCommandMessage(NetworkMessage.MOVE_UNITS, (client, message: MoveUnitsPayload) => {

@@ -11,6 +11,7 @@ import { SpectatorScene } from './scenes/SpectatorScene.js';
 import { BuildingType } from '@chien-quoc/shared';
 import type { CitadelStatus } from '@chien-quoc/shared';
 import type { RoadMode } from './input/RoadController.js';
+import type { WallMode } from './input/WallController.js';
 
 interface PhaserGameProps {
   room: Room | null;
@@ -40,6 +41,8 @@ interface PhaserGameProps {
   onBoxSelectChange: (armed: boolean) => void;
   /** The road tool was entered or left from the map itself. */
   onRoadModeChange: (mode: RoadMode | null) => void;
+  /** The wall brush was entered or left from the map itself. */
+  onWallModeChange: (mode: WallMode | null) => void;
   /** ATK-05: raised when the player's entities lose HP. */
   onUnderAttack: () => void;
   gameRef: React.MutableRefObject<Phaser.Game | null>;
@@ -61,6 +64,7 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
   onArmedOrderChange,
   onBoxSelectChange,
   onRoadModeChange,
+  onWallModeChange,
   onUnderAttack,
   gameRef,
   sceneRef
@@ -76,6 +80,7 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
   const onArmedOrderRef = useRef(onArmedOrderChange);
   const onBoxSelectRef = useRef(onBoxSelectChange);
   const onRoadModeRef = useRef(onRoadModeChange);
+  const onWallModeRef = useRef(onWallModeChange);
   const onUnderAttackRef = useRef(onUnderAttack);
   const readOnlyRef = useRef(readOnly);
   const focusOwnerIdRef = useRef(focusOwnerId);
@@ -91,6 +96,7 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
   onArmedOrderRef.current = onArmedOrderChange;
   onBoxSelectRef.current = onBoxSelectChange;
   onRoadModeRef.current = onRoadModeChange;
+  onWallModeRef.current = onWallModeChange;
   onUnderAttackRef.current = onUnderAttack;
 
   useEffect(() => {
@@ -168,6 +174,7 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({
         scene.onArmedOrderChange = (armed) => onArmedOrderRef.current(armed);
         scene.onBoxSelectChange = (armed) => onBoxSelectRef.current(armed);
         scene.onRoadModeChange = (mode) => onRoadModeRef.current(mode);
+        scene.onWallModeChange = (mode) => onWallModeRef.current(mode);
         scene.onUnderAttack = () => onUnderAttackRef.current();
 
         // Dev-only handle so browser tests can inspect state that the React HUD
