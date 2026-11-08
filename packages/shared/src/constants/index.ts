@@ -429,7 +429,7 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     dropOffs: [],
     requiredTownCenterLevel: 3,
     description:
-      'Siege workshop. A fortified yard for building and maintaining siege engines.'
+      'Siege workshop. A fortified yard prepared for siege-engine production.'
   },
   HOUSE: {
     type: 'HOUSE',

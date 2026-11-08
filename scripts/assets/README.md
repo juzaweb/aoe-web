@@ -99,7 +99,9 @@ Pillow.
 
 `buildings/siege_workshop.png` is project-original local ComfyUI art, generated
 by `scripts/generate_siege_workshop_asset.py` and pinned under `legacy` in the
-lock. It is not wired into `buildingArt.ts` yet, so nothing loads it at runtime.
+lock. It is wired into `buildingArt.ts` as `SIEGE_WORKSHOP`; the building is
+placeable and upgradable, and its `trainableUnits` stays empty until the
+Catapult unit exists.
 
 `buildings/stable.png`, `buildings/archery_range.png` and `buildings/tower.png`
 were previously project-original generated art; they are now built from

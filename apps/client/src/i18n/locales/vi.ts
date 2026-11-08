@@ -309,7 +309,7 @@ const vi = {
     },
     SIEGE_WORKSHOP: {
       name: 'Xưởng Công Thành',
-      description: 'Xưởng công thành. Khu sân kiên cố để chế tạo và bảo trì máy công thành.'
+      description: 'Xưởng công thành. Khu sân kiên cố được chuẩn bị để chế tạo máy công thành.'
     },
     HOUSE: {
       name: 'Nhà ở',

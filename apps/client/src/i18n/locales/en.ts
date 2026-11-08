@@ -306,7 +306,7 @@ const en = {
     },
     SIEGE_WORKSHOP: {
       name: 'Siege Workshop',
-      description: 'Siege workshop. A fortified yard for building and maintaining siege engines.'
+      description: 'Siege workshop. A fortified yard prepared for siege-engine production.'
     },
     HOUSE: {
       name: 'House',

@@ -108,12 +108,19 @@ import { randomUUID } from 'crypto';
  */
 export const CORPSE_LINGER_MS = 1200;
 
-/** Trainers whose own level buffs their line (phase 26). */
-const TRAINER_BUILDING_TYPES = new Set<BuildingType>([
-  'BARRACKS',
-  'STABLE',
-  'ARCHERY_RANGE'
-]);
+/**
+ * Trainers whose own level buffs their line (phase 26).
+ *
+ * Derived from the blueprints so a new trainer (the siege workshop, once it
+ * trains Catapults) automatically refreshes the empire aura when it levels.
+ * The Town Center is excluded: villagers are covered by the capital's own aura,
+ * and its level is handled separately.
+ */
+const TRAINER_BUILDING_TYPES = new Set<BuildingType>(
+  (Object.keys(BUILDING_BLUEPRINTS) as BuildingType[]).filter(
+    (type) => type !== 'TOWN_CENTER' && BUILDING_BLUEPRINTS[type].trainableUnits.length > 0
+  )
+);
 
 const PLAYER_COLORS = [
   '#3b82f6', // Blue

@@ -12,7 +12,7 @@ names with the CLI flags when they change.
 Example:
 
     python scripts/generate_siege_workshop_asset.py
-    python scripts/generate_siege_workshop_asset.py --raw scripts/.cache/assets/siege_workshop/raw_12345.png
+    python scripts/generate_siege_workshop_asset.py --raw scripts/.cache/assets/siege_workshop/raw_2024.png
 """
 
 from __future__ import annotations
@@ -42,6 +42,9 @@ CACHE = ROOT / "scripts" / ".cache" / "assets" / "siege_workshop"
 DEFAULT_HOST = "http://127.0.0.1:8188"
 
 CANVAS = (400, 320)
+# The renderer lifts every 400x320 building sheet by this much; `buildingArt.ts`
+# repeats the number for SIEGE_WORKSHOP.
+SHEET_OFFSET_Y = -96
 TARGET_LUMA = 90.4
 
 PROMPT = (
@@ -162,8 +165,9 @@ def generate(args: argparse.Namespace) -> Path:
     raise SystemExit(f"ComfyUI timed out after {args.timeout}s")
 
 
-def process(raw_path: Path, match_luma: bool) -> dict:
+def process(raw_path: Path, match_luma: bool, meta: dict) -> dict:
     """Cut the white background, fit the client canvas and report measurements."""
+    CACHE.mkdir(parents=True, exist_ok=True)
     with Image.open(raw_path) as source:
         transparent = remove_background(source.convert("RGB"))
 
@@ -178,18 +182,28 @@ def process(raw_path: Path, match_luma: bool) -> dict:
     if match_luma:
         canvas, gain = ops.match_luminance(canvas, TARGET_LUMA)
 
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    canvas.save(OUTPUT, "PNG", optimize=True)
-
     bbox = ops.alpha_bbox(canvas)
     top_inset = bbox[1]
     bottom_inset = canvas.height - bbox[3]
     base_span, base_offset = ops.iso_base(canvas)
+    if bottom_inset > 3:
+        raise SystemExit(f"art is not bottom-anchored (bottom inset {bottom_inset}px)")
+    if base_span > ops.ISO_BASE_MAX_SPAN or base_offset > ops.ISO_BASE_MAX_OFFSET:
+        raise SystemExit(
+            "art does not stand on a front corner "
+            f"(base span {base_span:.1%}, offset {base_offset:.1%}); "
+            "the prompt probably produced a straight-on view"
+        )
+
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(OUTPUT, "PNG", optimize=True)
+
     try:
         source_name = raw_path.relative_to(ROOT).as_posix()
     except ValueError:
         source_name = str(raw_path)
     report = {
+        **meta,
         "source": source_name,
         "output": OUTPUT.relative_to(ROOT).as_posix(),
         "canvas": list(CANVAS),
@@ -201,12 +215,16 @@ def process(raw_path: Path, match_luma: bool) -> dict:
         "isoBaseSpan": round(base_span, 4),
         "isoBaseOffset": round(base_offset, 4),
         "sha256": hashlib.sha256(OUTPUT.read_bytes()).hexdigest(),
-        "hpBarY": -264 + top_inset,
+        "hpBarY": int(SHEET_OFFSET_Y - CANVAS[1] / 2 + top_inset - 8),
     }
     (CACHE / "report.json").write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     print(json.dumps(report, indent=2, sort_keys=True))
+    if scale > 1.6:
+        print(f"warning: source was upscaled {scale:.2f}x; art may look soft")
+    if abs(gain - 1.0) > 0.25:
+        print(f"warning: luminance gain {gain:.2f} is far from 1.0")
     return report
 
 
@@ -239,7 +257,17 @@ def main() -> None:
     raw_path = args.raw if args.raw else generate(args)
     if not raw_path.is_absolute():
         raw_path = ROOT / raw_path
-    process(raw_path, match_luma=not args.no_match_lum)
+    meta = {
+        "prompt": args.prompt,
+        "seed": args.seed,
+        "steps": args.steps,
+        "size": args.size,
+        "unet": args.unet,
+        "clip": args.clip,
+        "vae": args.vae,
+        "host": args.host,
+    }
+    process(raw_path, match_luma=not args.no_match_lum, meta=meta)
 
 
 if __name__ == "__main__":
