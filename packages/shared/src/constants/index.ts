@@ -130,11 +130,15 @@ export const RAID_LOOT_CAP_PER_RESOURCE = 2000;
 export const RAID_TOWN_CENTER_HP_THRESHOLD = 0.25;
 
 /**
- * A raid with no activity for this long is closed as a retreat. Covers both
- * players losing their connection: without it the pair would stay locked and
- * the defender's kingdom room would never dispose.
+ * Maximum duration for a raid (10 minutes).
+ * If the attacker does not win within 10 minutes, they must retreat.
  */
-export const RAID_RETREAT_TIMEOUT_MS = 30 * 60 * 1000;
+export const RAID_MAX_DURATION_MS = 10 * 60 * 1000;
+
+/**
+ * A raid running past the max raid duration is closed as a retreat.
+ */
+export const RAID_RETREAT_TIMEOUT_MS = RAID_MAX_DURATION_MS;
 
 /**
  * How long a depleted resource node stays empty before it refills to

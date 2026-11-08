@@ -1,6 +1,7 @@
 import { Client, ErrorCode, ServerError } from '@colyseus/core';
 import {
   NetworkMessage,
+  RAID_MAX_DURATION_MS,
   RAID_RETREAT_TIMEOUT_MS,
   RaidEndedPayload,
   RejectCode,
@@ -416,7 +417,7 @@ export class KingdomRoom extends WorldRoom {
       return;
     }
 
-    if (Date.now() - this.raidStartedAt > RAID_RETREAT_TIMEOUT_MS) {
+    if (Date.now() - this.raidStartedAt >= (RAID_MAX_DURATION_MS ?? RAID_RETREAT_TIMEOUT_MS)) {
       await this.settle(raidId, 'RETREATED');
     }
   }

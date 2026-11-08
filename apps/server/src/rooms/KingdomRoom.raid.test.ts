@@ -154,6 +154,20 @@ beforeEach(() => {
 });
 
 describe('KingdomRoom raid access', () => {
+  it('forces retreat and settles raid with RETREATED when attack duration exceeds 10 minutes', async () => {
+    const room = createRoom();
+    addPlayer(room, 'attacker');
+    addTownCenter(room, 'defender');
+    addUnit(room, 'u1', 'attacker');
+    withRaid(room);
+    internals(room).raidStartedAt = Date.now() - (10 * 60 * 1000 + 1000);
+
+    await room['evaluateRaid']();
+
+    expect(settleRaid).toHaveBeenCalledTimes(1);
+    expect(settleRaid.mock.calls[0][0]).toMatchObject({ raidId: 'raid-1', outcome: 'RETREATED' });
+  });
+
   it('lets the owner and the raider in, nobody else', () => {
     const room = createRoom();
     expect(room['canJoinOwner']('defender')).toBe(true);

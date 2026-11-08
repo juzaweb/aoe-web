@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Axe, Drumstick, Coins, Mountain, Users, ShieldCheck, Wifi, LogOut, Map as MapIcon, Swords } from 'lucide-react';
-import { CITADEL_HP_THRESHOLD, type CitadelStatus } from '@chien-quoc/shared';
+import { CITADEL_HP_THRESHOLD, RAID_MAX_DURATION_MS, type CitadelStatus } from '@chien-quoc/shared';
 import { MOBILE_MIN_TAP_PX } from '../device/inputMode.js';
 import { LanguageSwitcher } from '../i18n/LanguageSwitcher.js';
 
@@ -31,6 +31,8 @@ interface HUDProps {
   onOpenWorldMap?: () => void;
   /** Phase 23: true while the player is attacking somebody else's kingdom. */
   inRaid?: boolean;
+  /** Phase 23: timestamp when the current raid started. */
+  raidStartedAt?: number;
   /** Phase 23: leaves the raid through the retreat gate. */
   onRetreat?: () => void;
   /** Aggregate health of the player's citadel; null on the battlefield. */
@@ -120,11 +122,32 @@ export const HUD: React.FC<HUDProps> = ({
   onLeaveGame,
   onOpenWorldMap,
   inRaid = false,
+  raidStartedAt,
   onRetreat,
   citadelStatus = null
 }) => {
   const { t } = useTranslation();
   const zoneIsBattle = inRaid;
+  const [raidTimeRemaining, setRaidTimeRemaining] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    if (!inRaid || !raidStartedAt) {
+      setRaidTimeRemaining(null);
+      return;
+    }
+    const updateTime = () => {
+      const elapsed = Date.now() - raidStartedAt;
+      const remaining = Math.max(0, RAID_MAX_DURATION_MS - elapsed);
+      setRaidTimeRemaining(remaining);
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, [inRaid, raidStartedAt]);
+
+  const formattedRaidTime = raidTimeRemaining !== null
+    ? `${Math.floor(raidTimeRemaining / 60000)}:${Math.floor((raidTimeRemaining % 60000) / 1000).toString().padStart(2, '0')}`
+    : null;
 
   if (compact) {
     const compactContent = (
@@ -198,16 +221,27 @@ export const HUD: React.FC<HUDProps> = ({
       <div className="ml-auto pointer-events-auto flex items-center gap-1.5">
         <LanguageSwitcher compact className="pointer-events-auto opacity-80" />
         {inRaid ? (
-          <button
-            type="button"
-            onClick={onRetreat}
-            title={t('hud.retreat')}
-            aria-label={t('hud.retreat')}
-            style={{ minHeight: MOBILE_MIN_TAP_PX, minWidth: MOBILE_MIN_TAP_PX }}
-            className="flex items-center justify-center rounded-md border border-red-700 bg-red-950/80 px-2 text-red-200"
-          >
-            <Swords size={15} />
-          </button>
+          <div className="flex items-center gap-1">
+            {formattedRaidTime && (
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
+                (raidTimeRemaining ?? 0) <= 60000
+                  ? 'bg-red-900/90 text-red-300 border border-red-500 animate-pulse'
+                  : 'bg-black/60 text-amber-300 border border-amber-600/60'
+              }`}>
+                ⏱ {formattedRaidTime}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={onRetreat}
+              title={t('hud.retreat')}
+              aria-label={t('hud.retreat')}
+              style={{ minHeight: MOBILE_MIN_TAP_PX, minWidth: MOBILE_MIN_TAP_PX }}
+              className="flex items-center justify-center rounded-md border border-red-700 bg-red-950/80 px-2 text-red-200"
+            >
+              <Swords size={15} />
+            </button>
+          </div>
         ) : (
           onOpenWorldMap && (
             <button
@@ -278,16 +312,27 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
 
         {inRaid ? (
-          <button
-            type="button"
-            onClick={onRetreat}
-            title={t('hud.retreat')}
-            aria-label={t('hud.retreat')}
-            className="flex items-center gap-1.5 rounded-md border border-red-600/80 bg-slate-900/90 hover:bg-red-950/70 px-3 py-2 text-xs font-semibold text-red-200 hover:border-red-400 shadow-lg backdrop-blur-sm pointer-events-auto cursor-pointer transition-colors whitespace-nowrap active:scale-95"
-          >
-            <Swords size={14} className="text-red-400" />
-            <span>{t('hud.retreat')}</span>
-          </button>
+          <div className="flex items-center gap-2 pointer-events-auto">
+            {formattedRaidTime && (
+              <span className={`px-2.5 py-1.5 rounded-md text-xs font-mono font-bold shadow-lg backdrop-blur-sm ${
+                (raidTimeRemaining ?? 0) <= 60000
+                  ? 'bg-red-950/90 text-red-300 border border-red-500 animate-pulse'
+                  : 'bg-slate-900/90 text-amber-300 border border-amber-600/70'
+              }`}>
+                ⏱ {formattedRaidTime}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={onRetreat}
+              title={t('hud.retreat')}
+              aria-label={t('hud.retreat')}
+              className="flex items-center gap-1.5 rounded-md border border-red-600/80 bg-slate-900/90 hover:bg-red-950/70 px-3 py-2 text-xs font-semibold text-red-200 hover:border-red-400 shadow-lg backdrop-blur-sm pointer-events-auto cursor-pointer transition-colors whitespace-nowrap active:scale-95"
+            >
+              <Swords size={14} className="text-red-400" />
+              <span>{t('hud.retreat')}</span>
+            </button>
+          </div>
         ) : (
           onOpenWorldMap && (
             <button

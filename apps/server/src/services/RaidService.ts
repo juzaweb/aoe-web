@@ -54,6 +54,7 @@ export interface RaidStartInput {
 export interface RaidStartResult {
   raidId: string;
   defenderId: string;
+  startedAt?: number;
 }
 
 export interface SettleRaidInput {
@@ -327,7 +328,7 @@ export class RaidService {
     // arrives; the hand-off lets it claim the account without a takeover.
     accountSessions.beginHandoff(attackerId, raidZone);
 
-    return { raidId, defenderId };
+    return { raidId, defenderId, startedAt: now };
   }
 
   /** Closes a raid exactly once and applies its consequences. */
