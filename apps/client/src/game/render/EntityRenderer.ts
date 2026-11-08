@@ -3,6 +3,7 @@ import { TILE_HEIGHT, TILE_WIDTH, UNIT_BLUEPRINTS, getIsoDepth, gridToScreen } f
 import type { BuildingType } from '@chien-quoc/shared';
 import type { WorldScene } from '../scenes/WorldScene.js';
 import { buildingArt, buildingHpBarY } from './buildingArt.js';
+import { buildingDepth } from './isoDepth.js';
 import { syncBuildingFire } from './buildingFire.js';
 import {
   DEFAULT_DIRECTION_INDEX,
@@ -308,14 +309,10 @@ export class EntityRenderer {
     container.add(levelBadge);
     container.setData('levelBadge', levelBadge);
 
-    // A wall tile shares the citadel layer's depth key, so a run of player-built
-    // segments sorts exactly like the capital's ring and never draws across a
-    // unit standing in front of it.
-    const depth =
-      building.type === 'WALL'
-        ? getIsoDepth(building.gridX, building.gridY, 12)
-        : getIsoDepth(building.gridX + building.sizeX, building.gridY + building.sizeY, 15);
-    container.setDepth(depth);
+    // Walls and buildings share one ordering table with `CitadelLayer`, so a
+    // player-painted segment sorts exactly like the capital's ring and a house
+    // can never paint its wide roof over the wall it stands against.
+    container.setDepth(buildingDepth(building));
     container.setData('entityId', id);
     container.setData('entityType', 'building');
     container.setData('buildingType', building.type);

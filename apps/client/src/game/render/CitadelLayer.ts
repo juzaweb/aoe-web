@@ -9,6 +9,7 @@ import {
 import type * as Phaser from 'phaser';
 import type { WorldScene } from '../scenes/WorldScene.js';
 import { CITADEL_WALL_RISE } from './citadelSurface.js';
+import { wallDepth } from './isoDepth.js';
 import {
   TC_PLATFORM_ORIGIN_Y,
   TC_PLATFORM_RISE,
@@ -252,7 +253,9 @@ export class CitadelLayer {
     }
 
     // Wall blocks sort by their own tile, like a resource, so a unit walking
-    // below a wall is drawn in front of it and one behind is hidden by it.
+    // below a wall is drawn in front of it and one behind is hidden by it. The
+    // shared `wallDepth` outranks building art at the same row, so a house
+    // standing against the ring cannot paint its roof over the wall cap.
     // The gate sprite already draws the six tiles of wall it covers, so those
     // blocks are skipped: otherwise a nearer wall block would cut the gate in
     // half, because one sprite can only carry one depth key.
@@ -283,7 +286,7 @@ export class CitadelLayer {
       const pos = gridToScreen(wall.gridX, wall.gridY);
       const tile = this.scene.add.image(pos.x, pos.y, 'citadel_wall');
       tile.setOrigin(0.5, WALL_BASE_CENTER_Y / WALL_TEXTURE_HEIGHT);
-      tile.setDepth(getIsoDepth(wall.gridX, wall.gridY, 12));
+      tile.setDepth(wallDepth(wall.gridX, wall.gridY));
       this.wallTiles.push(tile);
     }
 
@@ -312,7 +315,10 @@ export class CitadelLayer {
     const image = this.scene.add.image(pos.x, pos.y, 'citadel_gate');
     image.setOrigin(0.5, GATE_ORIGIN_Y);
     // Key the sprite on the northernmost covered tile so a unit walking the
-    // gate roof (depth offset 30) sorts above it at every covered tile.
+    // gate roof (depth offset 30) sorts above it at every covered tile. The
+    // gate stays below the wall/building bands on purpose: keyed far north, the
+    // wall run south of it draws in front, and a 1x1 building standing outside
+    // the gate must not be cut by this 512 px-wide sprite.
     image.setDepth(getIsoDepth(middle.gridX, coveredFrom, 12));
 
     // The portcullis texture is already skewed to the arch, so it is placed at
