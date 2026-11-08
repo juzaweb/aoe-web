@@ -1,5 +1,5 @@
 import type { Room } from '@colyseus/sdk';
-import { BUILDING_BLUEPRINTS, BuildingType } from '@chien-quoc/shared';
+import { BUILDING_BLUEPRINTS, BuildingType, CITADEL_HEIGHT, CITADEL_WIDTH, citadelLayoutFor } from '@chien-quoc/shared';
 import type * as Phaser from 'phaser';
 import type { GridPoint, WorldPoint } from './pointer.js';
 
@@ -85,6 +85,39 @@ export function findUnitAt(
   return foundId;
 }
 
+function isClientCitadelWallOrGate(_scene: HitTestScene, citadel: any, grid: GridPoint): boolean {
+  const dx = grid.gridX - citadel.gridX;
+  const dy = grid.gridY - citadel.gridY;
+  if (dx < 0 || dx >= CITADEL_WIDTH || dy < 0 || dy >= CITADEL_HEIGHT) return false;
+  return dx === 0 || dx === CITADEL_WIDTH - 1 || dy === 0 || dy === CITADEL_HEIGHT - 1;
+}
+
+function isClientProtectedCitadelInterior(scene: HitTestScene, building: any): boolean {
+  if (building.type === 'CITADEL') return false;
+  if (
+    building.type !== 'TOWN_CENTER' &&
+    building.type !== 'BARRACKS' &&
+    building.type !== 'ARCHERY_RANGE' &&
+    building.type !== 'HOUSE'
+  ) {
+    return false;
+  }
+  let townCenter: any = null;
+  scene.room?.state.buildings?.forEach((b: any) => {
+    if (!townCenter && b.ownerId === building.ownerId && b.type === 'TOWN_CENTER') {
+      townCenter = b;
+    }
+  });
+  if (!townCenter) return false;
+  const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+  return layout.slots.some(
+    (slot) =>
+      slot.type === building.type &&
+      slot.gridX === Math.round(building.gridX) &&
+      slot.gridY === Math.round(building.gridY)
+  );
+}
+
 /**
  * Building whose footprint contains `grid`. Ownership is the caller's filter:
  * right-click attacks foreign buildings, the cursor only cares that one is there.
@@ -98,6 +131,19 @@ export function findBuildingAt(
   let foundId: string | null = null;
   scene.room.state.buildings.forEach((b: any, bId: string) => {
     if (ownerFilter !== undefined && !ownerMatches(scene, b.ownerId, ownerFilter)) return;
+
+    // Enemy players cannot attack protected interior citadel buildings directly.
+    if (ownerFilter === 'enemy' && isClientProtectedCitadelInterior(scene, b)) {
+      return;
+    }
+
+    if (b.type === 'CITADEL') {
+      if (isClientCitadelWallOrGate(scene, b, grid)) {
+        foundId = bId;
+      }
+      return;
+    }
+
     if (
       grid.gridX >= b.gridX &&
       grid.gridX < b.gridX + b.sizeX &&
@@ -119,7 +165,15 @@ export function findOwnFoundationAt(scene: HitTestScene, grid: GridPoint): strin
   const buildingId = findBuildingAt(scene, grid, scene.myOwnerId);
   if (buildingId) {
     const building = scene.room?.state.buildings.get(buildingId);
-    if (building && !building.isConstructed) return buildingId;
+    if (
+      building &&
+      (!building.isConstructed ||
+        (typeof building.hp === 'number' &&
+          typeof building.maxHp === 'number' &&
+          building.hp < building.maxHp))
+    ) {
+      return buildingId;
+    }
   }
   const roads = (scene.room?.state as any)?.roads;
   const road = roads?.get(`${grid.gridX},${grid.gridY}`);

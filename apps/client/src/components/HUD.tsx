@@ -51,9 +51,11 @@ const CitadelBar: React.FC<{ status: CitadelStatus; compact?: boolean }> = ({
   const color =
     pct <= CITADEL_HP_THRESHOLD
       ? 'bg-red-500'
-      : pct <= 0.5
-        ? 'bg-amber-400'
-        : 'bg-emerald-400';
+      : pct <= 0.25
+        ? 'bg-red-400'
+        : pct <= 0.5
+          ? 'bg-amber-400'
+          : 'bg-emerald-400';
 
   return (
     <div
@@ -70,7 +72,7 @@ const CitadelBar: React.FC<{ status: CitadelStatus; compact?: boolean }> = ({
       </div>
       <span
         className={`font-semibold tabular-nums ${
-          pct <= CITADEL_HP_THRESHOLD ? 'text-red-300' : 'text-slate-200'
+          pct <= CITADEL_HP_THRESHOLD ? 'text-red-400 font-bold' : pct <= 0.25 ? 'text-red-300' : 'text-slate-200'
         } ${compact ? 'text-[10px]' : 'text-[11px]'}`}
       >
         {Math.round(pct * 100)}%

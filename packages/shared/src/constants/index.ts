@@ -115,6 +115,9 @@ export const RAID_SHIELD_MS = 72 * 60 * 60 * 1000;
  */
 export const RAID_LOSS_LOCK_MS = 72 * 60 * 60 * 1000;
 
+/** Time over which damaged citadel buildings passively regenerate to full HP (72 hours). */
+export const CITADEL_AUTO_REPAIR_DURATION_MS = 72 * 60 * 60 * 1000;
+
 /** Share of each resource the winner takes from the defender. */
 export const RAID_LOOT_PERCENT = 0.2;
 
@@ -123,11 +126,9 @@ export const RAID_LOOT_CAP_PER_RESOURCE = 2000;
 
 /**
  * The defender's Town Center is not destructible: damage stops at this share of
- * its maximum HP. The raid itself is scored on the whole citadel (see
- * `CITADEL_HP_THRESHOLD`); this floor only keeps the heart of an empire from
- * being erased, which would be a griefing tool rather than a fight.
+ * its maximum HP. Defeat occurs when the citadel loses 100% of its HP (reaches 0).
  */
-export const RAID_TOWN_CENTER_HP_THRESHOLD = 0.25;
+export const RAID_TOWN_CENTER_HP_THRESHOLD = 0;
 
 /**
  * Maximum duration for a raid (10 minutes).
@@ -339,6 +340,23 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     attackCooldownMs: 0,
     dropOffs: ['wood', 'food', 'gold', 'stone'],
     description: 'The heart of your settlement. Trains villagers and provides core population.'
+  },
+  CITADEL: {
+    type: 'CITADEL',
+    name: 'Citadel',
+    sizeX: 26,
+    sizeY: 26,
+    cost: { wood: 0, food: 0, gold: 0, stone: 0 },
+    buildTimeMs: 20000,
+    maxHp: 7050,
+    populationProvided: 0,
+    trainableUnits: [],
+    attackPower: 0,
+    attackRange: 0,
+    attackCooldownMs: 0,
+    dropOffs: [],
+    attackable: true,
+    description: 'The fortified walls and gate of the kingdom citadel.'
   },
   BARRACKS: {
     type: 'BARRACKS',

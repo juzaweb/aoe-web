@@ -18,6 +18,8 @@ export type WorldRoomName = 'kingdom_room' | 'battlefield_room';
 
 export type BuildingType =
   | 'TOWN_CENTER'
+  /** Fortified compound wall and gate protecting the kingdom core. */
+  | 'CITADEL'
   /** MIL-01: infantry barracks — trains Spearmen. */
   | 'BARRACKS'
   /** MIL-01: cavalry stable — trains Cavalry. */
