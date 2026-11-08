@@ -8,6 +8,10 @@
       "type": "stdio",
       "command": "uvx",
       "args": ["blender-mcp"]
+    },
+    "comfyui": {
+      "type": "http",
+      "url": "http://192.168.1.13:8090/mcp"
     }
   }
 }
