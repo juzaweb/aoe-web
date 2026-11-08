@@ -1440,13 +1440,14 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     }
 
     // Spawn starter trees near Town Center (AoE starter woodline). A citadel
-    // pushes them outside the east wall, in front of the gate.
+    // keeps the east approach empty for the portal, so they go behind the
+    // west wall instead.
     const starterTreeSpots = citadelLayout
       ? [
-          { gridX: citadelLayout.originX + citadelLayout.sizeX + 1, gridY: citadelLayout.originY + 10 },
-          { gridX: citadelLayout.originX + citadelLayout.sizeX + 1, gridY: citadelLayout.originY + 11 },
-          { gridX: citadelLayout.originX + citadelLayout.sizeX + 2, gridY: citadelLayout.originY + 12 },
-          { gridX: citadelLayout.originX + citadelLayout.sizeX + 2, gridY: citadelLayout.originY + 13 }
+          { gridX: citadelLayout.originX - 3, gridY: citadelLayout.originY + 10 },
+          { gridX: citadelLayout.originX - 3, gridY: citadelLayout.originY + 11 },
+          { gridX: citadelLayout.originX - 4, gridY: citadelLayout.originY + 12 },
+          { gridX: citadelLayout.originX - 4, gridY: citadelLayout.originY + 13 }
         ]
       : [
           { gridX: spawnX - 2, gridY: spawnY - 1 },
@@ -1470,12 +1471,12 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     });
 
     // Spawn starter berry bushes near Town Center (AoE starter forage food).
-    // A citadel puts them east of the compound, in front of the single gate.
+    // A citadel puts them behind the west wall, clear of the gate approach.
     const starterBerrySpots = citadelLayout
       ? [
-          { gridX: citadelLayout.originX + citadelLayout.sizeX + 4, gridY: citadelLayout.originY + 13 },
-          { gridX: citadelLayout.originX + citadelLayout.sizeX + 5, gridY: citadelLayout.originY + 13 },
-          { gridX: citadelLayout.originX + citadelLayout.sizeX + 4, gridY: citadelLayout.originY + 14 }
+          { gridX: citadelLayout.originX - 6, gridY: citadelLayout.originY + 13 },
+          { gridX: citadelLayout.originX - 7, gridY: citadelLayout.originY + 13 },
+          { gridX: citadelLayout.originX - 6, gridY: citadelLayout.originY + 14 }
         ]
       : [
           { gridX: spawnX + 5, gridY: spawnY + 1 },

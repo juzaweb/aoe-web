@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUILDING_BLUEPRINTS,
+  CITADEL_APPROACH_MARGIN,
   CITADEL_HEIGHT,
   CITADEL_HP_THRESHOLD,
   CITADEL_WIDTH,
@@ -11,8 +12,10 @@ import {
   isCitadelBreached
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
+import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { WorldState } from '../schema/WorldState.js';
 import {
+  clearCitadelResources,
   ensureCitadel,
   footprintTouchesCitadelWall,
   restoreCitadel,
@@ -397,5 +400,37 @@ describe('citadel walls', () => {
     addTownCenter(state);
 
     expect(footprintTouchesCitadelWall(state, TC_X, TC_Y, 1, 1)).toBe(false);
+  });
+});
+
+describe('citadel gate approach', () => {
+  function addResource(state: WorldState, id: string, gridX: number, gridY: number): void {
+    const node = new ResourceNodeState();
+    node.id = id;
+    node.type = 'TREE';
+    node.resourceType = 'wood';
+    node.gridX = gridX;
+    node.gridY = gridY;
+    node.remainingAmount = 200;
+    node.maxAmount = 200;
+    state.resourceNodes.set(id, node);
+  }
+
+  it('clears the avenue between the east gate and the map edge', () => {
+    const state = createKingdomState();
+    const townCenter = addTownCenter(state);
+    const layout = citadelLayoutFor(TC_X, TC_Y);
+    const gateY = layout.gates[1].gridY;
+    const avenueX = layout.originX + layout.sizeX + 10;
+
+    addResource(state, 'res-avenue', avenueX, gateY);
+    addResource(state, 'res-avenue-side', avenueX, gateY - CITADEL_APPROACH_MARGIN - 2);
+    addResource(state, 'res-behind-wall', layout.originX - 1, gateY);
+
+    clearCitadelResources(state, townCenter);
+
+    expect(state.resourceNodes.has('res-avenue')).toBe(false);
+    expect(state.resourceNodes.has('res-avenue-side')).toBe(true);
+    expect(state.resourceNodes.has('res-behind-wall')).toBe(true);
   });
 });

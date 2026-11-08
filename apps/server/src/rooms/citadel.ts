@@ -1,6 +1,7 @@
 import {
   BUILDING_BLUEPRINTS,
   BuildingType,
+  CITADEL_APPROACH_MARGIN,
   CITADEL_SIZE,
   CitadelSlot,
   citadelLayoutFor,
@@ -97,24 +98,33 @@ export function spawnMissingCitadelBuildings(
 }
 
 /**
- * Removes generated resource nodes buried under the walled compound.
+ * Removes generated resource nodes buried under the walled compound and on the
+ * approach avenue in front of the east gate.
  *
- * Runs before the starter trees are placed and again when an old snapshot is
- * upgraded, so a forest cannot grow through the stone floor or a wall.
+ * Runs on every join, so a legacy snapshot or a regrown node cannot sit on the
+ * stone floor, a wall, or the corridor leading out to the travel portal.
  */
 export function clearCitadelResources(state: WorldState, townCenter: BuildingState): void {
   const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+  const gateMinY = Math.min(...layout.gates.map((gate) => gate.gridY));
+  const gateMaxY = Math.max(...layout.gates.map((gate) => gate.gridY));
+  const avenueMinX = layout.originX + layout.sizeX;
   const buried: string[] = [];
 
   state.resourceNodes.forEach((node: ResourceNodeState, id: string) => {
-    if (
+    const underCompound =
       node.gridX >= layout.originX &&
       node.gridX < layout.originX + layout.sizeX &&
       node.gridY >= layout.originY &&
-      node.gridY < layout.originY + layout.sizeY
-    ) {
-      buried.push(id);
-    }
+      node.gridY < layout.originY + layout.sizeY;
+
+    const onAvenue =
+      node.gridX >= avenueMinX &&
+      node.gridX < state.mapWidth &&
+      node.gridY >= gateMinY - CITADEL_APPROACH_MARGIN &&
+      node.gridY <= gateMaxY + CITADEL_APPROACH_MARGIN;
+
+    if (underCompound || onAvenue) buried.push(id);
   });
 
   for (const id of buried) state.resourceNodes.delete(id);

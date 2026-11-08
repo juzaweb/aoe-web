@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CITADEL_APPROACH_MARGIN,
   CITADEL_CLEAR_MARGIN,
   KINGDOM_MAP_SIZE,
   TERRAIN_BATTLEFIELD,
@@ -31,6 +32,23 @@ describe('isPlazaTile', () => {
     expect(
       isPlazaTile(KINGDOM_MAP_SIZE.width / 2, KINGDOM_MAP_SIZE.height / 2, TERRAIN_KINGDOM)
     ).toBe(true);
+  });
+
+  it('clears the avenue from the east gate to the map edge', () => {
+    const gate = LAYOUT.gates[1];
+    const avenueX = LAYOUT.originX + LAYOUT.sizeX + CITADEL_CLEAR_MARGIN + 1;
+
+    expect(isPlazaTile(avenueX, gate.gridY, TERRAIN_KINGDOM)).toBe(true);
+    expect(
+      isPlazaTile(KINGDOM_MAP_SIZE.width - 1, gate.gridY, TERRAIN_KINGDOM)
+    ).toBe(true);
+    expect(
+      isPlazaTile(avenueX, LAYOUT.gates[0].gridY - CITADEL_APPROACH_MARGIN - 1, TERRAIN_KINGDOM)
+    ).toBe(false);
+    expect(
+      isPlazaTile(avenueX, LAYOUT.gates[2].gridY + CITADEL_APPROACH_MARGIN + 1, TERRAIN_KINGDOM)
+    ).toBe(false);
+    expect(isPlazaTile(LAYOUT.originX, gate.gridY, TERRAIN_KINGDOM)).toBe(true);
   });
 
   it('never marks a battlefield tile', () => {

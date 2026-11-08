@@ -256,6 +256,9 @@ export class EntityRenderer {
 
     const img = scene.add.image(0, offsetY, textureKey);
     img.setScale(scale);
+    // The generated gate faces south-east by default. Mirror it so a kingdom
+    // portal on the eastern edge opens towards the citadel instead of away.
+    if (building.type === 'PORTAL') img.setFlipX(true);
     container.add(img);
     // ECO-01: kept so the gather state of a field can be drawn without
     // rebuilding the container.

@@ -1,6 +1,12 @@
 import { BATTLEFIELD_MAP_SIZE, KINGDOM_MAP_SIZE, zoneKindOf } from '../constants/index.js';
 import type { MapZoneKind } from '../types/index.js';
-import { CITADEL_HEIGHT, CITADEL_WIDTH, citadelOriginFor } from './citadel.js';
+import {
+  CITADEL_HEIGHT,
+  CITADEL_WIDTH,
+  citadelLayoutFor,
+  citadelOriginFor,
+  citadelTownCenterFor
+} from './citadel.js';
 
 /** Everything the terrain generator needs to know about one map. */
 export interface MapTerrain {
@@ -14,6 +20,16 @@ export const TERRAIN_KINGDOM: MapTerrain = { ...KINGDOM_MAP_SIZE, kind: 'kingdom
 
 /** Tiles of clear ground kept around the citadel before resources may spawn. */
 export const CITADEL_CLEAR_MARGIN = 2;
+
+/**
+ * Tiles kept clear on each side of the gate opening on the approach avenue.
+ *
+ * The gate is only three tiles wide, but the avenue is drawn as a broad band:
+ * it also keeps the travel portal at the far edge from being buried in a
+ * forest. Eight tiles on each side leave the whole direction visibly open while
+ * the rest of the map keeps its resource ring.
+ */
+export const CITADEL_APPROACH_MARGIN = 8;
 
 /** Terrain layout of the map `zone` lives on. */
 export function terrainForZone(zone: string): MapTerrain {
@@ -32,10 +48,26 @@ export function isPlazaTile(gx: number, gy: number, terrain: MapTerrain): boolea
 
   const { originX, originY } = citadelOriginFor(terrain.width, terrain.height);
 
-  return (
+  if (
     gx >= originX - CITADEL_CLEAR_MARGIN &&
     gx < originX + CITADEL_WIDTH + CITADEL_CLEAR_MARGIN &&
     gy >= originY - CITADEL_CLEAR_MARGIN &&
     gy < originY + CITADEL_HEIGHT + CITADEL_CLEAR_MARGIN
+  ) {
+    return true;
+  }
+
+  // Keep the avenue between the east gate and the map edge clear, so the only
+  // thing in that direction is the travel portal on the far right edge.
+  const anchor = citadelTownCenterFor(terrain.width, terrain.height);
+  const layout = citadelLayoutFor(anchor.gridX, anchor.gridY);
+  const gateMinY = Math.min(...layout.gates.map((gate) => gate.gridY));
+  const gateMaxY = Math.max(...layout.gates.map((gate) => gate.gridY));
+
+  return (
+    gx >= layout.originX + layout.sizeX &&
+    gx < terrain.width &&
+    gy >= gateMinY - CITADEL_APPROACH_MARGIN &&
+    gy <= gateMaxY + CITADEL_APPROACH_MARGIN
   );
 }

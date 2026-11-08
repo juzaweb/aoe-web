@@ -1,6 +1,5 @@
 import { MapTerrain, TERRAIN_BATTLEFIELD, TILE_HEIGHT, TILE_WIDTH, gridToScreen, screenToGrid } from '@chien-quoc/shared';
 import type * as Phaser from 'phaser';
-import { MAP_APRON_TILES } from './decorScatter.js';
 import { grassTextureIndex, grassTint, hash2 } from './visualVariation.js';
 
 /**
@@ -123,13 +122,16 @@ export class TerrainLayer {
     const cBottomLeft = screenToGrid(left, bottom);
     const cBottomRight = screenToGrid(right, bottom);
 
-    // Grass extends past the playable edge so the border forest has ground to
-    // stand on instead of the flat camera clear colour. Roads stay inside the
-    // map: the spline generator already clamps to it.
-    const minGx = Math.max(-MAP_APRON_TILES, Math.min(cTopLeft.gridX, cTopRight.gridX, cBottomLeft.gridX, cBottomRight.gridX) - 3);
-    const maxGx = Math.min(this.terrain.width - 1 + MAP_APRON_TILES, Math.max(cTopLeft.gridX, cTopRight.gridX, cBottomLeft.gridX, cBottomRight.gridX) + 3);
-    const minGy = Math.max(-MAP_APRON_TILES, Math.min(cTopLeft.gridY, cTopRight.gridY, cBottomLeft.gridY, cBottomRight.gridY) - 3);
-    const maxGy = Math.min(this.terrain.height - 1 + MAP_APRON_TILES, Math.max(cTopLeft.gridY, cTopRight.gridY, cBottomLeft.gridY, cBottomRight.gridY) + 3);
+    // Grass covers the whole visible window, not just an apron around the
+    // playable tiles. The camera is clamped to the map's bounding box, and an
+    // isometric bounding box is far larger than the map diamond itself; filling
+    // only a few rings left the corners of the box showing the flat camera
+    // clear colour, which reads as endless empty ground when panned to the edge.
+    // Roads stay inside the map: the spline generator already clamps to it.
+    const minGx = Math.min(cTopLeft.gridX, cTopRight.gridX, cBottomLeft.gridX, cBottomRight.gridX) - 3;
+    const maxGx = Math.max(cTopLeft.gridX, cTopRight.gridX, cBottomLeft.gridX, cBottomRight.gridX) + 3;
+    const minGy = Math.min(cTopLeft.gridY, cTopRight.gridY, cBottomLeft.gridY, cBottomRight.gridY) - 3;
+    const maxGy = Math.max(cTopLeft.gridY, cTopRight.gridY, cBottomLeft.gridY, cBottomRight.gridY) + 3;
 
     let poolIdx = 0;
 
