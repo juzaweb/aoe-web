@@ -37,8 +37,31 @@ const WALL_TEXTURE_HEIGHT = WALL_BASE_CENTER_Y + 32;
 const GATE_TEXTURE_WIDTH = 512;
 const GATE_TEXTURE_HEIGHT = 500;
 const GATE_ORIGIN_Y = 308 / GATE_TEXTURE_HEIGHT;
-/** Half the gate's wall front, in tiles. Wall blocks under it are not drawn. */
-const GATE_COVER_TILES = 3;
+/**
+ * Wall tiles covered by the gate sprite along the east wall.
+ *
+ * `citadel/gate.png` covers six tiles in total: 1 tile north of the gateway
+ * (the north flanking tower), the 3 gateway tiles, and 2 tiles south (the south
+ * tower plus the wall front extending to b_b). Symmetrical +-3 from middle
+ * skipped seven tiles instead of six, leaving a 1-tile gap north of the gate.
+ */
+export const GATE_COVER_NORTH_TILES = 1;
+export const GATE_COVER_SOUTH_TILES = 2;
+
+export function citadelGateCoveredYRange(gates: readonly { gridY: number }[]): {
+  coveredFrom: number;
+  coveredTo: number;
+} {
+  if (gates.length === 0) {
+    return { coveredFrom: 0, coveredTo: -1 };
+  }
+  const minY = Math.min(...gates.map((g) => g.gridY));
+  const maxY = Math.max(...gates.map((g) => g.gridY));
+  return {
+    coveredFrom: minY - GATE_COVER_NORTH_TILES,
+    coveredTo: maxY + GATE_COVER_SOUTH_TILES
+  };
+}
 
 /** Portcullis drawn inside the arch, in gate-texture pixels. */
 const GATE_DOOR = { x: 160, y: 219, width: 192, height: 169 };
@@ -209,10 +232,8 @@ export class CitadelLayer {
     // The gate sprite already draws the six tiles of wall it covers, so those
     // blocks are skipped: otherwise a nearer wall block would cut the gate in
     // half, because one sprite can only carry one depth key.
-    const middle = layout.gates[Math.floor(CITADEL_GATE_WIDTH / 2)] ?? layout.gates[0];
+    const { coveredFrom, coveredTo } = citadelGateCoveredYRange(layout.gates);
     const coveredX = layout.originX + layout.sizeX - 1;
-    const coveredFrom = middle ? middle.gridY - GATE_COVER_TILES : 0;
-    const coveredTo = middle ? middle.gridY + GATE_COVER_TILES : -1;
     const hasGate = this.scene.textures.exists('citadel_gate');
     for (const wall of layout.walls) {
       if (
@@ -236,8 +257,8 @@ export class CitadelLayer {
   /**
    * Places the gatehouse over the open tiles in the middle of the east wall.
    *
-   * The sprite covers six tiles of wall front, centred on the middle gate tile,
-   * so half of it overlaps the wall on either side of the doorway. Only one gate
+   * The sprite covers six tiles of wall front (1 tile north of the doorway, 3 doorway
+   * tiles, and 2 tiles south), centred on the middle gate tile. Only one gate
    * exists per citadel today, but the loop keeps the contract explicit.
    */
   private drawGate(gates: { gridX: number; gridY: number }[]) {
