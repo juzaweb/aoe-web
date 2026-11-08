@@ -57,7 +57,7 @@ import { PlayerState } from '../schema/PlayerState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
-import { isProtectedCitadelInteriorBuilding } from './citadel.js';
+import { findNearestCitadelWallOrGate, isProtectedCitadelInteriorBuilding } from './citadel.js';
 import { getBuildApproachPoint } from './construction.js';
 import { footprintTouchesCitadelWall } from './citadel.js';
 import { RoadGrid } from './roads.js';
@@ -1523,14 +1523,17 @@ export class CommandSystem {
     index: number,
     count: number
   ) {
-    const approach = getBuildApproachPoint(
-      unit,
-      building,
-      index,
-      count,
-      this.state.mapWidth,
-      this.state.mapHeight
-    );
+    const approach =
+      building.type === 'CITADEL'
+        ? findNearestCitadelWallOrGate(this.state, building, unit.x, unit.y)
+        : getBuildApproachPoint(
+            unit,
+            building,
+            index,
+            count,
+            this.state.mapWidth,
+            this.state.mapHeight
+          );
 
     unit.queueTargetX.clear();
     unit.queueTargetY.clear();

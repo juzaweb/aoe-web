@@ -255,6 +255,42 @@ describe('Citadel repair and 72h regeneration', () => {
     expect(restored.hp).toBeCloseTo(tc.maxHp * 0.25, 0);
   });
 
+  it('restores offline passive regeneration for Citadel compound entity when restoring from SQLite', () => {
+    const tc = addTownCenter(room, 'owner');
+    const citadel = ensureCitadelEntity(room.state, 'owner', tc);
+    const updatedAt = new Date(Date.now() - CITADEL_AUTO_REPAIR_DURATION_MS / 4); // 18 hours ago
+
+    const saved = [
+      {
+        id: 'owner',
+        townCenterLevel: 1,
+        buildings: [
+          {
+            id: citadel.id,
+            type: 'CITADEL',
+            gridX: citadel.gridX,
+            gridY: citadel.gridY,
+            sizeX: citadel.sizeX,
+            sizeY: citadel.sizeY,
+            level: 1,
+            hp: 0,
+            maxHp: citadel.maxHp,
+            isConstructed: true,
+            constructionProgress: 100,
+            upgradeProgressMs: 0,
+            upgradeTimeMs: 0,
+            updatedAt
+          }
+        ],
+        units: []
+      }
+    ];
+
+    (room as any).restoreSavedEntities(saved);
+    const restoredCitadel = room.state.buildings.get(citadel.id)!;
+    expect(restoredCitadel.hp).toBeCloseTo(citadel.maxHp * 0.25, 0);
+  });
+
   it('rejects attack command on 0-HP destroyed buildings', () => {
     const tc = addTownCenter(room, 'owner');
     const citadel = ensureCitadelEntity(room.state, 'owner', tc);

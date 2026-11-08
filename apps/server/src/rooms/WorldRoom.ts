@@ -749,7 +749,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         );
         building.maxHp = effectiveMaxHp;
         let restoredHp = Math.min(b.hp, effectiveMaxHp);
-        const isCitadelSlot =
+        const isCitadelSlotOrCompound =
+          b.type === 'CITADEL' ||
           Boolean(citadelLayout &&
           citadelLayout.slots.some(
             (slot) =>
@@ -757,7 +758,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
               slot.gridX === Math.round(b.gridX) &&
               slot.gridY === Math.round(b.gridY)
           ));
-        if (isCitadelSlot && b.isConstructed && restoredHp < effectiveMaxHp && (b as any).updatedAt) {
+        if (isCitadelSlotOrCompound && b.isConstructed && restoredHp < effectiveMaxHp && (b as any).updatedAt) {
           const elapsedMs = Math.max(0, Date.now() - new Date((b as any).updatedAt).getTime());
           const offlineHp = (effectiveMaxHp * elapsedMs) / CITADEL_AUTO_REPAIR_DURATION_MS;
           restoredHp = Math.min(effectiveMaxHp, restoredHp + offlineHp);

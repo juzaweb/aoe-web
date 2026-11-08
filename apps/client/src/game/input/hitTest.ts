@@ -1,5 +1,5 @@
 import type { Room } from '@colyseus/sdk';
-import { BUILDING_BLUEPRINTS, BuildingType, citadelLayoutFor } from '@chien-quoc/shared';
+import { BUILDING_BLUEPRINTS, BuildingType, CITADEL_HEIGHT, CITADEL_WIDTH, citadelLayoutFor } from '@chien-quoc/shared';
 import type * as Phaser from 'phaser';
 import type { GridPoint, WorldPoint } from './pointer.js';
 
@@ -85,23 +85,23 @@ export function findUnitAt(
   return foundId;
 }
 
-function isClientCitadelWallOrGate(scene: HitTestScene, citadel: any, grid: GridPoint): boolean {
-  let townCenter: any = null;
-  scene.room?.state.buildings?.forEach((b: any) => {
-    if (!townCenter && b.ownerId === citadel.ownerId && b.type === 'TOWN_CENTER') {
-      townCenter = b;
-    }
-  });
-  if (!townCenter) return false;
-  const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
-  return (
-    layout.walls.some((w) => w.gridX === grid.gridX && w.gridY === grid.gridY) ||
-    layout.gates.some((g) => g.gridX === grid.gridX && g.gridY === grid.gridY)
-  );
+function isClientCitadelWallOrGate(_scene: HitTestScene, citadel: any, grid: GridPoint): boolean {
+  const dx = grid.gridX - citadel.gridX;
+  const dy = grid.gridY - citadel.gridY;
+  if (dx < 0 || dx >= CITADEL_WIDTH || dy < 0 || dy >= CITADEL_HEIGHT) return false;
+  return dx === 0 || dx === CITADEL_WIDTH - 1 || dy === 0 || dy === CITADEL_HEIGHT - 1;
 }
 
 function isClientProtectedCitadelInterior(scene: HitTestScene, building: any): boolean {
   if (building.type === 'CITADEL') return false;
+  if (
+    building.type !== 'TOWN_CENTER' &&
+    building.type !== 'BARRACKS' &&
+    building.type !== 'ARCHERY_RANGE' &&
+    building.type !== 'HOUSE'
+  ) {
+    return false;
+  }
   let townCenter: any = null;
   scene.room?.state.buildings?.forEach((b: any) => {
     if (!townCenter && b.ownerId === building.ownerId && b.type === 'TOWN_CENTER') {
