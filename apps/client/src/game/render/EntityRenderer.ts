@@ -213,6 +213,13 @@ export class EntityRenderer {
   }
 
   createBuildingSprite(id: string, building: any, cb?: any) {
+    // The citadel compound is a scoring entity, not a drawn building: its floor,
+    // walls and gate are rendered by `CitadelLayer`. Drawing it here would fall
+    // back to the Town Center placeholder in the middle of the compound and,
+    // worse, give it a 26x26 clickable box that swallowed every interior
+    // building.
+    if (building.type === 'CITADEL') return;
+
     const scene = this.scene;
     const screenPos = gridToScreen(
       building.gridX + building.sizeX / 2 - 0.5,

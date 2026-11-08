@@ -1,7 +1,7 @@
-import { MAX_SELECTION, TILE_HEIGHT, TILE_WIDTH, screenToGrid } from '@chien-quoc/shared';
+import { MAX_SELECTION, screenToGrid } from '@chien-quoc/shared';
 import type * as Phaser from 'phaser';
 import type { WorldScene } from '../scenes/WorldScene.js';
-import { findResourceAt, findUnitAt, getUnitBodyBox } from './hitTest.js';
+import { findBuildingAtPoint, findResourceAt, findUnitAt, getUnitBodyBox } from './hitTest.js';
 import { pointerWorldPoint } from './pointer.js';
 
 /**
@@ -144,8 +144,7 @@ export class SelectionController {
   }
 
   /**
-   * Building under a point: the rendered sprite's bounds first (a tall town centre
-   * sticks up out of its footprint), then the footprint itself.
+   * Building under a point, shared with the touch path via `findBuildingAtPoint`.
    *
    * @param pad Extra world pixels added to the visual bounds for a finger tap.
    */
@@ -154,48 +153,7 @@ export class SelectionController {
     grid: { gridX: number; gridY: number },
     pad = 0
   ): string | null {
-    const scene = this.scene;
-    if (!scene.room) return null;
-
-    let clickedBuildingId: string | null = null;
-
-    scene.buildingSprites.forEach((container, bId) => {
-      const b = scene.room?.state.buildings.get(bId);
-      if (!b) return;
-      const visualY = (container.getData('visualCenterY') as number) ?? -30;
-      // LVL3: a tiered building's art grows taller with level (the manor is
-      // 304 px against the hut's 220), so the clickable box has to cover the
-      // artwork itself. The footprint box alone clipped the top of tall sprites.
-      const image = container.getData('buildingImage') as
-        | Phaser.GameObjects.Image
-        | undefined;
-      const footprintWidth = b.sizeX * TILE_WIDTH;
-      const footprintHeight = b.sizeY * TILE_HEIGHT + 60;
-      const width = Math.max(footprintWidth, image?.displayWidth ?? 0);
-      const height = Math.max(footprintHeight, image?.displayHeight ?? 0);
-      if (
-        Math.abs(worldPoint.x - container.x) <= width / 2 + pad &&
-        worldPoint.y >= container.y + visualY - height / 2 - pad &&
-        worldPoint.y <= container.y + 20 + pad
-      ) {
-        clickedBuildingId = bId;
-      }
-    });
-
-    if (clickedBuildingId) return clickedBuildingId;
-
-    scene.room.state.buildings.forEach((b: any, bId: string) => {
-      if (
-        grid.gridX >= b.gridX &&
-        grid.gridX < b.gridX + b.sizeX &&
-        grid.gridY >= b.gridY &&
-        grid.gridY < b.gridY + b.sizeY
-      ) {
-        clickedBuildingId = bId;
-      }
-    });
-
-    return clickedBuildingId;
+    return findBuildingAtPoint(this.scene, worldPoint, grid, pad);
   }
 
   /** Box-drag: every own unit whose body ellipse overlaps the rectangle. */

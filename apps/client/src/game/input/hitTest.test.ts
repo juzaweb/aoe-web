@@ -1,14 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import type * as Phaser from 'phaser';
-import { findBuildingAt, findOwnFoundationAt, findUnitAt, getUnitBodyBox, hitTestUnit } from './hitTest.js';
 import { citadelLayoutFor } from '@chien-quoc/shared';
+import {
+  findBuildingAt,
+  findBuildingAtPoint,
+  findOwnFoundationAt,
+  findUnitAt,
+  getUnitBodyBox,
+  hitTestUnit
+} from './hitTest.js';
 
 /**
  * A container stand-in with just the two fields the hit tests read: a world
  * position and the `getData` keys written at sprite-creation time. Using real
  * Phaser objects here would drag a WebGL context into the Node test run.
  */
-function fakeContainer(x: number, y: number, extra: Record<string, number> = {}, depth = 0) {
+function fakeContainer(
+  x: number,
+  y: number,
+  extra: Record<string, unknown> = {},
+  depth = 0
+) {
   return {
     x,
     y,
@@ -117,6 +129,89 @@ describe('findBuildingAt with Citadel rules', () => {
     // Click on citadel gate returns b-citadel
     const gateTile = layout.gates[0];
     expect(findBuildingAt(scene, { gridX: gateTile.gridX, gridY: gateTile.gridY }, 'enemy')).toBe('b-citadel');
+  });
+});
+
+describe('findBuildingAtPoint with the citadel compound', () => {
+  const layout = citadelLayoutFor(48, 53);
+  const citadel = {
+    id: 'b-citadel',
+    ownerId: 'me',
+    type: 'CITADEL',
+    gridX: layout.originX,
+    gridY: layout.originY,
+    sizeX: 26,
+    sizeY: 26
+  };
+  const house = {
+    id: 'b-house',
+    ownerId: 'me',
+    type: 'HOUSE',
+    gridX: layout.originX + 1,
+    gridY: layout.originY + 15,
+    sizeX: 2,
+    sizeY: 2
+  };
+
+  function sceneWithCitadelSprite() {
+    const buildings = new Map([
+      [house.id, house],
+      [citadel.id, citadel]
+    ]);
+    return {
+      myOwnerId: 'me',
+      room: { state: { buildings } },
+      unitSprites: new Map(),
+      buildingSprites: new Map([
+        [
+          house.id,
+          fakeContainer(0, 0, {
+            visualCenterY: -88,
+            buildingImage: { displayWidth: 256, displayHeight: 220 }
+          })
+        ],
+        // The compound's own sprite would cover the whole walled area, exactly
+        // the hit box that used to swallow clicks meant for the buildings inside.
+        [
+          citadel.id,
+          fakeContainer(0, 0, {
+            visualCenterY: -130,
+            buildingImage: { displayWidth: 26 * 128, displayHeight: 26 * 64 + 260 }
+          })
+        ]
+      ]),
+      resourceSprites: new Map()
+    } as unknown as Parameters<typeof findBuildingAtPoint>[0];
+  }
+
+  it('picks the structure inside the walls instead of the compound', () => {
+    const scene = sceneWithCitadelSprite();
+    const grid = { gridX: house.gridX, gridY: house.gridY };
+
+    expect(findBuildingAtPoint(scene, { x: 0, y: 0 }, grid)).toBe(house.id);
+  });
+
+  it('still selects the compound when the click lands on a wall or gate tile', () => {
+    const scene = sceneWithCitadelSprite();
+    const wall = layout.walls[0];
+    // Far away from every sprite, so the footprint pass decides.
+    const far = { x: 10_000, y: 10_000 };
+
+    expect(
+      findBuildingAtPoint(scene, far, { gridX: wall.gridX, gridY: wall.gridY })
+    ).toBe(citadel.id);
+  });
+
+  it('does not return the compound for the empty stone floor inside it', () => {
+    const scene = sceneWithCitadelSprite();
+    const far = { x: 10_000, y: 10_000 };
+
+    expect(
+      findBuildingAtPoint(scene, far, {
+        gridX: layout.originX + 3,
+        gridY: layout.originY + 3
+      })
+    ).toBeNull();
   });
 });
 

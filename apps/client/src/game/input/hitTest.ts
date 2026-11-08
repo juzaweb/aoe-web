@@ -1,5 +1,5 @@
 import type { Room } from '@colyseus/sdk';
-import { BUILDING_BLUEPRINTS, BuildingType, CITADEL_HEIGHT, CITADEL_WIDTH, citadelLayoutFor } from '@chien-quoc/shared';
+import { BUILDING_BLUEPRINTS, BuildingType, CITADEL_HEIGHT, CITADEL_WIDTH, TILE_HEIGHT, TILE_WIDTH, citadelLayoutFor } from '@chien-quoc/shared';
 import type * as Phaser from 'phaser';
 import type { GridPoint, WorldPoint } from './pointer.js';
 
@@ -85,7 +85,11 @@ export function findUnitAt(
   return foundId;
 }
 
-function isClientCitadelWallOrGate(_scene: HitTestScene, citadel: any, grid: GridPoint): boolean {
+/**
+ * Whether `grid` lies on the compound's wall ring (which includes the gate
+ * opening), the only part of a `CITADEL` that behaves like a clickable tile.
+ */
+export function citadelWallOrGateAt(_scene: HitTestScene, citadel: any, grid: GridPoint): boolean {
   const dx = grid.gridX - citadel.gridX;
   const dy = grid.gridY - citadel.gridY;
   if (dx < 0 || dx >= CITADEL_WIDTH || dy < 0 || dy >= CITADEL_HEIGHT) return false;
@@ -138,7 +142,7 @@ export function findBuildingAt(
     }
 
     if (b.type === 'CITADEL') {
-      if (isClientCitadelWallOrGate(scene, b, grid)) {
+      if (citadelWallOrGateAt(scene, b, grid)) {
         foundId = bId;
       }
       return;
@@ -153,6 +157,79 @@ export function findBuildingAt(
       foundId = bId;
     }
   });
+  return foundId;
+}
+
+/**
+ * Building under a pointer: the rendered sprite's bounds first (a tall town
+ * centre sticks up out of its footprint), then the footprint itself.
+ *
+ * The citadel compound is skipped in the sprite pass. It is a scoring entity,
+ * not a drawn building — `CitadelLayer` renders its floor, walls and gate — so it
+ * has no artwork of its own and its 26x26 footprint would otherwise swallow
+ * every click meant for a structure standing inside the walls. The footprint pass
+ * still selects it on its wall and gate tiles, keeping its health panel reachable.
+ *
+ * Shared with `SelectionController` so a left-click and the touch tap path can
+ * never disagree about which building is under the pointer.
+ *
+ * @param pad Extra world pixels added to the visual bounds for a finger tap.
+ */
+export function findBuildingAtPoint(
+  scene: HitTestScene,
+  worldPoint: WorldPoint,
+  grid: GridPoint,
+  pad = 0
+): string | null {
+  if (!scene.room) return null;
+
+  let foundId: string | null = null;
+
+  scene.buildingSprites.forEach((container, bId) => {
+    const building = scene.room?.state.buildings.get(bId);
+    if (!building) return;
+    if (building.type === 'CITADEL') return;
+
+    const visualY = (container.getData('visualCenterY') as number) ?? -30;
+    // LVL3: a tiered building's art grows taller with level (the manor is
+    // 304 px against the hut's 220), so the clickable box has to cover the
+    // artwork itself. The footprint box alone clipped the top of tall sprites.
+    const image = container.getData('buildingImage') as
+      | Phaser.GameObjects.Image
+      | undefined;
+    const footprintWidth = building.sizeX * TILE_WIDTH;
+    const footprintHeight = building.sizeY * TILE_HEIGHT + 60;
+    const width = Math.max(footprintWidth, image?.displayWidth ?? 0);
+    const height = Math.max(footprintHeight, image?.displayHeight ?? 0);
+    if (
+      Math.abs(worldPoint.x - container.x) <= width / 2 + pad &&
+      worldPoint.y >= container.y + visualY - height / 2 - pad &&
+      worldPoint.y <= container.y + 20 + pad
+    ) {
+      foundId = bId;
+    }
+  });
+
+  if (foundId) return foundId;
+
+  scene.room.state.buildings.forEach((building: any, bId: string) => {
+    if (building.type === 'CITADEL') {
+      if (citadelWallOrGateAt(scene, building, grid)) {
+        foundId = bId;
+      }
+      return;
+    }
+
+    if (
+      grid.gridX >= building.gridX &&
+      grid.gridX < building.gridX + building.sizeX &&
+      grid.gridY >= building.gridY &&
+      grid.gridY < building.gridY + building.sizeY
+    ) {
+      foundId = bId;
+    }
+  });
+
   return foundId;
 }
 
