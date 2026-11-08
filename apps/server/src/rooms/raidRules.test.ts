@@ -64,7 +64,8 @@ describe('raid loot', () => {
 describe('raid town center damage floor', () => {
   it('clamps damage at the threshold, never below it', () => {
     const floor = Math.ceil(1000 * RAID_TOWN_CENTER_HP_THRESHOLD);
-    expect(clampRaidTownCenterHp(10, 1000)).toBe(floor);
+    expect(floor).toBe(0);
+    expect(clampRaidTownCenterHp(-10, 1000)).toBe(floor);
     expect(clampRaidTownCenterHp(400, 1000)).toBe(400);
   });
 });

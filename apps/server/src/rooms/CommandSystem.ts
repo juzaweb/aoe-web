@@ -57,6 +57,7 @@ import { PlayerState } from '../schema/PlayerState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
+import { isProtectedCitadelInteriorBuilding } from './citadel.js';
 import { getBuildApproachPoint } from './construction.js';
 import { footprintTouchesCitadelWall } from './citadel.js';
 import { RoadGrid } from './roads.js';
@@ -223,6 +224,7 @@ export class CommandSystem {
    * the unit, so a dead or departed villager cannot leave an orphan behind.
    */
   private readonly queuedBuilds = new WeakMap<UnitState, string[]>();
+  private readonly repairOrders = new WeakSet<UnitState>();
 
   constructor(
     private readonly state: WorldState,
@@ -312,6 +314,7 @@ export class CommandSystem {
     // Check tile occupancy collisions with other buildings and resource nodes
     let isColliding = false;
     this.state.buildings.forEach((b: BuildingState) => {
+      if (b.type === 'CITADEL') return;
       const bEndX = b.gridX + b.sizeX;
       const bEndY = b.gridY + b.sizeY;
       const overlapX = payload.gridX < bEndX && endX > b.gridX;
@@ -573,6 +576,8 @@ export class CommandSystem {
       unit.targetEntityId = '';
       unit.targetEntityType = '';
       unit.previousActionState = '';
+      this.queuedBuilds.delete(unit);
+      this.repairOrders.delete(unit);
     });
   }
 
@@ -794,6 +799,10 @@ export class CommandSystem {
       this.ports.rejectCommand(client, 'Building is still under construction', RejectCode.PREREQUISITE);
       return;
     }
+    if (building.hp <= 0) {
+      this.ports.rejectCommand(client, 'Cannot upgrade a destroyed building', RejectCode.PREREQUISITE);
+      return;
+    }
     if (building.upgradeTimeMs > 0) {
       this.ports.rejectCommand(client, 'Building is already upgrading', RejectCode.BUSY);
       return;
@@ -804,8 +813,8 @@ export class CommandSystem {
       this.ports.rejectCommand(client, 'Unknown building type', RejectCode.INVALID);
       return;
     }
-    if (type === 'PORTAL') {
-      this.ports.rejectCommand(client, 'Portals cannot be upgraded', RejectCode.FORBIDDEN);
+    if (type === 'PORTAL' || type === 'CITADEL') {
+      this.ports.rejectCommand(client, 'This structure cannot be upgraded directly', RejectCode.FORBIDDEN);
       return;
     }
     if (building.level >= getBuildingMaxLevel(type)) {
@@ -998,7 +1007,16 @@ export class CommandSystem {
     // D8/D7: a portal is travel infrastructure, not a raid target. Making it
     // attackable would let an opponent strand an empire on the other map.
     if (payload.targetType === 'building') {
-      const targetBlueprint = BUILDING_BLUEPRINTS[(target as BuildingState).type as BuildingType];
+      const targetBuilding = target as BuildingState;
+      if (isProtectedCitadelInteriorBuilding(this.state, targetBuilding)) {
+        this.ports.rejectCommand(client, 'Citadel structures are protected. Attack the Citadel walls!', RejectCode.FORBIDDEN);
+        return;
+      }
+      if (targetBuilding.hp <= 0) {
+        this.ports.rejectCommand(client, 'Target is already destroyed', RejectCode.GONE);
+        return;
+      }
+      const targetBlueprint = BUILDING_BLUEPRINTS[targetBuilding.type as BuildingType];
       if (targetBlueprint?.attackable === false) {
         this.ports.rejectCommand(client, 'That structure cannot be attacked', RejectCode.FORBIDDEN);
         return;
@@ -1128,7 +1146,7 @@ export class CommandSystem {
       this.ports.rejectCommand(client, 'Not your building', RejectCode.FORBIDDEN);
       return;
     }
-    if (building.isConstructed) {
+    if (building.isConstructed && building.hp >= building.maxHp) {
       this.ports.rejectCommand(client, 'Building is already finished', RejectCode.INVALID);
       return;
     }
@@ -1137,13 +1155,30 @@ export class CommandSystem {
       return;
     }
 
+    const isRepair = building.isConstructed && building.hp < building.maxHp;
     const builders = this.collectBuilders(client, payload.unitIds);
     if (builders.length === 0) {
       this.ports.rejectCommand(client, 'Only villagers can build', RejectCode.PREREQUISITE);
       return;
     }
 
+    builders.forEach((builder) => {
+      if (isRepair) {
+        this.repairOrders.add(builder);
+      } else {
+        this.repairOrders.delete(builder);
+      }
+    });
+
     this.assignBuildersToSite(builders, building);
+  }
+
+  isRepairing(unit: UnitState): boolean {
+    return this.repairOrders.has(unit);
+  }
+
+  clearRepairOrder(unit: UnitState): void {
+    this.repairOrders.delete(unit);
   }
 
   handleHarvestResource(client: Client, payload: HarvestResourcePayload) {
@@ -1190,6 +1225,8 @@ export class CommandSystem {
       unit.dropOffId = '';
       unit.queueTargetX.clear();
       unit.queueTargetY.clear();
+      this.queuedBuilds.delete(unit);
+      this.repairOrders.delete(unit);
       this.ports.clearHarvestOrder(unit.id);
     });
   }
