@@ -234,9 +234,9 @@
     "building.house": {
       "author": "Bleed",
       "bbox": [
-        2,
+        28,
         0,
-        341,
+        313,
         256
       ],
       "bottomInset": 0,
@@ -245,13 +245,13 @@
         256
       ],
       "license": "CC-BY-3.0",
-      "lumGain": 1.1283,
+      "lumGain": 1.0,
       "out": "apps/client/public/assets/buildings/house.png",
       "page": "https://opengameart.org/content/medieval-building-06",
-      "scale": 0.3133,
-      "sha256": "f52510a1b8bb390a506c67ce2e860337174a5d79ec33fb44c77f21b662d97455",
+      "scale": 0.288,
+      "sha256": "0e9b94573c318e0033b42df507410c9e082a9664e4627a2e7600dc195ca7d664",
       "source": "oga.bleed-medieval-06",
-      "sourceSha256": "d68dd009f1933aa85df24bdb9c57dc990ab4994a070161e1f6e620136d5239e0",
+      "sourceSha256": "a6e6ce8f758b124728a7fb90bea820ac0c1e7032c08a923c93c2bb75bebe723b",
       "topInset": 0
     },
     "building.lumber-camp": {
