@@ -1241,9 +1241,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       if (this.worldRestoreError) {
         // Abort instead of falling through to "no empire found" and spawning a
         // duplicate starter base on top of the (still persisted) saved empire.
+        console.error('[WorldRoom] World restore failed:', this.worldRestoreError);
         throw new ServerError(
           ErrorCode.APPLICATION_ERROR,
-          `World restore failed: ${this.worldRestoreError.message}`
+          this.localizedFor(client, 'World restore failed. Please try again.')
         );
       }
       if (!this.isZoneOwner()) {

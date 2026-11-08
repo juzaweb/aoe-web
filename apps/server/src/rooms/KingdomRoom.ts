@@ -216,9 +216,10 @@ export class KingdomRoom extends WorldRoom {
 
     if (this.readyPromise) await this.readyPromise;
     if (this.worldRestoreError) {
+      console.error('[KingdomRoom] World restore failed for spectator join:', this.worldRestoreError);
       throw new ServerError(
         ErrorCode.APPLICATION_ERROR,
-        `World restore failed: ${this.worldRestoreError.message}`
+        this.localizedFor(client, 'World restore failed. Please try again.')
       );
     }
     if (!this.isZoneOwner() || this.ownerScope !== ownerId) {

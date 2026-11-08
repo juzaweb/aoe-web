@@ -31,6 +31,9 @@ describe('HTTP Security Headers', () => {
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
     expect(res.headers.get('x-frame-options')).toBe('DENY');
     expect(res.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
+    expect(res.headers.get('content-security-policy')).toBe("default-src 'none'; frame-ancestors 'none'");
+    expect(res.headers.get('permissions-policy')).toBe('camera=(), microphone=(), geolocation=()');
+    expect(res.headers.get('cross-origin-opener-policy')).toBe('same-origin');
 
     // Express fingerprinting header must be disabled
     expect(res.headers.get('x-powered-by')).toBeNull();
