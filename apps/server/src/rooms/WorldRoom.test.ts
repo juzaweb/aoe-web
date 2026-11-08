@@ -33,6 +33,7 @@ import { STARTER_RESOURCE_PREFIX } from './resources.js';
 import { isWithinBuildRange } from './construction.js';
 import { generateWorldResources } from './worldGeneration.js';
 import { clearUnitResearch, restoreBuildingUpgrade } from './upgrades.js';
+import { citadelWallTileSet } from './citadel.js';
 import { DatabaseService } from '../services/DatabaseService.js';
 import { WorldState } from '../schema/WorldState.js';
 import { PlayerState } from '../schema/PlayerState.js';
@@ -2772,6 +2773,80 @@ describe('kingdom map layout (MAPS-V2)', () => {
     room.state.mapHeight = KINGDOM_MAP_SIZE.height;
     return room;
   }
+
+  it('routes a chasing soldier around the citadel wall instead of through it', () => {
+    const room = createKingdomRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'raider');
+    internals(room).spawnInitialBase('player-a');
+
+    const anchor = citadelTownCenterFor(KINGDOM_MAP_SIZE.width, KINGDOM_MAP_SIZE.height);
+    const originX = anchor.gridX - 5;
+    const originY = anchor.gridY - 10;
+
+    // Both on the north side of the compound, away from the east gate, so a
+    // straight chase would cross the wall instead of walking through the gate.
+    const defender = addUnit(room, {
+      id: 'u-def',
+      ownerId: 'player-a',
+      type: 'VILLAGER',
+      x: originX + 18.5,
+      y: originY + 8.5
+    });
+    const attacker = addUnit(room, {
+      id: 'u-atk',
+      ownerId: 'raider',
+      type: 'CAVALRY',
+      x: originX + 30.5,
+      y: originY + 8.5
+    });
+
+    internals(room).commands.handleAttackTarget(createClient('raider'), {
+      unitIds: ['u-atk'],
+      targetEntityId: 'u-def',
+      targetType: 'unit'
+    });
+
+    const walls = citadelWallTileSet(room.state);
+    const crossed = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      internals(room).update(100);
+      const tile = `${Math.floor(attacker.x)},${Math.floor(attacker.y)}`;
+      if (walls.has(tile)) crossed.add(tile);
+      if (!room.state.units.has(defender.id)) break;
+    }
+
+    expect([...crossed]).toEqual([]);
+    expect(room.state.units.has(defender.id)).toBe(false);
+  });
+
+  it('never lets a unit step through a citadel wall without a route', () => {
+    const room = createKingdomRoom();
+    addPlayer(room, 'player-a');
+    internals(room).spawnInitialBase('player-a');
+
+    const anchor = citadelTownCenterFor(KINGDOM_MAP_SIZE.width, KINGDOM_MAP_SIZE.height);
+    const originX = anchor.gridX - 5;
+    const originY = anchor.gridY - 10;
+
+    // Right against the inside of the east wall, north of the gate. No
+    // `setWalkTarget`, so the unit is on the straight-line fallback a delayed or
+    // failed path search produces.
+    const unit = addUnit(room, {
+      id: 'u-1',
+      ownerId: 'player-a',
+      type: 'VILLAGER',
+      x: originX + 24.9,
+      y: originY + 8.5
+    });
+    unit.targetX = originX + 28.5;
+    unit.targetY = originY + 8.5;
+    unit.actionState = 'MOVING';
+
+    for (let i = 0; i < 20; i++) internals(room).update(100);
+
+    expect(Math.floor(unit.x)).toBeLessThan(originX + 25);
+  });
 
   it('spawns the Town Center inside the centred citadel', () => {
     const room = createKingdomRoom();

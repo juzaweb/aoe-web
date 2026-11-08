@@ -70,6 +70,10 @@ export class PlacementController {
     });
 
     scene.room.state.buildings.forEach((b: any) => {
+      // The citadel compound is a scoring entity, not an obstacle: its wall ring
+      // is checked separately below, and its 26x26 footprint must not swallow
+      // every build order inside the courtyard.
+      if (b.type === 'CITADEL') return;
       const overlapX = gx < b.gridX + b.sizeX && gx + blueprint.sizeX > b.gridX;
       const overlapY = gy < b.gridY + b.sizeY && gy + blueprint.sizeY > b.gridY;
       if (overlapX && overlapY) blocked = true;

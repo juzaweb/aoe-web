@@ -344,8 +344,18 @@ export class CommandSystem {
     }
 
     // Citadel walls are indestructible terrain, not buildings, so the collision
-    // loop above cannot see them.
-    if (footprintTouchesCitadelWall(this.state, payload.gridX, payload.gridY, blueprint.sizeX, blueprint.sizeY)) {
+    // loop above cannot see them. Only the wall tile itself is off-limits: a
+    // building may still stand on the tile next to it, like anywhere else on the
+    // map (the generated house column is set back for looks, not for rules).
+    if (
+      footprintTouchesCitadelWall(
+        this.state,
+        payload.gridX,
+        payload.gridY,
+        blueprint.sizeX,
+        blueprint.sizeY
+      )
+    ) {
       this.ports.rejectCommand(client, 'Cannot build on the citadel wall', RejectCode.PLACEMENT);
       return;
     }

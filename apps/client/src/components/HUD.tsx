@@ -302,16 +302,7 @@ export const HUD: React.FC<HUDProps> = ({
     <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none select-none z-20">
       {/* Left Section: Player Emblem & Name + Separate World Map Button */}
       <div className="flex items-center gap-2 pointer-events-none">
-        <div className="flex items-center gap-2.5 bg-slate-900/90 border border-amber-600/70 rounded-md px-3.5 py-2 shadow-lg backdrop-blur-sm pointer-events-auto">
-          <div
-            className="w-4 h-4 rounded-full border border-white/50 shadow-sm shrink-0"
-            style={{ backgroundColor: playerColor || '#3b82f6' }}
-            title={zoneLabel}
-          />
-          <span className="font-medieval text-amber-300 font-bold tracking-wide text-base whitespace-nowrap">
-            {playerName || t('hud.emperor')}
-          </span>
-        </div>
+        
 
         {inRaid ? (
           <div className="flex items-center gap-2 pointer-events-auto">

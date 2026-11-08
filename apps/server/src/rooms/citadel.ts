@@ -8,6 +8,7 @@ import {
   citadelTownCenterFor,
   getBuildingLevelStats,
   isCitadelAvenueTile,
+  roadTileKey,
   zoneKindOf
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
@@ -150,6 +151,79 @@ interface CompoundRect {
 
 function insideCompound(building: BuildingState, rect: CompoundRect): boolean {
   return footprintOverlaps(building, rect.x, rect.y, rect.sizeX, rect.sizeY);
+}
+
+/**
+ * Whether a footprint, optionally widened by `margin` tiles, covers any tile in
+ * `wallKeys`.
+ *
+ * `margin: 1` is the clearance the generated house column uses: artwork is
+ * wider than the footprint, so merely "not covering" a wall still lets a roof
+ * reach the crest.
+ */
+function footprintCoversWalls(
+  wallKeys: ReadonlySet<string>,
+  gridX: number,
+  gridY: number,
+  sizeX: number,
+  sizeY: number,
+  margin = 0
+): boolean {
+  for (let y = gridY - margin; y < gridY + sizeY + margin; y++) {
+    for (let x = gridX - margin; x < gridX + sizeX + margin; x++) {
+      if (wallKeys.has(`${x},${y}`)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether `building` may stand at `(x, y)`: inside the map, clear of the wall
+ * ring by `margin` tiles, clear of every other building (the virtual `CITADEL`
+ * compound is not an obstacle), of resource nodes and of player-painted roads.
+ */
+function canBuildingOccupy(
+  state: WorldState,
+  building: BuildingState,
+  x: number,
+  y: number,
+  wallKeys: ReadonlySet<string>,
+  margin: number
+): boolean {
+  if (x < 0 || y < 0) return false;
+  if (x + building.sizeX > state.mapWidth || y + building.sizeY > state.mapHeight) {
+    return false;
+  }
+  if (footprintCoversWalls(wallKeys, x, y, building.sizeX, building.sizeY, margin)) {
+    return false;
+  }
+
+  let blocked = false;
+  state.buildings.forEach((other: BuildingState) => {
+    if (blocked || other === building || other.type === 'CITADEL') return;
+    if (footprintOverlaps(other, x, y, building.sizeX, building.sizeY)) blocked = true;
+  });
+  if (blocked) return false;
+
+  state.resourceNodes.forEach((node: ResourceNodeState) => {
+    if (blocked) return;
+    if (
+      node.gridX >= x &&
+      node.gridX < x + building.sizeX &&
+      node.gridY >= y &&
+      node.gridY < y + building.sizeY
+    ) {
+      blocked = true;
+    }
+  });
+  if (blocked) return false;
+
+  for (let roadY = y; roadY < y + building.sizeY; roadY++) {
+    for (let roadX = x; roadX < x + building.sizeX; roadX++) {
+      if (state.roads.has(roadTileKey(roadX, roadY))) return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -398,6 +472,126 @@ function rescueUnitsFromWalls(
   });
 }
 
+/**
+ * Steps citadel houses off the west wall on saves written before the setback.
+ *
+ * A house's artwork is wider than its 2x2 footprint, so the old flush-against-
+ * the-wall column drew its roof over the wall crest. Only houses sitting on one
+ * of the exact old slot coordinates move; a player's own house elsewhere inside
+ * the compound is never touched. If the new slot is occupied (a player built
+ * there), the house stays put rather than overlap it.
+ */
+function migrateHouseSetback(
+  state: WorldState,
+  ownerId: string,
+  townCenter: BuildingState
+): number {
+  const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+  const wallKeys = new Set(layout.walls.map((tile) => `${tile.gridX},${tile.gridY}`));
+  const oldGridX = layout.originX + 1;
+  const houseSlots = layout.slots.filter((slot) => slot.type === 'HOUSE');
+  let moved = 0;
+
+  state.buildings.forEach((building: BuildingState) => {
+    if (building.ownerId !== ownerId || building.type !== 'HOUSE') return;
+    if (Math.round(building.gridX) !== oldGridX) return;
+
+    const slot = houseSlots.find(
+      (candidate) => candidate.gridY === Math.round(building.gridY)
+    );
+    if (!slot) return;
+    if (!canBuildingOccupy(state, building, slot.gridX, slot.gridY, wallKeys, 0)) return;
+
+    building.gridX = slot.gridX;
+    building.gridY = slot.gridY;
+    moved++;
+  });
+
+  return moved;
+}
+
+/**
+ * Moves any legacy building whose footprint sits on a citadel wall off it.
+ *
+ * Placement already rejects a footprint that covers a wall tile, but a save
+ * written before that rule (or before the compound moved) can still hold one:
+ * the sprite then straddles the crest and reads as if it were built on top of
+ * the wall. The building keeps its id, level and hp; only its tiles change, and
+ * only to the nearest free spot that clears every wall and every other
+ * building. A building with no free spot nearby is left where it is.
+ */
+function resolveBuildingsOnWalls(
+  state: WorldState,
+  ownerId: string,
+  townCenter: BuildingState
+): number {
+  const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+  const wallKeys = new Set(layout.walls.map((tile) => `${tile.gridX},${tile.gridY}`));
+  const centreX = layout.originX + layout.sizeX / 2;
+  const centreY = layout.originY + layout.sizeY / 2;
+
+  const offenders = Array.from(state.buildings.values()).filter(
+    (building) =>
+      building.ownerId === ownerId &&
+      building.type !== 'CITADEL' &&
+      footprintCoversWalls(
+        wallKeys,
+        Math.round(building.gridX),
+        Math.round(building.gridY),
+        building.sizeX,
+        building.sizeY
+      )
+  );
+
+  /**
+   * Nearest free spot, ring by ring. Candidates are ordered towards the
+   * courtyard centre so a wall-side building steps inwards rather than out.
+   */
+  const findSpot = (
+    building: BuildingState,
+    startX: number,
+    startY: number,
+    margin: number
+  ): { x: number; y: number } | null => {
+    for (let radius = 1; radius <= 8; radius++) {
+      const candidates: Array<{ x: number; y: number }> = [];
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+          candidates.push({ x: startX + dx, y: startY + dy });
+        }
+      }
+      candidates.sort(
+        (a, b) =>
+          Math.hypot(a.x + building.sizeX / 2 - centreX, a.y + building.sizeY / 2 - centreY) -
+          Math.hypot(b.x + building.sizeX / 2 - centreX, b.y + building.sizeY / 2 - centreY)
+      );
+      const spot = candidates.find((candidate) =>
+        canBuildingOccupy(state, building, candidate.x, candidate.y, wallKeys, margin)
+      );
+      if (spot) return spot;
+    }
+    return null;
+  };
+
+  let moved = 0;
+  for (const building of offenders) {
+    // Prefer the same one-tile clearance the generated column uses, and fall
+    // back to merely clearing the wall if the courtyard is too cramped.
+    const target =
+      findSpot(building, Math.round(building.gridX), Math.round(building.gridY), 1) ??
+      findSpot(building, Math.round(building.gridX), Math.round(building.gridY), 0);
+
+    if (!target) continue;
+    building.gridX = target.x;
+    building.gridY = target.y;
+    moved++;
+    console.log(`🏰 [Citadel] Moved ${building.type} off the citadel wall for ${ownerId}.`);
+  }
+
+  return moved;
+}
+
 /** Retrofits the citadel onto a kingdom restored from an older save. */
 export function ensureCitadel(state: WorldState, ownerId: string): void {
   if (!hasCitadel(state)) return;
@@ -409,8 +603,12 @@ export function ensureCitadel(state: WorldState, ownerId: string): void {
     canonicalizeCitadel(state, ownerId, townCenter);
   }
 
-  rescueUnitsFromWalls(state, ownerId, townCenter);
+  // Clear buried nodes first: the migrations below look for a free tile, and a
+  // node that is about to be removed must not block it.
   clearCitadelResources(state, townCenter);
+  migrateHouseSetback(state, ownerId, townCenter);
+  resolveBuildingsOnWalls(state, ownerId, townCenter);
+  rescueUnitsFromWalls(state, ownerId, townCenter);
 
   // Retrofit missing compound buildings only if the empire was saved before
   // citadels existed (Town-Center-only save). Existing empires that deleted a
@@ -479,7 +677,12 @@ export function citadelWallTileSet(state: WorldState): Set<string> {
   return tiles;
 }
 
-/** Whether a building footprint would cover any citadel wall tile. */
+/**
+ * Whether a building footprint would cover any citadel wall tile.
+ *
+ * Only the wall tile itself is off-limits; a building may stand on the tile
+ * beside it like anywhere else on the map.
+ */
 export function footprintTouchesCitadelWall(
   state: WorldState,
   gridX: number,
@@ -492,12 +695,7 @@ export function footprintTouchesCitadelWall(
   const walls = citadelWallTileSet(state);
   if (walls.size === 0) return false;
 
-  for (let y = gridY; y < gridY + sizeY; y++) {
-    for (let x = gridX; x < gridX + sizeX; x++) {
-      if (walls.has(`${x},${y}`)) return true;
-    }
-  }
-  return false;
+  return footprintCoversWalls(walls, gridX, gridY, sizeX, sizeY);
 }
 
 /**

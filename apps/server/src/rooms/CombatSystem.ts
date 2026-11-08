@@ -22,6 +22,8 @@ import { distanceToFootprint } from './geometry.js';
  * how orders move units or how economy state is tracked.
  */
 export interface CombatPorts {
+  /** Queues a fresh route to a destination (used when a fight ends). */
+  setWalkTarget(unit: UnitState, x: number, y: number): void;
   /** Falls back to the next queued waypoint, or IDLE. */
   resumeQueuedWaypoint(unit: UnitState): void;
   /** Drops transient per-unit state owned by another system (economy). */
@@ -130,6 +132,10 @@ export class CombatSystem {
     unit.actionState = 'ATTACKING';
     unit.targetEntityId = enemy.id;
     unit.targetEntityType = enemy.type;
+    // The route belonged to the interrupted order; dropping it lets the chase
+    // request a route to the enemy instead of following the old destination.
+    unit.pathX.clear();
+    unit.pathY.clear();
     // The leash measures from here, not from the unit's destination: a defensive
     // unit pushed by a patrol has already left its post by the time it engages.
     if (unit.stance === 'DEFENSIVE') {
@@ -195,6 +201,9 @@ export class CombatSystem {
       unit.targetEntityId = '';
       unit.targetEntityType = '';
       unit.actionState = resume;
+      // The chase route aimed at the enemy, not at the order's destination, so
+      // the interrupted move has to be routed again from here.
+      this.ports.setWalkTarget(unit, unit.targetX, unit.targetY);
       return;
     }
 

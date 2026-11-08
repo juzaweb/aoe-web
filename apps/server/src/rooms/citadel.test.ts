@@ -91,7 +91,7 @@ describe('citadel layout', () => {
     }
   });
 
-  it('puts the trainers on the north wall and the houses on the west wall', () => {
+  it('puts the trainers on the north wall and the houses near the west wall', () => {
     const layout = citadelLayoutFor(TC_X, TC_Y);
     const trainers = layout.slots.filter(
       (slot) => slot.type === 'BARRACKS' || slot.type === 'ARCHERY_RANGE'
@@ -103,7 +103,9 @@ describe('citadel layout', () => {
       expect(slot.gridY).toBe(layout.innerMinY);
     }
     for (const slot of houses) {
-      expect(slot.gridX).toBe(layout.innerMinX);
+      // One tile of clearance: the artwork overhangs its footprint, so flush
+      // against the wall the roof would cover the wall crest.
+      expect(slot.gridX).toBe(layout.innerMinX + 1);
     }
   });
 
@@ -234,6 +236,107 @@ describe('citadel lifecycle', () => {
     expect(types.filter((type) => type === 'BARRACKS')).toHaveLength(1);
     expect(types.filter((type) => type === 'ARCHERY_RANGE')).toHaveLength(1);
     expect(types.filter((type) => type === 'HOUSE')).toHaveLength(5);
+  });
+
+  it('steps houses off the west wall on saves written before the setback', () => {
+    const state = createKingdomState();
+    const townCenter = addTownCenter(state);
+    // A canonical save: the Town Center already sits at the centred anchor, so
+    // no full layout rebuild happens and the migration is the only mover.
+    const anchor = citadelTownCenterFor(state.mapWidth, state.mapHeight);
+    townCenter.gridX = anchor.gridX;
+    townCenter.gridY = anchor.gridY;
+    spawnMissingCitadelBuildings(state, 'defender', townCenter);
+
+    const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+    const houses = allBuildings(state).filter((building) => building.type === 'HOUSE');
+    // The previous layout packed the column flush against the wall.
+    for (const house of houses) house.gridX = layout.innerMinX;
+
+    ensureCitadel(state, 'defender');
+
+    for (const house of houses) {
+      expect(house.gridX).toBe(layout.innerMinX + 1);
+    }
+  });
+
+  it('moves a legacy building that sits on a citadel wall off it', () => {
+    const state = createKingdomState();
+    const townCenter = addTownCenter(state);
+    const anchor = citadelTownCenterFor(state.mapWidth, state.mapHeight);
+    townCenter.gridX = anchor.gridX;
+    townCenter.gridY = anchor.gridY;
+    spawnMissingCitadelBuildings(state, 'defender', townCenter);
+
+    const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+    // A house written by an older build straight onto the west wall.
+    const house = new BuildingState();
+    house.id = 'b-wall-house';
+    house.ownerId = 'defender';
+    house.type = 'HOUSE';
+    house.gridX = layout.originX;
+    house.gridY = layout.originY + 8;
+    house.sizeX = BUILDING_BLUEPRINTS.HOUSE.sizeX;
+    house.sizeY = BUILDING_BLUEPRINTS.HOUSE.sizeY;
+    house.maxHp = getBuildingLevelStats('HOUSE', 1).maxHp;
+    house.hp = house.maxHp;
+    house.level = 1;
+    house.isConstructed = true;
+    state.buildings.set(house.id, house);
+
+    ensureCitadel(state, 'defender');
+
+    const wallKeys = new Set(layout.walls.map((tile) => `${tile.gridX},${tile.gridY}`));
+    // The building must clear the wall by one tile, not just avoid covering it.
+    for (let y = house.gridY - 1; y < house.gridY + house.sizeY + 1; y++) {
+      for (let x = house.gridX - 1; x < house.gridX + house.sizeX + 1; x++) {
+        expect(wallKeys.has(`${x},${y}`)).toBe(false);
+      }
+    }
+    expect(house.gridX).toBeGreaterThanOrEqual(layout.originX + 2);
+    expect(house.id).toBe('b-wall-house');
+  });
+
+  it('does not move a citadel house onto a building that took its setback slot', () => {
+    const state = createKingdomState();
+    const townCenter = addTownCenter(state);
+    const anchor = citadelTownCenterFor(state.mapWidth, state.mapHeight);
+    townCenter.gridX = anchor.gridX;
+    townCenter.gridY = anchor.gridY;
+    spawnMissingCitadelBuildings(state, 'defender', townCenter);
+
+    const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+    // The southernmost house has no other house below it, so a blocker east of
+    // its new slot cannot touch anything else.
+    const house = allBuildings(state)
+      .filter((building) => building.type === 'HOUSE')
+      .sort((a, b) => b.gridY - a.gridY)[0];
+    // Old flush-against-the-wall position.
+    house.gridX = layout.innerMinX;
+
+    // A player building just east of the new slot, overlapping where the house
+    // would land but not where it stands today.
+    const blocker = new BuildingState();
+    blocker.id = 'b-blocker';
+    blocker.ownerId = 'defender';
+    blocker.type = 'HOUSE';
+    blocker.gridX = layout.innerMinX + 2;
+    blocker.gridY = house.gridY;
+    blocker.sizeX = BUILDING_BLUEPRINTS.HOUSE.sizeX;
+    blocker.sizeY = BUILDING_BLUEPRINTS.HOUSE.sizeY;
+    state.buildings.set(blocker.id, blocker);
+
+    ensureCitadel(state, 'defender');
+
+    // It stays where it is rather than overlapping the blocker.
+    expect(house.gridX).toBe(layout.innerMinX);
+    const overlapX =
+      house.gridX < blocker.gridX + blocker.sizeX &&
+      house.gridX + house.sizeX > blocker.gridX;
+    const overlapY =
+      house.gridY < blocker.gridY + blocker.sizeY &&
+      house.gridY + house.sizeY > blocker.gridY;
+    expect(overlapX && overlapY).toBe(false);
   });
 
   it('turns the second barracks of a legacy save into an archery range', () => {

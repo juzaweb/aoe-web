@@ -213,6 +213,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   /** Built on first use; see {@link combatSystem}. */
   private get combat(): CombatSystem {
     this.combatSystem ??= new CombatSystem(this.state, {
+      setWalkTarget: (unit, x, y) => this.movement.setWalkTarget(unit, x, y),
       resumeQueuedWaypoint: (unit) => this.movement.resumeQueuedWaypoint(unit),
       forgetEconomyState: (unitId) => this.economy.forgetUnit(unitId),
       forgetMovementState: (unitId) => this.movement.forgetUnit(unitId),
@@ -2115,6 +2116,12 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       ) {
         let destinationX = unit.targetX;
         let destinationY = unit.targetY;
+        // An attacker already in weapon range, or one that must not chase,
+        // stays put this tick. Attack range is enforced here, not by the path
+        // stop distance: otherwise a long-ranged unit would consume its whole
+        // route without ever taking a step.
+        let holdPosition = false;
+        const attackRange = blueprint.attackRange;
 
         // If pursuing attack target, update destination towards target position
         if (unit.actionState === 'ATTACKING' && unit.targetEntityId) {
@@ -2144,10 +2151,28 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           destinationY = targetY;
 
           // CMB-01: a stand-ground unit, or a defensive one that has been dragged
-          // past its leash, does not take the step. Zeroing the destination keeps
-          // the movement branch below untouched: dist is 0, so nothing moves,
-          // while `updateUnitCombat` still lands hits on anything already in range.
+          // past its leash, holds its ground; an attacker already inside weapon
+          // range does the same. `holdPosition` also zeroes the destination below
+          // so the movement branch takes no step, while `updateUnitCombat` still
+          // lands hits on anything in range.
           if (!this.combat.canChaseTarget(unit)) {
+            holdPosition = true;
+          } else if (Math.hypot(targetX - unit.x, targetY - unit.y) <= attackRange) {
+            holdPosition = true;
+          }
+
+          // Chases follow a route like a move order does. A direct line would cut
+          // straight through a citadel wall, which is what made the compound feel
+          // like scenery. While the search is queued the unit walks the straight
+          // line for a tick, the same fallback a delayed move order uses.
+          if (!holdPosition && unit.pathX.length === 0) {
+            this.movement.setChaseTarget(unit, destinationX, destinationY);
+          }
+
+          // Holding still means standing exactly where the unit is now: keeping
+          // the target as the destination would walk the last stretch into range
+          // and cancel the whole point of the stance.
+          if (holdPosition) {
             destinationX = unit.x;
             destinationY = unit.y;
           }
@@ -2156,7 +2181,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         // SIM-01: follow the computed route while it lasts. A route ends on the
         // goal tile, whose centre can sit up to half a tile from the click
         // point, so the last stretch is walked straight to `targetX/targetY`.
-        if (unit.actionState !== 'ATTACKING' && unit.pathX.length > 0) {
+        if (!holdPosition && unit.pathX.length > 0) {
           destinationX = unit.pathX[0];
           destinationY = unit.pathY[0];
         }
@@ -2165,9 +2190,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         const dy = destinationY - unit.y;
         const dist = Math.hypot(dx, dy);
 
-        const attackRange = blueprint.attackRange;
-
-        const stopDist = unit.actionState === 'ATTACKING' ? attackRange : 0.15;
+        const stopDist = 0.15;
 
         if (dist > stopDist) {
           // A painted road speeds the unit up while it stands on one. The
@@ -2176,9 +2199,15 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           const onRoad = this.roads.isRoad(unit.x, unit.y);
           const speed = onRoad ? unit.speed * ROAD_SPEED_MULTIPLIER : unit.speed;
           const moveStep = Math.min(dist, speed * dtSeconds);
-          unit.x += (dx / dist) * moveStep;
-          unit.y += (dy / dist) * moveStep;
-        } else if (unit.actionState !== 'ATTACKING' && unit.pathX.length > 0) {
+          const nextX = unit.x + (dx / dist) * moveStep;
+          const nextY = unit.y + (dy / dist) * moveStep;
+          // A straight-line tick (route still queued, or no route at all) must
+          // not step onto a citadel wall: the wall is terrain, not scenery.
+          if (!this.movement.blocksCitadelWallStep(unit.x, unit.y, nextX, nextY)) {
+            unit.x = nextX;
+            unit.y = nextY;
+          }
+        } else if (!holdPosition && unit.pathX.length > 0) {
           // Reached an intermediate tile: drop it and head for the next one on
           // the following tick. The order only completes when the path is spent.
           unit.pathX.shift();

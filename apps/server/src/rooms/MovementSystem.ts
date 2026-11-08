@@ -36,6 +36,14 @@ const BLOCKED_GRID_MAX_AGE_MS = 1000;
 const REPATH_COOLDOWN_MS = 500;
 
 /**
+ * Minimum gap between two chase-route requests for one unit.
+ *
+ * Only matters when no route exists (a target boxed in by walls): without it a
+ * soldier would queue a fresh, equally futile A* search on every tick.
+ */
+const CHASE_REPATH_COOLDOWN_MS = 250;
+
+/**
  * Routing, waypoint queues and the movement half of every order (SIM-01,
  * CTL-05).
  *
@@ -57,8 +65,20 @@ export class MovementSystem {
   /** Unit ids waiting for a route, oldest first. `pendingPathIds` dedupes. */
   private pendingPaths: string[] = [];
   private pendingPathIds: Set<string> = new Set();
+  /**
+   * Destination each queued/active route is computed for, keyed by unit id.
+   *
+   * Plain moves store the same point as `unit.targetX/targetY`, but a chase
+   * stores the target's live position without overwriting the move destination
+   * the unit resumes once the fight ends.
+   */
+  private readonly pathGoals: Map<string, { x: number; y: number }> = new Map();
   /** Last obstacle-triggered re-route per unit, for `REPATH_COOLDOWN_MS`. */
   private readonly lastRepathAt: Map<string, number> = new Map();
+  /** Last chase-route request per unit, for `CHASE_REPATH_COOLDOWN_MS`. */
+  private readonly lastChaseRequestAt: Map<string, number> = new Map();
+  /** Wall tiles of the citadel ring, refreshed with the blocked grid. */
+  private citadelWalls: Set<string> = new Set();
 
   /** MOV-02: anti-overlap pass; owns its scratch buffers. */
   private readonly separation = new UnitSeparation();
@@ -91,11 +111,37 @@ export class MovementSystem {
   setWalkTarget(unit: UnitState, targetX: number, targetY: number) {
     unit.targetX = targetX;
     unit.targetY = targetY;
+    this.requestPath(unit, targetX, targetY);
+  }
+
+  /**
+   * Queues a route towards an enemy's current position without touching the
+   * unit's stored move destination.
+   *
+   * A chasing unit has to detour around the same obstacles a move order does —
+   * without this it walked the straight line and cut straight through a citadel
+   * wall. `targetX/targetY` must keep pointing at the spot the unit resumes
+   * after the fight, so the chase goal lives in its own map.
+   */
+  setChaseTarget(unit: UnitState, x: number, y: number) {
+    const now = performance.now();
+    const last = this.lastChaseRequestAt.get(unit.id);
+    if (last !== undefined && now - last < CHASE_REPATH_COOLDOWN_MS) return;
+    this.lastChaseRequestAt.set(unit.id, now);
+    this.requestPath(unit, x, y);
+  }
+
+  /** Drops the current route and queues a fresh search to `x, y`. */
+  private requestPath(unit: UnitState, x: number, y: number) {
     unit.pathX.clear();
     unit.pathY.clear();
 
-    if (Math.hypot(targetX - unit.x, targetY - unit.y) < 0.01) return;
+    if (Math.hypot(x - unit.x, y - unit.y) < 0.01) {
+      this.pathGoals.delete(unit.id);
+      return;
+    }
 
+    this.pathGoals.set(unit.id, { x, y });
     if (this.pendingPathIds.has(unit.id)) return;
     this.pendingPathIds.add(unit.id);
     this.pendingPaths.push(unit.id);
@@ -176,6 +222,8 @@ export class MovementSystem {
    */
   forgetUnit(unitId: string) {
     this.lastRepathAt.delete(unitId);
+    this.lastChaseRequestAt.delete(unitId);
+    this.pathGoals.delete(unitId);
   }
 
   /**
@@ -206,7 +254,10 @@ export class MovementSystem {
     if (lastRepath !== undefined && now - lastRepath < REPATH_COOLDOWN_MS) return false;
     this.lastRepathAt.set(unit.id, now);
 
-    this.setWalkTarget(unit, unit.targetX, unit.targetY);
+    // Re-route to the same goal the dropped route was following: a chase goal
+    // must not overwrite the move destination stored on the unit.
+    const goal = this.pathGoals.get(unit.id);
+    this.requestPath(unit, goal?.x ?? unit.targetX, goal?.y ?? unit.targetY);
     return true;
   }
 
@@ -215,6 +266,31 @@ export class MovementSystem {
     const { mapWidth, mapHeight } = this.state;
     if (x < 0 || y < 0 || x >= mapWidth || y >= mapHeight) return false;
     return this.getBlockedGrid()[y * mapWidth + x] === 1;
+  }
+
+  /**
+   * Whether a tile belongs to a citadel wall ring.
+   *
+   * Walls are terrain stamped into the blocked grid, but a unit with no route
+   * yet (the straight-line fallback) used to step across them. Callers use this
+   * narrow test rather than the whole blocked grid so resource tiles, which
+   * units are meant to stand on, are not treated as walls.
+   */
+  isCitadelWallTile(x: number, y: number): boolean {
+    // Building the grid also refreshes the wall set; the age check keeps this
+    // cheap after the first call.
+    this.getBlockedGrid();
+    return this.citadelWalls.has(`${x},${y}`);
+  }
+
+  /**
+   * Whether a step from `(fromX, fromY)` to `(toX, toY)` would enter a citadel
+   * wall tile. A unit already standing on a wall (a legacy rescue pending) may
+   * still walk off it.
+   */
+  blocksCitadelWallStep(fromX: number, fromY: number, toX: number, toY: number): boolean {
+    if (!this.isCitadelWallTile(Math.floor(toX), Math.floor(toY))) return false;
+    return !this.isCitadelWallTile(Math.floor(fromX), Math.floor(fromY));
   }
 
   /**
@@ -239,9 +315,10 @@ export class MovementSystem {
       if (!unit) continue;
       computed++;
 
+      const goal = this.pathGoals.get(unitId) ?? { x: unit.targetX, y: unit.targetY };
       const route = this.pathfinder.findPath(
         { x: unit.x, y: unit.y },
-        { x: unit.targetX, y: unit.targetY },
+        { x: goal.x, y: goal.y },
         blocked
       );
 
@@ -302,7 +379,9 @@ export class MovementSystem {
     // Citadel walls are indestructible terrain derived from the Town Center, not
     // building entities, so they are stamped in here. Gate tiles are absent from
     // the set, which is what keeps the compound walkable.
-    for (const key of citadelWallTileSet(this.state)) {
+    const walls = citadelWallTileSet(this.state);
+    this.citadelWalls = new Set(walls);
+    for (const key of walls) {
       const [x, y] = key.split(',').map(Number);
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
       if (x < 0 || y < 0 || x >= mapWidth || y >= mapHeight) continue;

@@ -87,7 +87,12 @@ export class SelectionController {
     this.clear();
 
     // Check click on buildings (first check visual sprite bounds, then grid footprint)
-    const clickedBuildingId = this.buildingAt(worldPoint, clickGrid, (pickSlack - 1) * 16);
+    const clickedBuildingId = findBuildingAtPoint(
+      scene,
+      worldPoint,
+      clickGrid,
+      (pickSlack - 1) * 16
+    );
 
     if (clickedBuildingId) {
       scene.selectedBuildingId = clickedBuildingId;
@@ -135,25 +140,12 @@ export class SelectionController {
     const grid = screenToGrid(worldPoint.x, worldPoint.y);
 
     if (findUnitAt(scene, worldPoint, undefined, pickSlack)) return true;
-    if (this.buildingAt(worldPoint, grid, (pickSlack - 1) * 16)) return true;
+    if (findBuildingAtPoint(scene, worldPoint, grid, (pickSlack - 1) * 16)) return true;
     if (findResourceAt(scene, worldPoint, grid, pickSlack) !== null) return true;
 
     const roads = (scene.room?.state as any)?.roads;
     const road = roads?.get(`${grid.gridX},${grid.gridY}`);
     return road?.isConstructed === false && road?.ownerId === scene.myOwnerId;
-  }
-
-  /**
-   * Building under a point, shared with the touch path via `findBuildingAtPoint`.
-   *
-   * @param pad Extra world pixels added to the visual bounds for a finger tap.
-   */
-  private buildingAt(
-    worldPoint: { x: number; y: number },
-    grid: { gridX: number; gridY: number },
-    pad = 0
-  ): string | null {
-    return findBuildingAtPoint(this.scene, worldPoint, grid, pad);
   }
 
   /** Box-drag: every own unit whose body ellipse overlaps the rectangle. */

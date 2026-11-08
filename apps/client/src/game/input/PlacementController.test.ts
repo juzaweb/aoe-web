@@ -181,8 +181,41 @@ describe('PlacementController', () => {
     expect(harness.scene.commands.showFeedback).toHaveBeenCalledTimes(1);
   });
 
-  it('allows a footprint through the single east gate', () => {
+  it('ignores the citadel compound entity inside the courtyard', () => {
     harness.scene.terrainLayout = { kind: 'kingdom', width: 110, height: 110 };
+    harness.buildings.set('tc', {
+      type: 'TOWN_CENTER',
+      ownerId: 'p1',
+      gridX: 48,
+      gridY: 53,
+      sizeX: 4,
+      sizeY: 6
+    });
+    // Retrofitted saves carry the scoring entity, which spans the whole compound.
+    harness.buildings.set('citadel', {
+      type: 'CITADEL',
+      ownerId: 'p1',
+      gridX: 43,
+      gridY: 43,
+      sizeX: 26,
+      sizeY: 26
+    });
+    // Clear stone floor between the Town Center and the south wall.
+    pointerGrid.gridX = 58;
+    pointerGrid.gridY = 62;
+
+    controller.commit(pointer, true);
+
+    expect(harness.scene.room.send).toHaveBeenCalledWith(NetworkMessage.PLACE_BUILDING, {
+      type: 'HOUSE',
+      gridX: 58,
+      gridY: 62,
+      unitIds: ['u1', 'u2'],
+      queue: true
+    });
+  });
+
+  it('allows a footprint through the single east gate', () => {    harness.scene.terrainLayout = { kind: 'kingdom', width: 110, height: 110 };
     harness.buildings.set('tc', {
       type: 'TOWN_CENTER',
       ownerId: 'p1',
