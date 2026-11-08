@@ -29,6 +29,16 @@ import { getBuildingLevelStats } from './levels.js';
 export const CITADEL_WIDTH = 26;
 export const CITADEL_HEIGHT = 26;
 
+/**
+ * Side length of the pre-rework citadel compound, in tiles.
+ *
+ * A save from before the 26x26 rework can still hold buildings on the original
+ * 17x17 right-edge footprint, and the upgrade path has to recognise that square
+ * to tell those orphans apart from the current layout. New layout code must use
+ * {@link CITADEL_WIDTH} / {@link CITADEL_HEIGHT} instead.
+ */
+export const CITADEL_SIZE = 17;
+
 /** Town Center top-left offset from the compound's top-left corner. */
 export const CITADEL_TOWN_CENTER_OFFSET_X = 5;
 export const CITADEL_TOWN_CENTER_OFFSET_Y = 10;

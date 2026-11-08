@@ -147,15 +147,6 @@ interface CompoundRect {
   sizeY: number;
 }
 
-/**
- * Side of the square compound that shipped before the citadel was enlarged.
- *
- * Kept separate from `CITADEL_HEIGHT`: this is a historical save format, not
- * the current geometry, so resizing today's citadel must not stop the migration
- * from finding compounds saved under the old layout.
- */
-const LEGACY_CITADEL_SIZE = 17;
-
 function insideCompound(building: BuildingState, rect: CompoundRect): boolean {
   return footprintOverlaps(building, rect.x, rect.y, rect.sizeX, rect.sizeY);
 }
@@ -316,11 +307,11 @@ function canonicalizeCitadel(
     },
     {
       // The short-lived right-edge layout this feature briefly shipped with,
-      // which was a square of `LEGACY_CITADEL_SIZE` tiles.
-      x: state.mapWidth - 6 - LEGACY_CITADEL_SIZE,
-      y: Math.floor((state.mapHeight - LEGACY_CITADEL_SIZE) / 2),
-      sizeX: LEGACY_CITADEL_SIZE,
-      sizeY: LEGACY_CITADEL_SIZE
+      // which was a square of `CITADEL_SIZE` tiles.
+      x: state.mapWidth - 6 - CITADEL_SIZE,
+      y: Math.floor((state.mapHeight - CITADEL_SIZE) / 2),
+      sizeX: CITADEL_SIZE,
+      sizeY: CITADEL_SIZE
     }
   ];
 
