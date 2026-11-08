@@ -40,6 +40,7 @@ import { TOUCH_PICK_SLACK } from '../../device/inputMode.js';
 import { EntityRenderer } from '../render/EntityRenderer.js';
 import { FocusIndicator } from '../render/FocusIndicator.js';
 import { DecorLayer } from '../render/DecorLayer.js';
+import { MAP_APRON_TILES } from '../render/decorScatter.js';
 import { CitadelLayer } from '../render/CitadelLayer.js';
 import { decorPreloadList } from '../render/decorArt.js';
 import { TerrainLayer } from '../render/TerrainLayer.js';
@@ -649,6 +650,7 @@ export class WorldScene extends Phaser.Scene {
     this.input.mouse?.disableContextMenu();
 
     // Initial camera position centered on map - default to max visible area (ZOOM_MIN)
+    this.applyCameraBounds();
     const center = gridToScreen(this.mapWidth / 2, this.mapHeight / 2);
     this.cameras.main.centerOn(center.x, center.y);
     this.cameras.main.setZoom(ZOOM_MIN);
@@ -864,6 +866,36 @@ export class WorldScene extends Phaser.Scene {
     // Decor depends on the terrain (roads, map edge), so it has to re-lay out
     // when the layout changes even if the camera never moved.
     this.decor?.invalidateViewport();
+    this.applyCameraBounds();
+  }
+
+  /**
+   * Stops the camera from drifting arbitrarily far from the map.
+   *
+   * This is a coarse rectangular bound around the diamond plus its skirt; the
+   * terrain layer paints grass across the whole viewport, so the corners of that
+   * rectangle no longer show the flat clear colour. The bound still keeps a
+   * player from panning into an endless grass field far from anything.
+   */
+  private applyCameraBounds() {
+    const minGx = -MAP_APRON_TILES;
+    const maxGx = this.mapWidth - 1 + MAP_APRON_TILES;
+    const minGy = -MAP_APRON_TILES;
+    const maxGy = this.mapHeight - 1 + MAP_APRON_TILES;
+
+    const top = gridToScreen(minGx, minGy);
+    const right = gridToScreen(maxGx, minGy);
+    const bottom = gridToScreen(maxGx, maxGy);
+    const left = gridToScreen(minGx, maxGy);
+    const padX = TILE_WIDTH / 2;
+    const padY = TILE_HEIGHT / 2;
+
+    this.cameras.main.setBounds(
+      left.x - padX,
+      top.y - padY,
+      right.x - left.x + padX * 2,
+      bottom.y - top.y + padY * 2
+    );
   }
 
   /** Default view for a map with no known anchor yet: the whole terrain. */

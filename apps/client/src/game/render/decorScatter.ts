@@ -17,6 +17,16 @@ import { fbm, hash2, hashString } from './visualVariation.js';
 /** Grass (and border forest) drawn beyond the playable map edge. */
 export const MAP_APRON_TILES = 4;
 
+/**
+ * Half-height of the clear window on the east apron, in tiles.
+ *
+ * A kingdom's portal sits flush on the east edge, so the border forest just
+ * outside the map would still surround it on screen even after every resource
+ * node in the approach is gone. The window is wide enough that no border tree
+ * crowds the arch, while the rest of the east edge keeps its forest.
+ */
+export const KINGDOM_PORTAL_APRON_CLEAR = 18;
+
 export type DecorCategory = 'forb' | 'rock' | 'border-tree';
 
 export interface DecorChoice {
@@ -130,6 +140,16 @@ export function decorAt(
 export function borderDecorAt(gx: number, gy: number, terrain: MapTerrain): DecorChoice | null {
   const ring = Math.max(-gx, gx - (terrain.width - 1), -gy, gy - (terrain.height - 1));
   if (ring < 1 || ring > MAP_APRON_TILES) return null;
+
+  // The kingdom gateway sits on the east edge; keep the apron behind it clear
+  // so the forest does not reappear when the camera scrolls past the map.
+  if (
+    terrain.kind === 'kingdom' &&
+    gx >= terrain.width &&
+    Math.abs(gy - (terrain.height - 1) / 2) <= KINGDOM_PORTAL_APRON_CLEAR
+  ) {
+    return null;
+  }
   const density = [0.22, 0.13, 0.07, 0.03][ring - 1] ?? 0;
   if (hash2(gx, gy, 0x5566) >= density) return null;
   return {

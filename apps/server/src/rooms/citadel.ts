@@ -6,6 +6,7 @@ import {
   citadelLayoutFor,
   citadelTownCenterFor,
   getBuildingLevelStats,
+  isCitadelAvenueTile,
   zoneKindOf
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
@@ -97,22 +98,24 @@ export function spawnMissingCitadelBuildings(
 }
 
 /**
- * Removes generated resource nodes buried under the walled compound.
+ * Removes generated resource nodes buried under the walled compound and on the
+ * approach avenue in front of the east gate.
  *
- * Runs before the starter trees are placed and again when an old snapshot is
- * upgraded, so a forest cannot grow through the stone floor or a wall.
+ * Runs on every join, so a legacy snapshot or a regrown node cannot sit on the
+ * stone floor, a wall, or the corridor leading out to the travel portal.
  */
 export function clearCitadelResources(state: WorldState, townCenter: BuildingState): void {
   const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
   const buried: string[] = [];
 
   state.resourceNodes.forEach((node: ResourceNodeState, id: string) => {
-    if (
+    const underCompound =
       node.gridX >= layout.originX &&
-      node.gridX < layout.originX + layout.size &&
+      node.gridX < layout.originX + layout.sizeX &&
       node.gridY >= layout.originY &&
-      node.gridY < layout.originY + layout.size
-    ) {
+      node.gridY < layout.originY + layout.sizeY;
+
+    if (underCompound || isCitadelAvenueTile(node.gridX, node.gridY, layout, state.mapWidth)) {
       buried.push(id);
     }
   });
@@ -120,44 +123,52 @@ export function clearCitadelResources(state: WorldState, townCenter: BuildingSta
   for (const id of buried) state.resourceNodes.delete(id);
 }
 
-/** True when a building footprint overlaps a square of `size` tiles at (x, y). */
+/** True when a building footprint overlaps a `sizeX x sizeY` rect at (x, y). */
 function footprintOverlaps(
   building: BuildingState,
   x: number,
   y: number,
-  size: number
+  sizeX: number,
+  sizeY: number
 ): boolean {
   return (
-    building.gridX < x + size &&
+    building.gridX < x + sizeX &&
     building.gridX + building.sizeX > x &&
-    building.gridY < y + size &&
+    building.gridY < y + sizeY &&
     building.gridY + building.sizeY > y
   );
 }
 
-/** A square of tiles that once held a citadel compound. */
+/** A rectangle of tiles that once held, or now holds, a citadel compound. */
 interface CompoundRect {
   x: number;
   y: number;
-  size: number;
+  sizeX: number;
+  sizeY: number;
 }
 
 function insideCompound(building: BuildingState, rect: CompoundRect): boolean {
-  return footprintOverlaps(building, rect.x, rect.y, rect.size);
+  return footprintOverlaps(building, rect.x, rect.y, rect.sizeX, rect.sizeY);
 }
 
 /**
  * Open floor tiles of the central walkway, east of the Town Center.
  *
  * Used to place starter crews and to rescue units that a legacy save left on a
- * tile that the moved citadel now uses as a wall.
+ * tile that the moved citadel now uses as a wall. The band follows the Town
+ * Center's own rows so a spot can never land inside its footprint.
  */
 function walkwaySpots(
   layout: ReturnType<typeof citadelLayoutFor>
 ): Array<{ x: number; y: number }> {
+  const townCenter = layout.slots.find((slot) => slot.type === 'TOWN_CENTER');
+  const startX = townCenter ? townCenter.gridX + townCenter.sizeX : layout.innerMinX;
+  const startY = townCenter ? townCenter.gridY : layout.innerMinY + 4;
+  const endY = townCenter ? townCenter.gridY + townCenter.sizeY - 1 : layout.innerMinY + 10;
+
   const spots: Array<{ x: number; y: number }> = [];
-  for (let y = layout.originY + 5; y <= layout.originY + 11; y++) {
-    for (let x = layout.originX + 5; x <= layout.originX + 14; x++) {
+  for (let y = startY; y <= endY; y++) {
+    for (let x = startX; x <= layout.innerMaxX; x++) {
       spots.push({ x, y });
     }
   }
@@ -216,6 +227,16 @@ function assignCitadelBuildings(
     if (!building) return;
     building.gridX = slot.gridX;
     building.gridY = slot.gridY;
+    if (building.type !== slot.type) {
+      // The compound used to field two barracks, so a legacy save holds a
+      // barracks where the archery range now stands. Retag it in place: both
+      // trainers share a footprint and the same health curve, so only the name
+      // and the unit it trains change.
+      const blueprint = BUILDING_BLUEPRINTS[slot.type];
+      building.type = slot.type;
+      building.sizeX = blueprint.sizeX;
+      building.sizeY = blueprint.sizeY;
+    }
   });
 
   for (let index = slots.length; index < list.length; index++) {
@@ -226,12 +247,12 @@ function assignCitadelBuildings(
 /**
  * Rebuilds a non-canonical citadel at the centre of the map.
  *
- * Layouts changed during development, so a save can hold orphaned barracks and
- * houses from an older compound (including the short-lived right-edge variant).
- * Every barracks and house inside a historical compound is gathered, the
- * strongest two/five are placed in the new slots and the surplus is removed.
- * Buildings outside those compounds — including anything the player built — are
- * never touched.
+ * Layouts changed during development, so a save can hold orphaned military
+ * buildings and houses from an older compound (including the short-lived
+ * right-edge variant). Every barracks, archery range and house inside a
+ * historical compound is gathered, the strongest two trainers and five houses
+ * are placed in the new slots and the surplus is removed. Buildings outside
+ * those compounds — including anything the player built — are never touched.
  */
 function canonicalizeCitadel(
   state: WorldState,
@@ -252,43 +273,72 @@ function canonicalizeCitadel(
     if (
       building.type === 'TOWN_CENTER' ||
       building.type === 'BARRACKS' ||
+      building.type === 'ARCHERY_RANGE' ||
       building.type === 'HOUSE'
     ) {
       return;
     }
-    if (footprintOverlaps(building, targetLayout.originX, targetLayout.originY, targetLayout.size)) {
+    if (
+      footprintOverlaps(
+        building,
+        targetLayout.originX,
+        targetLayout.originY,
+        targetLayout.sizeX,
+        targetLayout.sizeY
+      )
+    ) {
       blocked = true;
     }
   });
   if (blocked) return townCenter;
 
   const rects: CompoundRect[] = [
-    { x: targetLayout.originX, y: targetLayout.originY, size: targetLayout.size },
-    { x: currentLayout.originX, y: currentLayout.originY, size: currentLayout.size },
     {
-      // The short-lived right-edge layout this feature briefly shipped with.
-      x: state.mapWidth - 6 - targetLayout.size,
-      y: Math.floor((state.mapHeight - targetLayout.size) / 2),
-      size: targetLayout.size
+      x: targetLayout.originX,
+      y: targetLayout.originY,
+      sizeX: targetLayout.sizeX,
+      sizeY: targetLayout.sizeY
+    },
+    {
+      x: currentLayout.originX,
+      y: currentLayout.originY,
+      sizeX: currentLayout.sizeX,
+      sizeY: currentLayout.sizeY
+    },
+    {
+      // The short-lived right-edge layout this feature briefly shipped with,
+      // which was a square of `CITADEL_SIZE` tiles.
+      x: state.mapWidth - 6 - CITADEL_SIZE,
+      y: Math.floor((state.mapHeight - CITADEL_SIZE) / 2),
+      sizeX: CITADEL_SIZE,
+      sizeY: CITADEL_SIZE
     }
   ];
 
   townCenter.gridX = target.gridX;
   townCenter.gridY = target.gridY;
 
-  const barracks: BuildingState[] = [];
+  const military: BuildingState[] = [];
   const houses: BuildingState[] = [];
   state.buildings.forEach((building: BuildingState) => {
     if (building.ownerId !== ownerId) return;
-    if (building.type !== 'BARRACKS' && building.type !== 'HOUSE') return;
+    if (
+      building.type !== 'BARRACKS' &&
+      building.type !== 'ARCHERY_RANGE' &&
+      building.type !== 'HOUSE'
+    ) {
+      return;
+    }
     if (!rects.some((rect) => insideCompound(building, rect))) return;
-    (building.type === 'BARRACKS' ? barracks : houses).push(building);
+    (building.type === 'HOUSE' ? houses : military).push(building);
   });
 
   assignCitadelBuildings(
     state,
-    barracks,
-    targetLayout.slots.filter((slot) => slot.type === 'BARRACKS')
+    military,
+    targetLayout.slots.filter(
+      (slot) => slot.type === 'BARRACKS' || slot.type === 'ARCHERY_RANGE'
+    )
   );
   assignCitadelBuildings(
     state,
@@ -304,9 +354,9 @@ function canonicalizeCitadel(
     const insideAny = rects.some(
       (rect) =>
         unit.x >= rect.x &&
-        unit.x < rect.x + rect.size &&
+        unit.x < rect.x + rect.sizeX &&
         unit.y >= rect.y &&
-        unit.y < rect.y + rect.size
+        unit.y < rect.y + rect.sizeY
     );
     if (!insideAny) return;
 
@@ -380,7 +430,7 @@ export function ensureCitadel(state: WorldState, ownerId: string): void {
  * Brings every citadel building back to full strength after a raid.
  *
  * The citadel is a score, not a ruin: without this a single raid could leave a
- * player permanently short of houses and barracks. A slot destroyed during the
+ * player permanently short of houses and trainers. A slot destroyed during the
  * fight is rebuilt at level 1, matching how the Town Center already came back.
  */
 export function restoreCitadel(state: WorldState, ownerId: string): void {
@@ -450,7 +500,7 @@ export function footprintTouchesCitadelWall(
 /**
  * Whether `building` is one of its owner's citadel slots.
  *
- * Used by combat to stop a raid from deleting a house or barracks outright: the
+ * Used by combat to stop a raid from deleting a house or trainer outright: the
  * citadel is a score, and a destroyed slot would be rebuilt at level 1, wiping
  * an upgrade the defender paid for.
  */

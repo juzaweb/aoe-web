@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NetworkMessage, type BuildingType } from '@chien-quoc/shared';
+import { NetworkMessage, citadelLayoutFor, type BuildingType } from '@chien-quoc/shared';
 
 /**
  * The controller resolves the clicked tile through `pointerWorldGrid`, which
@@ -166,12 +166,13 @@ describe('PlacementController', () => {
       gridX: 48,
       gridY: 53,
       sizeX: 4,
-      sizeY: 4
+      sizeY: 6
     });
-    // The centred compound's west wall is x = originX = 47. Use a wall tile
-    // clear of the Town Center footprint so only the wall blocks the click.
-    pointerGrid.gridX = 47;
-    pointerGrid.gridY = 48;
+    // A wall tile clear of the Town Center footprint so only the wall blocks
+    // the click, whatever the compound layout becomes.
+    const wall = citadelLayoutFor(48, 53).walls[0];
+    pointerGrid.gridX = wall.gridX;
+    pointerGrid.gridY = wall.gridY;
 
     controller.commit(pointer, true);
 

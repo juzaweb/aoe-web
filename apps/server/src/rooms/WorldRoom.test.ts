@@ -2816,6 +2816,17 @@ describe('kingdom map layout (MAPS-V2)', () => {
     expect(count).toBeLessThan(700);
   });
 
+  it('keeps spawned resources out of the citadel plaza and gate approach', () => {
+    const room = createKingdomRoom();
+    addPlayer(room, 'player-a');
+
+    internals(room).spawnInitialBase('player-a');
+
+    room.state.resourceNodes.forEach((node: ResourceNodeState) => {
+      expect(isPlazaTile(node.gridX, node.gridY, TERRAIN_KINGDOM)).toBe(false);
+    });
+  });
+
   it('reclaims the citadel anchor tile from a restored resource node', () => {
     const room = createKingdomRoom();
     addPlayer(room, 'player-a');

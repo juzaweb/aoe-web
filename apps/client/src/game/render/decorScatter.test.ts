@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TERRAIN_BATTLEFIELD, TERRAIN_KINGDOM } from '@chien-quoc/shared';
 import {
+  KINGDOM_PORTAL_APRON_CLEAR,
   MAP_APRON_TILES,
   borderDecorAt,
   canopyDecor,
@@ -125,6 +126,30 @@ describe('borderDecorAt', () => {
 
   it('is deterministic', () => {
     expect(borderDecorAt(-2, 40, terrain)).toEqual(borderDecorAt(-2, 40, terrain));
+  });
+
+  it('clears the east apron behind the kingdom portal', () => {
+    const centre = (TERRAIN_KINGDOM.height - 1) / 2;
+    let outside = 0;
+
+    for (let gy = 0; gy < TERRAIN_KINGDOM.height; gy++) {
+      for (let gx = TERRAIN_KINGDOM.width; gx < TERRAIN_KINGDOM.width + MAP_APRON_TILES; gx++) {
+        const choice = borderDecorAt(gx, gy, TERRAIN_KINGDOM);
+        if (Math.abs(gy - centre) <= KINGDOM_PORTAL_APRON_CLEAR) {
+          expect(choice).toBeNull();
+        } else if (choice) {
+          outside++;
+        }
+      }
+    }
+
+    // The rest of the edge keeps its forest, and the battlefield is untouched.
+    expect(outside).toBeGreaterThan(0);
+    let battlefield = 0;
+    for (let gy = 0; gy < terrain.height; gy++) {
+      if (borderDecorAt(terrain.width, gy, terrain)) battlefield++;
+    }
+    expect(battlefield).toBeGreaterThan(0);
   });
 });
 
