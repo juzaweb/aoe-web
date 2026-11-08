@@ -1,7 +1,7 @@
 import type { BuildingType } from '@chien-quoc/shared';
 
 /**
- * `Q/W/E/R/T/Y/U/I/C/B` start a building placement, in the same order as the
+ * `Q/W/E/R/T/Y/U/I/C/B/N` start a building placement, in the same order as the
  * HUD's build buttons. This is the only list: `CommandController` binds these
  * keys and `BuildMenu` prints the same letters on its buttons.
  *
@@ -21,7 +21,8 @@ export const BUILDING_HOTKEYS: ReadonlyArray<{ key: string; type: BuildingType }
   { key: 'U', type: 'MILL' },
   { key: 'I', type: 'MINING_CAMP' },
   { key: 'C', type: 'STABLE' },
-  { key: 'B', type: 'ARCHERY_RANGE' }
+  { key: 'B', type: 'ARCHERY_RANGE' },
+  { key: 'N', type: 'SIEGE_WORKSHOP' }
 ];
 
 /** Reverse lookup for the build menu, which renders one button per type. */

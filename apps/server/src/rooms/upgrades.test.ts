@@ -8,6 +8,7 @@ import {
   buildingTypeForUnit,
   getBuildingLevelStats,
   getBuildingMaxLevel,
+  getBuildingUnlockLevel,
   getBuildingUpgradeCost,
   getBuildingUpgradeTimeMs,
   getBuildingVisualTier,
@@ -46,6 +47,12 @@ describe('military buildings (MIL-01)', () => {
     expect(BUILDING_BLUEPRINTS.BARRACKS.trainableUnits).toEqual(['SPEARMAN']);
     expect(BUILDING_BLUEPRINTS.STABLE.trainableUnits).toEqual(['CAVALRY']);
     expect(BUILDING_BLUEPRINTS.ARCHERY_RANGE.trainableUnits).toEqual(['ARCHER']);
+  });
+
+  it('ships the siege workshop as a gated, empty production building', () => {
+    expect(BUILDING_BLUEPRINTS.SIEGE_WORKSHOP.trainableUnits).toEqual([]);
+    expect(getBuildingUnlockLevel('SIEGE_WORKSHOP')).toBe(3);
+    expect(CORE_BUILDING_TYPES).not.toContain('SIEGE_WORKSHOP');
   });
 
   it('counts all three military branches as Town Center pillars', () => {

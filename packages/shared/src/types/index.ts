@@ -26,6 +26,8 @@ export type BuildingType =
   | 'STABLE'
   /** MIL-01: archery range — trains Archers. */
   | 'ARCHERY_RANGE'
+  /** Siege workshop — siege-engine production building. */
+  | 'SIEGE_WORKSHOP'
   | 'HOUSE'
   | 'FARM'
   | 'TOWER'

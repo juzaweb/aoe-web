@@ -307,6 +307,10 @@ const vi = {
       name: 'Trường bắn',
       description: 'Trường bắn cung. Huấn luyện cung thủ chiến đấu từ phía sau chiến tuyến.'
     },
+    SIEGE_WORKSHOP: {
+      name: 'Xưởng Công Thành',
+      description: 'Xưởng công thành. Khu sân kiên cố để chế tạo và bảo trì máy công thành.'
+    },
     HOUSE: {
       name: 'Nhà ở',
       description: 'Cung cấp chỗ ở cho thêm tối đa 5 dân số.'

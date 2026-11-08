@@ -410,6 +410,27 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     dropOffs: [],
     description: 'Archery range. Trains archers who fight from behind the front line.'
   },
+  // Siege workshop: the building half of the catapult branch. It is placeable
+  // and upgradable now; `trainableUnits` stays empty until the Catapult unit
+  // lands, so it never advertises a roster the server cannot produce.
+  SIEGE_WORKSHOP: {
+    type: 'SIEGE_WORKSHOP',
+    name: 'Siege Workshop',
+    sizeX: 3,
+    sizeY: 3,
+    cost: { wood: 250, food: 0, gold: 50, stone: 100 },
+    buildTimeMs: 15000,
+    maxHp: 1400,
+    populationProvided: 0,
+    trainableUnits: [],
+    attackPower: 0,
+    attackRange: 0,
+    attackCooldownMs: 0,
+    dropOffs: [],
+    requiredTownCenterLevel: 3,
+    description:
+      'Siege workshop. A fortified yard for building and maintaining siege engines.'
+  },
   HOUSE: {
     type: 'HOUSE',
     name: 'House',

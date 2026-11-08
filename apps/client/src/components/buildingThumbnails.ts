@@ -18,6 +18,7 @@ export const BUILDING_THUMBNAIL: Partial<Record<BuildingType, string>> = {
   BARRACKS: '/assets/buildings/barracks.png?v=3',
   STABLE: '/assets/buildings/stable.png?v=3',
   ARCHERY_RANGE: '/assets/buildings/archery_range.png?v=3',
+  SIEGE_WORKSHOP: '/assets/buildings/siege_workshop.png?v=1',
   HOUSE: '/assets/buildings/house.png?v=15',
   FARM: '/assets/buildings/farm.png?v=3',
   TOWER: '/assets/buildings/tower.png?v=4',

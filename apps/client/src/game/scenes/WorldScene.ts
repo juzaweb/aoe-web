@@ -526,10 +526,9 @@ export class WorldScene extends Phaser.Scene {
     }
 
     // Preload generated building assets with cache-busting version (2x resolution)
-    // v=27: the three economy camps (lumber camp, mill, mining camp) were
-    // regenerated so the lumber camp no longer reuses the stable sprite.
+    // v=28: added the generated siege workshop sheet.
     // Bump the key whenever a PNG under public/assets/buildings or /resources changes.
-    const v = 'v=27';
+    const v = 'v=28';
     this.load.image('building_TOWN_CENTER', `/assets/buildings/town_center.png?${v}`);
     this.load.image('building_BARRACKS', `/assets/buildings/barracks.png?${v}`);
     // MIL-01: both military branches now ship their own 400x320 sheet. The
@@ -537,6 +536,7 @@ export class WorldScene extends Phaser.Scene {
     // load, but these keys are the normal path.
     this.load.image('building_STABLE', `/assets/buildings/stable.png?${v}`);
     this.load.image('building_ARCHERY_RANGE', `/assets/buildings/archery_range.png?${v}`);
+    this.load.image('building_SIEGE_WORKSHOP', `/assets/buildings/siege_workshop.png?${v}`);
     this.load.image('building_HOUSE', `/assets/buildings/house.png?${v}`);
     this.load.image('building_FARM', `/assets/buildings/farm.png?${v}`);
     this.load.image('building_TOWER', `/assets/buildings/tower.png?${v}`);

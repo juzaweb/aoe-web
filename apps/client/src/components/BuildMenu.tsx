@@ -55,6 +55,7 @@ const BUILDINGS: { type: BuildingType; icon: React.ReactNode }[] = [
   { type: 'BARRACKS', icon: <ShieldAlert size={20} /> },
   { type: 'STABLE', icon: <Zap size={20} /> },
   { type: 'ARCHERY_RANGE', icon: <Target size={20} /> },
+  { type: 'SIEGE_WORKSHOP', icon: <Hammer size={20} /> },
   { type: 'HOUSE', icon: <House size={20} /> },
   { type: 'FARM', icon: <Wheat size={20} /> },
   { type: 'TOWER', icon: <TowerControl size={20} /> },

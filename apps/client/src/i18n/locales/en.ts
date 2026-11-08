@@ -304,6 +304,10 @@ const en = {
       name: 'Archery Range',
       description: 'Archery range. Trains archers who fight from behind the front line.'
     },
+    SIEGE_WORKSHOP: {
+      name: 'Siege Workshop',
+      description: 'Siege workshop. A fortified yard for building and maintaining siege engines.'
+    },
     HOUSE: {
       name: 'House',
       description: 'Provides housing to support up to 5 additional population.'

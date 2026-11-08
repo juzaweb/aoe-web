@@ -51,6 +51,8 @@ export const SHEET_OFFSET_Y: Partial<Record<BuildingType, number>> = {
   // reuse its lift. A different canvas size would need its own number here.
   STABLE: -96,
   ARCHERY_RANGE: -96,
+  // Generated on the same 400x320 canvas as the military trainers.
+  SIEGE_WORKSHOP: -96,
   HOUSE: -88,
   FARM: 0,
   TOWER: -160,
@@ -89,6 +91,9 @@ const FALLBACK_ART: Partial<
   // placeholder: it still reads as a military building on the map and minimap.
   STABLE: { textureKey: 'b_barracks', offsetY: -70, hpBarY: -126 },
   ARCHERY_RANGE: { textureKey: 'b_barracks', offsetY: -70, hpBarY: -126 },
+  // The generated sheet is the normal path; a failed load keeps the barracks
+  // silhouette rather than a blank tile.
+  SIEGE_WORKSHOP: { textureKey: 'b_barracks', offsetY: -70, hpBarY: -126 },
   HOUSE: { textureKey: 'b_house', offsetY: -50, hpBarY: -90 },
   FARM: { textureKey: 'b_farm', offsetY: 0, hpBarY: -40 },
   TOWER: { textureKey: 'b_tower', offsetY: -90, hpBarY: -148 },
@@ -136,6 +141,8 @@ const HP_BAR_Y: Partial<Record<BuildingType, number>> = {
   // artwork height: -264 + topInset (Stable 3, Archery Range 29).
   STABLE: -261,
   ARCHERY_RANGE: -235,
+  // Generated 400x320 sheet: -96 - 320/2 + topInset 0 - 8.
+  SIEGE_WORKSHOP: -264,
   HOUSE: -224,
   FARM: -100,
   // ECO: generated camps on the 256x220 house canvas. -70 - 220/2 + topInset - 8.

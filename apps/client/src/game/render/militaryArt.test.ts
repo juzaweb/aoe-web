@@ -56,10 +56,32 @@ describe('military building artwork (MIL-01)', () => {
   }
 });
 
-describe('military building sheets (MIL-01)', () => {
+describe('siege workshop artwork', () => {
+  it('draws its generated 400x320 sheet', () => {
+    expect(buildingArt('SIEGE_WORKSHOP', () => true)).toEqual({
+      textureKey: 'building_SIEGE_WORKSHOP',
+      offsetY: -96,
+      scale: 1
+    });
+    expect(buildingHpBarY('SIEGE_WORKSHOP', 1, () => true)).toBe(-264);
+  });
+
+  it('degrades to the barracks silhouette when the sheet is missing', () => {
+    expect(buildingArt('SIEGE_WORKSHOP', () => false)).toEqual({
+      textureKey: 'b_barracks',
+      offsetY: -70,
+      scale: 1
+    });
+    expect(buildingHpBarY('SIEGE_WORKSHOP', 1, () => false)).toBe(
+      buildingHpBarY('BARRACKS', 1, () => false)
+    );
+  });
+});
+
+describe('military and siege building sheets', () => {
   const ROOT = join(__dirname, '../../../../..');
 
-  for (const name of ['stable', 'archery_range']) {
+  for (const name of ['stable', 'archery_range', 'siege_workshop']) {
     it(`${name}.png is a shipped 400x320 sheet`, () => {
       const path = join(ROOT, 'apps/client/public/assets/buildings', `${name}.png`);
       expect(existsSync(path), `missing ${path}`).toBe(true);
