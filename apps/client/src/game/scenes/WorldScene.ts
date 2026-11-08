@@ -28,6 +28,7 @@ import { CommandController } from '../input/CommandController.js';
 import { CursorController } from '../input/CursorController.js';
 import { PlacementController } from '../input/PlacementController.js';
 import { RoadController, type RoadMode } from '../input/RoadController.js';
+import { WallController, type WallMode } from '../input/WallController.js';
 import { SelectionController } from '../input/SelectionController.js';
 import { trainerLevelFor, unitCombatStats } from './selectionStats.js';
 import type { BoxSelectFilter } from '../input/SelectionController.js';
@@ -42,6 +43,7 @@ import { FocusIndicator } from '../render/FocusIndicator.js';
 import { DecorLayer } from '../render/DecorLayer.js';
 import { MAP_APRON_TILES } from '../render/decorScatter.js';
 import { CitadelLayer } from '../render/CitadelLayer.js';
+import { CitadelSurface, citadelSurfaceFor } from '../render/citadelSurface.js';
 import { decorPreloadList } from '../render/decorArt.js';
 import { TerrainLayer } from '../render/TerrainLayer.js';
 import { OwnerColorRegistry, colorToCss } from '../render/ownerColor.js';
@@ -50,7 +52,7 @@ import { shouldAlertOnBuildingRemoval } from '../alerts/foundationRemoval.js';
 import type { AttackPing, DamageResult } from '../alerts/underAttack.js';
 import { unitActionTexture } from '../render/unitDirections.js';
 import { UNIT_ART, unitArt, unitSheets } from '../render/unitArt.js';
-import { RENDER_DELAY_MS } from '../render/unitMotion.js';
+import { RENDER_DELAY_MS, visualActionState } from '../render/unitMotion.js';
 import type { UnitMotion } from '../render/unitMotion.js';
 
 /**
@@ -404,6 +406,11 @@ export class WorldScene extends Phaser.Scene {
    * out). React mirrors this so the HUD button and the map never disagree.
    */
   public onRoadModeChange: ((mode: RoadMode | null) => void) | null = null;
+  /**
+   * The wall brush was entered or left from the map itself (right-click backs
+   * out). React mirrors this so the HUD button and the map never disagree.
+   */
+  public onWallModeChange: ((mode: WallMode | null) => void) | null = null;
   /** A road tile was added or removed; rebuild the terrain pool once per frame. */
   private roadsDirty = false;
   /**
@@ -452,6 +459,8 @@ export class WorldScene extends Phaser.Scene {
   public placement!: PlacementController;
   /** Road paint tool; only enters a mode in a kingdom. */
   public roadController!: RoadController;
+  /** Stone-wall brush; only enters a mode in a kingdom. */
+  public wallController!: WallController;
   public commands!: CommandController;
   /** MOB-02: gestures, camera pan/pinch and the touch order dispatch. */
   public touch!: TouchController;
@@ -460,6 +469,9 @@ export class WorldScene extends Phaser.Scene {
   public decor!: DecorLayer;
   /** Stone floor and indestructible walls of the kingdom citadel. */
   public citadel!: CitadelLayer;
+  /** Wall-top height lookup, rebuilt only when a Town Center moves. */
+  private citadelSurface: CitadelSurface | null = null;
+  private citadelSurfaceKey = '';
   /**
    * Size of the map currently joined. A kingdom is 110x110, the battlefield
    * 220x220; the room replicates both numbers so camera, terrain culling,
@@ -537,6 +549,9 @@ export class WorldScene extends Phaser.Scene {
     // load, but these keys are the normal path.
     this.load.image('building_STABLE', `/assets/buildings/stable.png?${v}`);
     this.load.image('building_ARCHERY_RANGE', `/assets/buildings/archery_range.png?${v}`);
+    // New sheet: its own version, so adding it does not invalidate every other
+    // building PNG in the browser cache.
+    this.load.image('building_SIEGE_WORKSHOP', '/assets/buildings/siege_workshop.png?v=1');
     this.load.image('building_HOUSE', `/assets/buildings/house.png?${v}`);
     this.load.image('building_FARM', `/assets/buildings/farm.png?${v}`);
     this.load.image('building_TOWER', `/assets/buildings/tower.png?${v}`);
@@ -582,9 +597,10 @@ export class WorldScene extends Phaser.Scene {
 
     // Citadel stone: floor tile, wall block, gatehouse and its portcullis.
     // Built by `scripts/process_citadel_assets.py`; bump when a PNG changes.
-    const cv = 'v=6';
+    const cv = 'v=7';
     this.load.image('citadel_floor', `/assets/citadel/floor.png?${cv}`);
     this.load.image('citadel_wall', `/assets/citadel/wall.png?${cv}`);
+    this.load.image('citadel_stairs', `/assets/citadel/stairs.png?${cv}`);
     this.load.image('citadel_gate', `/assets/citadel/gate.png?${cv}`);
     this.load.image('citadel_gate_door', `/assets/citadel/gate_door.png?${cv}`);
     this.load.image('citadel_tc_platform', `/assets/citadel/tc_platform.png?${cv}`);
@@ -622,6 +638,7 @@ export class WorldScene extends Phaser.Scene {
 
     // 2b. Road paint tool (kingdom only)
     this.roadController = new RoadController(this);
+    this.wallController = new WallController(this);
 
     // 3. Drag selection box graphics
     this.dragSelectionGraphics = this.add.graphics();
@@ -948,11 +965,13 @@ export class WorldScene extends Phaser.Scene {
     this.commands?.cancelPendingOrder();
     this.placement?.cancel();
     this.roadController?.cancel();
+    this.wallController?.cancel();
     // The new map may have no roads at all (a battlefield always does not), so
     // the painted quads of the previous map must not survive the switch.
     this.terrain?.setPlayerRoads([]);
     this.citadel?.clear();
     this.onRoadModeChange?.(null);
+    this.onWallModeChange?.(null);
     this.cameraControl?.resetBookmarks();
     // The pool is repositioned only when the viewport moves; a new map can start
     // at a very different corner, so force the next frame to repaint it.
@@ -1002,6 +1021,7 @@ export class WorldScene extends Phaser.Scene {
     this.buildingToPlace = null;
     this.placement?.cancel();
     this.roadController?.cancel();
+    this.wallController?.cancel();
     this.commands?.cancelPendingOrder();
   }
 
@@ -1430,6 +1450,12 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
+    if (this.wallController?.isDrawing) {
+      this.wallController.drag(pointer);
+      this.cursor.refresh();
+      return;
+    }
+
     // Placement ghost follows the pointer while the mode is active
     this.placement.updateGhost(hoverGridCoord.gridX, hoverGridCoord.gridY);
 
@@ -1496,6 +1522,20 @@ export class WorldScene extends Phaser.Scene {
       if (pointer.leftButtonDown()) {
         native?.preventDefault();
         this.roadController.begin(pointer);
+        return;
+      }
+    }
+
+    // The wall brush owns the drag the same way: left paints, right backs out.
+    if (this.wallController?.active) {
+      if (pointer.rightButtonDown() && !native?.ctrlKey) {
+        this.cancelWallMode();
+        this.onWallModeChange?.(null);
+        return;
+      }
+      if (pointer.leftButtonDown()) {
+        native?.preventDefault();
+        this.wallController.begin(pointer);
         return;
       }
     }
@@ -1589,6 +1629,11 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
+    if (this.wallController?.isDrawing) {
+      this.wallController.end();
+      return;
+    }
+
     // The middle button can be released outside the drag state (e.g. pressed
     // while placing a building), so this is unconditional.
     this.cameraControl.endMiddleDrag();
@@ -1663,13 +1708,18 @@ export class WorldScene extends Phaser.Scene {
     // A spectator cannot build here; the server refuses it and there is no
     // villager of theirs on the map to own the ghost.
     if (this.readOnly) return;
-    // The two tools are mutually exclusive: a click cannot mean both.
+    // The paint tools are mutually exclusive with a footprint ghost.
     if (this.roadController?.active) this.cancelRoadMode();
+    if (this.wallController?.active) this.cancelWallMode();
     this.placement.enter(type);
   }
 
   public cancelBuildingPlacement() {
     this.placement.cancel();
+    if (this.wallController?.active) {
+      this.cancelWallMode();
+      this.onWallModeChange?.(null);
+    }
   }
 
   /** Enters the road paint tool. Only meaningful on a kingdom map. */
@@ -1678,6 +1728,7 @@ export class WorldScene extends Phaser.Scene {
     if (!this.roadController) return;
     if (this.terrainLayout.kind !== 'kingdom') return;
     if (this.buildingToPlace) this.placement.cancel();
+    if (this.wallController?.active) this.cancelWallMode();
     this.roadController.enter(mode);
     this.cursor.refresh();
   }
@@ -1688,6 +1739,25 @@ export class WorldScene extends Phaser.Scene {
 
   public get roadMode(): RoadMode | null {
     return this.roadController?.active ?? null;
+  }
+
+  /** Enters the stone-wall brush. Only meaningful on a kingdom map. */
+  public setWallMode(mode: WallMode) {
+    if (this.readOnly) return;
+    if (!this.wallController) return;
+    if (this.terrainLayout.kind !== 'kingdom') return;
+    if (this.buildingToPlace) this.placement.cancel();
+    if (this.roadController?.active) this.cancelRoadMode();
+    this.wallController.enter(mode);
+    this.cursor.refresh();
+  }
+
+  public cancelWallMode() {
+    this.wallController?.cancel();
+  }
+
+  public get wallMode(): WallMode | null {
+    return this.wallController?.active ?? null;
   }
 
   public commandMoveTo(gridX: number, gridY: number) {
@@ -1811,6 +1881,10 @@ export class WorldScene extends Phaser.Scene {
       this.roadController.begin(pointer);
       return;
     }
+    if (this.wallController?.active) {
+      this.wallController.begin(pointer);
+      return;
+    }
     if (!this.buildingToPlace) return;
 
     const grid = pointerWorldGrid(this.cameras.main, pointer);
@@ -1830,6 +1904,10 @@ export class WorldScene extends Phaser.Scene {
     // would paint the tile under the release instead of the one pressed.
     if (this.roadController?.active) {
       if (this.roadController.isDrawing) this.roadController.end();
+      return;
+    }
+    if (this.wallController?.active) {
+      if (this.wallController.isDrawing) this.wallController.end();
       return;
     }
 
@@ -1890,6 +1968,7 @@ export class WorldScene extends Phaser.Scene {
     // stroke: firing a contextual order here would move the army mid-road.
     if (this.readOnly) return;
     if (this.roadController?.isDrawing) return;
+    if (this.wallController?.isDrawing) return;
     if (this.buildingToPlace) return;
 
     if (this.commands.pendingOrder || this.commands.contextualArmed) {
@@ -1913,6 +1992,10 @@ export class WorldScene extends Phaser.Scene {
       this.roadController.begin(pointer);
       return true;
     }
+    if (this.wallController?.active) {
+      this.wallController.begin(pointer);
+      return true;
+    }
 
     if (!this.boxSelectArmed) return false;
 
@@ -1930,6 +2013,10 @@ export class WorldScene extends Phaser.Scene {
       this.roadController.drag(pointer);
       return;
     }
+    if (this.wallController?.isDrawing) {
+      this.wallController.drag(pointer);
+      return;
+    }
     if (!this.touchBoxActive) return;
     this.drawDragBox({ x: pointer.x, y: pointer.y });
   }
@@ -1938,6 +2025,10 @@ export class WorldScene extends Phaser.Scene {
   public endTouchDrag(pointer: Phaser.Input.Pointer) {
     if (this.roadController?.isDrawing) {
       this.roadController.end();
+      return;
+    }
+    if (this.wallController?.isDrawing) {
+      this.wallController.end();
       return;
     }
     if (!this.touchBoxActive) return;
@@ -1955,6 +2046,7 @@ export class WorldScene extends Phaser.Scene {
     // A pinch is a camera gesture: it drops the half-drawn stroke unseen, the
     // same way it drops a box selection.
     if (this.roadController?.isDrawing) this.roadController.abort();
+    if (this.wallController?.isDrawing) this.wallController.abort();
     if (!this.touchBoxActive) return;
     this.touchBoxActive = false;
     this.isDragSelecting = false;
@@ -2015,7 +2107,13 @@ export class WorldScene extends Phaser.Scene {
           carryingAmount: unit.carryingAmount,
           carryingResourceType: unit.carryingResourceType,
           stance: unit.stance,
-          ...unitCombatStats(unit.type, unit.level, ownerTownCenterLevel, trainerLevel),
+          ...unitCombatStats(
+            unit.type,
+            unit.level,
+            ownerTownCenterLevel,
+            trainerLevel,
+            unit.onWall === true
+          ),
           speed: unit.speed,
           villagerSelected,
           ownerTownCenterLevel
@@ -2167,6 +2265,7 @@ export class WorldScene extends Phaser.Scene {
     this.commands.updateWaypointPreview();
     this.commands.updateRallyMarkers();
     this.roadController?.render();
+    this.wallController?.render();
 
     this.updateUnitSprites(time, dtSeconds);
     this.citadel?.update(delta);
@@ -2192,8 +2291,40 @@ export class WorldScene extends Phaser.Scene {
    * rate. The rule itself lives in `UnitMotion`; this loop only projects and
    * paints it.
    */
+  /**
+   * Height a unit at `(x, y)` is drawn above the ground.
+   *
+   * The surface is rebuilt only when a Town Center moves, so the per-unit frame
+   * loop below pays a set lookup, not a layout rebuild.
+   */
+  citadelLiftAt(x: number, y: number): number {
+    this.ensureCitadelSurface();
+    return this.citadelSurface?.liftAt(x, y) ?? 0;
+  }
+
+  private ensureCitadelSurface() {
+    if (!this.room?.state) {
+      this.citadelSurface = null;
+      this.citadelSurfaceKey = '';
+      return;
+    }
+
+    let key = '';
+    const townCenters: Array<{ gridX: number; gridY: number }> = [];
+    this.room.state.buildings?.forEach((building: any) => {
+      if (building.type !== 'TOWN_CENTER') return;
+      key += `${building.ownerId}:${building.gridX},${building.gridY}|`;
+      townCenters.push(building);
+    });
+    if (key === this.citadelSurfaceKey) return;
+
+    this.citadelSurfaceKey = key;
+    this.citadelSurface = citadelSurfaceFor(townCenters);
+  }
+
   private updateUnitSprites(time: number, dtSeconds: number) {
     const renderTime = time - RENDER_DELAY_MS;
+    this.ensureCitadelSurface();
     this.unitMotion.forEach((motion, unitId) => {
       const container = this.unitSprites.get(unitId);
       const unit = this.room?.state?.units.get(unitId);
@@ -2206,13 +2337,17 @@ export class WorldScene extends Phaser.Scene {
 
       // Inline isometric projection: `gridToScreen` allocates an object, and this
       // runs for every unit on every frame.
+      const lift = this.citadelSurface?.liftAt(step.x, step.y) ?? 0;
       container.x = (step.x - step.y) * HALF_TILE_WIDTH;
-      container.y = (step.x + step.y) * HALF_TILE_HEIGHT;
+      container.y = (step.x + step.y) * HALF_TILE_HEIGHT - lift;
 
       // Assigning `depth` queues a display-list sort in Phaser even when the value
       // is unchanged, and parked units keep the same depth frame after frame, so
-      // only touch it when it actually moves.
-      const depth = getIsoDepth(step.x, step.y, 25);
+      // only touch it when it actually moves. A figure on a wall-top tile sorts
+      // above the wall blocks at that tile; stair walkers keep ground depth.
+      const onWallTile =
+        this.citadelSurface?.isWallTop(Math.floor(step.x), Math.floor(step.y)) ?? false;
+      const depth = getIsoDepth(step.x, step.y, onWallTile ? 30 : 25);
       if (container.depth !== depth) container.setDepth(depth);
 
       const unitDisplay = container.getData('unitDisplay') as
@@ -2238,7 +2373,7 @@ export class WorldScene extends Phaser.Scene {
       if (updateVisualState) {
         // While the sprite is gliding it is walking, whatever the server has
         // already moved on to (arrival, harvest, build).
-        const effectiveState = step.gliding ? 'MOVING' : unit.actionState;
+        const effectiveState = visualActionState(unit.actionState, step.gliding);
         updateVisualState(effectiveState, step.facing, unit.speed);
       }
     });

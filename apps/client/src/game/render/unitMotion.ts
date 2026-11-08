@@ -199,6 +199,17 @@ export function walkTimeScale(speed: number): number {
   return Math.min(MAX_WALK_TIME_SCALE, Math.max(MIN_WALK_TIME_SCALE, speed / WALK_REFERENCE_SPEED));
 }
 
+/**
+ * Action state to draw, given whether the sprite is still gliding this frame.
+ *
+ * A unit keeps travelling after the server has already moved on to the order it
+ * is executing (arrival, harvest, build), so the replicated `actionState` alone
+ * would stop the walk cycle mid-stride. Gliding always wins.
+ */
+export function visualActionState(actionState: string, gliding: boolean): string {
+  return gliding ? 'MOVING' : actionState;
+}
+
 /** What the scene has to draw for one unit on one frame. */
 export interface MotionStep {
   /** Grid position to draw the unit at. */

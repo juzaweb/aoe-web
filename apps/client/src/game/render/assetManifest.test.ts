@@ -163,6 +163,22 @@ describe('house level invariance', () => {
   });
 });
 
+describe('wall art', () => {
+  it('reuses the citadel masonry and aligns its base with the tile', () => {
+    const art = buildingArt('WALL', () => true);
+    expect(art.textureKey).toBe('citadel_wall');
+    expect(art.offsetY).toBe(-60);
+    expect(art.scale).toBe(1);
+    expect(buildingHpBarY('WALL')).toBe(-160);
+  });
+
+  it('falls back to a stone silhouette when the citadel sheet is missing', () => {
+    const noTexture = () => false;
+    expect(buildingArt('WALL', noTexture).textureKey).toBe('b_tower');
+    expect(buildingHpBarY('WALL', 1, noTexture)).toBe(-148);
+  });
+});
+
 describe('tree variants', () => {
   it('is stable and stays inside the shipped range', () => {
     for (let x = 0; x < 40; x++) {

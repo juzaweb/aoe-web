@@ -80,6 +80,7 @@ export const SpectatorOverlay: React.FC<SpectatorOverlayProps> = ({ room, target
           onArmedOrderChange={() => undefined}
           onBoxSelectChange={() => undefined}
           onRoadModeChange={() => undefined}
+          onWallModeChange={() => undefined}
           onUnderAttack={() => undefined}
           gameRef={gameRef}
           sceneRef={sceneRef}

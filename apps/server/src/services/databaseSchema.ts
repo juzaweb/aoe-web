@@ -77,6 +77,7 @@ export const DATABASE_TABLE_STATEMENTS: readonly string[] = [
     "hp" REAL NOT NULL,
     "max_hp" REAL NOT NULL,
     "action_state" TEXT NOT NULL DEFAULT 'IDLE',
+    "on_wall" BOOLEAN NOT NULL DEFAULT 0,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" DATETIME NOT NULL,
     CONSTRAINT "units_owner_id_fkey" FOREIGN KEY ("owner_id") REFERENCES "players" ("id") ON DELETE CASCADE ON UPDATE CASCADE

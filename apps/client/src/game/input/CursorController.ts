@@ -66,6 +66,12 @@ export class CursorController {
       return this.scene.placement.isValid(grid.gridX, grid.gridY, blueprint) ? 'build-ok' : 'build-blocked';
     }
 
+    // A paint brush is asking for a stroke: the mallet for a breach, the
+    // build cursor for a new run of stone.
+    if (this.scene.wallMode) {
+      return this.scene.wallMode === 'erase' ? 'construction' : 'build-ok';
+    }
+
     // CMD-01: an armed attack-move / patrol is waiting for a destination click,
     // so the pointer is picking a point rather than targeting what is under it.
     // MOB-05: the touch bar's contextual arm is the same promise with no mode.

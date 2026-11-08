@@ -101,6 +101,8 @@ const en = {
     roadHint: 'Drag to paint roads. 2 wood per tile. Soldiers move 30% faster on roads.',
     erase: 'Erase',
     eraseHint: 'Drag to erase your roads. 100% wood is refunded if not yet built.',
+    eraseWall: 'Erase wall',
+    eraseWallHint: 'Drag to demolish your stone walls. Unfinished segments refund their cost.',
     lockedAtLevel: 'Requires Town Center Lv {{level}}'
   },
   resources: {
@@ -304,6 +306,10 @@ const en = {
       name: 'Archery Range',
       description: 'Archery range. Trains archers who fight from behind the front line.'
     },
+    SIEGE_WORKSHOP: {
+      name: 'Siege Workshop',
+      description: 'Siege workshop. A fortified yard prepared for siege-engine production.'
+    },
     HOUSE: {
       name: 'House',
       description: 'Provides housing to support up to 5 additional population.'
@@ -315,6 +321,10 @@ const en = {
     TOWER: {
       name: 'Watch Tower',
       description: 'Defensive structure that fires arrows at approaching enemy forces.'
+    },
+    WALL: {
+      name: 'Stone Wall',
+      description: 'A stone wall segment. Blocks movement and can be destroyed to open a breach.'
     },
     LUMBER_CAMP: {
       name: 'Lumber Camp',

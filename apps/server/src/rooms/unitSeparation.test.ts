@@ -218,7 +218,7 @@ describe('UnitSeparation', () => {
     // spread along y or not move rather than cross into the wall.
     const a = units.add('u_1', 30.98, 30.5);
     const b = units.add('u_2', 30.98, 30.5);
-    const wallRight = (x: number) => x !== 30;
+    const wallRight = (_unit: unknown, x: number) => x !== 30;
 
     const separation = new UnitSeparation();
     for (let tick = 0; tick < 40; tick++) separation.separate(units, 0.05, MAP_WIDTH, MAP_HEIGHT, wallRight);
@@ -235,7 +235,7 @@ describe('UnitSeparation', () => {
     units.add('u_2', 30.2, 30.2);
     // The node tile both units already stand on is blocked; they must be allowed
     // to step off it, or they would stay stacked forever.
-    const blocked = (x: number, y: number) => x !== 30 || y !== 30;
+    const blocked = (_unit: unknown, x: number, y: number) => x !== 30 || y !== 30;
 
     run(new UnitSeparation(), units, 1);
     const separation = new UnitSeparation();

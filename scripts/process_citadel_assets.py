@@ -21,11 +21,12 @@ sprite:
 * the floor is 128x64 and repeats on every one of the 15x15 interior tiles, so
   a generated diamond would need to tile exactly. A flat texture squashed into
   the iso diamond and clipped with a joint line is seamless by construction.
-* the wall block is 128x154 and repeats along every wall run. Its two faces and
+* the wall block is 128x184 and repeats along every wall run. Its two faces and
   its cap have fixed screen-space corners (the same ones `CitadelLayer` used to
   draw with Graphics), so the texture is mapped onto those faces, shaded per
   face and stroked at the cap, which keeps the block tiling exactly like the
-  procedural art did.
+  procedural art did. The shipped PNG was raised from 90 to 120 px of wall rise
+  by `scripts/rework_citadel_wall_height.py`, which preserves the cap rows.
 
 Why the gate is assembled rather than generated:
 
@@ -63,9 +64,9 @@ FLOOR_LUM = 134.0
 FLOOR_EDGE_LUM = 104.0
 
 WALL_REL = Path("citadel") / "wall.png"
-WALL_RISE = 90
+WALL_RISE = 120
 WALL_BASE_CENTER_Y = 32 + WALL_RISE
-WALL_SIZE = (TILE_W, WALL_BASE_CENTER_Y + 32)  # 128x154
+WALL_SIZE = (TILE_W, WALL_BASE_CENTER_Y + 32)  # 128x184
 CAP_INSET = 12
 WALL_LEFT_LUM = 105.0
 WALL_RIGHT_LUM = 80.0

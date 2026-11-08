@@ -178,7 +178,7 @@ export class CommandController {
       if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
       // A pending building placement owns the keyboard; stopping units there
       // would fire an invisible command while the player is placing a farm.
-      if (this.scene.buildingToPlace) return;
+      if (this.scene.buildingToPlace || this.scene.wallMode) return;
       if (this.scene.selectedUnitIds.size === 0) return;
 
       event.preventDefault();
@@ -202,7 +202,7 @@ export class CommandController {
     const handleKey = (event: KeyboardEvent) => {
       if (event.repeat) return;
       if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-      if (this.scene.buildingToPlace) return;
+      if (this.scene.buildingToPlace || this.scene.wallMode) return;
       if (this.scene.selectedUnitIds.size > 0) return;
 
       // Phaser re-emits `keydown-<KEY>` for a key that stays down, so a held
@@ -235,7 +235,7 @@ export class CommandController {
     const arm = (mode: OrderMode) => (event: KeyboardEvent) => {
       if (event.repeat) return;
       if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-      if (this.scene.buildingToPlace) return;
+      if (this.scene.buildingToPlace || this.scene.wallMode) return;
       if (this.scene.selectedUnitIds.size === 0) return;
 
       // Phaser re-emits keydown while the key is held down (see bindCancelKey).
@@ -298,6 +298,12 @@ export class CommandController {
       guardKey((event: KeyboardEvent) => {
         if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return false;
         if (this.scene.terrainLayout.kind !== 'kingdom') return false;
+        if (this.scene.wallMode) {
+          event.preventDefault();
+          this.scene.cancelWallMode();
+          this.scene.onWallModeChange?.(null);
+          return true;
+        }
         if (this.scene.buildingToPlace) {
           event.preventDefault();
           this.scene.cancelBuildingPlacement();
@@ -336,8 +342,16 @@ export class CommandController {
       const now = performance.now();
       if (now - this.lastEscapeAt < CANCEL_KEY_DEBOUNCE_MS) return;
 
-      // The road tool is the most recent mode, so it backs out before the
-      // placement ghost and the selection under it.
+      // The wall brush and the road tool are the most recent modes, so they back
+      // out before the placement ghost and the selection under them.
+      if (this.scene.wallMode) {
+        this.lastEscapeAt = now;
+        event.preventDefault();
+        this.scene.cancelWallMode();
+        this.scene.onWallModeChange?.(null);
+        return;
+      }
+
       if (this.scene.roadMode) {
         this.lastEscapeAt = now;
         event.preventDefault();
@@ -382,7 +396,7 @@ export class CommandController {
       if (event.metaKey || event.shiftKey || event.altKey) return;
       // Placement mode owns the keyboard; stealing the selection mid-placement
       // would drop the building cursor without telling the player why.
-      if (this.scene.buildingToPlace) return;
+      if (this.scene.buildingToPlace || this.scene.wallMode) return;
 
       event.preventDefault();
       this.cycleToIdleUnit(event.ctrlKey ? 'military' : 'villager');
@@ -487,7 +501,7 @@ export class CommandController {
       'keydown-D',
       guardKey((event: KeyboardEvent) => {
         if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return false;
-        if (this.scene.buildingToPlace) return false;
+        if (this.scene.buildingToPlace || this.scene.wallMode) return false;
         if (this.scene.selectedUnitIds.size === 0) return false;
 
         event.preventDefault();
@@ -597,7 +611,7 @@ export class CommandController {
   armOrder(mode: OrderMode) {
     const scene = this.scene;
     if (scene.readOnly) return;
-    if (scene.buildingToPlace) return;
+    if (scene.buildingToPlace || scene.wallMode) return;
     if (scene.selectedUnitIds.size === 0) return;
     if (this.pendingOrder === mode) {
       this.cancelPendingOrder();
@@ -615,7 +629,7 @@ export class CommandController {
   armContextualOrder() {
     const scene = this.scene;
     if (scene.readOnly) return;
-    if (scene.buildingToPlace) return;
+    if (scene.buildingToPlace || scene.wallMode) return;
     const hasUnits = scene.selectedUnitIds.size > 0;
     const hasBuilding = scene.selectedBuildingId !== null;
     if (!hasUnits && !hasBuilding) return;
@@ -689,7 +703,7 @@ export class CommandController {
     const scene = this.scene;
     if (scene.readOnly) return;
     if (!scene.room || scene.selectedUnitIds.size === 0) return;
-    if (scene.buildingToPlace) return;
+    if (scene.buildingToPlace || scene.wallMode) return;
 
     const worldPoint = pointerWorldPoint(scene.cameras.main, pointer);
     const grid = pointerWorldGrid(scene.cameras.main, pointer);
@@ -830,7 +844,7 @@ export class CommandController {
     const scene = this.scene;
     if (scene.readOnly) return;
     if (!scene.room) return;
-    if (scene.buildingToPlace) return;
+    if (scene.buildingToPlace || scene.wallMode) return;
     if (scene.selectedUnitIds.size === 0) return;
 
     const targetGridX = Math.max(0, Math.min(scene.mapWidth - 1, Math.round(gridX)));
@@ -948,7 +962,7 @@ export class CommandController {
     const scene = this.scene;
     this.waypointGraphics.clear();
     if (!scene.room || !this.shiftKey?.isDown) return;
-    if (scene.buildingToPlace || scene.selectedUnitIds.size === 0) return;
+    if (scene.buildingToPlace || scene.wallMode || scene.selectedUnitIds.size === 0) return;
 
     const worldPoint = pointerWorldPoint(scene.cameras.main, scene.input.activePointer);
     const line = this.waypointGraphics;

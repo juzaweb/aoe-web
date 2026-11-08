@@ -46,10 +46,14 @@ chien-quoc/
   - **Barracks:** Infantry garrison. Trains Spearmen.
   - **Stable:** Cavalry stable. Trains Cavalry.
   - **Archery Range:** Ranged garrison. Trains Archers.
+  - **Siege Workshop:** Siege-engine workshop (Catapult production is not wired yet).
   - **House:** Increases population capacity by +5.
   - **Farm:** Renewable food field holding 600 food at level 1 (+10%/level). Villagers harvest it in
     place and re-sow it for 60 wood once it runs dry.
   - **Watch Tower:** Defensive outpost.
+  - **Stone Wall:** Drag-paint a line of 1×1 stone segments. Walls block movement,
+    can be demolished by their owner, and enemy troops can break a segment to open
+    a breach.
 - **RTS Unit Controls:**
   - **Drag Box Selection:** Click and drag left mouse button to group-select units.
   - **Right Click Command:**
@@ -74,11 +78,13 @@ chien-quoc/
 | **Build House** | `E` |
 | **Build Farm** | `R` |
 | **Build Watch Tower** | `T` |
+| **Build Stone Wall (drag)** | `G` |
 | **Build Lumber Camp** | `Y` |
 | **Build Mill** | `U` |
 | **Build Mining Camp** | `I` |
 | **Build Stable** | `C` |
 | **Build Archery Range** | `B` |
+| **Build Siege Workshop** | `N` |
 
 ---
 
@@ -136,6 +142,8 @@ Third-party art is used under its own license.
   *Western-European Castle* by **feudalwars**, **CC0 1.0**.
 - Stable and archery range buildings: project-original art generated locally with
   ComfyUI (`scripts/generate_buildings_assets.py`); not third-party.
+- Siege workshop: project-original art generated locally with ComfyUI
+  (`scripts/generate_siege_workshop_asset.py`); not third-party.
 
 The CC-BY assets are modified (cropped, scaled, luminance-matched) as described in
 [CREDITS.md](CREDITS.md). All of them are rebuilt by `scripts/assets/build.py`

@@ -33,8 +33,13 @@ const SEPARATION_PUSH_SPEED = 2;
  */
 const PARKED_TARGET_RADIUS = 0.2;
 
-/** Tells the pass which tiles a unit may not be pushed onto. */
-export type BlockedTileTest = (x: number, y: number) => boolean;
+/**
+ * Tells the pass which tiles a unit may not be pushed onto.
+ *
+ * The unit is passed because an on-wall figure uses the wall-top layer, where
+ * almost every tile is blocked, while a ground figure uses the courtyard layer.
+ */
+export type BlockedTileTest = (unit: UnitState, x: number, y: number) => boolean;
 
 /** Anything that can enumerate the room's units; `MapSchema` satisfies it. */
 export interface UnitSource {
@@ -295,7 +300,10 @@ export class UnitSeparation {
       // A shove must never push a figure into a wall. A unit already standing on a
       // blocked tile — a villager working the node tile itself — is exempt, or two
       // harvesters would stay stacked forever on ground they cannot leave.
-      if (isBlocked(Math.floor(x), Math.floor(y)) && !isBlocked(Math.floor(unit.x), Math.floor(unit.y))) {
+      if (
+        isBlocked(unit, Math.floor(x), Math.floor(y)) &&
+        !isBlocked(unit, Math.floor(unit.x), Math.floor(unit.y))
+      ) {
         continue;
       }
 

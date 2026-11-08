@@ -104,6 +104,8 @@ const vi = {
     roadHint: 'Kéo để vẽ đường. 2 gỗ mỗi ô. Lính đi nhanh hơn 30% trên đường.',
     erase: 'Xoá',
     eraseHint: 'Kéo để xoá đường của bạn. Hoàn lại 100% gỗ nếu chưa xây.',
+    eraseWall: 'Phá tường',
+    eraseWallHint: 'Kéo để dỡ tường của bạn. Đoạn chưa xây xong sẽ được hoàn tài nguyên.',
     lockedAtLevel: 'Cần Nhà chính Lv {{level}}'
   },
   resources: {
@@ -307,6 +309,10 @@ const vi = {
       name: 'Trường bắn',
       description: 'Trường bắn cung. Huấn luyện cung thủ chiến đấu từ phía sau chiến tuyến.'
     },
+    SIEGE_WORKSHOP: {
+      name: 'Xưởng Công Thành',
+      description: 'Xưởng công thành. Khu sân kiên cố được chuẩn bị để chế tạo máy công thành.'
+    },
     HOUSE: {
       name: 'Nhà ở',
       description: 'Cung cấp chỗ ở cho thêm tối đa 5 dân số.'
@@ -318,6 +324,10 @@ const vi = {
     TOWER: {
       name: 'Tháp canh',
       description: 'Công trình phòng thủ bắn tên vào quân địch đang tiến đến.'
+    },
+    WALL: {
+      name: 'Tường thành',
+      description: 'Một đoạn tường đá. Chắn đường đi và có thể bị phá để mở lối.'
     },
     LUMBER_CAMP: {
       name: 'Trại gỗ',

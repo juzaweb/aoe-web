@@ -13,6 +13,7 @@ import {
   UNIT_BLUEPRINTS,
   INITIAL_POPULATION_CAP,
   citadelTownCenterFor,
+  citadelLayoutFor,
   getBuildingLevelStats,
   getEffectiveBuildingMaxHp,
   getEffectiveTrainTimeMs,
@@ -33,7 +34,11 @@ import { STARTER_RESOURCE_PREFIX } from './resources.js';
 import { isWithinBuildRange } from './construction.js';
 import { generateWorldResources } from './worldGeneration.js';
 import { clearUnitResearch, restoreBuildingUpgrade } from './upgrades.js';
-import { citadelWallTileSet } from './citadel.js';
+import {
+  citadelWallTileSet,
+  ensureCitadel,
+  isInsideCitadelInterior
+} from './citadel.js';
 import { DatabaseService } from '../services/DatabaseService.js';
 import { WorldState } from '../schema/WorldState.js';
 import { PlayerState } from '../schema/PlayerState.js';
@@ -2774,7 +2779,7 @@ describe('kingdom map layout (MAPS-V2)', () => {
     return room;
   }
 
-  it('routes a chasing soldier around the citadel wall instead of through it', () => {
+  it('keeps a chasing soldier outside the sealed citadel wall', () => {
     const room = createKingdomRoom();
     addPlayer(room, 'player-a');
     addPlayer(room, 'raider');
@@ -2817,7 +2822,8 @@ describe('kingdom map layout (MAPS-V2)', () => {
     }
 
     expect([...crossed]).toEqual([]);
-    expect(room.state.units.has(defender.id)).toBe(false);
+    // The courtyard is sealed: a raider can no longer chase a defender inside.
+    expect(room.state.units.has(defender.id)).toBe(true);
   });
 
   it('never lets a unit step through a citadel wall without a route', () => {
@@ -2846,6 +2852,243 @@ describe('kingdom map layout (MAPS-V2)', () => {
     for (let i = 0; i < 20; i++) internals(room).update(100);
 
     expect(Math.floor(unit.x)).toBeLessThan(originX + 25);
+  });
+
+  it('paths a unit out of and back into the citadel through the gate', () => {
+    const room = createKingdomRoom();
+    addPlayer(room, 'player-a');
+    internals(room).spawnInitialBase('player-a');
+    // `onWorldReady` adds the virtual `CITADEL` entity in a live room. Its
+    // footprint spans the whole compound, gate included, so stamping it into
+    // the blocked grid used to seal the courtyard and leave every unit inside
+    // without a route out.
+    ensureCitadel(room.state, 'player-a');
+
+    const townCenter = Array.from(room.state.buildings.values()).find(
+      (b: BuildingState) => b.type === 'TOWN_CENTER'
+    )!;
+    const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+
+    // Start on the open floor north of the gate row, so a straight line east
+    // would hit the wall: only a real route through the gate can reach either
+    // destination.
+    const startX = townCenter.gridX + townCenter.sizeX + 2.5;
+    const startY = townCenter.gridY - 3.5;
+    const unit = addUnit(room, {
+      id: 'u-out',
+      ownerId: 'player-a',
+      type: 'VILLAGER',
+      x: startX,
+      y: startY
+    });
+
+    const walls = citadelWallTileSet(room.state);
+    const crossed = new Set<string>();
+
+    const walkTo = (targetX: number, targetY: number, arrived: () => boolean) => {
+      internals(room).commands.handleMoveUnits(createClient('player-a'), {
+        unitIds: ['u-out'],
+        targetGridX: targetX,
+        targetGridY: targetY
+      });
+      for (let i = 0; i < 600; i++) {
+        internals(room).update(100);
+        const tile = `${Math.floor(unit.x)},${Math.floor(unit.y)}`;
+        if (walls.has(tile)) crossed.add(tile);
+        if (arrived()) break;
+      }
+    };
+
+    const outsideX = layout.originX + layout.sizeX + 8;
+    walkTo(outsideX, startY, () => unit.x >= outsideX - 0.5);
+    expect(unit.x).toBeGreaterThanOrEqual(outsideX - 0.5);
+
+    walkTo(Math.floor(startX), Math.floor(startY), () => Math.hypot(unit.x - startX, unit.y - startY) < 1);
+    expect(Math.hypot(unit.x - startX, unit.y - startY)).toBeLessThan(1);
+
+    // Neither leg may clip a wall; both must go through the gate.
+    expect([...crossed]).toEqual([]);
+  });
+
+  it('climbs a stair, walks the wall top, and descends through the same flight', () => {
+    const room = createKingdomRoom();
+    addPlayer(room, 'player-a');
+    internals(room).spawnInitialBase('player-a');
+
+    const townCenter = Array.from(room.state.buildings.values()).find(
+      (b: BuildingState) => b.type === 'TOWN_CENTER'
+    )!;
+    const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+    const stair = layout.stairs[0];
+
+    const unit = addUnit(room, {
+      id: 'u-climb',
+      ownerId: 'player-a',
+      type: 'VILLAGER',
+      x: stair.bottom.gridX - 2 + 0.5,
+      y: stair.bottom.gridY + 0.5
+    });
+
+    internals(room).commands.handleMoveUnits(createClient('player-a'), {
+      unitIds: [unit.id],
+      targetGridX: stair.wall.gridX,
+      targetGridY: stair.wall.gridY
+    });
+    simulate(room, 8000);
+
+    expect(unit.onWall).toBe(true);
+    expect(Math.floor(unit.x)).toBe(stair.wall.gridX);
+    expect(Math.floor(unit.y)).toBe(stair.wall.gridY);
+
+    const gateY = layout.gates[Math.floor(layout.gates.length / 2)].gridY;
+    internals(room).commands.handleMoveUnits(createClient('player-a'), {
+      unitIds: [unit.id],
+      targetGridX: layout.originX + layout.sizeX + 3,
+      targetGridY: gateY
+    });
+    simulate(room, 10000);
+
+    expect(unit.onWall).toBe(false);
+    expect(citadelWallTileSet(room.state).has(`${Math.floor(unit.x)},${Math.floor(unit.y)}`)).toBe(
+      false
+    );
+  });
+
+  it('keeps a raider from walking through the gate into the courtyard', () => {
+    const room = createKingdomRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'raider');
+    internals(room).spawnInitialBase('player-a');
+
+    const townCenter = Array.from(room.state.buildings.values()).find(
+      (b: BuildingState) => b.type === 'TOWN_CENTER'
+    )!;
+    const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+    const gate = layout.gates[Math.floor(layout.gates.length / 2)];
+
+    const raider = addUnit(room, {
+      id: 'u-raider',
+      ownerId: 'raider',
+      type: 'SPEARMAN',
+      x: layout.originX + layout.sizeX + 3 + 0.5,
+      y: gate.gridY + 0.5
+    });
+
+    internals(room).commands.handleMoveUnits(createClient('raider'), {
+      unitIds: [raider.id],
+      targetGridX: gate.gridX,
+      targetGridY: gate.gridY
+    });
+    simulate(room, 5000);
+
+    expect(isInsideCitadelInterior(room.state, raider.x, raider.y)).toBe(false);
+    const tile = `${Math.floor(raider.x)},${Math.floor(raider.y)}`;
+    expect(layout.gates.some((g) => `${g.gridX},${g.gridY}` === tile)).toBe(false);
+  });
+
+  it('gives a wall archer the extra range and keeps ground melee off the wall', () => {
+    const room = createKingdomRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'raider');
+    internals(room).spawnInitialBase('player-a');
+
+    const townCenter = Array.from(room.state.buildings.values()).find(
+      (b: BuildingState) => b.type === 'TOWN_CENTER'
+    )!;
+    const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+    const wall = layout.stairs[1].wall;
+
+    const archer = addUnit(room, {
+      id: 'u-archer',
+      ownerId: 'player-a',
+      type: 'ARCHER',
+      x: wall.gridX + 0.5,
+      y: wall.gridY + 0.5
+    });
+    archer.onWall = true;
+
+    // 6 tiles away: outside a ground archer's 5.5 effective reach, inside the
+    // wall archer's 7.0.
+    const target = addUnit(room, {
+      id: 'u-target',
+      ownerId: 'raider',
+      type: 'SPEARMAN',
+      x: wall.gridX + 6.5,
+      y: wall.gridY + 0.5
+    });
+
+    internals(room).commands.handleAttackTarget(createClient('player-a'), {
+      unitIds: [archer.id],
+      targetEntityId: target.id,
+      targetType: 'unit'
+    });
+    simulate(room, 2500);
+
+    expect(target.hp).toBeLessThan(target.maxHp);
+
+    // A ground melee unit cannot reach a defender standing on the wall.
+    const wallDefender = addUnit(room, {
+      id: 'u-wall-spear',
+      ownerId: 'player-a',
+      type: 'SPEARMAN',
+      x: wall.gridX + 0.5,
+      y: wall.gridY + 0.5
+    });
+    wallDefender.onWall = true;
+    const melee = addUnit(room, {
+      id: 'u-ground-spear',
+      ownerId: 'raider',
+      type: 'SPEARMAN',
+      x: wall.gridX + 1.5,
+      y: wall.gridY + 0.5
+    });
+
+    internals(room).commands.handleAttackTarget(createClient('raider'), {
+      unitIds: [melee.id],
+      targetEntityId: wallDefender.id,
+      targetType: 'unit'
+    });
+    simulate(room, 2500);
+
+    expect(wallDefender.hp).toBe(wallDefender.maxHp);
+  });
+
+  it('stops a courtyard-floor archer from firing through the wall', () => {
+    const room = createKingdomRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'raider');
+    internals(room).spawnInitialBase('player-a');
+
+    const townCenter = Array.from(room.state.buildings.values()).find(
+      (b: BuildingState) => b.type === 'TOWN_CENTER'
+    )!;
+    const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+    const gate = layout.gates[Math.floor(layout.gates.length / 2)];
+
+    const archer = addUnit(room, {
+      id: 'u-inside-archer',
+      ownerId: 'player-a',
+      type: 'ARCHER',
+      x: layout.innerMaxX + 0.5,
+      y: gate.gridY + 0.5
+    });
+    const target = addUnit(room, {
+      id: 'u-outside-target',
+      ownerId: 'raider',
+      type: 'SPEARMAN',
+      x: layout.originX + layout.sizeX + 3 + 0.5,
+      y: gate.gridY + 0.5
+    });
+
+    internals(room).commands.handleAttackTarget(createClient('player-a'), {
+      unitIds: [archer.id],
+      targetEntityId: target.id,
+      targetType: 'unit'
+    });
+    simulate(room, 2500);
+
+    expect(archer.actionState).not.toBe('ATTACKING');
+    expect(target.hp).toBe(target.maxHp);
   });
 
   it('spawns the Town Center inside the centred citadel', () => {

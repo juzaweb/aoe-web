@@ -236,6 +236,23 @@ export const MAX_ROAD_TILES_PER_MESSAGE = 200;
  */
 export const MAX_ROADS_PER_ZONE = 4000;
 
+// ---------------------------------------------------------------------------
+// Player-built walls
+// ---------------------------------------------------------------------------
+
+/**
+ * Upper bound on wall tiles one PLACE_WALL/REMOVE_WALL message may carry.
+ * A wall is a building (one row per tile), so the cap keeps a hostile message
+ * from forcing unbounded per-tick work and one drag is still useful.
+ */
+export const MAX_WALL_TILES_PER_MESSAGE = 200;
+
+/**
+ * Upper bound on wall segments one kingdom may hold. Each tile is a persisted
+ * building row, so a wall brush needs the same hard cap a road network has.
+ */
+export const MAX_WALLS_PER_ZONE = 3000;
+
 /**
  * Stable id of the road tile at `gx, gy`.
  *
@@ -410,6 +427,27 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     dropOffs: [],
     description: 'Archery range. Trains archers who fight from behind the front line.'
   },
+  // Siege workshop: the building half of the catapult branch. It is placeable
+  // and upgradable now; `trainableUnits` stays empty until the Catapult unit
+  // lands, so it never advertises a roster the server cannot produce.
+  SIEGE_WORKSHOP: {
+    type: 'SIEGE_WORKSHOP',
+    name: 'Siege Workshop',
+    sizeX: 3,
+    sizeY: 3,
+    cost: { wood: 250, food: 0, gold: 50, stone: 100 },
+    buildTimeMs: 15000,
+    maxHp: 1400,
+    populationProvided: 0,
+    trainableUnits: [],
+    attackPower: 0,
+    attackRange: 0,
+    attackCooldownMs: 0,
+    dropOffs: [],
+    requiredTownCenterLevel: 3,
+    description:
+      'Siege workshop. A fortified yard prepared for siege-engine production.'
+  },
   HOUSE: {
     type: 'HOUSE',
     name: 'House',
@@ -469,6 +507,28 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     attackCooldownMs: 2000,
     dropOffs: [],
     description: 'Defensive structure that fires arrows at approaching enemy forces.'
+  },
+  // WALL: a player-painted line of stone segments. Each tile is its own 1x1
+  // building, so it blocks movement and can be destroyed one segment at a time.
+  // It has no levels and no population; its job is to buy time and shape the
+  // fight. The art reuses the citadel wall so a player wall reads as the same
+  // masonry as the capital.
+  WALL: {
+    type: 'WALL',
+    name: 'Stone Wall',
+    sizeX: 1,
+    sizeY: 1,
+    cost: { wood: 4, food: 0, gold: 0, stone: 6 },
+    buildTimeMs: 2500,
+    maxHp: 500,
+    populationProvided: 0,
+    trainableUnits: [],
+    attackPower: 0,
+    attackRange: 0,
+    attackCooldownMs: 0,
+    dropOffs: [],
+    description:
+      'A stone wall segment. Blocks movement and can be destroyed to open a breach.'
   },
   // ECO: the three drop-off buildings. All three cost the same 100 wood and take
   // the same 6s / 600 HP, so the choice between them is purely positional — where
@@ -664,6 +724,14 @@ export const UNIT_BLUEPRINTS: Record<UnitType, UnitBlueprint> = {
  * it, which is what keeps Barracks/Stable/Archery Range from becoming three
  * copies of the same panel.
  */
+/**
+ * WALL: extra attack range a ranged unit gets while standing on the citadel
+ * wall top. Melee (attackRange below `RANGED_MIN_RANGE`) never crosses
+ * elevations, so it gets no equivalent.
+ */
+export const WALL_RANGE_BONUS = 1.5;
+export const RANGED_MIN_RANGE = 2;
+
 export function buildingTypeForUnit(unitType: string): BuildingType | null {
   for (const blueprint of Object.values(BUILDING_BLUEPRINTS) as BuildingBlueprint[]) {
     if (blueprint.trainableUnits.includes(unitType as UnitType)) return blueprint.type;

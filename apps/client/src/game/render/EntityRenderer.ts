@@ -120,16 +120,17 @@ export class EntityRenderer {
 
     const art = unitArt(unitType);
     const screenPos = gridToScreen(corpse.x, corpse.y);
+    const lift = scene.citadelLiftAt(corpse.x, corpse.y);
     const sprite = scene.add.sprite(
       screenPos.x,
-      screenPos.y + art.offsetY,
+      screenPos.y + art.offsetY - lift,
       texture,
       0
     );
     sprite.setScale(art.scale);
     // Same depth rule as a living unit, one step lower so a body lying under a
     // unit that survived the fight is drawn beneath it.
-    sprite.setDepth(getIsoDepth(corpse.x, corpse.y, 24));
+    sprite.setDepth(getIsoDepth(corpse.x, corpse.y, corpse.onWall ? 29 : 24));
 
     const clip = unitActionKey(unitType, 'death', DEFAULT_DIRECTION_INDEX);
     if (scene.anims.exists(clip)) {
@@ -307,7 +308,14 @@ export class EntityRenderer {
     container.add(levelBadge);
     container.setData('levelBadge', levelBadge);
 
-    container.setDepth(getIsoDepth(building.gridX + building.sizeX, building.gridY + building.sizeY, 15));
+    // A wall tile shares the citadel layer's depth key, so a run of player-built
+    // segments sorts exactly like the capital's ring and never draws across a
+    // unit standing in front of it.
+    const depth =
+      building.type === 'WALL'
+        ? getIsoDepth(building.gridX, building.gridY, 12)
+        : getIsoDepth(building.gridX + building.sizeX, building.gridY + building.sizeY, 15);
+    container.setDepth(depth);
     container.setData('entityId', id);
     container.setData('entityType', 'building');
     container.setData('buildingType', building.type);
@@ -560,7 +568,10 @@ export class EntityRenderer {
   createUnitSprite(id: string, unit: any, cb?: any) {
     const scene = this.scene;
     const screenPos = gridToScreen(unit.x, unit.y);
-    const container = scene.add.container(screenPos.x, screenPos.y);
+    const container = scene.add.container(
+      screenPos.x,
+      screenPos.y - scene.citadelLiftAt(unit.x, unit.y)
+    );
 
     const unitType = (unit.type || 'VILLAGER') as string;
     const lowerType = unitType.toLowerCase();
@@ -638,7 +649,7 @@ export class EntityRenderer {
     container.add(hpBar);
     container.setData('hpBar', hpBar);
 
-    container.setDepth(getIsoDepth(unit.x, unit.y, 25));
+    container.setDepth(getIsoDepth(unit.x, unit.y, unit.onWall ? 30 : 25));
     container.setData('entityId', id);
     container.setData('entityType', 'unit');
 
@@ -749,6 +760,12 @@ export class EntityRenderer {
 
     // Expose the state-driven animation helper so update() never has to guess
     // which animation key belongs to this unit type.
+    //
+    // The scene's per-frame pass is its ONLY caller: it also knows whether the
+    // sprite is still gliding, so it can keep the walk cycle running while the
+    // server has already switched to the order being executed (harvest, build).
+    // Never call this from the replicated `onChange` callback below — a patch
+    // carrying a new x/y arrives every tick and would cut the walk short.
     container.setData('updateVisualState', updateVisualState);
     container.setData('hasDirectionalSheet', hasDirectionalSheet);
     container.setData('facingDirection', DEFAULT_DIRECTION_INDEX);
@@ -763,8 +780,11 @@ export class EntityRenderer {
         // ATK-03: detect hp loss before repainting the bar.
         scene.recordEntityHp(id, unit.ownerId, unit.hp, unit.x, unit.y);
         this.updateUnitBar(container, unit.hp, unit.maxHp, isCavalry);
-        const facing = (container.getData('facingDirection') as number | undefined) ?? DEFAULT_DIRECTION_INDEX;
-        updateVisualState(unit.actionState, facing, unit.speed);
+        // Animation is deliberately not touched here: this callback fires on
+        // every replicated field change, including x/y each tick, and the
+        // server keeps a villager on HARVESTING while it is still walking to
+        // the node. The per-frame clip in `updateUnitSprites` owns that
+        // decision (see the note where `updateVisualState` is exposed).
       });
     }
   }

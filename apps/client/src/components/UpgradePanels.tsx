@@ -6,6 +6,7 @@ import {
   Resources,
   UNIT_BLUEPRINTS,
   UnitType,
+  canTrainUnitsAt,
   getBuildingMaxLevel,
   getBuildingUpgradeCost,
   getBuildingUpgradeTimeMs,
@@ -137,8 +138,9 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
 
   // Phase 26: the same panel previews what one more level does for a trainer or
   // a drop-off camp, so a long upgrade is not bought blind.
-  const isTrainerBuilding =
-    type === 'BARRACKS' || type === 'STABLE' || type === 'ARCHERY_RANGE';
+  // The Town Center is excluded: its own aura section already explains the
+  // capital's bonuses, so the trainer preview only covers the unit buildings.
+  const isTrainerBuilding = type !== 'TOWN_CENTER' && canTrainUnitsAt(type);
   const isDropOffCamp =
     type !== 'TOWN_CENTER' && (BUILDING_BLUEPRINTS[type]?.dropOffs.length ?? 0) > 0;
   const trainerSpeedNow = Math.round((1 - trainerSpeedMultiplier(level)) * 100);

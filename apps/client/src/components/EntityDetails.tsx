@@ -552,6 +552,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
           the slot counter are empire-wide, so they ride along in the same data. */}
       {buildingIsOwnedAndFinished &&
         entity.subType !== 'PORTAL' &&
+        entity.subType !== 'WALL' &&
         entity.level !== undefined && (
         <BuildingUpgradePanel
           buildingId={entity.id}
