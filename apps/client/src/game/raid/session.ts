@@ -9,6 +9,7 @@
 export interface RaidSession {
   raidId: string;
   defenderId: string;
+  startedAt?: number;
 }
 
 const RAID_SESSION_PREFIX = 'cq_raid';
@@ -23,7 +24,7 @@ export function getStoredRaid(userId: string): RaidSession | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<RaidSession>;
     if (typeof parsed.raidId !== 'string' || typeof parsed.defenderId !== 'string') return null;
-    return { raidId: parsed.raidId, defenderId: parsed.defenderId };
+    return { raidId: parsed.raidId, defenderId: parsed.defenderId, startedAt: typeof parsed.startedAt === 'number' ? parsed.startedAt : undefined };
   } catch {
     return null;
   }

@@ -363,6 +363,7 @@ export interface RaidStartResponse {
   raidId: string;
   defenderId: string;
   roomName: 'kingdom_room';
+  startedAt?: number;
 }
 
 /** Sent to both sides when a raid closes; the attacker leaves the defender's room. */

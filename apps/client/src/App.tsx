@@ -933,6 +933,7 @@ export const App: React.FC = () => {
           playerColor={playerColor}
           zoneLabel={raidSession ? t('app.zoneRaid') : t('app.zoneKingdom')}
           inRaid={raidSession !== null}
+          raidStartedAt={raidSession?.startedAt}
           onOpenWorldMap={handleToggleWorldMap}
           onRetreat={handleRetreat}
           wood={resources.wood}
