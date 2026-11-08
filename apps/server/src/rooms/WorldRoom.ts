@@ -46,6 +46,7 @@ import {
   getEffectiveUnitMaxHp,
   getUnitLevelStats,
   getPlayerUnitLevel,
+  CITADEL_AUTO_REPAIR_DURATION_MS,
   citadelLayoutFor,
   citadelTownCenterFor,
   mapSizeForZone
@@ -65,7 +66,7 @@ import { ownerIdOf, RoomAuth } from './identity.js';
 import { accountSaves, accountSessions } from './AccountSessions.js';
 import { zonePersistence } from './ZonePersistence.js';
 import { arrivalPoint, ensurePortalFor, findOwnPortal } from './portals.js';
-import { spawnMissingCitadelBuildings } from './citadel.js';
+import { findNearestCitadelWallOrGate, hasCitadel, isCitadelBuilding, spawnMissingCitadelBuildings } from './citadel.js';
 import { terrainOf } from './mapLayout.js';
 import { RoadGrid } from './roads.js';
 import { RoadState } from '../schema/RoadState.js';
@@ -720,6 +721,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         this.buildingLevelsByOwner.set(p.id, levels);
       }
 
+      const hasKingdomCitadel = hasCitadel(this.state);
+      const tcRow = hasKingdomCitadel ? p.buildings.find((row) => row.type === 'TOWN_CENTER') : null;
+      const citadelLayout = tcRow ? citadelLayoutFor(tcRow.gridX, tcRow.gridY) : null;
+
       for (const b of p.buildings) {
         if (!this.fitsMap(b.gridX, b.gridY, b.sizeX, b.sizeY)) {
           dropped++;
@@ -743,7 +748,22 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           townCenterLevel
         );
         building.maxHp = effectiveMaxHp;
-        building.hp = Math.min(b.hp, effectiveMaxHp);
+        let restoredHp = Math.min(b.hp, effectiveMaxHp);
+        const isCitadelSlotOrCompound =
+          b.type === 'CITADEL' ||
+          Boolean(citadelLayout &&
+          citadelLayout.slots.some(
+            (slot) =>
+              slot.type === b.type &&
+              slot.gridX === Math.round(b.gridX) &&
+              slot.gridY === Math.round(b.gridY)
+          ));
+        if (isCitadelSlotOrCompound && b.isConstructed && restoredHp < effectiveMaxHp && (b as any).updatedAt) {
+          const elapsedMs = Math.max(0, Date.now() - new Date((b as any).updatedAt).getTime());
+          const offlineHp = (effectiveMaxHp * elapsedMs) / CITADEL_AUTO_REPAIR_DURATION_MS;
+          restoredHp = Math.min(effectiveMaxHp, restoredHp + offlineHp);
+        }
+        building.hp = restoredHp;
         building.isConstructed = b.isConstructed;
         building.constructionProgress = b.constructionProgress;
 
@@ -1787,16 +1807,30 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     const building = this.state.buildings.get(unit.targetEntityId);
 
-    // Cancelled, destroyed or finished: hand the villager the next foundation
-    // queued by a shift-placement chain; otherwise fall back to a queued
-    // waypoint (the site may have been a detour) or go idle.
-    if (!building || building.isConstructed || building.ownerId !== unit.ownerId) {
+    const isRepair = this.commands.isRepairing(unit);
+    const finished = isRepair
+      ? building && building.hp >= building.maxHp
+      : building && building.isConstructed;
+
+    // Cancelled, destroyed or order complete (finished construction or full health repair):
+    // hand the villager the next foundation queued by a shift-placement chain;
+    // otherwise fall back to a queued waypoint (the site may have been a detour) or go idle.
+    if (!building || finished || building.ownerId !== unit.ownerId) {
+      this.commands.clearRepairOrder(unit);
       if (this.commands.advanceBuildQueue(unit)) return;
       this.movement.resumeQueuedWaypoint(unit);
       return;
     }
 
-    if (!isWithinBuildRange(unit, building)) return;
+    const inRange =
+      building.type === 'CITADEL'
+        ? Math.hypot(
+            findNearestCitadelWallOrGate(this.state, building, unit.x, unit.y).x - unit.x,
+            findNearestCitadelWallOrGate(this.state, building, unit.x, unit.y).y - unit.y
+          ) <= 1.5
+        : isWithinBuildRange(unit, building);
+
+    if (!inRange) return;
 
     if (!building.builderUnitIds.includes(unit.id)) {
       building.builderUnitIds.push(unit.id);
@@ -1886,6 +1920,25 @@ export class WorldRoom extends Room<{ state: WorldState }> {
             building.level
           );
           this.updatePlayerPopulation(building.ownerId);
+        }
+      } else if (building.hp < building.maxHp) {
+        // 1. Passive 72h auto-recovery for Citadel buildings
+        if (isCitadelBuilding(this.state, building)) {
+          const passiveGain = (building.maxHp * deltaTime) / CITADEL_AUTO_REPAIR_DURATION_MS;
+          building.hp = Math.min(building.maxHp, building.hp + passiveGain);
+        }
+
+        // 2. Villager active repair
+        const repairPower = syncBuilders(building, this.state.units);
+        const buildTimeMs = BUILDING_BLUEPRINTS[building.type as BuildingType]?.buildTimeMs ?? 20000;
+        if (repairPower > 0 && buildTimeMs > 0) {
+          const repairGain = (building.maxHp * deltaTime * repairPower) / buildTimeMs;
+          building.hp = Math.min(building.maxHp, building.hp + repairGain);
+        }
+
+        if (building.hp >= building.maxHp) {
+          building.hp = building.maxHp;
+          building.builderUnitIds.clear();
         }
       }
 
@@ -2077,8 +2130,14 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           } else if (unit.targetEntityType === 'building') {
             const targetBuilding = this.state.buildings.get(unit.targetEntityId);
             if (targetBuilding) {
-              targetX = targetBuilding.gridX + targetBuilding.sizeX / 2;
-              targetY = targetBuilding.gridY + targetBuilding.sizeY / 2;
+              if (targetBuilding.type === 'CITADEL') {
+                const nearest = findNearestCitadelWallOrGate(this.state, targetBuilding, unit.x, unit.y);
+                targetX = nearest.x;
+                targetY = nearest.y;
+              } else {
+                targetX = targetBuilding.gridX + targetBuilding.sizeX / 2;
+                targetY = targetBuilding.gridY + targetBuilding.sizeY / 2;
+              }
             }
           }
           destinationX = targetX;

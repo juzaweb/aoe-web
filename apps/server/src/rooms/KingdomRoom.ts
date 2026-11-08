@@ -15,7 +15,7 @@ import { RaidService } from '../services/RaidService.js';
 import { BuildingState } from '../schema/BuildingState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { arrivalPoint, ensurePortalFor, findOwnPortal } from './portals.js';
-import { ensureCitadel, restoreCitadel } from './citadel.js';
+import { ensureCitadel, ensureCitadelEntity, restoreCitadel } from './citadel.js';
 import { claimSpectatorWatch } from './spectatorWatch.js';
 import { WorldRoom } from './WorldRoom.js';
 import { normalizeLocale, render, type Locale } from '../i18n/index.js';
@@ -324,8 +324,13 @@ export class KingdomRoom extends WorldRoom {
   /** Keeps the world-map level cache in step with a Town Center upgrade. */
   protected onBuildingUpgraded(building: BuildingState): void {
     if (!this.ownerScope || building.ownerId !== this.ownerScope) return;
-    if (building.type !== 'TOWN_CENTER') return;
-    void RaidService.syncTownCenterLevel(this.ownerScope, building.level);
+    if (building.type === 'TOWN_CENTER') {
+      void RaidService.syncTownCenterLevel(this.ownerScope, building.level);
+    }
+    const townCenter = this.townCenterOf(this.ownerScope);
+    if (townCenter) {
+      ensureCitadelEntity(this.state, this.ownerScope, townCenter);
+    }
   }
 
   /**

@@ -226,15 +226,15 @@ describe('KingdomRoom raid settlement', () => {
     addTownCenter(room, 'defender');
     addUnit(room, 'u1', 'attacker');
     const townCenter = room.state.buildings.get('b-tc')!;
-    townCenter.hp = Math.ceil(townCenter.maxHp * 0.25);
+    townCenter.hp = 0;
     withRaid(room);
 
     await room['evaluateRaid']();
 
     expect(settleRaid).toHaveBeenCalledTimes(1);
     expect(settleRaid.mock.calls[0][0]).toMatchObject({ raidId: 'raid-1', outcome: 'ATTACKER_WON' });
-    // The Town Center is restored rather than left half-destroyed.
-    expect(townCenter.hp).toBe(townCenter.maxHp);
+    // The Town Center does not disappear when at 0 HP.
+    expect(townCenter.hp).toBe(0);
     expect(internals(room).raidId).toBeNull();
   });
 
@@ -300,7 +300,7 @@ describe('KingdomRoom raid settlement', () => {
       ['s-defender', defenderClient]
     ]);
     const townCenter = room.state.buildings.get('b-tc')!;
-    townCenter.hp = 1;
+    townCenter.hp = 0;
     withRaid(room);
 
     await room['evaluateRaid']();
@@ -321,7 +321,7 @@ describe('KingdomRoom raid settlement', () => {
     addPlayer(room, 'attacker');
     addTownCenter(room, 'defender');
     addUnit(room, 'u1', 'attacker');
-    room.state.buildings.get('b-tc')!.hp = 1;
+    room.state.buildings.get('b-tc')!.hp = 0;
     withRaid(room);
     internals(room).raidArmySeen = true;
     settleRaid.mockResolvedValue(null);
@@ -338,7 +338,7 @@ describe('KingdomRoom raid settlement', () => {
     addTownCenter(room, 'defender');
     addUnit(room, 'u1', 'attacker');
     const townCenter = room.state.buildings.get('b-tc')!;
-    townCenter.hp = 1;
+    townCenter.hp = 0;
     withRaid(room);
 
     await room['evaluateRaid']();

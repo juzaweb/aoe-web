@@ -13,7 +13,7 @@ import { BuildingState } from '../schema/BuildingState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { CorpseState } from '../schema/CorpseState.js';
-import { isCitadelBuilding } from './citadel.js';
+import { findNearestCitadelWallOrGate, isCitadelBuilding, isProtectedCitadelInteriorBuilding } from './citadel.js';
 import { distanceToFootprint } from './geometry.js';
 
 /**
@@ -246,6 +246,10 @@ export class CombatSystem {
     if (unit.targetEntityType === 'building') {
       const target = this.state.buildings.get(unit.targetEntityId);
       if (!target) return null;
+      if (target.type === 'CITADEL') {
+        const nearest = findNearestCitadelWallOrGate(this.state, target, unit.x, unit.y);
+        return Math.hypot(nearest.x - unit.x, nearest.y - unit.y);
+      }
       const centerX = target.gridX + target.sizeX / 2;
       const centerY = target.gridY + target.sizeY / 2;
       return Math.hypot(centerX - unit.x, centerY - unit.y);
@@ -319,8 +323,15 @@ export class CombatSystem {
 
     if (unit.targetEntityType === 'building') {
       const targetBuilding = this.state.buildings.get(unit.targetEntityId);
-      if (!targetBuilding || targetBuilding.ownerId === unit.ownerId) {
-        // Building destroyed or captured by its owner: order over.
+      if (!targetBuilding || targetBuilding.ownerId === unit.ownerId || targetBuilding.hp <= 0) {
+        // Building destroyed, captured, or reduced to 0 HP: order over.
+        this.endAttackOrder(unit);
+        return;
+      }
+
+      // Interior citadel buildings (Town Center, Barracks, Archery Range, Houses)
+      // cannot be attacked; the raid must attack the Citadel compound walls/gate instead.
+      if (isProtectedCitadelInteriorBuilding(this.state, targetBuilding)) {
         this.endAttackOrder(unit);
         return;
       }
@@ -329,24 +340,23 @@ export class CombatSystem {
 
       targetBuilding.hp -= attackPower;
 
-      // Phase 23: a Town Center is never destructible, on any map. It is the
-      // raid's objective, scored by the HP threshold the room checks, so damage
-      // stops at that floor instead of erasing the heart of an empire and
-      // leaving its owner with nothing to rebuild from.
-      if (targetBuilding.type === 'TOWN_CENTER') {
-        const floor = clampRaidTownCenterHp(targetBuilding.hp, targetBuilding.maxHp);
-        if (floor > targetBuilding.hp) targetBuilding.hp = floor;
-      } else if (isCitadelBuilding(this.state, targetBuilding) && targetBuilding.hp < 1) {
-        // The rest of the citadel is raid score too: it can be ground down to its
-        // last hit point, but never removed, so an upgrade the defender paid for
-        // cannot disappear in a single raid.
-        targetBuilding.hp = 1;
+      // Phase 23 & Citadel update: Town Center and Citadel buildings never disappear.
+      // They can take full damage down to 0 HP (100% loss causes defeat), but are not deleted.
+      const isCitadelOrTC =
+        targetBuilding.type === 'CITADEL' ||
+        targetBuilding.type === 'TOWN_CENTER' ||
+        isCitadelBuilding(this.state, targetBuilding);
+
+      if (isCitadelOrTC) {
+        if (targetBuilding.hp < 0) targetBuilding.hp = 0;
       }
 
       this.attackTimers.set(unit.id, blueprint.attackCooldownMs);
 
       if (targetBuilding.hp <= 0) {
-        this.destroyBuilding(targetBuilding);
+        if (!isCitadelOrTC) {
+          this.destroyBuilding(targetBuilding);
+        }
         this.endAttackOrder(unit);
       }
     }
@@ -360,6 +370,11 @@ export class CombatSystem {
    * in instead of waiting out a timer it never used.
    */
   updateTowerCombat(building: BuildingState, deltaTime: number, blueprint: BuildingBlueprint) {
+    if (building.hp <= 0) {
+      this.towerTimers.set(building.id, 0);
+      return;
+    }
+
     const remainingCooldown = (this.towerTimers.get(building.id) ?? 0) - deltaTime;
 
     if (remainingCooldown > 0) {
@@ -479,12 +494,21 @@ export class CombatSystem {
 
     this.state.buildings.forEach((building: BuildingState) => {
       if (building.ownerId === unit.ownerId) return;
+      if (building.hp <= 0) return;
+      if (isProtectedCitadelInteriorBuilding(this.state, building)) return;
       const blueprint = BUILDING_BLUEPRINTS[building.type as BuildingType];
       if (blueprint?.attackable === false) return;
+      const dist =
+        building.type === 'CITADEL'
+          ? Math.hypot(
+              findNearestCitadelWallOrGate(this.state, building, unit.x, unit.y).x - unit.x,
+              findNearestCitadelWallOrGate(this.state, building, unit.x, unit.y).y - unit.y
+            )
+          : distanceToFootprint(unit.x, unit.y, building);
       consider(
         { id: building.id, type: 'building' },
         AUTO_TARGET_PRIORITY.BUILDING,
-        distanceToFootprint(unit.x, unit.y, building)
+        dist
       );
     });
 

@@ -46,8 +46,8 @@ export const CITADEL_TOWN_CENTER_OFFSET_Y = 10;
 /** Width of the single gate opening in the middle of the east wall. */
 export const CITADEL_GATE_WIDTH = 3;
 
-/** Share of the citadel's maximum HP at which a raid is lost. */
-export const CITADEL_HP_THRESHOLD = 0.2;
+/** Share of the citadel's maximum HP at which a raid is lost (0 = 100% loss). */
+export const CITADEL_HP_THRESHOLD = 0;
 
 /** One building slot, in map tiles. */
 export interface CitadelSlot {
@@ -313,24 +313,28 @@ export function citadelStatus(
 ): CitadelStatus {
   const list = Array.from(buildings);
   const layout = citadelLayoutFor(townCenterGridX, townCenterGridY);
+  const citadelEntity = list.find((b) => b.type === 'CITADEL');
 
-  let hp = 0;
   let maxHp = 0;
+  let slotHpSum = 0;
   for (const slot of layout.slots) {
     const building = list.find((candidate) => isInSlot(candidate, slot));
     const baseline = getBuildingLevelStats(slot.type, 1).maxHp;
     if (building) {
-      hp += Math.max(0, building.hp);
+      slotHpSum += Math.max(0, building.hp);
       maxHp += building.maxHp > 0 ? building.maxHp : baseline;
     } else {
       maxHp += baseline;
     }
   }
 
+  const hp = citadelEntity ? Math.max(0, citadelEntity.hp) : slotHpSum;
+  const effectiveMaxHp = citadelEntity && citadelEntity.maxHp > 0 ? citadelEntity.maxHp : maxHp;
+
   return {
     hp,
-    maxHp,
-    ratio: maxHp > 0 ? hp / maxHp : 0
+    maxHp: effectiveMaxHp,
+    ratio: effectiveMaxHp > 0 ? hp / effectiveMaxHp : 0
   };
 }
 

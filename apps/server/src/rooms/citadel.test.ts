@@ -215,11 +215,10 @@ describe('citadel health', () => {
   });
 
   it('is breached at the configured share and not one point above it', () => {
-    expect(CITADEL_HP_THRESHOLD).toBe(0.2);
-    expect(isCitadelBreached(20, 100)).toBe(true);
-    expect(isCitadelBreached(21, 100)).toBe(false);
+    expect(CITADEL_HP_THRESHOLD).toBe(0);
     expect(isCitadelBreached(0, 100)).toBe(true);
-    expect(isCitadelBreached(1, 0)).toBe(false);
+    expect(isCitadelBreached(1, 100)).toBe(false);
+    expect(isCitadelBreached(0, 0)).toBe(false);
   });
 });
 
@@ -269,7 +268,7 @@ describe('citadel lifecycle', () => {
     }
   });
 
-  it('restores every building to full health after a raid', () => {
+  it('restores missing building slots after a raid without erasing damage', () => {
     const state = createKingdomState();
     const townCenter = addTownCenter(state);
     spawnMissingCitadelBuildings(state, 'defender', townCenter);
@@ -277,16 +276,19 @@ describe('citadel lifecycle', () => {
     for (const building of allBuildings(state)) building.hp = 1;
     const house = allBuildings(state).find((building) => building.type === 'HOUSE')!;
     state.buildings.delete(house.id);
+    const survivingIds = new Set(allBuildings(state).map((b) => b.id));
 
     restoreCitadel(state, 'defender');
 
     const buildings = allBuildings(state);
-    expect(buildings).toHaveLength(8);
-    for (const building of buildings) {
-      expect(building.hp).toBe(building.maxHp);
+    const slotBuildings = buildings.filter((building) => building.type !== 'CITADEL');
+    expect(slotBuildings).toHaveLength(8);
+    expect(buildings.some((building) => building.type === 'CITADEL')).toBe(true);
+    // Preserves existing damaged buildings instead of resetting them to maxHp
+    const existing = buildings.filter((building) => survivingIds.has(building.id));
+    for (const building of existing) {
+      expect(building.hp).toBe(1);
     }
-    const status = citadelStatus(buildings, TC_X, TC_Y);
-    expect(status.ratio).toBe(1);
   });
 
   it('recentres a right-edge citadel and drops orphaned duplicates', () => {

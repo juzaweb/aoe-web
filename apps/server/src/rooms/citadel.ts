@@ -4,6 +4,7 @@ import {
   CITADEL_SIZE,
   CitadelSlot,
   citadelLayoutFor,
+  citadelStatus,
   citadelTownCenterFor,
   getBuildingLevelStats,
   isCitadelAvenueTile,
@@ -424,14 +425,15 @@ export function ensureCitadel(state: WorldState, ownerId: string): void {
       console.log(`🏰 [Citadel] Restored ${added} missing building(s) for ${ownerId}.`);
     }
   }
+
+  ensureCitadelEntity(state, ownerId, townCenter);
 }
 
 /**
- * Brings every citadel building back to full strength after a raid.
+ * Ensures every citadel slot exists after a raid without wiping battle damage.
  *
- * The citadel is a score, not a ruin: without this a single raid could leave a
- * player permanently short of houses and trainers. A slot destroyed during the
- * fight is rebuilt at level 1, matching how the Town Center already came back.
+ * Buildings do not disappear when losing 100% HP, and their damage persists so
+ * villagers can repair them or they passively regenerate over 72 hours.
  */
 export function restoreCitadel(state: WorldState, ownerId: string): void {
   if (!hasCitadel(state)) return;
@@ -444,7 +446,6 @@ export function restoreCitadel(state: WorldState, ownerId: string): void {
   for (const slot of layout.slots) {
     const building = slotOccupied(state, slot);
     if (building && building.ownerId === ownerId && building.type === slot.type) {
-      building.hp = building.maxHp;
       building.isConstructed = true;
       building.constructionProgress = 100;
       continue;
@@ -454,6 +455,8 @@ export function restoreCitadel(state: WorldState, ownerId: string): void {
     const rebuilt = createCitadelBuilding(ownerId, slot.type, slot.gridX, slot.gridY);
     state.buildings.set(rebuilt.id, rebuilt);
   }
+
+  ensureCitadelEntity(state, ownerId, townCenter);
 }
 
 /**
@@ -498,14 +501,11 @@ export function footprintTouchesCitadelWall(
 }
 
 /**
- * Whether `building` is one of its owner's citadel slots.
- *
- * Used by combat to stop a raid from deleting a house or trainer outright: the
- * citadel is a score, and a destroyed slot would be rebuilt at level 1, wiping
- * an upgrade the defender paid for.
+ * Whether `building` is either the citadel compound entity or one of its interior slots.
  */
 export function isCitadelBuilding(state: WorldState, building: BuildingState): boolean {
   if (!hasCitadel(state)) return false;
+  if (building.type === 'CITADEL') return true;
 
   const townCenter = findOwnTownCenter(state, building.ownerId);
   if (!townCenter) return false;
@@ -516,5 +516,120 @@ export function isCitadelBuilding(state: WorldState, building: BuildingState): b
       slot.type === building.type &&
       slot.gridX === Math.round(building.gridX) &&
       slot.gridY === Math.round(building.gridY)
+  );
+}
+
+/**
+ * Whether `building` is an interior structure of the citadel (Town Center, Barracks, Archery Range, House).
+ * These structures are protected from direct attacks: raids must attack the citadel walls/gate instead.
+ */
+export function isProtectedCitadelInteriorBuilding(state: WorldState, building: BuildingState): boolean {
+  if (!hasCitadel(state)) return false;
+  if (building.type === 'CITADEL') return false;
+  return isCitadelBuilding(state, building);
+}
+
+/**
+ * Finds the compound `CITADEL` building entity for `ownerId`, if present.
+ */
+export function findCitadel(state: WorldState, ownerId: string): BuildingState | null {
+  let found: BuildingState | null = null;
+  state.buildings.forEach((b: BuildingState) => {
+    if (found) return;
+    if (b.ownerId === ownerId && b.type === 'CITADEL') {
+      found = b;
+    }
+  });
+  return found;
+}
+
+/**
+ * Ensures the citadel compound building exists in state, with its maxHp tied to the
+ * sum of all interior slots.
+ */
+export function ensureCitadelEntity(
+  state: WorldState,
+  ownerId: string,
+  townCenter: BuildingState
+): BuildingState {
+  const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+  const status = citadelStatus(Array.from(state.buildings.values()), townCenter.gridX, townCenter.gridY);
+  let citadel = findCitadel(state, ownerId);
+
+  if (!citadel) {
+    citadel = new BuildingState();
+    citadel.id = `b_citadel_${ownerId}`;
+    citadel.ownerId = ownerId;
+    citadel.type = 'CITADEL';
+    citadel.gridX = layout.originX;
+    citadel.gridY = layout.originY;
+    citadel.sizeX = layout.sizeX;
+    citadel.sizeY = layout.sizeY;
+    citadel.maxHp = status.maxHp;
+    citadel.hp = status.maxHp;
+    citadel.level = 1;
+    citadel.isConstructed = true;
+    citadel.constructionProgress = 100;
+    state.buildings.set(citadel.id, citadel);
+  } else {
+    citadel.maxHp = status.maxHp;
+    citadel.gridX = layout.originX;
+    citadel.gridY = layout.originY;
+    citadel.sizeX = layout.sizeX;
+    citadel.sizeY = layout.sizeY;
+  }
+
+  return citadel;
+}
+
+/**
+ * Finds the nearest citadel wall or gate tile coordinate to an entity standing at (fromX, fromY).
+ */
+export function findNearestCitadelWallOrGate(
+  state: WorldState,
+  citadel: BuildingState,
+  fromX: number,
+  fromY: number
+): { x: number; y: number } {
+  const townCenter = findOwnTownCenter(state, citadel.ownerId);
+  if (!townCenter) {
+    return { x: citadel.gridX + citadel.sizeX / 2, y: citadel.gridY + citadel.sizeY / 2 };
+  }
+  const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+  let bestDist = Infinity;
+  let best = { x: layout.originX + layout.sizeX - 0.5, y: layout.originY + Math.floor(layout.sizeY / 2) + 0.5 };
+
+  for (const wall of layout.walls) {
+    const wx = wall.gridX + 0.5;
+    const wy = wall.gridY + 0.5;
+    const d = Math.hypot(wx - fromX, wy - fromY);
+    if (d < bestDist) {
+      bestDist = d;
+      best = { x: wx, y: wy };
+    }
+  }
+  for (const gate of layout.gates) {
+    const gx = gate.gridX + 0.5;
+    const gy = gate.gridY + 0.5;
+    const d = Math.hypot(gx - fromX, gy - fromY);
+    if (d < bestDist) {
+      bestDist = d;
+      best = { x: gx, y: gy };
+    }
+  }
+  return best;
+}
+
+/**
+ * Whether a specific grid coordinate is on a citadel wall or gate tile.
+ */
+export function isCitadelWallOrGateTile(
+  layout: ReturnType<typeof citadelLayoutFor>,
+  gridX: number,
+  gridY: number
+): boolean {
+  return (
+    layout.walls.some((w) => w.gridX === gridX && w.gridY === gridY) ||
+    layout.gates.some((g) => g.gridX === gridX && g.gridY === gridY)
   );
 }
