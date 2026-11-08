@@ -98,6 +98,59 @@ BUILDING_SPECS = [
             "Solid pure white background, clean sharp silhouette, game asset ready --ar 2:1 --v 6.0 --style raw"
         ),
     },
+    # The three economy drop-off camps are project-original art, so they have no
+    # OpenGameArt source to migrate into `manifest.json`. They ship on the same
+    # 256x220 canvas as the house, which is why the renderer lifts them all by
+    # `SHEET_OFFSET_Y` -70. Keep that canvas: a different height would need a new
+    # lift and health-bar number in `buildingArt.ts`.
+    #
+    # Each prompt names the single prop that identifies the building (log piles,
+    # a water wheel, a mine adit) because a generic "medieval house" prompt makes
+    # them read as recolours of the house or of each other.
+    {
+        "id": "lumber_camp",
+        "target_w": 256,
+        "target_h": 220,
+        "gen_w": 1024,
+        "gen_h": 1024,
+        "prompt": (
+            "A 2D game asset of a medieval European lumberjack sawmill camp, 2.5D isometric top-down 45-degree view. "
+            "Open-sided timber workshop with a weathered wooden shingle roof, tall stacks of cut logs and sawn planks, "
+            "a two-man pit saw frame over a saw pit, an axe stuck in a chopping stump, small packed-dirt yard with stone edging. "
+            "Grey-brown timber and no masonry house walls, clearly a woodcutting camp rather than a cottage. "
+            "No ground shadow. Solid pure white background, clean sharp silhouette, game asset ready"
+        ),
+    },
+    {
+        "id": "mill",
+        "target_w": 256,
+        "target_h": 220,
+        "gen_w": 1024,
+        "gen_h": 1024,
+        "prompt": (
+            "A 2D game asset of a medieval European water mill, 2.5D isometric top-down 45-degree view. "
+            "Small stone and timber mill house beside a wooden water flume, one huge vertical wooden water wheel on the side "
+            "with visible spokes and paddles, a turning axle into the wall, burlap flour sacks and grain sacks stacked by the door, "
+            "a small handcart. Warm tan stone base, dark timber frame, slate shingle roof. Clearly a mill, not a cottage. "
+            "No ground shadow. Solid pure white background, clean sharp silhouette, game asset ready"
+        ),
+    },
+    {
+        "id": "mining_camp",
+        "target_w": 256,
+        "target_h": 220,
+        "gen_w": 1024,
+        "gen_h": 1024,
+        "prompt": (
+            "A 2D game asset of a medieval European mining camp, 2.5D isometric top-down 45-degree view. "
+            "Compact rocky outcrop built up tall with a timber-framed mine tunnel entrance at its foot, "
+            "a wooden headframe winch over the shaft on top, one small ore cart on short wooden rails in front, "
+            "crates of grey ore stacked beside the adit, pickaxes leaning on a crate. "
+            "Grey stone and brown timber, open mine workings instead of house walls, clearly a mine. "
+            "Centred compact square composition, tall as it is wide. "
+            "No ground shadow. Solid pure white background, clean sharp silhouette, game asset ready"
+        ),
+    },
     # MIL-01's stable and archery range, and the watch tower, used to be
     # generated here. They now ship from OpenGameArt packs via
     # `scripts/assets/manifest.json` (`building.stable`, `building.archery-range`,
@@ -187,7 +240,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--all",
         action="store_true",
-        help="regenerate every spec, including the five older buildings whose PNGs were replaced by the OpenGameArt pipeline",
+        help="regenerate every spec; this overwrites the OpenGameArt town centre, barracks and house sheets, so prefer --only",
     )
     parser.add_argument("--steps", type=int, default=8, help="sampling steps (default: 8)")
     parser.add_argument("--seed", type=int, default=None, help="optional seed for a reproducible render")
@@ -211,9 +264,10 @@ def main() -> None:
     if args.only and args.all:
         raise SystemExit("pass either --only <ids> or --all, not both")
     if not args.only and not args.all:
-        # Five of the specs predate the OpenGameArt replacement and target half
-        # the shipped resolution. Running them by accident would overwrite the
-        # licensed art, so regenerating everything is an explicit choice.
+        # Three specs (town_center, barracks, house) are superseded by licensed
+        # OpenGameArt sources in `scripts/assets/manifest.json`, and running them
+        # would overwrite that art with a lower-resolution render. Making a full
+        # run an explicit `--all` keeps an accidental invocation from doing it.
         ids = ", ".join(spec["id"] for spec in BUILDING_SPECS)
         raise SystemExit(f"pass --only <ids> or --all; ids: {ids}")
     wanted = {part.strip() for part in args.only.split(",")} if args.only else None

@@ -75,10 +75,11 @@ re-pins them).
   `sourceSha256` and the license/author for every file. Hashes are of the PNG
   bytes, so a different Pillow build may need a rebuild (same pixels, new bytes).
 - `legacy` in the lock pins the PNGs no target builds (terrain, gold/stone/berry,
-  farm/mill/mining camp/tower, units, cursors, icons). They have no upstream to
+  farm/lumber camp/mill/mining camp/tower, units, cursors, icons). They have no upstream to
   rebuild from, so they are hash-only: a hand edit or a stray regeneration fails
-  `--check` instead of shipping silently. The generated gate and road stamps are
-  excluded because another script rebuilds them (see below).
+  `--check` instead of shipping silently. The generated gate, road stamps and
+  citadel stone are excluded because other scripts rebuild and check them (see
+  below).
 
 ## Generated art (not third-party)
 
@@ -101,6 +102,22 @@ were previously project-original generated art; they are now built from
 OpenGameArt packs by `building.stable`, `building.archery-range` and
 `building.tower` in the manifest. `scripts/generate_buildings_assets.py` no
 longer defines them, so running it cannot overwrite the shipped sprites.
+
+The three economy drop-off camps are the exception. `buildings/lumber_camp.png`
+used to be rebuilt from the stable source (`building.lumber-camp`), which made it
+a scaled-down copy of `stable.png`; `mill.png` and `mining_camp.png` were
+unmigrated AI art. All three are now purpose-generated (sawmill camp, water mill
+with its own wheel, rocky mine adit with a headframe and ore cart) so they no
+longer read as recolours of the house, the stable or each other:
+
+```bash
+python scripts/generate_buildings_assets.py --only lumber_camp,mill,mining_camp
+```
+
+They use the house's 256x220 canvas, stay out of `manifest.json` (no upstream
+URL or license), and are hash-pinned as `legacy` by `build.py --legacy`. Their
+`HP_BAR_Y` values in `buildingArt.ts` are measured from the shipped art, so
+re-running the generator means re-measuring the top inset.
 
 ### Citadel stone
 
@@ -133,8 +150,9 @@ shows up immediately.
 
 ## Not migrated
 
-`terrain/{grass,dirt}*.png`, `resources/{gold,stone,berry}.png`, `buildings/{farm,mill,
-mining_camp}.png`, cavalry, icons and cursors keep their previous art;
+`terrain/{grass,dirt}*.png`, `resources/{gold,stone,berry}.png`,
+`buildings/{farm,lumber_camp,mill,mining_camp}.png`, cavalry, icons and cursors keep
+their project-original art;
 their bytes are pinned under `legacy` in the lock, with the icon provenance
 recorded as unknown. The grassland tileset ships no tile map (its OGA page points
 at the Flare repo, whose current tileset definition maps a different image), and

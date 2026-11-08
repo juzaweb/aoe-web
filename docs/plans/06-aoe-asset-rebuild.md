@@ -495,6 +495,11 @@ Mọi sprite được crop theo alpha, scale vừa canvas, neo bottom-centre, v�
 theo sprite cũ (cùng hue, chỉ đổi độ sáng) để map không tối đi. Art bottom luôn chạm hàng cuối
 canvas, nên `SHEET_OFFSET_Y` và offset tài nguyên không phải sửa.
 
+> **Cập nhật 2026-11-08:** `building.lumber-camp` đã bị gỡ khỏi manifest vì dùng lại
+> stable khiến nó trùng hệt `stable.png`. Ba camp kinh tế (`lumber_camp`, `mill`,
+> `mining_camp`) giờ là art generated riêng, giữ canvas 256×220 và được pin ở
+> `legacy`. Xem `scripts/assets/README.md`.
+
 Town centre ban đầu lấy *Medieval Building 06* (CC-BY 3.0) và đọc ra như nhà ở; collection không có
 asset town hall, nên đổi sang *Western-European Castle* của feudalwars — cùng bộ render với barracks
 và stable, CC0, và có alpha sạch. Castle bị lật ngang (`op.flip: "x"`, xử lý trong `apply_op`) vì bản

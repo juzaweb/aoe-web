@@ -526,9 +526,10 @@ export class WorldScene extends Phaser.Scene {
     }
 
     // Preload generated building assets with cache-busting version (2x resolution)
-    // v=26: house door rotated to face East (South-East / road) with feudal palette matching.
+    // v=27: the three economy camps (lumber camp, mill, mining camp) were
+    // regenerated so the lumber camp no longer reuses the stable sprite.
     // Bump the key whenever a PNG under public/assets/buildings or /resources changes.
-    const v = 'v=26';
+    const v = 'v=27';
     this.load.image('building_TOWN_CENTER', `/assets/buildings/town_center.png?${v}`);
     this.load.image('building_BARRACKS', `/assets/buildings/barracks.png?${v}`);
     // MIL-01: both military branches now ship their own 400x320 sheet. The

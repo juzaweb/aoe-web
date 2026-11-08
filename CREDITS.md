@@ -138,13 +138,11 @@ redrawn.
   kept here for provenance)
 - **Used for:** `assets/buildings/barracks.png` (barracks),
   `assets/buildings/stable.png` (stable), `assets/buildings/archery_range.png`
-  (archery range), `assets/buildings/lumber_camp.png` (stable, reused as the
-  wood drop-off) and `assets/buildings/town_center.png` (castle).
+  (archery range) and `assets/buildings/town_center.png` (castle).
 
-**Changes made.** All five are cropped to alpha, scaled to the client's canvas
-and luminance-matched; the stable is reused as the lumber camp because the pack
-has no dedicated drop-off building, and the castle stands in for the town centre
-because the set has no town-hall building. The castle is also mirrored
+**Changes made.** All four are cropped to alpha, scaled to the client's canvas
+and luminance-matched; the castle stands in for the town centre because the set
+has no town-hall building. The castle is also mirrored
 horizontally so its gate faces the direction the client's isometric camera
 looks from; the other buildings are unmodified apart from crop/scale.
 

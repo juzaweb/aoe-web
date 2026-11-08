@@ -53,6 +53,14 @@ GENERATED_PATHS = frozenset(
         "apps/client/public/assets/terrain/road_stamp_1.png",
         "apps/client/public/assets/terrain/road_stamp_2.png",
         "apps/client/public/assets/terrain/road_stamp_3.png",
+        # The citadel stone is project-original too; `scripts/generate_citadel_assets.py`
+        # and `scripts/process_citadel_assets.py` own it, and the processor's
+        # `--check` verifies canvas, anchoring, luminance and the gate arch.
+        "apps/client/public/assets/citadel/floor.png",
+        "apps/client/public/assets/citadel/wall.png",
+        "apps/client/public/assets/citadel/gate.png",
+        "apps/client/public/assets/citadel/gate_door.png",
+        "apps/client/public/assets/citadel/tc_platform.png",
     }
 )
 

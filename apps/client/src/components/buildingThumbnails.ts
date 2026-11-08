@@ -21,9 +21,9 @@ export const BUILDING_THUMBNAIL: Partial<Record<BuildingType, string>> = {
   HOUSE: '/assets/buildings/house.png?v=15',
   FARM: '/assets/buildings/farm.png?v=3',
   TOWER: '/assets/buildings/tower.png?v=4',
-  LUMBER_CAMP: '/assets/buildings/lumber_camp.png?v=1',
-  MILL: '/assets/buildings/mill.png?v=1',
-  MINING_CAMP: '/assets/buildings/mining_camp.png?v=1',
+  LUMBER_CAMP: '/assets/buildings/lumber_camp.png?v=2',
+  MILL: '/assets/buildings/mill.png?v=2',
+  MINING_CAMP: '/assets/buildings/mining_camp.png?v=2',
   PORTAL: '/assets/buildings/portal.png?v=3'
 };
 
