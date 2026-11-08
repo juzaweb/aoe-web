@@ -29,7 +29,8 @@
     },
     "blender": {
       "type": "stdio",
-      "command": ["uvx", "blender-mcp"]
+      "command": ["uvx", "blender-mcp"],
+      "enabled": true
     }
   },
   "agent": {
