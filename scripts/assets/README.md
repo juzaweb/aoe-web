@@ -97,6 +97,10 @@ python scripts/process_generated_assets.py --check   # canvas, anchoring, lum, d
 That script needs Pillow and numpy; the OpenGameArt pipeline itself only needs
 Pillow.
 
+`buildings/siege_workshop.png` is project-original local ComfyUI art, generated
+by `scripts/generate_siege_workshop_asset.py` and pinned under `legacy` in the
+lock. It is not wired into `buildingArt.ts` yet, so nothing loads it at runtime.
+
 `buildings/stable.png`, `buildings/archery_range.png` and `buildings/tower.png`
 were previously project-original generated art; they are now built from
 OpenGameArt packs by `building.stable`, `building.archery-range` and
