@@ -102,6 +102,26 @@ OpenGameArt packs by `building.stable`, `building.archery-range` and
 `building.tower` in the manifest. `scripts/generate_buildings_assets.py` no
 longer defines them, so running it cannot overwrite the shipped sprites.
 
+### Citadel stone
+
+`assets/citadel/{floor,wall,gate,gate_door}.png` are project-original generated
+art with no upstream URL, so they stay out of `manifest.json` and the lock, like
+the portal. Two Python scripts own them:
+
+```bash
+python scripts/generate_citadel_assets.py --only floor,wall   # raw textures
+python scripts/process_citadel_assets.py --floor <floor.png> --wall <wall.png>
+python scripts/process_citadel_assets.py --check     # canvas, anchoring, lum, arch
+python scripts/process_citadel_assets.py --preview   # 17x17 citadel proof sheet
+```
+
+`floor.png` and `wall.png` are tiles (128x64 and 128x154) that must repeat
+exactly, so the processor squashes the generated stone into the iso diamonds and
+wall faces instead of trusting a generated sprite to tile. `gate.png` (512x500)
+and `gate_door.png` (192x169) are assembled from the same stone because the
+layout's 3-tile opening and 6-tile front are fixed geometry; the portcullis is a
+separate texture so `CitadelLayer` can raise it when a unit walks in.
+
 ## Not migrated
 
 `terrain/{grass,dirt}*.png`, `resources/{gold,stone,berry}.png`, `buildings/{farm,mill,

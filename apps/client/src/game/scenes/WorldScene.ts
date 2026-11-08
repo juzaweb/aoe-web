@@ -578,6 +578,14 @@ export class WorldScene extends Phaser.Scene {
     // CTL-06 rally-point banner. Derived from the `order` cursor artwork and
     // regenerated offline; bump the query string whenever the PNG changes.
     this.load.image('rally_flag', '/assets/markers/rally_flag.png?v=1');
+
+    // Citadel stone: floor tile, wall block, gatehouse and its portcullis.
+    // Built by `scripts/process_citadel_assets.py`; bump when a PNG changes.
+    const cv = 'v=1';
+    this.load.image('citadel_floor', `/assets/citadel/floor.png?${cv}`);
+    this.load.image('citadel_wall', `/assets/citadel/wall.png?${cv}`);
+    this.load.image('citadel_gate', `/assets/citadel/gate.png?${cv}`);
+    this.load.image('citadel_gate_door', `/assets/citadel/gate_door.png?${cv}`);
   }
 
   create() {
@@ -2159,6 +2167,7 @@ export class WorldScene extends Phaser.Scene {
     this.roadController?.render();
 
     this.updateUnitSprites(time, dtSeconds);
+    this.citadel?.update(delta);
 
     // CMB-03 after the lerp: the marker is drawn on the sprite's current screen
     // position, so reading it before interpolation would leave the ring one
