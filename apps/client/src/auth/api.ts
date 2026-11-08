@@ -30,8 +30,15 @@ const TOKEN_STORAGE_KEY = 'cq_auth_token';
 
 const DEFAULT_SERVER_PORT = 2567;
 
-/** Port the game server is listening on, injected at build time by Vite. */
+/**
+ * Port the game server is listening on. Dev gets it from the value Vite injects
+ * into `index.html` (re-read per page load); builds use the build-time constant.
+ */
 function getServerPort(): number {
+  const runtimePort = (globalThis as { __GAME_SERVER_PORT__?: unknown }).__GAME_SERVER_PORT__;
+  if (typeof runtimePort === 'number' && Number.isInteger(runtimePort) && runtimePort > 0) {
+    return runtimePort;
+  }
   return typeof __GAME_SERVER_PORT__ === 'number' ? __GAME_SERVER_PORT__ : DEFAULT_SERVER_PORT;
 }
 

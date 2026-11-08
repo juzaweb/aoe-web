@@ -234,6 +234,10 @@ app.post('/raid/retreat', async (req, res) => {
 });
 
 export async function start() {
+  // Resolve and publish the port first: the client reads the shared file at
+  // startup, so it must exist before the slow DB/auth steps below.
+  let port = await resolveServerPort();
+
   // Ensure the SQLite file, folder and tables exist before accepting traffic.
   // initialize() throws on failure, so the server never starts on a broken DB.
   await DatabaseService.initialize();
@@ -261,7 +265,6 @@ export async function start() {
 
   // The port may already be taken (another checkout, a stray dev server, or a
   // race after the free-port probe). Shift to the next free one and record it.
-  let port = await resolveServerPort();
   for (let attempt = 0; ; attempt += 1) {
     try {
       await gameServer.listen(port);
