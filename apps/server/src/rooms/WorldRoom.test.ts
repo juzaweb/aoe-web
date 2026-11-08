@@ -13,6 +13,7 @@ import {
   UNIT_BLUEPRINTS,
   INITIAL_POPULATION_CAP,
   citadelTownCenterFor,
+  citadelLayoutFor,
   getBuildingLevelStats,
   getEffectiveBuildingMaxHp,
   getEffectiveTrainTimeMs,
@@ -33,7 +34,7 @@ import { STARTER_RESOURCE_PREFIX } from './resources.js';
 import { isWithinBuildRange } from './construction.js';
 import { generateWorldResources } from './worldGeneration.js';
 import { clearUnitResearch, restoreBuildingUpgrade } from './upgrades.js';
-import { citadelWallTileSet } from './citadel.js';
+import { citadelWallTileSet, ensureCitadel } from './citadel.js';
 import { DatabaseService } from '../services/DatabaseService.js';
 import { WorldState } from '../schema/WorldState.js';
 import { PlayerState } from '../schema/PlayerState.js';
@@ -2846,6 +2847,62 @@ describe('kingdom map layout (MAPS-V2)', () => {
     for (let i = 0; i < 20; i++) internals(room).update(100);
 
     expect(Math.floor(unit.x)).toBeLessThan(originX + 25);
+  });
+
+  it('paths a unit out of and back into the citadel through the gate', () => {
+    const room = createKingdomRoom();
+    addPlayer(room, 'player-a');
+    internals(room).spawnInitialBase('player-a');
+    // `onWorldReady` adds the virtual `CITADEL` entity in a live room. Its
+    // footprint spans the whole compound, gate included, so stamping it into
+    // the blocked grid used to seal the courtyard and leave every unit inside
+    // without a route out.
+    ensureCitadel(room.state, 'player-a');
+
+    const townCenter = Array.from(room.state.buildings.values()).find(
+      (b: BuildingState) => b.type === 'TOWN_CENTER'
+    )!;
+    const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+
+    // Start on the open floor north of the gate row, so a straight line east
+    // would hit the wall: only a real route through the gate can reach either
+    // destination.
+    const startX = townCenter.gridX + townCenter.sizeX + 2.5;
+    const startY = townCenter.gridY - 3.5;
+    const unit = addUnit(room, {
+      id: 'u-out',
+      ownerId: 'player-a',
+      type: 'VILLAGER',
+      x: startX,
+      y: startY
+    });
+
+    const walls = citadelWallTileSet(room.state);
+    const crossed = new Set<string>();
+
+    const walkTo = (targetX: number, targetY: number, arrived: () => boolean) => {
+      internals(room).commands.handleMoveUnits(createClient('player-a'), {
+        unitIds: ['u-out'],
+        targetGridX: targetX,
+        targetGridY: targetY
+      });
+      for (let i = 0; i < 600; i++) {
+        internals(room).update(100);
+        const tile = `${Math.floor(unit.x)},${Math.floor(unit.y)}`;
+        if (walls.has(tile)) crossed.add(tile);
+        if (arrived()) break;
+      }
+    };
+
+    const outsideX = layout.originX + layout.sizeX + 8;
+    walkTo(outsideX, startY, () => unit.x >= outsideX - 0.5);
+    expect(unit.x).toBeGreaterThanOrEqual(outsideX - 0.5);
+
+    walkTo(Math.floor(startX), Math.floor(startY), () => Math.hypot(unit.x - startX, unit.y - startY) < 1);
+    expect(Math.hypot(unit.x - startX, unit.y - startY)).toBeLessThan(1);
+
+    // Neither leg may clip a wall; both must go through the gate.
+    expect([...crossed]).toEqual([]);
   });
 
   it('spawns the Town Center inside the centred citadel', () => {

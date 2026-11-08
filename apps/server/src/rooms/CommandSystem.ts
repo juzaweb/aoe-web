@@ -57,9 +57,13 @@ import { PlayerState } from '../schema/PlayerState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
-import { findNearestCitadelWallOrGate, isProtectedCitadelInteriorBuilding } from './citadel.js';
+import {
+  findNearestCitadelWallOrGate,
+  footprintTouchesCitadelWall,
+  isProtectedCitadelInteriorBuilding,
+  isVirtualCitadelCompound
+} from './citadel.js';
 import { getBuildApproachPoint } from './construction.js';
-import { footprintTouchesCitadelWall } from './citadel.js';
 import { RoadGrid } from './roads.js';
 import { ownerIdOf } from './identity.js';
 import { UNIT_SEPARATION } from './unitSeparation.js';
@@ -314,7 +318,7 @@ export class CommandSystem {
     // Check tile occupancy collisions with other buildings and resource nodes
     let isColliding = false;
     this.state.buildings.forEach((b: BuildingState) => {
-      if (b.type === 'CITADEL') return;
+      if (isVirtualCitadelCompound(b)) return;
       const bEndX = b.gridX + b.sizeX;
       const bEndY = b.gridY + b.sizeY;
       const overlapX = payload.gridX < bEndX && endX > b.gridX;

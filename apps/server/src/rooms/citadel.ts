@@ -31,6 +31,20 @@ export function hasCitadel(state: WorldState): boolean {
   return zoneKindOf(state.zoneId) === 'kingdom';
 }
 
+/**
+ * Whether `building` is the virtual `CITADEL` compound box rather than a solid
+ * structure.
+ *
+ * The box is only an aggregate for health and hit-testing: its four walls are
+ * stamped as terrain and its eight interior slots are real buildings in their
+ * own right. Anything that treats a building footprint as an obstacle (unit
+ * movement, building placement) must skip it, otherwise the box reads as a
+ * solid 26x26 block that seals the courtyard and its gate.
+ */
+export function isVirtualCitadelCompound(building: BuildingState): boolean {
+  return building.type === 'CITADEL';
+}
+
 function createCitadelBuilding(
   ownerId: string,
   type: BuildingType,
@@ -200,7 +214,7 @@ function canBuildingOccupy(
 
   let blocked = false;
   state.buildings.forEach((other: BuildingState) => {
-    if (blocked || other === building || other.type === 'CITADEL') return;
+    if (blocked || other === building || isVirtualCitadelCompound(other)) return;
     if (footprintOverlaps(other, x, y, building.sizeX, building.sizeY)) blocked = true;
   });
   if (blocked) return false;

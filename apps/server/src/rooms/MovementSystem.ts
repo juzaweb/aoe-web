@@ -3,7 +3,7 @@ import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { Pathfinder } from '../services/Pathfinder.js';
-import { citadelWallTileSet } from './citadel.js';
+import { citadelWallTileSet, isVirtualCitadelCompound } from './citadel.js';
 import { UnitSeparation } from './unitSeparation.js';
 
 /**
@@ -360,6 +360,12 @@ export class MovementSystem {
     grid.fill(0);
 
     this.state.buildings.forEach((building: BuildingState) => {
+      // The `CITADEL` entity is a virtual box: its walls are stamped below and
+      // its interior slots are real buildings in their own right. Blocking its
+      // footprint would seal the courtyard (gate included) and leave every unit
+      // inside with no route out.
+      if (isVirtualCitadelCompound(building)) return;
+
       const endX = Math.min(mapWidth, building.gridX + building.sizeX);
       const endY = Math.min(mapHeight, building.gridY + building.sizeY);
       for (let y = Math.max(0, building.gridY); y < endY; y++) {
