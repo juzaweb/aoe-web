@@ -15,6 +15,7 @@ import type { UnitAction } from './unitDirections.js';
 import { UnitMotion, walkTimeScale } from './unitMotion.js';
 import { treeVariant } from './treeVariants.js';
 import { resourceLook } from './visualVariation.js';
+import { TownCenterFireEffect } from './BuildingFireEffect.js';
 
 /**
  * Builds and maintains the visual object for every server entity: the container,
@@ -259,6 +260,12 @@ export class EntityRenderer {
     // rebuilding the container.
     container.setData('buildingImage', img);
 
+    if (building.type === 'TOWN_CENTER') {
+      const fireEffect = new TownCenterFireEffect(scene, container);
+      container.setData('fireEffect', fireEffect);
+      container.once('destroy', () => fireEffect.destroy());
+    }
+
     // Health / Construction Bar
     const hpBar = scene.add.graphics();
     container.add(hpBar);
@@ -364,6 +371,11 @@ export class EntityRenderer {
     const image = container.getData('buildingImage') as Phaser.GameObjects.Image | undefined;
     if (image && building.resourceCapacity > 0) {
       image.setTint(building.resourceAmount > 0 ? 0xffffff : 0x9a7b52);
+    }
+
+    const fireEffect = container.getData('fireEffect') as TownCenterFireEffect | undefined;
+    if (fireEffect) {
+      fireEffect.update(building.hp, building.maxHp, building.isConstructed);
     }
 
     hpBar.clear();
