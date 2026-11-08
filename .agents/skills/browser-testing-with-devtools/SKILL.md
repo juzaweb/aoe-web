@@ -42,7 +42,7 @@ pnpm --filter @chien-quoc/client exec vite --host 127.0.0.1 --port 5173 --strict
 Vite proxies `/colyseus` to `:2567`, and the client resolves the account API from the page host,
 so both must be up before you navigate. The first screen is an account form: register
 `#auth-username` (max 24), `#auth-display` (max 24) and `#auth-password` (min 6) before any
-in-game UI exists. `apps/server/database/dev.db` is gitignored and created on boot.
+in-game UI exists. `database/dev.db` is gitignored and created on boot.
 
 **Headless is not a GPU.** WebGL and GPU init failures, and Phaser's fallback warnings, are
 environment artifacts in headless Chrome. Report them as Nit and never let them alone decide a

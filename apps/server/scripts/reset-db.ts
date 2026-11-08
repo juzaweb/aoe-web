@@ -2,15 +2,27 @@
  * Drops every table so `DatabaseService.initialize()` recreates the schema from
  * scratch on the next boot. Used instead of deleting `dev.db`, which another
  * process on this machine keeps open.
+ *
+ * The table list is read from `sqlite_master` rather than hardcoded: the schema
+ * gains tables over time (raids, roads, travel transfers) and a stale list would
+ * silently leave orphaned rows behind after a "reset".
  */
 import { prisma } from '../src/services/DatabaseService.js';
 
-// Physical snake_case names, as declared by `@@map` in `prisma/schema.prisma`.
-const tables = ['buildings', 'units', 'players', 'world_resource_nodes', 'users'];
+const tables = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+  `SELECT name FROM sqlite_master
+     WHERE type = 'table'
+       AND name NOT LIKE 'sqlite_%'
+       AND name <> '_prisma_migrations'
+     ORDER BY name;`
+);
 
-for (const table of tables) {
-  await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS "${table}";`);
-  console.log(`dropped ${table}`);
+for (const { name } of tables) {
+  // Identifiers come from the database itself, not user input; double quotes are
+  // still escaped so an oddly named table cannot break out of the statement.
+  const identifier = `"${name.replace(/"/g, '""')}"`;
+  await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS ${identifier};`);
+  console.log(`dropped ${name}`);
 }
 
 await prisma.$queryRawUnsafe('PRAGMA wal_checkpoint(TRUNCATE);');

@@ -16,10 +16,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
- * Resolves to `apps/server/database` from both `src/services` (tsx) and
- * `dist/services` (compiled). The directory is created on boot when missing.
+ * Resolves to the repository's `database` directory from both `src/services`
+ * (tsx) and `dist/services` (compiled). The directory is created on boot when
+ * missing. Keeping it outside `apps/server` means a worktree reset or a
+ * `pnpm --filter` clean step cannot take the dev save with it.
  */
-export const DATABASE_DIR = path.resolve(__dirname, '../../database');
+export const DATABASE_DIR = path.resolve(__dirname, '../../../../database');
 export const DATABASE_FILE = process.env.DATABASE_FILE
   ? path.resolve(process.env.DATABASE_FILE)
   : path.join(DATABASE_DIR, 'dev.db');

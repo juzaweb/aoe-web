@@ -10,6 +10,7 @@
     "start": "node dist/index.js",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
+    "db:reset": "tsx scripts/reset-db.ts",
     "clean": "rm -rf dist",
     "test": "vitest run",
     "test:watch": "vitest"
