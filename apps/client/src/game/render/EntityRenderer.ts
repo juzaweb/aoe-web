@@ -17,6 +17,7 @@ import { UnitMotion, walkTimeScale } from './unitMotion.js';
 import { treeVariant } from './treeVariants.js';
 import { resourceLook } from './visualVariation.js';
 import { TownCenterFireEffect } from './BuildingFireEffect.js';
+import { townCenterLift } from './townCenterPlatform.js';
 
 /**
  * Builds and maintains the visual object for every server entity: the container,
@@ -224,6 +225,15 @@ export class EntityRenderer {
       building.level ?? 1
     );
 
+    // The Town Center stands on the citadel terrace, so its art is lifted by the
+    // same rise as the platform `CitadelLayer` draws beneath it.
+    const lift = townCenterLift(
+      building.type,
+      (key) => scene.textures.exists(key),
+      scene.terrainLayout.kind === 'kingdom'
+    );
+    const artY = offsetY - lift;
+
     const container = scene.add.container(screenPos.x, screenPos.y);
 
     // Age of Empires style foundation highlight on ground (2x tile dimensions)
@@ -254,7 +264,7 @@ export class EntityRenderer {
     container.setData('ownerBaseHalfW', halfW);
     container.setData('ownerBaseHalfH', halfH);
 
-    const img = scene.add.image(0, offsetY, textureKey);
+    const img = scene.add.image(0, artY, textureKey);
     img.setScale(scale);
     // The generated gate faces south-east by default. Mirror it so a kingdom
     // portal on the eastern edge opens towards the citadel instead of away.
@@ -272,6 +282,7 @@ export class EntityRenderer {
 
     // Health / Construction Bar
     const hpBar = scene.add.graphics();
+    if (lift !== 0) hpBar.setY(-lift);
     container.add(hpBar);
     container.setData('hpBar', hpBar);
 
@@ -280,7 +291,7 @@ export class EntityRenderer {
     // to the image top instead of the HP bar, whose per-type offsets are tuned
     // for combat bars and can sit far above small buildings.
     const levelBadge = scene.add
-      .text(0, offsetY - img.displayHeight / 2 - 6, '', {
+      .text(0, artY - img.displayHeight / 2 - 6, '', {
         fontFamily: 'monospace',
         fontSize: '11px',
         color: '#fbbf24',
@@ -299,7 +310,7 @@ export class EntityRenderer {
     container.setData('gridY', building.gridY);
     container.setData('sizeX', building.sizeX);
     container.setData('sizeY', building.sizeY);
-    container.setData('visualCenterY', offsetY);
+    container.setData('visualCenterY', artY);
 
     this.refreshOwnerBase(container, id, building.ownerId);
     this.updateBuildingBar(container, building);
@@ -351,14 +362,22 @@ export class EntityRenderer {
     );
     if (image.texture.key === art.textureKey) return;
 
+    const lift = townCenterLift(
+      building.type,
+      (key) => this.scene.textures.exists(key),
+      this.scene.terrainLayout.kind === 'kingdom'
+    );
     image.setTexture(art.textureKey);
-    image.setY(art.offsetY);
+    image.setY(art.offsetY - lift);
     image.setScale(art.scale);
 
     const badge = container.getData('levelBadge') as Phaser.GameObjects.Text | undefined;
-    if (badge) badge.setY(art.offsetY - image.displayHeight / 2 - 6);
+    if (badge) badge.setY(art.offsetY - lift - image.displayHeight / 2 - 6);
 
-    container.setData('visualCenterY', art.offsetY);
+    const hpBar = container.getData('hpBar') as Phaser.GameObjects.Graphics | undefined;
+    if (hpBar && lift !== 0) hpBar.setY(-lift);
+
+    container.setData('visualCenterY', art.offsetY - lift);
   }
 
   updateBuildingBar(container: any, building: any) {

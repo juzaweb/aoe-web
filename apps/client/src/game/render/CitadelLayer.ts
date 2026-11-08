@@ -8,6 +8,11 @@ import {
 } from '@chien-quoc/shared';
 import type * as Phaser from 'phaser';
 import type { WorldScene } from '../scenes/WorldScene.js';
+import {
+  TC_PLATFORM_ORIGIN_Y,
+  TC_PLATFORM_RISE,
+  TC_PLATFORM_TEXTURE
+} from './townCenterPlatform.js';
 
 /**
  * Wall block art sizes, in texture pixels.
@@ -68,6 +73,7 @@ interface GateSprite {
 export class CitadelLayer {
   private floorTiles: Phaser.GameObjects.Image[] = [];
   private wallTiles: Phaser.GameObjects.Image[] = [];
+  private platforms: Phaser.GameObjects.Image[] = [];
   private gates: GateSprite[] = [];
   /** Town Center positions the current graphics were built from. */
   private signature = '';
@@ -83,12 +89,14 @@ export class CitadelLayer {
   clear() {
     for (const tile of this.floorTiles) tile.destroy();
     for (const tile of this.wallTiles) tile.destroy();
+    for (const platform of this.platforms) platform.destroy();
     for (const gate of this.gates) {
       gate.image.destroy();
       gate.door.destroy();
     }
     this.floorTiles = [];
     this.wallTiles = [];
+    this.platforms = [];
     this.gates = [];
     this.signature = '';
   }
@@ -169,13 +177,39 @@ export class CitadelLayer {
       }
     }
 
+    // Raised terrace under the Town Center. It is drawn here rather than on the
+    // building container so the citadel layer can keep it below the walls and
+    // units with a plain depth key; `EntityRenderer` lifts the building art by
+    // the same `TC_PLATFORM_RISE`.
+    const townCenter = layout.slots.find((slot) => slot.type === 'TOWN_CENTER');
+    if (townCenter && this.scene.textures.exists(TC_PLATFORM_TEXTURE)) {
+      const platformPos = gridToScreen(
+        townCenter.gridX + townCenter.sizeX / 2 - 0.5,
+        townCenter.gridY + townCenter.sizeY / 2 - 0.5
+      );
+      const platform = this.scene.add.image(
+        platformPos.x,
+        platformPos.y - TC_PLATFORM_RISE,
+        TC_PLATFORM_TEXTURE
+      );
+      platform.setOrigin(0.5, TC_PLATFORM_ORIGIN_Y);
+      platform.setDepth(
+        getIsoDepth(
+          townCenter.gridX + townCenter.sizeX,
+          townCenter.gridY + townCenter.sizeY,
+          14
+        )
+      );
+      this.platforms.push(platform);
+    }
+
     // Wall blocks sort by their own tile, like a resource, so a unit walking
     // below a wall is drawn in front of it and one behind is hidden by it.
     // The gate sprite already draws the six tiles of wall it covers, so those
     // blocks are skipped: otherwise a nearer wall block would cut the gate in
     // half, because one sprite can only carry one depth key.
     const middle = layout.gates[Math.floor(CITADEL_GATE_WIDTH / 2)] ?? layout.gates[0];
-    const coveredX = layout.originX + layout.size - 1;
+    const coveredX = layout.originX + layout.sizeX - 1;
     const coveredFrom = middle ? middle.gridY - GATE_COVER_TILES : 0;
     const coveredTo = middle ? middle.gridY + GATE_COVER_TILES : -1;
     const hasGate = this.scene.textures.exists('citadel_gate');

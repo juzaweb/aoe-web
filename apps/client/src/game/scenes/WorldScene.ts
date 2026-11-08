@@ -581,11 +581,12 @@ export class WorldScene extends Phaser.Scene {
 
     // Citadel stone: floor tile, wall block, gatehouse and its portcullis.
     // Built by `scripts/process_citadel_assets.py`; bump when a PNG changes.
-    const cv = 'v=1';
+    const cv = 'v=5';
     this.load.image('citadel_floor', `/assets/citadel/floor.png?${cv}`);
     this.load.image('citadel_wall', `/assets/citadel/wall.png?${cv}`);
     this.load.image('citadel_gate', `/assets/citadel/gate.png?${cv}`);
     this.load.image('citadel_gate_door', `/assets/citadel/gate_door.png?${cv}`);
+    this.load.image('citadel_tc_platform', `/assets/citadel/tc_platform.png?${cv}`);
   }
 
   create() {
