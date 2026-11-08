@@ -3,6 +3,11 @@
     "codegraph": {
       "command": "codegraph",
       "args": ["serve", "--mcp"]
+    },
+    "blender": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["blender-mcp"]
     }
   }
 }
