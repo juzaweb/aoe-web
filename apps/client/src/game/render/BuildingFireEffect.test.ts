@@ -128,53 +128,86 @@ describe('TownCenterFireEffect', () => {
     };
   });
 
-  it('initializes emitters and adds them to container', () => {
+  it('initializes emitters and groups them by severity tier', () => {
     const effect = new TownCenterFireEffect(mockScene, mockContainer);
 
     expect(createdEmitters.length).toBe(8);
     expect(mockContainer.add).toHaveBeenCalledTimes(8);
     expect(effect.getSeverity()).toBe('none');
+
+    const moderate = effect.getEmitters('moderate');
+    const heavy = effect.getEmitters('heavy');
+
+    expect(moderate.length).toBe(2);
+    expect(heavy.length).toBe(6);
+    expect(createdEmitters.every((e) => !e.emitting)).toBe(true);
   });
 
-  it('transitions between severity states based on HP', () => {
+  it('transitions between severity states and activates only matching tier', () => {
     const effect = new TownCenterFireEffect(mockScene, mockContainer);
+    const moderate = effect.getEmitters('moderate');
+    const heavy = effect.getEmitters('heavy');
 
-    // Initial state (full HP)
+    // 1. Initial state (full HP) -> all idle
     effect.update(2400, 2400, true);
     expect(effect.getSeverity()).toBe('none');
-    expect(createdEmitters.every((e) => !e.emitting)).toBe(true);
+    expect(moderate.every((e: any) => !e.emitting)).toBe(true);
+    expect(heavy.every((e: any) => !e.emitting)).toBe(true);
 
-    // Moderate damage (40% HP)
+    // 2. Moderate damage (40% HP) -> moderate active, heavy stopped
     effect.update(960, 2400, true);
     expect(effect.getSeverity()).toBe('moderate');
+    expect(moderate.every((e: any) => e.emitting)).toBe(true);
+    expect(heavy.every((e: any) => !e.emitting)).toBe(true);
 
-    // Heavy damage (20% HP)
+    // 3. Heavy damage (20% HP) -> heavy active, moderate stopped
     effect.update(480, 2400, true);
     expect(effect.getSeverity()).toBe('heavy');
+    expect(moderate.every((e: any) => !e.emitting)).toBe(true);
+    expect(heavy.every((e: any) => e.emitting)).toBe(true);
 
-    // Repaired back to healthy
+    // 4. Repaired back to moderate -> moderate active, heavy stopped
+    effect.update(800, 2400, true);
+    expect(effect.getSeverity()).toBe('moderate');
+    expect(moderate.every((e: any) => e.emitting)).toBe(true);
+    expect(heavy.every((e: any) => !e.emitting)).toBe(true);
+
+    // 5. Repaired back to healthy (>= 50%) -> all stopped
     effect.update(1500, 2400, true);
     expect(effect.getSeverity()).toBe('none');
+    expect(moderate.every((e: any) => !e.emitting)).toBe(true);
+    expect(heavy.every((e: any) => !e.emitting)).toBe(true);
   });
 
   it('stops all emitters when building is unconstructed', () => {
     const effect = new TownCenterFireEffect(mockScene, mockContainer);
+    const moderate = effect.getEmitters('moderate');
+    const heavy = effect.getEmitters('heavy');
 
-    // Was damaged
+    // Damaged
     effect.update(200, 2400, true);
     expect(effect.getSeverity()).toBe('heavy');
+    expect(heavy.every((e: any) => e.emitting)).toBe(true);
 
-    // State becomes unconstructed (e.g. reset/foundation)
+    // State becomes unconstructed (foundation)
     effect.update(200, 2400, false);
     expect(effect.getSeverity()).toBe('none');
+    expect(moderate.every((e: any) => !e.emitting)).toBe(true);
+    expect(heavy.every((e: any) => !e.emitting)).toBe(true);
   });
 
-  it('destroys all emitters cleanly', () => {
+  it('destroys all emitters cleanly and ignores double destroy', () => {
     const effect = new TownCenterFireEffect(mockScene, mockContainer);
     effect.destroy();
 
     for (const emitter of createdEmitters) {
-      expect(emitter.destroy).toHaveBeenCalled();
+      expect(emitter.destroy).toHaveBeenCalledTimes(1);
+    }
+
+    // Subsequent destroy is a safe no-op
+    expect(() => effect.destroy()).not.toThrow();
+    for (const emitter of createdEmitters) {
+      expect(emitter.destroy).toHaveBeenCalledTimes(1);
     }
   });
 });
