@@ -870,12 +870,12 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /**
-   * Stops the camera at the map's grass apron.
+   * Stops the camera from drifting arbitrarily far from the map.
    *
-   * Without bounds, drag-panning walks off the isometric diamond into the flat
-   * camera clear colour, which reads as endless empty land. The apron is the
-   * four decorative grass rings the terrain layer already draws outside the
-   * playable tiles, so the clamped view still ends on painted ground.
+   * This is a coarse rectangular bound around the diamond plus its skirt; the
+   * terrain layer paints grass across the whole viewport, so the corners of that
+   * rectangle no longer show the flat clear colour. The bound still keeps a
+   * player from panning into an endless grass field far from anything.
    */
   private applyCameraBounds() {
     const minGx = -MAP_APRON_TILES;
@@ -896,49 +896,6 @@ export class WorldScene extends Phaser.Scene {
       right.x - left.x + padX * 2,
       bottom.y - top.y + padY * 2
     );
-  }
-
-  /**
-   * Keeps the whole viewport on painted ground.
-   *
-   * `setBounds` only knows about an axis-aligned rectangle, but an isometric map
-   * is a diamond: its bounding box has four large corners that fall outside the
-   * map. Panning into one of those corners showed the flat clear colour even
-   * though the camera was technically "inside" its bounds.
-   *
-   * Screen position maps to grid as `gx = x/128 + y/64`, `gy = y/64 - x/128`.
-   * Requiring all four viewport corners to stay inside `[-apron, size-1+apron]`
-   * therefore becomes two independent bounds on `s = gx` and `d = gy` at the
-   * view centre, which is what this clamps. At the minimum zoom the view almost
-   * fills the map, so the camera is effectively fixed there; zooming in opens
-   * the usual pan range.
-   */
-  private clampCameraToGround() {
-    const cam = this.cameras.main;
-    const view = cam.worldView;
-    if (!view || view.width <= 0 || view.height <= 0) return;
-
-    const width = TILE_WIDTH;
-    const height = TILE_HEIGHT;
-    const apron = MAP_APRON_TILES;
-    const sMin = -apron;
-    const sMax = this.mapWidth - 1 + apron - view.width / width - view.height / height;
-    const dMin = -apron + view.width / width;
-    const dMax = this.mapHeight - 1 + apron - view.height / height;
-    if (sMax < sMin || dMax < dMin) return;
-
-    const u = view.x / width;
-    const v = view.y / height;
-    const s = Math.min(sMax, Math.max(sMin, u + v));
-    const d = Math.min(dMax, Math.max(dMin, v - u));
-    const targetX = ((s - d) / 2) * width;
-    const targetY = ((s + d) / 2) * height;
-
-    const dx = targetX - view.x;
-    const dy = targetY - view.y;
-    if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return;
-    cam.scrollX += dx;
-    cam.scrollY += dy;
   }
 
   /** Default view for a map with no known anchor yet: the whole terrain. */
@@ -2162,7 +2119,6 @@ export class WorldScene extends Phaser.Scene {
       this.refreshPlayerRoads();
     }
 
-    this.clampCameraToGround();
     this.terrain.render();
     this.decor.render();
     this.decor.update(time);
@@ -2194,8 +2150,6 @@ export class WorldScene extends Phaser.Scene {
       // `activePointer` there — so touch pans by dragging and never edge-scrolls.
       enabled: !this.touchMode
     });
-
-    this.clampCameraToGround();
 
     // MOB-02: long-press needs the clock advancing, not another event.
     this.touch.tick(time);

@@ -2816,7 +2816,7 @@ describe('kingdom map layout (MAPS-V2)', () => {
     expect(count).toBeLessThan(700);
   });
 
-  it('keeps the starter woodline and berries out of the gate approach', () => {
+  it('keeps spawned resources out of the citadel plaza and gate approach', () => {
     const room = createKingdomRoom();
     addPlayer(room, 'player-a');
 

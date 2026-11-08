@@ -123,11 +123,11 @@ export class TerrainLayer {
     const cBottomRight = screenToGrid(right, bottom);
 
     // Grass covers the whole visible window, not just an apron around the
-    // playable tiles. The camera is clamped to the map's bounding box, and an
-    // isometric bounding box is far larger than the map diamond itself; filling
-    // only a few rings left the corners of the box showing the flat camera
-    // clear colour, which reads as endless empty ground when panned to the edge.
-    // Roads stay inside the map: the spline generator already clamps to it.
+    // playable tiles. Any camera position the bounds allow can still aim at the
+    // empty corners of the isometric bounding box; drawing only a few rings left
+    // those corners showing the flat camera clear colour, which reads as endless
+    // empty ground when panned to the edge. Roads stay inside the map: the
+    // spline generator already clamps to it.
     const minGx = Math.min(cTopLeft.gridX, cTopRight.gridX, cBottomLeft.gridX, cBottomRight.gridX) - 3;
     const maxGx = Math.max(cTopLeft.gridX, cTopRight.gridX, cBottomLeft.gridX, cBottomRight.gridX) + 3;
     const minGy = Math.min(cTopLeft.gridY, cTopRight.gridY, cBottomLeft.gridY, cBottomRight.gridY) - 3;

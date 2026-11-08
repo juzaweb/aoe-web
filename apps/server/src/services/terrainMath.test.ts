@@ -7,6 +7,7 @@ import {
   TERRAIN_KINGDOM,
   citadelLayoutFor,
   citadelTownCenterFor,
+  isCitadelAvenueTile,
   isPlazaTile,
   terrainForZone
 } from '@chien-quoc/shared';
@@ -55,5 +56,51 @@ describe('isPlazaTile', () => {
     const centre = TERRAIN_BATTLEFIELD.width / 2;
     expect(isPlazaTile(centre, centre, TERRAIN_BATTLEFIELD)).toBe(false);
     expect(isPlazaTile(0, 0, TERRAIN_BATTLEFIELD)).toBe(false);
+  });
+});
+
+describe('isCitadelAvenueTile', () => {
+  it('covers the lane from the gate to the map edge only', () => {
+    const gate = LAYOUT.gates[1];
+    const avenueX = LAYOUT.originX + LAYOUT.sizeX;
+    const gateMinY = Math.min(...LAYOUT.gates.map((g) => g.gridY));
+    const gateMaxY = Math.max(...LAYOUT.gates.map((g) => g.gridY));
+
+    expect(isCitadelAvenueTile(avenueX, gate.gridY, LAYOUT, KINGDOM_MAP_SIZE.width)).toBe(true);
+    expect(
+      isCitadelAvenueTile(KINGDOM_MAP_SIZE.width - 1, gate.gridY, LAYOUT, KINGDOM_MAP_SIZE.width)
+    ).toBe(true);
+    expect(
+      isCitadelAvenueTile(
+        avenueX,
+        gateMinY - CITADEL_APPROACH_MARGIN,
+        LAYOUT,
+        KINGDOM_MAP_SIZE.width
+      )
+    ).toBe(true);
+
+    // Outside the lane, behind the wall, and past the map edge are excluded.
+    expect(
+      isCitadelAvenueTile(
+        avenueX,
+        gateMinY - CITADEL_APPROACH_MARGIN - 1,
+        LAYOUT,
+        KINGDOM_MAP_SIZE.width
+      )
+    ).toBe(false);
+    expect(
+      isCitadelAvenueTile(
+        avenueX,
+        gateMaxY + CITADEL_APPROACH_MARGIN + 1,
+        LAYOUT,
+        KINGDOM_MAP_SIZE.width
+      )
+    ).toBe(false);
+    expect(
+      isCitadelAvenueTile(LAYOUT.originX - 1, gate.gridY, LAYOUT, KINGDOM_MAP_SIZE.width)
+    ).toBe(false);
+    expect(
+      isCitadelAvenueTile(KINGDOM_MAP_SIZE.width, gate.gridY, LAYOUT, KINGDOM_MAP_SIZE.width)
+    ).toBe(false);
   });
 });

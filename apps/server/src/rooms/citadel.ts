@@ -1,12 +1,12 @@
 import {
   BUILDING_BLUEPRINTS,
   BuildingType,
-  CITADEL_APPROACH_MARGIN,
   CITADEL_SIZE,
   CitadelSlot,
   citadelLayoutFor,
   citadelTownCenterFor,
   getBuildingLevelStats,
+  isCitadelAvenueTile,
   zoneKindOf
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
@@ -106,9 +106,6 @@ export function spawnMissingCitadelBuildings(
  */
 export function clearCitadelResources(state: WorldState, townCenter: BuildingState): void {
   const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
-  const gateMinY = Math.min(...layout.gates.map((gate) => gate.gridY));
-  const gateMaxY = Math.max(...layout.gates.map((gate) => gate.gridY));
-  const avenueMinX = layout.originX + layout.sizeX;
   const buried: string[] = [];
 
   state.resourceNodes.forEach((node: ResourceNodeState, id: string) => {
@@ -118,13 +115,9 @@ export function clearCitadelResources(state: WorldState, townCenter: BuildingSta
       node.gridY >= layout.originY &&
       node.gridY < layout.originY + layout.sizeY;
 
-    const onAvenue =
-      node.gridX >= avenueMinX &&
-      node.gridX < state.mapWidth &&
-      node.gridY >= gateMinY - CITADEL_APPROACH_MARGIN &&
-      node.gridY <= gateMaxY + CITADEL_APPROACH_MARGIN;
-
-    if (underCompound || onAvenue) buried.push(id);
+    if (underCompound || isCitadelAvenueTile(node.gridX, node.gridY, layout, state.mapWidth)) {
+      buried.push(id);
+    }
   });
 
   for (const id of buried) state.resourceNodes.delete(id);

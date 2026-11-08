@@ -5,7 +5,8 @@ import {
   CITADEL_WIDTH,
   citadelLayoutFor,
   citadelOriginFor,
-  citadelTownCenterFor
+  citadelTownCenterFor,
+  type CitadelLayout
 } from './citadel.js';
 
 /** Everything the terrain generator needs to know about one map. */
@@ -61,12 +62,27 @@ export function isPlazaTile(gx: number, gy: number, terrain: MapTerrain): boolea
   // thing in that direction is the travel portal on the far right edge.
   const anchor = citadelTownCenterFor(terrain.width, terrain.height);
   const layout = citadelLayoutFor(anchor.gridX, anchor.gridY);
+  return isCitadelAvenueTile(gx, gy, layout, terrain.width);
+}
+
+/**
+ * True on the avenue leading from the citadel's east gate to the map edge.
+ *
+ * Shared by the terrain generator (so resources never spawn there) and by the
+ * snapshot upgrade that removes nodes saved by older builds. Keeping the rule in
+ * one place stops the generator and the cleanup from drifting apart.
+ */
+export function isCitadelAvenueTile(
+  gx: number,
+  gy: number,
+  layout: CitadelLayout,
+  mapWidth: number
+): boolean {
   const gateMinY = Math.min(...layout.gates.map((gate) => gate.gridY));
   const gateMaxY = Math.max(...layout.gates.map((gate) => gate.gridY));
-
   return (
     gx >= layout.originX + layout.sizeX &&
-    gx < terrain.width &&
+    gx < mapWidth &&
     gy >= gateMinY - CITADEL_APPROACH_MARGIN &&
     gy <= gateMaxY + CITADEL_APPROACH_MARGIN
   );
