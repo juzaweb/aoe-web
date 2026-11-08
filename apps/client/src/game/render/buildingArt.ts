@@ -138,9 +138,10 @@ const HP_BAR_Y: Partial<Record<BuildingType, number>> = {
   ARCHERY_RANGE: -235,
   HOUSE: -224,
   FARM: -100,
-  LUMBER_CAMP: -171,
-  MILL: -190,
-  MINING_CAMP: -190,
+  // ECO: generated camps on the 256x220 house canvas. -70 - 220/2 + topInset - 8.
+  LUMBER_CAMP: -187,
+  MILL: -188,
+  MINING_CAMP: -188,
   // Gate: the bar follows the scaled art's top edge, not the sheet rectangle.
   PORTAL: PORTAL_HP_BAR_Y
 };

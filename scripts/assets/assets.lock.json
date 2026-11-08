@@ -1,8 +1,9 @@
 {
   "legacy": {
     "apps/client/public/assets/buildings/farm.png": "1b5612c859cf890c43f15a2ad2631a3c3b3eacf35418a31216477c49657d0c58",
-    "apps/client/public/assets/buildings/mill.png": "b32adc29f88a739702706b9bfcbc1ab0a12be45a1624ffbea910ae199f5e393e",
-    "apps/client/public/assets/buildings/mining_camp.png": "3ed077b00b2b44420a4a4e169f093e34f5ff6a8b6cbbf6f1c4c393fecb51e801",
+    "apps/client/public/assets/buildings/lumber_camp.png": "cd00065028c93d68f18ce80b9cd19119e2ab088a958b20ac8df5a7d9e0a3bcfa",
+    "apps/client/public/assets/buildings/mill.png": "067b41bb0101ced00c04a2133e433ec5ef14febeb557c83da26b4dbc9201d242",
+    "apps/client/public/assets/buildings/mining_camp.png": "1d4ae4397058c65a25131d847316fb580caa978c51f7de6ea7ee3b0b2835a730",
     "apps/client/public/assets/cursors/attack.png": "6a4969515fe20e59c79e2fc37d603ac3f5aa9f476bccbd66e93c67d0ebac325c",
     "apps/client/public/assets/cursors/build-blocked.png": "91cf73a85574ab0736ec89764b47930aa4a22ad3989d5f0281b42de4e1e7ce92",
     "apps/client/public/assets/cursors/build.png": "d528ff72109c8c6408d1168773fa3ea81debbfc1c75fd7dc2f382c70610b5d1d",
@@ -253,29 +254,6 @@
       "source": "oga.bleed-medieval-06",
       "sourceSha256": "a6e6ce8f758b124728a7fb90bea820ac0c1e7032c08a923c93c2bb75bebe723b",
       "topInset": 0
-    },
-    "building.lumber-camp": {
-      "author": "feudalwars",
-      "bbox": [
-        1,
-        17,
-        256,
-        220
-      ],
-      "bottomInset": 0,
-      "canvas": [
-        256,
-        220
-      ],
-      "license": "CC0-1.0",
-      "lumGain": 1.4194,
-      "out": "apps/client/public/assets/buildings/lumber_camp.png",
-      "page": "https://opengameart.org/content/medieval-stable-isometric-25d",
-      "scale": 0.805,
-      "sha256": "e0cd4388b90c42e96eb2005cada7e578492b11e171b89befa8b65072ed9931c9",
-      "source": "oga.feudal-stable",
-      "sourceSha256": "6ac29f94bc3526b2522ff56d595a8f671e0c1fa44e11f19e821889259096c99e",
-      "topInset": 17
     },
     "building.stable": {
       "author": "feudalwars",

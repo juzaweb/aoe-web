@@ -149,13 +149,6 @@
       "out": "apps/client/public/assets/buildings/barracks.png",
       "canvas": [400, 320]
     },
-    "building.lumber-camp": {
-      "source": "oga.feudal-stable",
-      "file": "sprite",
-      "op": { "crop": "alpha", "fit": true, "matchLum": 103.8, "anchor": "bottom-center" },
-      "out": "apps/client/public/assets/buildings/lumber_camp.png",
-      "canvas": [256, 220]
-    },
     "building.stable": {
       "source": "oga.feudal-stable",
       "file": "sprite",

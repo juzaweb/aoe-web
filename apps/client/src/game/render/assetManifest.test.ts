@@ -95,8 +95,12 @@ describe('building health bar heights', () => {
     'building.barracks': 'BARRACKS',
     'building.stable': 'STABLE',
     'building.archery-range': 'ARCHERY_RANGE',
-    'building.house': 'HOUSE',
-    'building.lumber-camp': 'LUMBER_CAMP'
+    'building.house': 'HOUSE'
+    // The three economy camps (LUMBER_CAMP, MILL, MINING_CAMP) are
+    // project-original generated art pinned as `legacy` in the lock, so there is
+    // no measured `topInset` entry here to recompute their bars from; their
+    // `HP_BAR_Y` numbers are measured from the shipped 256x220 PNGs by
+    // `scripts/generate_buildings_assets.py`.
   };
   // `HP_BAR_Y` is hand-maintained, but its value is derivable: the bar sits 8 px
   // above the first visible row of art. Recomputing it from the lock means a
