@@ -1,4 +1,5 @@
 import {
+  CITADEL_GATE_WIDTH,
   TILE_HEIGHT,
   TILE_WIDTH,
   citadelLayoutFor,
@@ -7,45 +8,97 @@ import {
 } from '@chien-quoc/shared';
 import type * as Phaser from 'phaser';
 import type { WorldScene } from '../scenes/WorldScene.js';
+import {
+  TC_PLATFORM_ORIGIN_Y,
+  TC_PLATFORM_RISE,
+  TC_PLATFORM_TEXTURE
+} from './townCenterPlatform.js';
 
 /**
  * Wall block art sizes, in texture pixels.
  *
  * The base diamond (64 px tall) sits at `WALL_BASE_CENTER_Y` and the cap is
  * lifted by `WALL_RISE`, so adjacent 1x1 wall tiles read as one continuous wall
- * rather than as a row of curbs.
+ * rather than as a row of curbs. The numbers must match
+ * `scripts/process_citadel_assets.py`, which draws the shipped `citadel/wall.png`.
  */
 const WALL_RISE = 90;
 const WALL_BASE_CENTER_Y = 32 + WALL_RISE;
 const WALL_TEXTURE_HEIGHT = WALL_BASE_CENTER_Y + 32;
 
 /**
- * Stone floor and indestructible walls of every kingdom citadel on the map.
+ * Gate sprite geometry.
+ *
+ * `citadel/gate.png` is a 512x500 canvas whose 384 px of wall front cover the
+ * three gate tiles plus the wall on either side. The origin sits on the middle
+ * gate tile's front corner, so the passage lands where the server lets units
+ * walk and the wall run continues at the same base line.
+ */
+const GATE_TEXTURE_WIDTH = 512;
+const GATE_TEXTURE_HEIGHT = 500;
+const GATE_ORIGIN_Y = 308 / GATE_TEXTURE_HEIGHT;
+/** Half the gate's wall front, in tiles. Wall blocks under it are not drawn. */
+const GATE_COVER_TILES = 3;
+
+/** Portcullis drawn inside the arch, in gate-texture pixels. */
+const GATE_DOOR = { x: 160, y: 219, width: 192, height: 169 };
+
+/** How close a unit has to be to the gate centre before it lifts, in tiles. */
+const GATE_OPEN_RADIUS = 3.2;
+/** Milliseconds for the portcullis to travel from shut to open. */
+const GATE_TRAVEL_MS = 260;
+
+interface GateSprite {
+  image: Phaser.GameObjects.Image;
+  door: Phaser.GameObjects.Image;
+  gridX: number;
+  gridY: number;
+  /** 0 = shut, 1 = raised. */
+  open: number;
+}
+
+/**
+ * Stone floor, indestructible walls, the gatehouse and the Town Center terrace
+ * of every kingdom citadel.
  *
  * The compound is not replicated as entities: it is a pure function of the Town
  * Center's position (see `citadelLayoutFor`), so the client redraws exactly what
  * the server uses for collision. Only a kingdom gets one; the battlefield has no
  * citadel and this layer stays empty.
+ *
+ * Art is shipped (`assets/citadel/{floor,wall,gate,tc_platform}.png`), built by
+ * `scripts/process_citadel_assets.py`. The procedural textures below are only a
+ * fallback for a failed load, so a missing file degrades to the old blocky look
+ * instead of a green box.
  */
 export class CitadelLayer {
   private floorTiles: Phaser.GameObjects.Image[] = [];
   private wallTiles: Phaser.GameObjects.Image[] = [];
+  private platforms: Phaser.GameObjects.Image[] = [];
+  private gates: GateSprite[] = [];
   /** Town Center positions the current graphics were built from. */
   private signature = '';
 
   constructor(private readonly scene: WorldScene) {}
 
-  /** Builds the two procedural textures once. Call from the scene's create(). */
+  /** Builds the fallback textures once. Call from the scene's create(). */
   create() {
-    this.ensureTextures();
+    this.ensureFallbackTextures();
   }
 
   /** Removes every drawn tile. */
   clear() {
     for (const tile of this.floorTiles) tile.destroy();
     for (const tile of this.wallTiles) tile.destroy();
+    for (const platform of this.platforms) platform.destroy();
+    for (const gate of this.gates) {
+      gate.image.destroy();
+      gate.door.destroy();
+    }
     this.floorTiles = [];
     this.wallTiles = [];
+    this.platforms = [];
+    this.gates = [];
     this.signature = '';
   }
 
@@ -83,6 +136,35 @@ export class CitadelLayer {
     }
   }
 
+  /**
+   * Lifts each portcullis while a unit stands in its gateway.
+   *
+   * Purely visual: the server already treats the three gate tiles as walkable, so
+   * this only stops the gate from looking shut while an army walks through it.
+   */
+  update(delta: number) {
+    if (this.gates.length === 0) return;
+    const units = this.scene.room?.state?.units;
+    const step = Math.min(1, delta / GATE_TRAVEL_MS);
+
+    for (const gate of this.gates) {
+      let wanted = 0;
+      units?.forEach((unit: any) => {
+        if (wanted === 1) return;
+        if (Math.hypot(unit.x - gate.gridX, unit.y - gate.gridY) <= GATE_OPEN_RADIUS) {
+          wanted = 1;
+        }
+      });
+      if (gate.open === wanted) continue;
+
+      gate.open = gate.open < wanted ? Math.min(wanted, gate.open + step) : Math.max(wanted, gate.open - step);
+      // Smoothstep so the shutter eases out of the arch instead of snapping.
+      const eased = gate.open * gate.open * (3 - 2 * gate.open);
+      gate.door.setScale(1, Math.max(0.02, 1 - 0.94 * eased));
+      gate.door.setAlpha(1 - eased);
+    }
+  }
+
   private drawCitadel(townCenterGridX: number, townCenterGridY: number) {
     const layout = citadelLayoutFor(townCenterGridX, townCenterGridY);
 
@@ -96,19 +178,102 @@ export class CitadelLayer {
       }
     }
 
+    // Raised terrace under the Town Center. It is drawn here rather than on the
+    // building container so the citadel layer can keep it below the walls and
+    // units with a plain depth key; `EntityRenderer` lifts the building art by
+    // the same `TC_PLATFORM_RISE`.
+    const townCenter = layout.slots.find((slot) => slot.type === 'TOWN_CENTER');
+    if (townCenter && this.scene.textures.exists(TC_PLATFORM_TEXTURE)) {
+      const platformPos = gridToScreen(
+        townCenter.gridX + townCenter.sizeX / 2 - 0.5,
+        townCenter.gridY + townCenter.sizeY / 2 - 0.5
+      );
+      const platform = this.scene.add.image(
+        platformPos.x,
+        platformPos.y - TC_PLATFORM_RISE,
+        TC_PLATFORM_TEXTURE
+      );
+      platform.setOrigin(0.5, TC_PLATFORM_ORIGIN_Y);
+      platform.setDepth(
+        getIsoDepth(
+          townCenter.gridX + townCenter.sizeX,
+          townCenter.gridY + townCenter.sizeY,
+          14
+        )
+      );
+      this.platforms.push(platform);
+    }
+
     // Wall blocks sort by their own tile, like a resource, so a unit walking
     // below a wall is drawn in front of it and one behind is hidden by it.
+    // The gate sprite already draws the six tiles of wall it covers, so those
+    // blocks are skipped: otherwise a nearer wall block would cut the gate in
+    // half, because one sprite can only carry one depth key.
+    const middle = layout.gates[Math.floor(CITADEL_GATE_WIDTH / 2)] ?? layout.gates[0];
+    const coveredX = layout.originX + layout.sizeX - 1;
+    const coveredFrom = middle ? middle.gridY - GATE_COVER_TILES : 0;
+    const coveredTo = middle ? middle.gridY + GATE_COVER_TILES : -1;
+    const hasGate = this.scene.textures.exists('citadel_gate');
     for (const wall of layout.walls) {
+      if (
+        hasGate &&
+        wall.gridX === coveredX &&
+        wall.gridY >= coveredFrom &&
+        wall.gridY <= coveredTo
+      ) {
+        continue;
+      }
       const pos = gridToScreen(wall.gridX, wall.gridY);
       const tile = this.scene.add.image(pos.x, pos.y, 'citadel_wall');
       tile.setOrigin(0.5, WALL_BASE_CENTER_Y / WALL_TEXTURE_HEIGHT);
       tile.setDepth(getIsoDepth(wall.gridX, wall.gridY, 12));
       this.wallTiles.push(tile);
     }
+
+    this.drawGate(layout.gates);
   }
 
-  /** Draws the two textures used by every tile of every citadel. */
-  private ensureTextures() {
+  /**
+   * Places the gatehouse over the open tiles in the middle of the east wall.
+   *
+   * The sprite covers six tiles of wall front, centred on the middle gate tile,
+   * so half of it overlaps the wall on either side of the doorway. Only one gate
+   * exists per citadel today, but the loop keeps the contract explicit.
+   */
+  private drawGate(gates: { gridX: number; gridY: number }[]) {
+    if (gates.length === 0) return;
+    // No gate art means no gate: an untextured 512x500 rectangle would be worse
+    // than the plain wall run, so the citadel degrades to the old look.
+    if (!this.scene.textures.exists('citadel_gate')) return;
+    const middle = gates[Math.floor(CITADEL_GATE_WIDTH / 2)] ?? gates[0];
+    const pos = gridToScreen(middle.gridX, middle.gridY);
+
+    const image = this.scene.add.image(pos.x, pos.y, 'citadel_gate');
+    image.setOrigin(0.5, GATE_ORIGIN_Y);
+    image.setDepth(getIsoDepth(middle.gridX, middle.gridY, 12));
+
+    // The portcullis texture is already skewed to the arch, so it is placed at
+    // the arch's top-left corner and left alone. Scaling Y from the top retracts
+    // it upwards into the lintel without needing a mask.
+    const door = this.scene.add.image(
+      pos.x - GATE_TEXTURE_WIDTH / 2 + GATE_DOOR.x,
+      pos.y - GATE_TEXTURE_HEIGHT * GATE_ORIGIN_Y + GATE_DOOR.y,
+      'citadel_gate_door'
+    );
+    door.setOrigin(0, 0);
+    door.setDepth(getIsoDepth(middle.gridX, middle.gridY, 13));
+
+    this.gates.push({
+      image,
+      door,
+      gridX: middle.gridX,
+      gridY: middle.gridY,
+      open: 0
+    });
+  }
+
+  /** Draws the fallback floor, wall and portcullis textures if a load failed. */
+  private ensureFallbackTextures() {
     const scene = this.scene;
 
     if (!scene.textures.exists('citadel_floor')) {
@@ -197,6 +362,34 @@ export class CitadelLayer {
       }
 
       g.generateTexture('citadel_wall', TILE_WIDTH, WALL_TEXTURE_HEIGHT);
+      g.destroy();
+    }
+
+    if (!scene.textures.exists('citadel_gate_door')) {
+      const g = scene.add.graphics();
+      const { width, height } = GATE_DOOR;
+
+      g.fillStyle(0x1c1f24, 1);
+      g.fillRect(0, 0, width, height);
+
+      g.lineStyle(2, 0x4a4f58, 1);
+      for (let x = 8; x < width; x += 10) {
+        g.beginPath();
+        g.moveTo(x, 0);
+        g.lineTo(x, height);
+        g.strokePath();
+      }
+
+      g.lineStyle(3, 0x3c4149, 1);
+      for (const fraction of [0.2, 0.55, 0.9]) {
+        const y = height * fraction;
+        g.beginPath();
+        g.moveTo(0, y);
+        g.lineTo(width, y);
+        g.strokePath();
+      }
+
+      g.generateTexture('citadel_gate_door', width, height);
       g.destroy();
     }
   }

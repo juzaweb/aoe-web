@@ -59,6 +59,7 @@ scripts/raw_downloads/oga/
 
 # Spike/experiment output (sheets + previews), regenerable from the scripts
 scripts/out/
+renders/
 
 # Unit-sheet pipeline state: regenerable and not source art
 scripts/raw_downloads/**/*_raw_backup.png

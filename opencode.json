@@ -17,7 +17,7 @@
       "type": "local",
       "command": [
         "codegraph",
-        "serve", 
+        "serve",
         "--mcp"
       ],
       "enabled": true
@@ -26,6 +26,10 @@
       "type": "remote",
       "url": "https://mcp.canva.com/mcp",
       "enabled": true
+    },
+    "blender": {
+      "type": "stdio",
+      "command": ["uvx", "blender-mcp"]
     }
   },
   "agent": {
