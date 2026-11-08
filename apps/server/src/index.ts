@@ -11,6 +11,12 @@ import { AuthError, AuthService } from './services/AuthService.js';
 import { RaidError, RaidService } from './services/RaidService.js';
 import { createRateLimit } from './services/RateLimiter.js';
 import { localeFromHeader, translate, translateError } from './i18n/index.js';
+import {
+  findFreePort,
+  isAddressInUse,
+  resolveServerPort,
+  writePortFile
+} from './utils/serverPort.js';
 
 // The battlefield (220x220) holds ~1.2k resource nodes, so a full world snapshot
 // is far larger than the 16 KB default. Raising it up front avoids the per-room
@@ -18,7 +24,6 @@ import { localeFromHeader, translate, translateError } from './i18n/index.js';
 // before any room (and therefore any Encoder) is constructed.
 Encoder.BUFFER_SIZE = 256 * 1024;
 
-const port = Number(process.env.PORT || 2567);
 export const app: express.Express = express();
 
 // Disable Express fingerprinting header to reduce attack surface info leakage
@@ -254,7 +259,20 @@ export async function start() {
     console.error('❌ [Server] Could not reconcile stale raids:', err);
   });
 
-  await gameServer.listen(port);
+  // The port may already be taken (another checkout, a stray dev server, or a
+  // race after the free-port probe). Shift to the next free one and record it.
+  let port = await resolveServerPort();
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await gameServer.listen(port);
+      break;
+    } catch (err) {
+      if (!isAddressInUse(err) || attempt >= 10) throw err;
+      console.warn(`⚠️  [Server] Port ${port} was taken during startup, trying the next one.`);
+      port = await findFreePort(port + 1);
+      writePortFile(port);
+    }
+  }
   console.log(`⚔️  Chien Quoc Game Server is running on http://localhost:${port} and ws://localhost:${port}`);
 }
 

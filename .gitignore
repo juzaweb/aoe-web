@@ -12,6 +12,9 @@ build/
 .env.local
 *.local
 
+# Port the dev game server picked (written by apps/server, read by the client)
+.game-server-port
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

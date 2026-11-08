@@ -28,10 +28,17 @@ export interface AuthResponse {
 
 const TOKEN_STORAGE_KEY = 'cq_auth_token';
 
-/** Server base URL (`:2567`) resolved from the current page host. */
+const DEFAULT_SERVER_PORT = 2567;
+
+/** Port the game server is listening on, injected at build time by Vite. */
+function getServerPort(): number {
+  return typeof __GAME_SERVER_PORT__ === 'number' ? __GAME_SERVER_PORT__ : DEFAULT_SERVER_PORT;
+}
+
+/** Server base URL resolved from the current page host and the server's port. */
 export function getServerUrl(): string {
   const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-  return `${protocol}//${window.location.hostname}:2567`;
+  return `${protocol}//${window.location.hostname}:${getServerPort()}`;
 }
 
 export function getStoredToken(): string | null {
