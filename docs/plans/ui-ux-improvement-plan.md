@@ -1,9 +1,9 @@
 # 2D Game UI/UX Improvement Plan
 
-- **Date:** 2026-11-08
+- **Date:** 2026-11-09
 - **Project / engine:** Phaser 3 (Canvas/WebGL) + React 18 (HUD/Overlays) + Tailwind CSS + Colyseus.js
 - **Audit scope:** Client frontend components (`apps/client/src/components/*`), input controllers (`apps/client/src/game/input/*`), scenes (`WorldScene.ts`), stylesheets (`index.css`), mobile interactions (`MobileCommandBar.tsx`, `useInputMode.ts`), and localization files (`apps/client/src/i18n/*`).
-- **Limitations:** Backend server runtime and real multiplayer connection were not actively spun up with real player traffic during this audit. Live gameplay verification was conducted by static inspection of rendering logic, event handlers, and unit tests rather than interactive human sessions.
+- **Limitations:** Backend server runtime and live multi-client sessions under real player latency were not actively simulated with live users during this audit. Live gameplay verification was conducted by static inspection of rendering logic, event handlers, and client unit tests rather than interactive human play sessions.
 
 ---
 
@@ -38,7 +38,7 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 - **Confidence:** High
 - **Type:** Observed issue
 - **Evidence:** `apps/client/src/game/scenes/WorldScene.ts` processes `handleRightClickCommand`, but ground clicks only emit network messages or internal path recalculations without spawning transient animated decals (such as pulsing green concentric circles for move, or red crosshairs for attack).
-- **Player Impact:** Players frequently double- or triple-click because there is no immediate visual confirmation that their command was registered before server replication moves the units.
+- **Player impact:** Players frequently double- or triple-click because there is no immediate visual confirmation that their command was registered before server replication moves the units.
 - **Recommendation:**
   - Create a transient particle/sprite effect in `WorldScene.ts` (e.g., green ring for move order, red ring/cross for attack, yellow ring for harvest/gather) that animates and scales down over 300ms at the clicked world coordinate.
   - Play an immediate, subtle auditory acknowledgment click sound.
@@ -57,7 +57,7 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 - **Confidence:** High
 - **Type:** Observed issue
 - **Evidence:** Multiple UI components use sub-10px fonts (`text-[8px]`, `text-[9px]`, `text-[10px]` in `BuildMenu.tsx`, `HUD.tsx`, `Minimap.tsx`, `MobileCommandBar.tsx`).
-- **Player Impact:** On high-DPI mobile screens and 1080p+ monitors, text is difficult to read and fails standard WCAG legibility guidelines.
+- **Player impact:** On high-DPI mobile screens and 1080p+ monitors, text is difficult to read and fails standard WCAG legibility guidelines.
 - **Recommendation:**
   - Standardize minimum font size to 11px (`text-[11px]`) for auxiliary labels and 12px (`text-xs`) for regular text across all HUD panels.
   - Increase padding/spacing slightly where necessary or truncate labels with clean ellipsis and clear tooltips.
@@ -75,10 +75,10 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 - **Confidence:** High
 - **Type:** Observed issue
 - **Evidence:** In `BuildMenu.tsx` (compact mode), selecting a building automatically closes the sheet (`setOpen(false)`), leaving the screen with only the semi-transparent building ghost under cursor/finger without an explicit placement prompt.
-- **Player Impact:** Players, especially new mobile players, get confused about why their menu closed and whether they are in placement mode or normal mode.
+- **Player impact:** Players, especially new mobile players, get confused about why their menu closed and whether they are in placement mode or normal mode.
 - **Recommendation:**
   - Display a floating top/bottom toast banner when placement mode is active: "Placing [Building Name] - Tap ground to construct or tap Cancel".
-  - Provide an easily reachable floating cancel floating button (`X`) near the center-bottom or top-center of the screen.
+  - Provide an easily reachable floating cancel button (`X`) near the center-bottom or top-center of the screen.
 - **Acceptance criteria:**
   - [ ] Banner appears whenever `activeBuildingType !== null` or `roadMode !== null`.
   - [ ] Banner contains building name, cost reminder, and explicit "Cancel" button.
@@ -94,7 +94,7 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 - **Confidence:** Medium
 - **Type:** Observed issue
 - **Evidence:** `apps/client/src/components/HUD.tsx` displays population cap in red text (`text-red-400 font-bold`) when capped, and under-attack alert relies solely on red pulsing badges.
-- **Player Impact:** Players with protanopia/deuteranopia cannot easily distinguish red warning states from standard white/amber text.
+- **Player impact:** Players with protanopia/deuteranopia cannot easily distinguish red warning states from standard white/amber text.
 - **Recommendation:**
   - Add a dedicated warning icon (e.g. `AlertTriangle`) alongside the population text when `population >= populationCap`.
   - Add text or icon cues in addition to color transitions for Citadel HP and World Map difficulty tags.
@@ -112,7 +112,7 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 - **Confidence:** Medium
 - **Type:** Observed issue
 - **Evidence:** `SelectionController.ts` draws selection boxes, but contrast against bright sand, dirt, and road tiles can wash out depending on the tile under the selection box.
-- **Player Impact:** Group-selecting units during chaotic combat over roads or bright areas causes the selection boundary to blend into the ground.
+- **Player impact:** Group-selecting units during chaotic combat over roads or bright areas causes the selection boundary to blend into the ground.
 - **Recommendation:**
   - Add a 1px dark outer stroke around the glowing selection marquee (dual-tone border: inner bright green/gold, outer dark outline) ensuring visibility on both dark grass and bright dirt/sand.
   - Add a subtle sound cue when a group selection box is completed and selects more than 1 unit.
@@ -130,7 +130,7 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 - **Confidence:** Medium
 - **Type:** Observed issue
 - **Evidence:** In `EntityDetails.tsx`, unit training buttons show unit name and image, but train hotkeys (e.g., `V` for Villager, `S` for Spearman) are not displayed directly on the buttons.
-- **Player Impact:** Players who prefer keyboard shortcuts must guess or memorize hotkeys without in-game visual reminders.
+- **Player impact:** Players who prefer keyboard shortcuts must guess or memorize hotkeys without in-game visual reminders.
 - **Recommendation:**
   - Overlay keyboard shortcut badges on unit production buttons in `EntityDetails.tsx` (desktop mode).
 - **Acceptance criteria:**
@@ -144,16 +144,16 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 ## Implementation phases
 
 ### Phase 1: Immediate Clarity & Feedback (Now)
-- P1: Add Click-to-Move and Attack-Order Visual Ground Decals.
-- P1: Visual Placement Mode Banner and Dismissal Affordance.
+- [P1] Add Click-to-Move and Attack-Order Visual Ground Decals.
+- [P1] Visual Placement Mode Banner and Dismissal Affordance.
 
 ### Phase 2: Readability & Accessibility (Next)
-- P1: Minimum Legibility Threshold for Fonts (Eliminate Sub-11px Typography).
-- P2: High-Contrast & Colorblind-Safe Indicator for Population Capped and Alerts.
+- [P1] Minimum Legibility Threshold for Fonts (Eliminate Sub-11px Typography).
+- [P2] High-Contrast & Colorblind-Safe Indicator for Population Capped and Alerts.
 
 ### Phase 3: Selection & Desktop Hotkey Polish (Later)
-- P2: Drag-Selection Audio & Visual Box Contrast Polish.
-- P3: Entity Details Quick Hotkey & Production Tooltips.
+- [P2] Drag-Selection Audio & Visual Box Contrast Polish.
+- [P3] Entity Details Quick Hotkey & Production Tooltips.
 
 ---
 
@@ -189,5 +189,5 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 
 ## Completion criteria
 
-- Comprehensive findings based on codebase evidence documented in `docs/plan/ui-ux-improvement-plan.md`.
+- Comprehensive findings based on codebase evidence documented in `docs/plan/ui-ux-improvement-plan.md` and `docs/plans/ui-ux-improvement-plan.md`.
 - Prioritized with clear criteria, effort estimates, and validation procedures.
