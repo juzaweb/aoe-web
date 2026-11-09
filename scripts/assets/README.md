@@ -127,7 +127,7 @@ re-running the generator means re-measuring the top inset.
 
 ### Citadel stone
 
-`assets/citadel/{floor,wall,gate,gate_door,tc_platform}.png` are project-original
+`assets/citadel/{floor,wall,gate,gate_door}.png` are project-original
 generated art with no upstream URL, so they stay out of `manifest.json` and the
 lock, like the portal. Two Python scripts own them:
 
@@ -144,15 +144,6 @@ wall faces instead of trusting a generated sprite to tile. `gate.png` (512x500)
 and `gate_door.png` (192x169) are assembled from the same stone because the
 layout's 3-tile opening and 6-tile front are fixed geometry; the portcullis is a
 separate texture so `CitadelLayer` can raise it when a unit walks in.
-
-`tc_platform.png` (784x555) is the raised palace terrace under the Town Center: a
-6x6 tile paved podium with coursed retaining faces, a stone balustrade on the
-front rim and a seven-step flight on the south-east face, directly below the
-gatehouse. Its top-centre anchor sits `TC_RISE` (112 px) above the floor. The
-client draws it in `CitadelLayer` and lifts the Town Center art by the same rise
-in `EntityRenderer`; `townCenterPlatform.ts` carries the shared constants. The
-proof sheet composites the building on the terrace so a size or anchor drift
-shows up immediately.
 
 ## Not migrated
 

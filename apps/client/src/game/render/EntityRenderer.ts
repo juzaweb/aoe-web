@@ -18,7 +18,6 @@ import { UnitMotion, walkTimeScale } from './unitMotion.js';
 import { treeVariant } from './treeVariants.js';
 import { resourceLook } from './visualVariation.js';
 import { TownCenterFireEffect } from './BuildingFireEffect.js';
-import { townCenterLift } from './townCenterPlatform.js';
 
 /**
  * Builds and maintains the visual object for every server entity: the container,
@@ -233,10 +232,6 @@ export class EntityRenderer {
       building.level ?? 1
     );
 
-    // The Town Center stands on the citadel terrace, so its art is lifted by the
-    // same rise as the platform `CitadelLayer` draws beneath it.
-    const lift = this.buildingLift(building.type);
-    const artY = offsetY - lift;
 
     const container = scene.add.container(screenPos.x, screenPos.y);
 
@@ -255,7 +250,6 @@ export class EntityRenderer {
     foundation.fillStyle(0x0284c7, 0.2);
     foundation.fillPath();
     foundation.setVisible(false);
-    if (lift !== 0) foundation.setY(-lift);
     container.add(foundation);
     container.setData('foundation', foundation);
 
@@ -264,13 +258,12 @@ export class EntityRenderer {
     // before the art so the outline never covers the building itself.
     const ownerBase = scene.add.graphics();
     ownerBase.setVisible(false);
-    if (lift !== 0) ownerBase.setY(-lift);
     container.add(ownerBase);
     container.setData('ownerBase', ownerBase);
     container.setData('ownerBaseHalfW', halfW);
     container.setData('ownerBaseHalfH', halfH);
 
-    const img = scene.add.image(0, artY, textureKey);
+    const img = scene.add.image(0, offsetY, textureKey);
     img.setScale(scale);
     // The generated gate faces south-east by default. Mirror it so a kingdom
     // portal on the eastern edge opens towards the citadel instead of away.
@@ -288,7 +281,6 @@ export class EntityRenderer {
 
     // Health / Construction Bar
     const hpBar = scene.add.graphics();
-    if (lift !== 0) hpBar.setY(-lift);
     container.add(hpBar);
     container.setData('hpBar', hpBar);
 
@@ -297,7 +289,7 @@ export class EntityRenderer {
     // to the image top instead of the HP bar, whose per-type offsets are tuned
     // for combat bars and can sit far above small buildings.
     const levelBadge = scene.add
-      .text(0, artY - img.displayHeight / 2 - 6, '', {
+      .text(0, offsetY - img.displayHeight / 2 - 6, '', {
         fontFamily: 'monospace',
         fontSize: '11px',
         color: '#fbbf24',
@@ -319,7 +311,7 @@ export class EntityRenderer {
     container.setData('gridY', building.gridY);
     container.setData('sizeX', building.sizeX);
     container.setData('sizeY', building.sizeY);
-    container.setData('visualCenterY', artY);
+    container.setData('visualCenterY', offsetY);
 
     this.refreshOwnerBase(container, id, building.ownerId);
     this.updateBuildingBar(container, building);
@@ -349,27 +341,12 @@ export class EntityRenderer {
   }
 
   /**
-   * How far this building's art sits above its footprint, in container pixels.
-   *
-   * Only a Town Center in a kingdom stands on the terrace, and only while the
-   * terrace PNG is actually loaded; otherwise the building must stay on the
-   * ground instead of hovering.
-   */
-  private buildingLift(type: string): number {
-    return townCenterLift(
-      type,
-      (key) => this.scene.textures.exists(key),
-      this.scene.terrainLayout.kind === 'kingdom'
-    );
-  }
-
-  /**
    * LVL3: swaps the artwork when a building crosses a visual tier.
    *
    * A level-up finishes on the server, so the client only sees `level` jump in
    * a state patch. Everything that depends on the sheet has to move with it: the
-   * image texture, its lift above the tile, the badge anchored to the art's top
-   * and the `visualCenterY` the selection hit-test reads.
+   * image texture, the badge anchored to the art's top and the `visualCenterY`
+   * the selection hit-test reads.
    *
    * The texture key is the cache: it is what the sheet actually resolved to, so
    * one comparison covers both "level crossed a tier" and "the sheet we wanted
@@ -386,18 +363,14 @@ export class EntityRenderer {
     );
     if (image.texture.key === art.textureKey) return;
 
-    const lift = this.buildingLift(building.type);
     image.setTexture(art.textureKey);
-    image.setY(art.offsetY - lift);
+    image.setY(art.offsetY);
     image.setScale(art.scale);
 
     const badge = container.getData('levelBadge') as Phaser.GameObjects.Text | undefined;
-    if (badge) badge.setY(art.offsetY - lift - image.displayHeight / 2 - 6);
+    if (badge) badge.setY(art.offsetY - image.displayHeight / 2 - 6);
 
-    const hpBar = container.getData('hpBar') as Phaser.GameObjects.Graphics | undefined;
-    if (hpBar) hpBar.setY(-lift);
-
-    container.setData('visualCenterY', art.offsetY - lift);
+    container.setData('visualCenterY', art.offsetY);
   }
 
   updateBuildingBar(container: any, building: any) {

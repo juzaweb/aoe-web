@@ -115,52 +115,6 @@ GATE_IRON_HIGHLIGHT = (0x4A, 0x50, 0x5A)
 GATE_MIN_ALPHA = 8
 GATE_MIN_BLOB = 6
 
-# --- Town Center terrace ---------------------------------------------------
-#
-# The Town Center stands on a raised palace-like terrace instead of sitting flat
-# on the citadel floor: a 6x6-tile podium with coursed retaining faces, a stone
-# balustrade along the front rim and a wide flight of steps on the south-east
-# face, directly under the building's gatehouse. `CitadelLayer` draws the PNG
-# under the building and `EntityRenderer` lifts the building art by `TC_RISE`, so
-# the sprite's base lands on the terrace rather than sinking into it.
-TC_PLATFORM_REL = Path("citadel") / "tc_platform.png"
-TC_PLATFORM_TILES = (6, 6)
-TC_RISE = 112
-TC_STEPS = 7
-TC_STEP_RUN = 16
-TC_STEP_RISE = TC_RISE // TC_STEPS
-# The gatehouse is on the south-east face, so the flight is a straight run on
-# that rim rather than a symmetric stair at the front corner. `TC_STAIR_CENTER`
-# is the fraction along the south-east rim measured from the front vertex, and
-# `TC_STAIR_HALF` is half the stair width in screen pixels along that rim.
-TC_STAIR_CENTER = 0.32
-TC_STAIR_HALF = 120
-TC_TOP_HALF_W = (TC_PLATFORM_TILES[0] + TC_PLATFORM_TILES[1]) * TILE_W // 4
-TC_TOP_HALF_H = (TC_PLATFORM_TILES[0] + TC_PLATFORM_TILES[1]) * TILE_H // 4
-TC_CANVAS_PAD = 8
-# Texture row that sits on the platform's top-centre; `CitadelLayer` uses the
-# same ratio as the image origin, so the anchor is shared, not re-derived.
-TC_ANCHOR = (TC_TOP_HALF_W + TC_CANVAS_PAD, TC_TOP_HALF_H + TC_CANVAS_PAD)
-# Extent below the anchor: whichever is lower, the platform foot plus its
-# contact shadow or the foot of the stair flight on the south-east rim.
-_TC_EDGE_LENGTH = float(np.hypot(TC_TOP_HALF_W, TC_TOP_HALF_H))
-_TC_OUT_Y = TILE_H / float(np.hypot(TILE_W, TILE_H))
-_TC_STAIR_START_Y = (
-    TC_TOP_HALF_H
-    - TC_TOP_HALF_H * TC_STAIR_CENTER
-    + TC_STAIR_HALF * (TC_TOP_HALF_H / _TC_EDGE_LENGTH)
-)
-_TC_STAIR_BOTTOM_Y = _TC_STAIR_START_Y + TC_STEPS * (TC_STEP_RUN * _TC_OUT_Y + TC_STEP_RISE)
-_TC_PLATFORM_BOTTOM_Y = TC_TOP_HALF_H + TC_RISE + 14
-TC_CANVAS = (
-    TC_TOP_HALF_W * 2 + TC_CANVAS_PAD * 2,
-    TC_ANCHOR[1] + int(np.ceil(max(_TC_STAIR_BOTTOM_Y, _TC_PLATFORM_BOTTOM_Y))) + TC_CANVAS_PAD,
-)
-TC_LEFT_LUM = 108.0
-TC_RIGHT_LUM = 84.0
-TC_TOP_LUM = 144.0
-TC_STEP_LUM = 150.0
-
 LUM_WEIGHTS = (0.299, 0.587, 0.114)
 
 
@@ -729,277 +683,6 @@ def build_gate_door(points: dict) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# Town Center terrace
-# ---------------------------------------------------------------------------
-
-
-def _normalise(vector: tuple[float, float]) -> tuple[float, float]:
-    length = float(np.hypot(vector[0], vector[1]))
-    return (vector[0] / length, vector[1] / length)
-
-
-def build_tc_platform(wall_source: Path, out_root: Path) -> dict:
-    """A raised stone terrace for the Town Center, with front steps.
-
-    The top is tiled from the floor diamond written by `build_floor`, so the
-    terrace reads as the same pavement as the citadel. The two south-facing
-    retaining faces use the wall stone at the same per-face brightness as the
-    curtain wall, and the staircase descends from the south-east rim to the
-    floor under the gatehouse.
-    """
-    width, height = TC_CANVAS
-    cx, cy = TC_ANCHOR
-
-    wall_texture = load_stone(wall_source, WALL_TEXTURE_CROP)
-
-    canvas_rgb = np.zeros((height, width, 3), dtype=np.float64)
-    canvas_alpha = np.zeros((height, width), dtype=np.float64)
-
-    # --- paved top -------------------------------------------------------
-    top_diamond = [
-        (cx, cy - TC_TOP_HALF_H),
-        (cx + TC_TOP_HALF_W, cy),
-        (cx, cy + TC_TOP_HALF_H),
-        (cx - TC_TOP_HALF_W, cy),
-    ]
-    top_mask = polygon_mask((width, height), top_diamond)
-
-    tile = Image.open(out_root / FLOOR_REL).convert("RGBA")
-    tiles_x, tiles_y = TC_PLATFORM_TILES
-    top_layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    # An even row and column count leaves a diamond-shaped notch at each corner
-    # of the terrace (the outermost tile tips only meet at a point). The grid is
-    # therefore padded generously: the mask clips the top face, and the same
-    # pavement doubles as the 1:1 source for the stair treads below the edge.
-    for j in range(-10, tiles_y + 10):
-        for i in range(-10, tiles_x + 10):
-            gx = i - (tiles_x - 1) / 2
-            gy = j - (tiles_y - 1) / 2
-            sx = cx + (gx - gy) * TILE_W / 2
-            sy = cy + (gx + gy) * TILE_H / 2
-            top_layer.alpha_composite(tile, (round(sx - tile.width / 2), round(sy - tile.height / 2)))
-
-    top = np.asarray(top_layer, dtype=np.float64)
-    top[..., :3] = shade_region(top[..., :3], top_mask, TC_TOP_LUM)
-    top[..., 3] = top_mask
-    canvas_rgb = top[..., :3].copy()
-    canvas_alpha = top[..., 3].copy()
-
-    # --- retaining faces -------------------------------------------------
-    half_w, half_h = TC_TOP_HALF_W, TC_TOP_HALF_H
-    front = (cx, cy + half_h)
-    left = (cx - half_w, cy)
-    right = (cx + half_w, cy)
-    left_ground = (left[0], left[1] + TC_RISE)
-    right_ground = (right[0], right[1] + TC_RISE)
-    front_ground = (front[0], front[1] + TC_RISE)
-
-    # The `up` vector matches the face height, so the wall stone is only
-    # moderately compressed and reads as coursed blocks instead of boulders.
-    sw_layer = map_parallelogram(
-        wall_texture, (width, height), left, (half_w, half_h), (0, TC_RISE)
-    )
-    se_layer = map_parallelogram(
-        wall_texture, (width, height), front, (half_w, -half_h), (0, TC_RISE)
-    )
-    blend_polygon(canvas_rgb, canvas_alpha, [left, front, front_ground, left_ground], sw_layer, TC_LEFT_LUM)
-    blend_polygon(canvas_rgb, canvas_alpha, [front, right, right_ground, front_ground], se_layer, TC_RIGHT_LUM)
-
-    # A darker plinth course along the foot, like the base moulding of a palace
-    # terrace; it makes the retaining wall read as built rather than extruded.
-    plinth = [
-        left_ground,
-        front_ground,
-        right_ground,
-        (right_ground[0], right_ground[1] - 16),
-        (front_ground[0], front_ground[1] - 16),
-        (left_ground[0], left_ground[1] - 16),
-    ]
-    plinth_mask = polygon_mask((width, height), plinth)
-    canvas_rgb[:] = canvas_rgb * (1.0 - plinth_mask[..., None] * 0.42) + np.array(
-        [58.0, 62.0, 69.0], dtype=np.float64
-    ) * plinth_mask[..., None] * 0.42
-    add_outline(canvas_rgb, plinth[:3], 1.0, closed=False, colour=(46, 50, 58))
-
-    # A soft contact shadow outside the foot of the terrace grounds it against
-    # the floor; without it a low rise reads as a painted outline.
-    shadow = [
-        left_ground,
-        front_ground,
-        right_ground,
-        (right_ground[0], right_ground[1] + 14),
-        (front_ground[0], front_ground[1] + 14),
-        (left_ground[0], left_ground[1] + 14),
-    ]
-    shadow_mask = polygon_mask((width, height), shadow) * 0.34
-    canvas_rgb[:] = canvas_rgb * (1.0 - shadow_mask[..., None]) + np.array(
-        [22.0, 26.0, 32.0], dtype=np.float64
-    ) * shadow_mask[..., None]
-    canvas_alpha[:] = np.maximum(canvas_alpha, shadow_mask)
-
-    # --- front steps -----------------------------------------------------
-    # A straight flight on the south-east rim, centred under the gatehouse. The
-    # treads reuse the tiled top layer: it is already on the horizontal iso
-    # plane, so the flagstones stay 1:1 instead of being re-projected.
-    edge_dir = _normalise((right[0] - front[0], right[1] - front[1]))
-    edge_length = float(np.hypot(right[0] - front[0], right[1] - front[1]))
-    # Outward normal of the SE face: moving one tile in +gridX projects to screen
-    # (+64, +32), which normalises to the same (2, 1) diagonal.
-    out_dir = _normalise((TILE_W, TILE_H))
-
-    stair_center = (
-        front[0] + edge_dir[0] * edge_length * TC_STAIR_CENTER,
-        front[1] + edge_dir[1] * edge_length * TC_STAIR_CENTER,
-    )
-    stair_start = (
-        stair_center[0] - edge_dir[0] * TC_STAIR_HALF,
-        stair_center[1] - edge_dir[1] * TC_STAIR_HALF,
-    )
-    stair_end = (
-        stair_center[0] + edge_dir[0] * TC_STAIR_HALF,
-        stair_center[1] + edge_dir[1] * TC_STAIR_HALF,
-    )
-
-    tread_source = top[..., :3]
-    riser_color = np.array([96.0, 100.0, 108.0], dtype=np.float64)
-
-    def shifted(point: tuple[float, float], distance: float, drop: float) -> tuple[float, float]:
-        return (point[0] + out_dir[0] * distance, point[1] + out_dir[1] * distance + drop)
-
-    for step in range(TC_STEPS):
-        inner_start = shifted(stair_start, step * TC_STEP_RUN, step * TC_STEP_RISE)
-        inner_end = shifted(stair_end, step * TC_STEP_RUN, step * TC_STEP_RISE)
-        outer_start = shifted(inner_start, TC_STEP_RUN, 0)
-        outer_end = shifted(inner_end, TC_STEP_RUN, 0)
-
-        # The lower steps sit slightly darker so the flight reads as depth.
-        lum = TC_STEP_LUM - step * 3.0
-        blend_polygon(
-            canvas_rgb,
-            canvas_alpha,
-            [inner_start, inner_end, outer_end, outer_start],
-            tread_source,
-            lum,
-        )
-        # A bright nose along the outer edge separates one step from the riser.
-        add_outline(canvas_rgb, [outer_start, outer_end], 1.2, closed=False, colour=(168, 174, 182))
-
-        drop_start = (outer_start[0], outer_start[1] + TC_STEP_RISE)
-        drop_end = (outer_end[0], outer_end[1] + TC_STEP_RISE)
-        riser = [outer_start, outer_end, drop_end, drop_start]
-        mask = polygon_mask((width, height), riser)
-        canvas_rgb[:] = canvas_rgb * (1.0 - mask[..., None]) + riser_color * mask[..., None]
-        canvas_alpha[:] = np.maximum(canvas_alpha, mask)
-        add_outline(canvas_rgb, riser, 0.8, colour=(48, 52, 60))
-        # Two joints per riser keep the stone courses from reading as one band.
-        for fraction in (0.34, 0.68):
-            joint_x = outer_start[0] + (outer_end[0] - outer_start[0]) * fraction
-            joint_y = outer_start[1] + (outer_end[1] - outer_start[1]) * fraction
-            add_outline(
-                canvas_rgb,
-                [(joint_x, joint_y), (joint_x, joint_y + TC_STEP_RISE)],
-                0.7,
-                closed=False,
-                colour=(66, 70, 78),
-            )
-
-        add_outline(canvas_rgb, [inner_start, inner_end], 1.0, closed=False, colour=WALL_OUTLINE)
-
-    # Solid stringer on the viewer-facing side of the flight: without it the
-    # left ends of the treads show as a row of open slabs.
-    flight_out = TC_STEPS * TC_STEP_RUN
-    cheek_end = (
-        stair_start[0] + out_dir[0] * flight_out,
-        stair_start[1] + out_dir[1] * flight_out + TC_RISE,
-    )
-    cheek = [stair_start, cheek_end, (stair_start[0], stair_start[1] + TC_RISE)]
-    cheek_layer = map_parallelogram(
-        wall_texture,
-        (width, height),
-        stair_start,
-        (out_dir[0] * flight_out, out_dir[1] * flight_out),
-        (0, TC_RISE),
-    )
-    blend_polygon(canvas_rgb, canvas_alpha, cheek, cheek_layer, 118.0)
-    add_outline(canvas_rgb, cheek, 1.2)
-    for fraction in (0.33, 0.66):
-        add_outline(
-            canvas_rgb,
-            [
-                (stair_start[0], stair_start[1] + TC_RISE * fraction),
-                (
-                    stair_start[0] + out_dir[0] * flight_out * fraction,
-                    stair_start[1] + (out_dir[1] * flight_out + TC_RISE) * fraction,
-                ),
-            ],
-            0.7,
-            closed=False,
-            colour=(104, 108, 115),
-        )
-
-    # --- balustrade -------------------------------------------------------
-    # A low stone rail follows the terrace rim on either side of the stair
-    # opening. It is what sells the height at gameplay zoom, where a plain 1.75
-    # tile retaining wall can read as a shadow.
-    rail_height = 22
-    rail_face = np.array([176.0, 180.0, 186.0], dtype=np.float64)
-    post_gap = 30
-
-    def draw_rail(start: tuple[float, float], end: tuple[float, float]) -> None:
-        ax, ay = start
-        bx, by = end
-        top_a = (ax, ay - rail_height)
-        top_b = (bx, by - rail_height)
-        quad = [start, end, top_b, top_a]
-        mask = polygon_mask((width, height), quad)
-        canvas_rgb[:] = canvas_rgb * (1.0 - mask[..., None]) + rail_face * mask[..., None]
-        canvas_alpha[:] = np.maximum(canvas_alpha, mask)
-
-        add_outline(canvas_rgb, quad, 1.0, colour=(92, 97, 106))
-        add_outline(canvas_rgb, [top_a, top_b], 1.4, closed=False, colour=(214, 217, 222))
-        add_outline(canvas_rgb, [start, end], 1.2, closed=False, colour=(70, 75, 84))
-
-        length = float(np.hypot(bx - ax, by - ay))
-        count = max(2, int(length / post_gap))
-        for index in range(count + 1):
-            f = index / count
-            px = ax + (bx - ax) * f
-            py = ay + (by - ay) * f
-            add_outline(
-                canvas_rgb,
-                [(px, py), (px, py - rail_height - 3)],
-                2.0,
-                closed=False,
-                colour=(150, 154, 162),
-            )
-
-    draw_rail(left, front)
-    draw_rail(front, stair_start)
-    draw_rail(stair_end, right)
-    # The stringer's sloped handrail, so the flight reads as one built stair
-    # rather than a stack of treads leaning on the terrace.
-    draw_rail(stair_start, cheek_end)
-
-    # --- edges -----------------------------------------------------------
-    # Only the front rim is stroked: the back edges sit behind the building and
-    # a full diamond outline read as stray rails drawn on the floor. The stair
-    # opening is left unstroked so the flight meets the terrace cleanly.
-    add_outline(canvas_rgb, [left, front, stair_start], 1.2, closed=False)
-    add_outline(canvas_rgb, [stair_end, right], 1.2, closed=False)
-    add_outline(canvas_rgb, [left_ground, front_ground, right_ground], 1.2, closed=False)
-
-    canvas = np.zeros((height, width, 4), dtype=np.uint8)
-    canvas[..., :3] = np.clip(np.rint(canvas_rgb), 0, 255).astype(np.uint8)
-    canvas[..., 3] = np.rint(canvas_alpha * 255.0).astype(np.uint8)
-    canvas = bleed_rgb(canvas)
-
-    target = out_root / TC_PLATFORM_REL
-    target.parent.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(canvas, mode="RGBA").save(target, "PNG", optimize=True)
-    return {"name": target.name, "size": TC_CANVAS, "meanLum": measure_mean_lum(canvas)}
-
-
-# ---------------------------------------------------------------------------
 # Measurement / check
 # ---------------------------------------------------------------------------
 
@@ -1070,24 +753,12 @@ def check(out_root: Path) -> int:
         )
         expect(door["opaque"] > 0.5, f"gate door covers only {door['opaque']:.2f} of its canvas")
 
-    tc = measure_path(TC_PLATFORM_REL)
-    if tc:
-        expect(tc["size"] == TC_CANVAS, f"tc platform size {tc['size']} != {TC_CANVAS}")
-        expect(96.0 <= tc["meanLum"] <= 148.0, f"tc platform lum {tc['meanLum']:.1f} outside 96-148")
-        expect(tc["bbox"] is not None, "tc platform has no opaque pixels")
-        expect(tc["opaque"] > 0.2, f"tc platform covers only {tc['opaque']:.2f} of its canvas")
-        if tc["bbox"]:
-            x0, y0, x1, y1 = tc["bbox"]
-            expect(x0 >= 0 and x1 <= TC_CANVAS[0], "tc platform art spills out of the canvas")
-            expect(y0 <= TC_CANVAS_PAD + 2, "tc platform top is not at the canvas top")
-            expect(TC_CANVAS[1] - y1 <= TC_CANVAS_PAD + 4, "tc platform steps float above the canvas bottom")
-
     if failures:
         print("FAILED:", file=sys.stderr)
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
         return 1
-    print("OK: citadel floor, wall, gate and Town Center terrace match the shipping contract")
+    print("OK: citadel floor, wall and gate match the shipping contract")
     return 0
 
 
@@ -1164,20 +835,6 @@ def preview(out_root: Path) -> int:
     top = round(gy + oy - GATE_ORIGIN[1] * GATE_CANVAS[1] + by0)
     canvas.alpha_composite(door, (left, top))
 
-    # Town Center on its terrace: the proof sheet shows the plinth and the
-    # building lifted by the same rise, which is the part a size change breaks.
-    platform_path = out_root / TC_PLATFORM_REL
-    tc_path = out_root / "buildings" / "town_center.png"
-    if platform_path.exists() and tc_path.exists():
-        platform = Image.open(platform_path).convert("RGBA")
-        tc_art = Image.open(tc_path).convert("RGBA")
-        tc_x, tc_y = 5, 5
-        tc_center = screen(origin_x + tc_x + 2 - 0.5, origin_y + tc_y + 3 - 0.5)
-        blit(platform, tc_center[0], tc_center[1] - TC_RISE, TC_ANCHOR[1] / TC_CANVAS[1])
-        # `SHEET_OFFSET_Y.TOWN_CENTER` is -130; the terrace lifts both the
-        # platform and the art by TC_RISE.
-        blit(tc_art, tc_center[0], tc_center[1] - TC_RISE - 130)
-
     out = ROOT / "scripts" / "out" / "citadel" / "preview.png"
     canvas.save(out)
     print(f"preview written to {out} ({width}x{height})")
@@ -1204,7 +861,6 @@ def main(argv: list[str] | None = None) -> int:
         build_floor(args.floor, args.out),
         build_wall(args.wall, args.out, cap_source=args.floor),
         *build_gate(args.wall, args.floor, args.out),
-        build_tc_platform(args.wall, args.out),
     ]
     for result in results:
         print(f"  {result['name']:<14} {result['size'][0]}x{result['size'][1]} lum {result['meanLum']:.1f}")

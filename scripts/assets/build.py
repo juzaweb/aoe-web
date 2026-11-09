@@ -60,7 +60,6 @@ GENERATED_PATHS = frozenset(
         "apps/client/public/assets/citadel/wall.png",
         "apps/client/public/assets/citadel/gate.png",
         "apps/client/public/assets/citadel/gate_door.png",
-        "apps/client/public/assets/citadel/tc_platform.png",
     }
 )
 
