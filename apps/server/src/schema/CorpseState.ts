@@ -20,6 +20,4 @@ export class CorpseState extends Schema {
   @type('string') unitType: string = 'VILLAGER';
   @type('number') x: number = 0;
   @type('number') y: number = 0;
-  /** WALL: keep a body that fell on the wall top lifted off the courtyard. */
-  @type('boolean') onWall: boolean = false;
 }

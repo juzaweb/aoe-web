@@ -6,13 +6,12 @@ import {
   UNIT_BLUEPRINTS,
   UnitBlueprint,
   UnitType,
-  WALL_RANGE_BONUS,
-  RANGED_MIN_RANGE,
   citadelLayoutFor,
   clampRaidTownCenterHp,
   getBuildingLevelStats,
   getEffectiveUnitAttackPower,
-  isCitadelInteriorTile
+  isCitadelInteriorTile,
+  isRangedAttackRange
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { UnitState } from '../schema/UnitState.js';
@@ -210,19 +209,32 @@ export class CombatSystem {
    * `STAND_GROUND` never steps — that is the whole stance, and it holds even for
    * an enemy the player clicked, which is why an out-of-reach order is dropped
    * instead of walked. `DEFENSIVE` steps freely on an explicit order but stops
-   * once chasing a fight of its own carries it past the leash.
+   * once chasing a fight of its own carries it past the leash. A defender
+   * standing in its own courtyard never walks out after an outside target: the
+   * wall is what lets it shoot further than the target can answer.
    */
   canChaseTarget(unit: UnitState): boolean {
     if (unit.stance === 'STAND_GROUND') return false;
-    // WALL: a defender on the wall holds the wall; a ground unit cannot follow a
-    // target up a stair it is not allowed to use. Both sides still shoot when in
-    // range, they just never walk across layers to close the gap.
-    if (unit.onWall) return false;
-    const targetPoint = this.targetPoint(unit);
-    if (targetPoint?.onWall) return false;
+    if (this.isDefendingFromCourtyard(unit)) return false;
     const anchor = this.engageAnchors.get(unit.id);
     if (unit.stance !== 'DEFENSIVE' || !anchor) return true;
     return Math.hypot(unit.x - anchor.x, unit.y - anchor.y) < DEFENSIVE_LEASH_TILES;
+  }
+
+  /**
+   * Whether the unit stands in its own citadel courtyard and is fighting a
+   * target outside the walls.
+   *
+   * Such a defender holds its ground and keeps firing; walking out would trade
+   * the wall's cover for nothing, and the target can only answer with its own
+   * range from open ground.
+   */
+  private isDefendingFromCourtyard(unit: UnitState): boolean {
+    const citadelOwnerId = this.citadelContext().ownerId;
+    if (citadelOwnerId === null || unit.ownerId !== citadelOwnerId) return false;
+    if (!this.isInterior(unit.x, unit.y)) return false;
+    const point = this.targetPoint(unit);
+    return point !== null && !this.isInterior(point.x, point.y);
   }
 
   /**
@@ -281,9 +293,9 @@ export class CombatSystem {
       return false;
     }
 
-    // STAND_GROUND, a defensive unit past its leash, a wall archer and a
-    // shooter facing a wall target all have one thing in common: they may not
-    // step towards the target. They still keep the fight while it is in range.
+    // STAND_GROUND and a defensive unit past its leash share one thing: they
+    // may not step towards the target. They still keep the fight while it is in
+    // range.
     if (!this.canChaseTarget(unit)) {
       if (this.isTargetInWeaponRange(unit, blueprint)) return true;
       this.endAttackOrder(unit);
@@ -294,19 +306,17 @@ export class CombatSystem {
   }
 
   /**
-   * Current target position and elevation, or null when the target is gone.
+   * Current target position, or null when the target is gone.
    *
    * The citadel compound is measured at the nearest wall/gate point, the same
    * point its attack range uses, so "inside the courtyard" never mistakes the
    * virtual 26x26 box for an interior target.
    */
-  private targetPoint(
-    unit: UnitState
-  ): { x: number; y: number; onWall: boolean } | null {
+  private targetPoint(unit: UnitState): { x: number; y: number } | null {
     if (unit.targetEntityType === 'unit') {
       const target = this.state.units.get(unit.targetEntityId);
       if (!target) return null;
-      return { x: target.x, y: target.y, onWall: target.onWall };
+      return { x: target.x, y: target.y };
     }
 
     if (unit.targetEntityType === 'building') {
@@ -314,12 +324,11 @@ export class CombatSystem {
       if (!target) return null;
       if (target.type === 'CITADEL') {
         const nearest = findNearestCitadelWallOrGate(this.state, target, unit.x, unit.y);
-        return { x: nearest.x, y: nearest.y, onWall: false };
+        return { x: nearest.x, y: nearest.y };
       }
       return {
         x: target.gridX + target.sizeX / 2,
-        y: target.gridY + target.sizeY / 2,
-        onWall: false
+        y: target.gridY + target.sizeY / 2
       };
     }
 
@@ -329,28 +338,26 @@ export class CombatSystem {
   /**
    * WALL: whether a weapon may reach a point at all.
    *
-   * Melee cannot cross elevations. A defender standing on the courtyard floor
-   * cannot shoot through its own wall; only a unit on the wall top can fire out.
-   * Conversely, a foreign attacker cannot reach a target sealed inside the
-   * compound — the raid must break the walls from outside.
+   * A ranged defender standing inside the courtyard may fire out over the wall,
+   * but melee has to leave the compound to fight. A foreign attacker cannot
+   * reach a target sealed inside the compound — the raid must break the walls
+   * from outside.
    */
   private canEngagePosition(
     unit: UnitState,
     blueprint: UnitBlueprint,
     x: number,
-    y: number,
-    targetOnWall: boolean
+    y: number
   ): boolean {
-    const melee = blueprint.attackRange < RANGED_MIN_RANGE;
-    if (melee && unit.onWall !== targetOnWall) return false;
-
     const targetInside = this.isInterior(x, y);
     const citadelOwnerId = this.citadelContext().ownerId;
     if (citadelOwnerId === null) return true;
 
     if (unit.ownerId === citadelOwnerId) {
-      const shooterInside = !unit.onWall && this.isInterior(unit.x, unit.y);
-      if (shooterInside && !targetInside) return false;
+      const shooterInside = this.isInterior(unit.x, unit.y);
+      if (shooterInside && !targetInside) {
+        return isRangedAttackRange(blueprint.attackRange);
+      }
       return true;
     }
 
@@ -361,7 +368,7 @@ export class CombatSystem {
   private canEngageTarget(unit: UnitState, blueprint: UnitBlueprint): boolean {
     const point = this.targetPoint(unit);
     if (!point) return false;
-    return this.canEngagePosition(unit, blueprint, point.x, point.y, point.onWall);
+    return this.canEngagePosition(unit, blueprint, point.x, point.y);
   }
 
   /**
@@ -397,11 +404,8 @@ export class CombatSystem {
    * the reach feels the same against a 1x1 tower and a 4x4 town centre.
    */
   private attackRangeAgainstTarget(unit: UnitState, blueprint: UnitBlueprint): number {
-    const wallBonus =
-      unit.onWall && blueprint.attackRange >= RANGED_MIN_RANGE ? WALL_RANGE_BONUS : 0;
     return (
       blueprint.attackRange +
-      wallBonus +
       (unit.targetEntityType === 'building' ? 1.5 : 0.5)
     );
   }
@@ -418,8 +422,9 @@ export class CombatSystem {
     const blueprint = UNIT_BLUEPRINTS[unit.type as UnitType];
     if (!blueprint) return;
 
-    // WALL: drop an order that can never connect (a melee unit ordered onto a
-    // wall target, or a wall order on a defender sealed inside the courtyard).
+    // WALL: drop an order that can never connect (a melee defender sealed inside
+    // the courtyard ordered onto an outside target, or an outsider ordered onto
+    // a defender inside).
     if (!this.canEngageTarget(unit, blueprint)) {
       this.endAttackOrder(unit);
       return;
@@ -588,7 +593,6 @@ export class CombatSystem {
     corpse.unitType = victim.type;
     corpse.x = victim.x;
     corpse.y = victim.y;
-    corpse.onWall = victim.onWall;
     this.state.corpses.set(corpse.id, corpse);
     this.ports.scheduleCorpseRemoval(corpse.id);
   }
@@ -631,7 +635,7 @@ export class CombatSystem {
 
     this.state.units.forEach((other: UnitState) => {
       if (other.ownerId === unit.ownerId) return;
-      if (!this.canEngagePosition(unit, blueprint, other.x, other.y, other.onWall)) return;
+      if (!this.canEngagePosition(unit, blueprint, other.x, other.y)) return;
       const otherBlueprint = UNIT_BLUEPRINTS[other.type as UnitType];
       const priority =
         otherBlueprint?.canHarvest === true
@@ -657,7 +661,7 @@ export class CombatSystem {
               x: building.gridX + building.sizeX / 2,
               y: building.gridY + building.sizeY / 2
             };
-      if (!this.canEngagePosition(unit, blueprint, point.x, point.y, false)) return;
+      if (!this.canEngagePosition(unit, blueprint, point.x, point.y)) return;
       const dist =
         building.type === 'CITADEL'
           ? Math.hypot(point.x - unit.x, point.y - unit.y)

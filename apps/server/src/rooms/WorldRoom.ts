@@ -245,7 +245,6 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.commandSystem ??= new CommandSystem(this.state, {
       rejectCommand: (client, message, code) => this.rejectCommand(client, message, code),
       setWalkTarget: (unit, x, y) => this.movement.setWalkTarget(unit, x, y),
-      cancelElevationTransition: (unitId) => this.movement.cancelElevationTransition(unitId),
       advanceQueuedWaypoint: (unit) => this.movement.advanceQueuedWaypoint(unit),
       clearHarvestOrder: (unitId) => this.economy.clearHarvestOrder(unitId),
       forgetBuilding: (buildingId) => this.combat.forgetBuilding(buildingId),
@@ -817,9 +816,6 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         unit.maxHp = effectiveMaxHp;
         unit.hp = Math.min(u.hp, effectiveMaxHp);
         unit.actionState = u.actionState;
-        // A wall only exists in a kingdom. A row restored onto a battlefield
-        // (or a stale save) must fall back to the ground layer.
-        unit.onWall = Boolean(u.onWall) && hasCitadel(this.state);
         this.state.units.set(u.id, unit);
       }
     }
@@ -2137,10 +2133,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       ) {
         let destinationX = unit.targetX;
         let destinationY = unit.targetY;
-        // WALL: reaching a stair landing flips the route layer and queues the
-        // final leg. Hold this tick so the unit does not walk the old straight
-        // line while the new route is still being computed.
-        let holdPosition = this.movement.tryCompleteElevationTransition(unit);
+        let holdPosition = false;
         // An attacker already in weapon range, or one that must not chase,
         // stays put this tick. Attack range is enforced here, not by the path
         // stop distance: otherwise a long-ranged unit would consume its whole
@@ -2226,8 +2219,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
           const nextX = unit.x + (dx / dist) * moveStep;
           const nextY = unit.y + (dy / dist) * moveStep;
           // A straight-line tick (route still queued, or no route at all) must
-          // not step onto a citadel wall: the wall is terrain, not scenery.
-          if (!this.movement.blocksStep(unit, unit.x, unit.y, nextX, nextY)) {
+          // not step onto a citadel wall or through a sealed gate: the wall is
+          // terrain, not scenery.
+          if (!this.movement.blocksStep(unit, nextX, nextY)) {
             unit.x = nextX;
             unit.y = nextY;
           }

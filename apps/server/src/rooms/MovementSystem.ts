@@ -1,4 +1,3 @@
-import { CitadelStair, citadelLayoutFor } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { UnitState } from '../schema/UnitState.js';
@@ -9,7 +8,6 @@ import {
   citadelOwnerIdOf,
   citadelWallTopTileSet,
   citadelWallTileSet,
-  isOwnCitadelWallTop,
   isVirtualCitadelCompound
 } from './citadel.js';
 import { UnitSeparation } from './unitSeparation.js';
@@ -69,8 +67,6 @@ export class MovementSystem {
   private blockedGrid: Uint8Array | null = null;
   /** Ground grid with the citadel gate sealed to non-owners. */
   private blockedGridEnemy: Uint8Array | null = null;
-  /** Wall-top grid: everything blocked except wall and gate-roof tiles. */
-  private wallGrid: Uint8Array | null = null;
   private blockedGridBuildingCount = -1;
   private blockedGridResourceCount = -1;
   private blockedGridCitadelSignature = '';
@@ -90,22 +86,10 @@ export class MovementSystem {
   private readonly lastRepathAt: Map<string, number> = new Map();
   /** Last chase-route request per unit, for `CHASE_REPATH_COOLDOWN_MS`. */
   private readonly lastChaseRequestAt: Map<string, number> = new Map();
-  /** Wall top plus gate roof, the only tiles an `onWall` unit may stand on. */
+  /** Wall top plus gate roof, terrain a ground unit may never stand on. */
   private citadelWallTops: Set<string> = new Set();
   private citadelGates: Set<string> = new Set();
-  /** Stair upper landings, the only wall-layer tiles that lead to ground. */
-  private citadelStairTops: Set<string> = new Set();
   private citadelOwnerId: string | null = null;
-  /**
-   * Units walking towards a stair landing before changing route layer.
-   *
-   * The approach point is the tile the unit must reach; once there the unit
-   * flips `onWall` and the final destination is routed again on the new layer.
-   */
-  private readonly pendingTransitions: Map<
-    string,
-    { approachX: number; approachY: number; targetX: number; targetY: number }
-  > = new Map();
 
   /** MOV-02: anti-overlap pass; owns its scratch buffers. */
   private readonly separation = new UnitSeparation();
@@ -139,63 +123,7 @@ export class MovementSystem {
   setWalkTarget(unit: UnitState, targetX: number, targetY: number) {
     unit.targetX = targetX;
     unit.targetY = targetY;
-    this.pendingTransitions.delete(unit.id);
-    // Refresh the gate/wall sets before classifying the destination.
-    this.getBlockedGrid();
-
-    const targetTileKey = `${Math.floor(targetX)},${Math.floor(targetY)}`;
-    const targetOnWall =
-      isOwnCitadelWallTop(this.state, unit.ownerId, Math.floor(targetX), Math.floor(targetY)) &&
-      // The gate tile is both the ground passage and the gatehouse roof. A
-      // ground order on it means "walk through the gate", never "climb".
-      !(!unit.onWall && this.citadelGates.has(targetTileKey));
-    if (targetOnWall === unit.onWall) {
-      this.requestPath(unit, targetX, targetY);
-      return;
-    }
-
-    const stairs = this.citadelStairs();
-    if (stairs.length === 0) {
-      // No stair means this citadel cannot be climbed; treat the click as a
-      // normal move and let the goal-snap take the unit as close as it can.
-      this.requestPath(unit, targetX, targetY);
-      return;
-    }
-
-    // The landing is always the stair's upper ground tile: climbing arrives
-    // there before stepping onto the wall, and descending leaves the wall onto
-    // it before walking down the flight.
-    let best = stairs[0];
-    let bestDistance = Infinity;
-    for (const stair of stairs) {
-      const point = stair.top;
-      const distance = Math.hypot(point.gridX + 0.5 - unit.x, point.gridY + 0.5 - unit.y);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = stair;
-      }
-    }
-
-    const approach = best.top;
-    const approachX = approach.gridX + 0.5;
-    const approachY = approach.gridY + 0.5;
-    this.pendingTransitions.set(unit.id, {
-      approachX,
-      approachY,
-      targetX,
-      targetY
-    });
-    this.requestPath(unit, approachX, approachY);
-  }
-
-  /** Stairs of the citadel this unit may use, or an empty list elsewhere. */
-  private citadelStairs(): CitadelStair[] {
-    const stairs: CitadelStair[] = [];
-    this.state.buildings.forEach((building: BuildingState) => {
-      if (building.type !== 'TOWN_CENTER') return;
-      stairs.push(...citadelLayoutFor(building.gridX, building.gridY).stairs);
-    });
-    return stairs;
+    this.requestPath(unit, targetX, targetY);
   }
 
   /**
@@ -208,17 +136,11 @@ export class MovementSystem {
    * after the fight, so the chase goal lives in its own map.
    */
   setChaseTarget(unit: UnitState, x: number, y: number) {
-    this.pendingTransitions.delete(unit.id);
     const now = performance.now();
     const last = this.lastChaseRequestAt.get(unit.id);
     if (last !== undefined && now - last < CHASE_REPATH_COOLDOWN_MS) return;
     this.lastChaseRequestAt.set(unit.id, now);
     this.requestPath(unit, x, y);
-  }
-
-  /** Drops a pending stair transition without changing the unit's layer. */
-  cancelElevationTransition(unitId: string) {
-    this.pendingTransitions.delete(unitId);
   }
 
   /** Drops the current route and queues a fresh search to `x, y`. */
@@ -314,7 +236,6 @@ export class MovementSystem {
     this.lastRepathAt.delete(unitId);
     this.lastChaseRequestAt.delete(unitId);
     this.pathGoals.delete(unitId);
-    this.pendingTransitions.delete(unitId);
   }
 
   /**
@@ -374,7 +295,6 @@ export class MovementSystem {
   /** The blocked grid the unit is currently pathing on. */
   private gridFor(unit: UnitState): Uint8Array {
     const ownerGrid = this.getBlockedGrid();
-    if (unit.onWall) return this.wallGrid as Uint8Array;
     if (this.citadelOwnerId !== null && unit.ownerId !== this.citadelOwnerId) {
       return this.blockedGridEnemy as Uint8Array;
     }
@@ -382,82 +302,21 @@ export class MovementSystem {
   }
 
   /**
-   * Whether a straight-line step would cross a citadel boundary the unit may not
+   * Whether a step onto `(toX, toY)` crosses a citadel boundary the unit may not
    * cross.
    *
-   * Ground units may never step onto a wall top; enemy units may not step onto a
-   * gate either. A unit already on the wall may only remain on wall-top tiles,
-   * and the stair transition flips `onWall` before the step onto/off the wall.
+   * Ground units may never step onto a wall top, and enemy units may not step
+   * onto a gate either.
    */
-  blocksStep(
-    unit: UnitState,
-    fromX: number,
-    fromY: number,
-    toX: number,
-    toY: number
-  ): boolean {
+  blocksStep(unit: UnitState, toX: number, toY: number): boolean {
     this.getBlockedGrid();
-    const toXf = Math.floor(toX);
-    const toYf = Math.floor(toY);
-    const toKey = `${toXf},${toYf}`;
-    const fromKey = `${Math.floor(fromX)},${Math.floor(fromY)}`;
-
-    // A unit that has just stepped down from the wall is still standing on the
-    // wall tile for one frame; it may only leave onto the stair landing, never
-    // straight over the parapet.
-    if (
-      !unit.onWall &&
-      this.citadelWallTops.has(fromKey) &&
-      !this.citadelGates.has(fromKey)
-    ) {
-      return !this.isStairTile(toXf, toYf);
-    }
-
-    if (unit.onWall) {
-      if (this.citadelWallTops.has(toKey)) return false;
-      // The only legal way off the wall layer is onto a stair landing; from
-      // there the transition flips `onWall` and the ground route takes over.
-      return !this.isStairTile(toXf, toYf);
-    }
+    const toKey = `${Math.floor(toX)},${Math.floor(toY)}`;
 
     // The gate is ground-level: the owner walks through it, everyone else is
     // stopped by the sealed portcullis.
     if (this.citadelGates.has(toKey)) return unit.ownerId !== this.citadelOwnerId;
     if (this.citadelWallTops.has(toKey)) return true;
     return false;
-  }
-
-  /** Whether a tile is a stair upper landing on this map. */
-  private isStairTile(x: number, y: number): boolean {
-    return this.citadelStairTops.has(`${x},${y}`);
-  }
-
-  /**
-   * Finishes a pending stair transition once the unit reaches the landing.
-   *
-   * Called by the room's movement loop on arrival. Returns true when the layer
-   * changed and a fresh route to the original destination was requested.
-   */
-  tryCompleteElevationTransition(unit: UnitState): boolean {
-    const pending = this.pendingTransitions.get(unit.id);
-    if (!pending) return false;
-
-    const distance = Math.hypot(unit.x - pending.approachX, unit.y - pending.approachY);
-    if (distance > 0.35) {
-      // A separation shove can leave the unit beside the landing after its route
-      // has emptied; route it back instead of stranding the order.
-      if (unit.pathX.length === 0 && unit.pathY.length === 0) {
-        this.requestPath(unit, pending.approachX, pending.approachY);
-      }
-      return false;
-    }
-
-    this.pendingTransitions.delete(unit.id);
-    unit.onWall = !unit.onWall;
-    unit.pathX.clear();
-    unit.pathY.clear();
-    this.requestPath(unit, pending.targetX, pending.targetY);
-    return true;
   }
 
   /**
@@ -580,29 +439,6 @@ export class MovementSystem {
       enemyGrid[y * mapWidth + x] = 1;
     }
     this.blockedGridEnemy = enemyGrid;
-
-    // The wall layer is the inverse: nothing is walkable except the wall top and
-    // gate roof. A stair landing is the route's start, and the Pathfinder lets a
-    // search begin on a blocked cell, so the first step onto the wall works.
-    const wallGrid = this.wallGrid ?? new Uint8Array(mapWidth * mapHeight);
-    wallGrid.fill(1);
-    for (const key of this.citadelWallTops) {
-      const [x, y] = key.split(',').map(Number);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-      if (x < 0 || y < 0 || x >= mapWidth || y >= mapHeight) continue;
-      wallGrid[y * mapWidth + x] = 0;
-    }
-    // Stair landings are valid wall-layer steps: a unit walks from the wall onto
-    // the landing, flips `onWall`, and only then starts the ground route down.
-    this.citadelStairTops = new Set();
-    for (const stair of this.citadelStairs()) {
-      const x = stair.top.gridX;
-      const y = stair.top.gridY;
-      if (x < 0 || y < 0 || x >= mapWidth || y >= mapHeight) continue;
-      wallGrid[y * mapWidth + x] = 0;
-      this.citadelStairTops.add(`${x},${y}`);
-    }
-    this.wallGrid = wallGrid;
 
     this.blockedGrid = grid;
     this.blockedGridBuildingCount = buildingCount;

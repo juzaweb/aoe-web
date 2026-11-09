@@ -64,20 +64,6 @@ export interface CitadelTile {
   gridY: number;
 }
 
-/**
- * One fixed stair flight up to the citadel wall.
- *
- * The flight is one tile wide and two tiles deep, running east towards the
- * wall: `bottom` is the courtyard end a unit walks onto, `top` sits directly
- * inside the wall, and `wall` is the wall-top tile the flight serves. Only the
- * citadel's owner may use it.
- */
-export interface CitadelStair {
-  bottom: CitadelTile;
-  top: CitadelTile;
-  wall: CitadelTile;
-}
-
 /** The complete citadel geometry for one Town Center position. */
 export interface CitadelLayout {
   originX: number;
@@ -94,8 +80,6 @@ export interface CitadelLayout {
   walls: CitadelTile[];
   /** Tiles intentionally left open so units can walk in and out. */
   gates: CitadelTile[];
-  /** Fixed stair flights up to the wall top, owned by the citadel's owner. */
-  stairs: CitadelStair[];
 }
 
 interface SlotOffset {
@@ -279,20 +263,6 @@ export function citadelLayoutFor(
     pushWall(originX + CITADEL_WIDTH - 1, originY + j);
   }
 
-  // Two flights flank the gatehouse, just outside the six east-wall tiles the
-  // gate sprite draws. They sit one tile inside the wall so a defender climbs
-  // without opening a breach in the ring.
-  const stairs: CitadelStair[] = [gateFrom - 2, gateFrom + CITADEL_GATE_WIDTH + 2].map(
-    (offsetY) => {
-      const stairY = originY + offsetY;
-      return {
-        bottom: { gridX: originX + CITADEL_WIDTH - 3, gridY: stairY },
-        top: { gridX: originX + CITADEL_WIDTH - 2, gridY: stairY },
-        wall: { gridX: originX + CITADEL_WIDTH - 1, gridY: stairY }
-      };
-    }
-  );
-
   return {
     originX,
     originY,
@@ -304,8 +274,7 @@ export function citadelLayoutFor(
     innerMaxY: originY + CITADEL_HEIGHT - 2,
     slots,
     walls,
-    gates,
-    stairs
+    gates
   };
 }
 
@@ -318,19 +287,6 @@ export function isCitadelWallTopTile(
   return (
     layout.walls.some((tile) => tile.gridX === gridX && tile.gridY === gridY) ||
     layout.gates.some((tile) => tile.gridX === gridX && tile.gridY === gridY)
-  );
-}
-
-/** Whether a tile belongs to a stair flight (either end). */
-export function isCitadelStairTile(
-  layout: CitadelLayout,
-  gridX: number,
-  gridY: number
-): boolean {
-  return layout.stairs.some(
-    (stair) =>
-      (stair.bottom.gridX === gridX && stair.bottom.gridY === gridY) ||
-      (stair.top.gridX === gridX && stair.top.gridY === gridY)
   );
 }
 

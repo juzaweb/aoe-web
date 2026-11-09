@@ -63,10 +63,6 @@ export class WallController extends StrokeBrushController<WallMode> {
       for (const wall of layout.walls) {
         occupied.add(`${wall.gridX},${wall.gridY}`);
       }
-      for (const stair of layout.stairs) {
-        occupied.add(`${stair.bottom.gridX},${stair.bottom.gridY}`);
-        occupied.add(`${stair.top.gridX},${stair.top.gridY}`);
-      }
     });
 
     const valid: RoadTile[] = [];

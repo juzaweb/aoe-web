@@ -306,8 +306,7 @@ export class RaidService {
               zone: raidZone,
               x: point.x,
               y: point.y,
-              actionState: 'IDLE',
-              onWall: false
+              actionState: 'IDLE'
             }
           });
         }
@@ -429,8 +428,7 @@ export class RaidService {
             zone: homeZone,
             x: point.x,
             y: point.y,
-            actionState: 'IDLE',
-            onWall: false
+            actionState: 'IDLE'
           }
         });
       }

@@ -5,7 +5,7 @@ import { getIsoDepth } from '@chien-quoc/shared';
  *
  * `getIsoDepth` multiplies `gridX + gridY` by 1000, so these only break ties
  * between objects that share a row; they never reorder two different rows.
- * Other bands (resources, stairs, terrace, gate, units) still live with their
+ * Other bands (resources, terrace, gate, units) still live with their
  * owners; `CitadelLayer` and `EntityRenderer` share this one pair so a
  * player-painted segment and the capital's ring sort identically.
  *

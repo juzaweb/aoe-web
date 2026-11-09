@@ -8,7 +8,6 @@ import {
 } from '@chien-quoc/shared';
 import type * as Phaser from 'phaser';
 import type { WorldScene } from '../scenes/WorldScene.js';
-import { CITADEL_WALL_RISE } from './citadelSurface.js';
 import { wallDepth } from './isoDepth.js';
 import {
   TC_PLATFORM_ORIGIN_Y,
@@ -24,20 +23,9 @@ import {
  * rather than as a row of curbs. The numbers must match
  * `scripts/process_citadel_assets.py`, which draws the shipped `citadel/wall.png`.
  */
-const WALL_RISE = CITADEL_WALL_RISE;
+const WALL_RISE = 120;
 const WALL_BASE_CENTER_Y = 32 + WALL_RISE;
 const WALL_TEXTURE_HEIGHT = WALL_BASE_CENTER_Y + 32;
-
-/**
- * Stair sprite geometry.
- *
- * `citadel/stairs.png` is a two-tile flight anchored on the bottom tile centre,
- * so the top of the art lands on the wall lip at `WALL_RISE`. The numbers match
- * `scripts/process_citadel_assets.py`.
- */
-const STAIRS_TEXTURE_WIDTH = 256;
-const STAIRS_TEXTURE_HEIGHT = 260;
-const STAIRS_ORIGIN_Y = 220 / STAIRS_TEXTURE_HEIGHT;
 
 /**
  * Gate sprite geometry.
@@ -112,7 +100,6 @@ interface GateSprite {
 export class CitadelLayer {
   private floorTiles: Phaser.GameObjects.Image[] = [];
   private wallTiles: Phaser.GameObjects.Image[] = [];
-  private stairTiles: Phaser.GameObjects.Image[] = [];
   private platforms: Phaser.GameObjects.Image[] = [];
   private gates: GateSprite[] = [];
   /** Town Center positions the current graphics were built from. */
@@ -129,7 +116,6 @@ export class CitadelLayer {
   clear() {
     for (const tile of this.floorTiles) tile.destroy();
     for (const tile of this.wallTiles) tile.destroy();
-    for (const tile of this.stairTiles) tile.destroy();
     for (const platform of this.platforms) platform.destroy();
     for (const gate of this.gates) {
       gate.image.destroy();
@@ -137,7 +123,6 @@ export class CitadelLayer {
     }
     this.floorTiles = [];
     this.wallTiles = [];
-    this.stairTiles = [];
     this.platforms = [];
     this.gates = [];
     this.signature = '';
@@ -259,18 +244,6 @@ export class CitadelLayer {
     // The gate sprite already draws the six tiles of wall it covers, so those
     // blocks are skipped: otherwise a nearer wall block would cut the gate in
     // half, because one sprite can only carry one depth key.
-    // Stairs sit on the courtyard side of the wall, under the wall blocks so a
-    // unit climbing is drawn in front of the flight.
-    for (const stair of layout.stairs) {
-      const pos = gridToScreen(stair.bottom.gridX, stair.bottom.gridY);
-      const tile = this.scene.add.image(pos.x, pos.y, 'citadel_stairs');
-      tile.setOrigin(0.5, STAIRS_ORIGIN_Y);
-      // Key the flight on its bottom tile so a unit climbing it (depth offset
-      // 25) is drawn above the treads rather than behind them.
-      tile.setDepth(getIsoDepth(stair.bottom.gridX, stair.bottom.gridY, 11));
-      this.stairTiles.push(tile);
-    }
-
     const { coveredFrom, coveredTo } = citadelGateCoveredYRange(layout.gates);
     const coveredX = layout.originX + layout.sizeX - 1;
     const hasGate = this.scene.textures.exists('citadel_gate');
@@ -432,21 +405,6 @@ export class CitadelLayer {
       }
 
       g.generateTexture('citadel_wall', TILE_WIDTH, WALL_TEXTURE_HEIGHT);
-      g.destroy();
-    }
-
-    if (!scene.textures.exists('citadel_stairs')) {
-      const g = scene.add.graphics();
-      const steps = 8;
-      for (let i = 0; i < steps; i++) {
-        const x = 70 + i * 8;
-        const y = 220 - i * 11;
-        g.fillStyle(0xa4aab4, 1);
-        g.fillRect(x - 58, y - 12, 116, 12);
-        g.fillStyle(0x5b606a, 1);
-        g.fillRect(x - 58, y, 116, 12);
-      }
-      g.generateTexture('citadel_stairs', STAIRS_TEXTURE_WIDTH, STAIRS_TEXTURE_HEIGHT);
       g.destroy();
     }
 

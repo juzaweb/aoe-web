@@ -9,10 +9,7 @@ import {
   citadelStatus,
   citadelTownCenterFor,
   getBuildingLevelStats,
-  isCitadelBreached,
-  isCitadelInteriorTile,
-  isCitadelStairTile,
-  isCitadelWallTopTile
+  isCitadelBreached
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
@@ -95,36 +92,6 @@ describe('citadel layout', () => {
       expect(gate.gridX).toBe(layout.originX + layout.sizeX - 1);
       expect(wallKeys.has(`${gate.gridX},${gate.gridY}`)).toBe(false);
     }
-  });
-
-  it('flanks the gate with two stair flights that land on the wall ring', () => {
-    const layout = citadelLayoutFor(TC_X, TC_Y);
-    expect(layout.stairs).toHaveLength(2);
-
-    const firstGateY = layout.gates[0].gridY;
-    const lastGateY = layout.gates[layout.gates.length - 1].gridY;
-
-    for (const stair of layout.stairs) {
-      // Both steps are inside the courtyard, one tile apart, directly under the
-      // wall tile they serve.
-      expect(isCitadelInteriorTile(layout, stair.bottom.gridX, stair.bottom.gridY)).toBe(true);
-      expect(isCitadelInteriorTile(layout, stair.top.gridX, stair.top.gridY)).toBe(true);
-      expect(stair.top.gridX).toBe(stair.bottom.gridX + 1);
-      expect(stair.wall.gridX).toBe(stair.top.gridX + 1);
-      expect(stair.wall.gridY).toBe(stair.top.gridY);
-      expect(isCitadelWallTopTile(layout, stair.wall.gridX, stair.wall.gridY)).toBe(true);
-      expect(isCitadelStairTile(layout, stair.bottom.gridX, stair.bottom.gridY)).toBe(true);
-      expect(isCitadelStairTile(layout, stair.top.gridX, stair.top.gridY)).toBe(true);
-
-      // Flights sit outside the six east-wall tiles the gatehouse covers.
-      expect(stair.bottom.gridY < firstGateY - 1 || stair.bottom.gridY > lastGateY + 2).toBe(
-        true
-      );
-    }
-
-    // One flight north of the gatehouse, one south.
-    expect(layout.stairs[0].bottom.gridY).toBeLessThan(firstGateY);
-    expect(layout.stairs[1].bottom.gridY).toBeGreaterThan(lastGateY);
   });
 
   it('puts the trainers on the north wall and the houses near the west wall', () => {
@@ -532,12 +499,6 @@ describe('citadel walls', () => {
     const gate = layout.gates[0];
     expect(footprintTouchesCitadelWall(state, gate.gridX, gate.gridY, 1, 1)).toBe(false);
 
-    for (const stair of layout.stairs) {
-      expect(
-        footprintTouchesCitadelWall(state, stair.bottom.gridX, stair.bottom.gridY, 1, 1)
-      ).toBe(true);
-    }
-
     expect(footprintTouchesCitadelWall(state, TC_X + 1, TC_Y + 1, 2, 2)).toBe(false);
   });
 
@@ -559,7 +520,6 @@ describe('citadel walls', () => {
     expect(evictForeignUnitsFromCitadel(state)).toBe(1);
 
     expect(isInsideCitadelInterior(state, intruder.x, intruder.y)).toBe(false);
-    expect(intruder.onWall).toBe(false);
   });
 
   it('does not exist on a battlefield', () => {

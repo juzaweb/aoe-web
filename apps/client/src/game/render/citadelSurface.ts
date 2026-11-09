@@ -18,17 +18,10 @@ export const CITADEL_WALL_RISE = 120;
  */
 export const CITADEL_GATE_ROOF_RISE = 150;
 
-interface StairLift {
-  bottomX: number;
-  topX: number;
-  y: number;
-}
-
 /** Tile classification and height lookup for one or more citadels. */
 export class CitadelSurface {
   private readonly wallTops = new Set<string>();
   private readonly gateRoofs = new Set<string>();
-  private readonly stairs: StairLift[] = [];
 
   constructor(layouts: readonly CitadelLayout[]) {
     for (const layout of layouts) {
@@ -50,45 +43,18 @@ export class CitadelSurface {
           this.gateRoofs.add(`${eastX},${y}`);
         }
       }
-
-      for (const stair of layout.stairs) {
-        this.stairs.push({
-          bottomX: stair.bottom.gridX,
-          topX: stair.top.gridX,
-          y: stair.bottom.gridY
-        });
-      }
     }
-  }
-
-  /** Whether a tile is the wall top or gate roof. */
-  isWallTop(x: number, y: number): boolean {
-    return this.wallTops.has(`${x},${y}`);
   }
 
   /**
    * Vertical lift for a unit at continuous grid `(x, y)`.
    *
-   * Stair tiles interpolate from ground to the wall rise, so a unit climbing is
-   * drawn on the flight rather than snapping up at the top.
+   * Only the gate roof and the wall crest sit above the courtyard floor.
    */
   liftAt(x: number, y: number): number {
     const tileX = Math.floor(x);
     const tileY = Math.floor(y);
     const key = `${tileX},${tileY}`;
-
-    for (const stair of this.stairs) {
-      if (tileY !== stair.y) continue;
-      if (tileX !== stair.bottomX && tileX !== stair.topX) continue;
-      const progress = Math.max(
-        0,
-        Math.min(
-          1,
-          (x - (stair.bottomX + 0.5)) / Math.max(1, stair.topX - stair.bottomX)
-        )
-      );
-      return CITADEL_WALL_RISE * progress;
-    }
 
     if (this.gateRoofs.has(key)) return CITADEL_GATE_ROOF_RISE;
     if (this.wallTops.has(key)) return CITADEL_WALL_RISE;

@@ -229,7 +229,6 @@ export class DatabaseService {
       ['buildings', 'upgrade_progress_ms', 'REAL NOT NULL DEFAULT 0'],
       ['buildings', 'upgrade_time_ms', 'REAL NOT NULL DEFAULT 0'],
       ['units', 'level', 'INTEGER NOT NULL DEFAULT 1'],
-      ['units', 'on_wall', 'BOOLEAN NOT NULL DEFAULT 0'],
       // Regrow: a depleted node keeps its refill timestamp so an empty map is
       // not refilled by a restart (see `WorldRoom.scanResourceRespawns`).
       ['world_resource_nodes', 'respawn_at', 'REAL NULL']
@@ -862,8 +861,7 @@ export class DatabaseService {
             level: u.level,
             hp: u.hp,
             maxHp: u.maxHp,
-            actionState: u.actionState,
-            onWall: u.onWall
+            actionState: u.actionState
           },
           update: {
             // Phase 23: `zone` is deliberately not written here. A unit the
@@ -877,8 +875,7 @@ export class DatabaseService {
             level: u.level,
             hp: u.hp,
             maxHp: u.maxHp,
-            actionState: u.actionState,
-            onWall: u.onWall
+            actionState: u.actionState
           }
         });
       }

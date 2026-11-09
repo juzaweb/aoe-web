@@ -121,17 +121,16 @@ export class EntityRenderer {
 
     const art = unitArt(unitType);
     const screenPos = gridToScreen(corpse.x, corpse.y);
-    const lift = scene.citadelLiftAt(corpse.x, corpse.y);
     const sprite = scene.add.sprite(
       screenPos.x,
-      screenPos.y + art.offsetY - lift,
+      screenPos.y + art.offsetY,
       texture,
       0
     );
     sprite.setScale(art.scale);
     // Same depth rule as a living unit, one step lower so a body lying under a
     // unit that survived the fight is drawn beneath it.
-    sprite.setDepth(getIsoDepth(corpse.x, corpse.y, corpse.onWall ? 29 : 24));
+    sprite.setDepth(getIsoDepth(corpse.x, corpse.y, 24));
 
     const clip = unitActionKey(unitType, 'death', DEFAULT_DIRECTION_INDEX);
     if (scene.anims.exists(clip)) {
@@ -565,10 +564,7 @@ export class EntityRenderer {
   createUnitSprite(id: string, unit: any, cb?: any) {
     const scene = this.scene;
     const screenPos = gridToScreen(unit.x, unit.y);
-    const container = scene.add.container(
-      screenPos.x,
-      screenPos.y - scene.citadelLiftAt(unit.x, unit.y)
-    );
+    const container = scene.add.container(screenPos.x, screenPos.y);
 
     const unitType = (unit.type || 'VILLAGER') as string;
     const lowerType = unitType.toLowerCase();
@@ -646,7 +642,7 @@ export class EntityRenderer {
     container.add(hpBar);
     container.setData('hpBar', hpBar);
 
-    container.setDepth(getIsoDepth(unit.x, unit.y, unit.onWall ? 30 : 25));
+    container.setDepth(getIsoDepth(unit.x, unit.y, 25));
     container.setData('entityId', id);
     container.setData('entityType', 'unit');
 

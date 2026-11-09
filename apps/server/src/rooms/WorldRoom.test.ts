@@ -2910,50 +2910,6 @@ describe('kingdom map layout (MAPS-V2)', () => {
     expect([...crossed]).toEqual([]);
   });
 
-  it('climbs a stair, walks the wall top, and descends through the same flight', () => {
-    const room = createKingdomRoom();
-    addPlayer(room, 'player-a');
-    internals(room).spawnInitialBase('player-a');
-
-    const townCenter = Array.from(room.state.buildings.values()).find(
-      (b: BuildingState) => b.type === 'TOWN_CENTER'
-    )!;
-    const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
-    const stair = layout.stairs[0];
-
-    const unit = addUnit(room, {
-      id: 'u-climb',
-      ownerId: 'player-a',
-      type: 'VILLAGER',
-      x: stair.bottom.gridX - 2 + 0.5,
-      y: stair.bottom.gridY + 0.5
-    });
-
-    internals(room).commands.handleMoveUnits(createClient('player-a'), {
-      unitIds: [unit.id],
-      targetGridX: stair.wall.gridX,
-      targetGridY: stair.wall.gridY
-    });
-    simulate(room, 8000);
-
-    expect(unit.onWall).toBe(true);
-    expect(Math.floor(unit.x)).toBe(stair.wall.gridX);
-    expect(Math.floor(unit.y)).toBe(stair.wall.gridY);
-
-    const gateY = layout.gates[Math.floor(layout.gates.length / 2)].gridY;
-    internals(room).commands.handleMoveUnits(createClient('player-a'), {
-      unitIds: [unit.id],
-      targetGridX: layout.originX + layout.sizeX + 3,
-      targetGridY: gateY
-    });
-    simulate(room, 10000);
-
-    expect(unit.onWall).toBe(false);
-    expect(citadelWallTileSet(room.state).has(`${Math.floor(unit.x)},${Math.floor(unit.y)}`)).toBe(
-      false
-    );
-  });
-
   it('keeps a raider from walking through the gate into the courtyard', () => {
     const room = createKingdomRoom();
     addPlayer(room, 'player-a');
@@ -2986,7 +2942,7 @@ describe('kingdom map layout (MAPS-V2)', () => {
     expect(layout.gates.some((g) => `${g.gridX},${g.gridY}` === tile)).toBe(false);
   });
 
-  it('gives a wall archer the extra range and keeps ground melee off the wall', () => {
+  it('keeps a melee defender inside the courtyard from reaching an outside target', () => {
     const room = createKingdomRoom();
     addPlayer(room, 'player-a');
     addPlayer(room, 'raider');
@@ -2996,64 +2952,35 @@ describe('kingdom map layout (MAPS-V2)', () => {
       (b: BuildingState) => b.type === 'TOWN_CENTER'
     )!;
     const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
-    const wall = layout.stairs[1].wall;
+    const gate = layout.gates[Math.floor(layout.gates.length / 2)];
 
-    const archer = addUnit(room, {
-      id: 'u-archer',
+    const defender = addUnit(room, {
+      id: 'u-inside-spear',
       ownerId: 'player-a',
-      type: 'ARCHER',
-      x: wall.gridX + 0.5,
-      y: wall.gridY + 0.5
+      type: 'SPEARMAN',
+      x: layout.innerMaxX + 0.5,
+      y: gate.gridY + 0.5
     });
-    archer.onWall = true;
-
-    // 6 tiles away: outside a ground archer's 5.5 effective reach, inside the
-    // wall archer's 7.0.
     const target = addUnit(room, {
-      id: 'u-target',
+      id: 'u-outside-melee-target',
       ownerId: 'raider',
       type: 'SPEARMAN',
-      x: wall.gridX + 6.5,
-      y: wall.gridY + 0.5
+      x: layout.originX + layout.sizeX + 3 + 0.5,
+      y: gate.gridY + 0.5
     });
 
     internals(room).commands.handleAttackTarget(createClient('player-a'), {
-      unitIds: [archer.id],
+      unitIds: [defender.id],
       targetEntityId: target.id,
       targetType: 'unit'
     });
     simulate(room, 2500);
 
-    expect(target.hp).toBeLessThan(target.maxHp);
-
-    // A ground melee unit cannot reach a defender standing on the wall.
-    const wallDefender = addUnit(room, {
-      id: 'u-wall-spear',
-      ownerId: 'player-a',
-      type: 'SPEARMAN',
-      x: wall.gridX + 0.5,
-      y: wall.gridY + 0.5
-    });
-    wallDefender.onWall = true;
-    const melee = addUnit(room, {
-      id: 'u-ground-spear',
-      ownerId: 'raider',
-      type: 'SPEARMAN',
-      x: wall.gridX + 1.5,
-      y: wall.gridY + 0.5
-    });
-
-    internals(room).commands.handleAttackTarget(createClient('raider'), {
-      unitIds: [melee.id],
-      targetEntityId: wallDefender.id,
-      targetType: 'unit'
-    });
-    simulate(room, 2500);
-
-    expect(wallDefender.hp).toBe(wallDefender.maxHp);
+    expect(defender.actionState).not.toBe('ATTACKING');
+    expect(target.hp).toBe(target.maxHp);
   });
 
-  it('stops a courtyard-floor archer from firing through the wall', () => {
+  it('lets a courtyard-floor archer fire out over the wall', () => {
     const room = createKingdomRoom();
     addPlayer(room, 'player-a');
     addPlayer(room, 'raider');
@@ -3087,7 +3014,48 @@ describe('kingdom map layout (MAPS-V2)', () => {
     });
     simulate(room, 2500);
 
-    expect(archer.actionState).not.toBe('ATTACKING');
+    expect(target.hp).toBeLessThan(target.maxHp);
+    // The wall is cover, not a detour: the archer keeps firing from the courtyard
+    // instead of walking out to brawl in the open.
+    expect(isInsideCitadelInterior(room.state, archer.x, archer.y)).toBe(true);
+  });
+
+  it('keeps a courtyard archer from walking out after an out-of-range target', () => {
+    const room = createKingdomRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'raider');
+    internals(room).spawnInitialBase('player-a');
+
+    const townCenter = Array.from(room.state.buildings.values()).find(
+      (b: BuildingState) => b.type === 'TOWN_CENTER'
+    )!;
+    const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
+    const gate = layout.gates[Math.floor(layout.gates.length / 2)];
+
+    const archer = addUnit(room, {
+      id: 'u-hold-archer',
+      ownerId: 'player-a',
+      type: 'ARCHER',
+      x: layout.innerMaxX + 0.5,
+      y: gate.gridY + 0.5
+    });
+    // Beyond the archer's ~5.5 effective reach, so holding still means no shot.
+    const target = addUnit(room, {
+      id: 'u-far-target',
+      ownerId: 'raider',
+      type: 'SPEARMAN',
+      x: layout.originX + layout.sizeX + 8 + 0.5,
+      y: gate.gridY + 0.5
+    });
+
+    internals(room).commands.handleAttackTarget(createClient('player-a'), {
+      unitIds: [archer.id],
+      targetEntityId: target.id,
+      targetType: 'unit'
+    });
+    simulate(room, 4000);
+
+    expect(isInsideCitadelInterior(room.state, archer.x, archer.y)).toBe(true);
     expect(target.hp).toBe(target.maxHp);
   });
 

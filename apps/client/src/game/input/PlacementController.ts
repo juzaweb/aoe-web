@@ -111,10 +111,7 @@ export class PlacementController {
       });
       if (townCenter) {
         const layout = citadelLayoutFor(townCenter.gridX, townCenter.gridY);
-        const reserved = [
-          ...layout.walls,
-          ...layout.stairs.flatMap((stair) => [stair.bottom, stair.top])
-        ];
+        const reserved = [...layout.walls];
         blocked =
           blocked ||
           footprintTouchesWalls(reserved, gx, gy, blueprint.sizeX, blueprint.sizeY);

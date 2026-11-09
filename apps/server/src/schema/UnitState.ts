@@ -14,9 +14,6 @@ export class UnitState extends Schema {
   @type('number') hp: number = 50;
   @type('number') maxHp: number = 50;
   @type('string') actionState: string = 'IDLE'; // IDLE, MOVING, ATTACKING, HARVESTING, ATTACK_MOVE, PATROL, BUILDING
-  // WALL: true while the unit stands on the citadel wall top / gate roof. The
-  // unit uses the wall-top route layer and is drawn lifted by the wall height.
-  @type('boolean') onWall: boolean = false;
   // CMB-01: AGGRESSIVE | DEFENSIVE | STAND_GROUND | NO_ATTACK. Defaults to the
   // AoE2 default and is deliberately not persisted: a restart returns every unit
   // to aggressive, which the player can correct with one key press.

@@ -100,8 +100,6 @@ model Unit {
   hp          Float
   maxHp       Float    @map("max_hp")
   actionState String   @default("IDLE") @map("action_state")
-  /// True while the unit stands on the citadel wall top.
-  onWall      Boolean  @default(false) @map("on_wall")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 

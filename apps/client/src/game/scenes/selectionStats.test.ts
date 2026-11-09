@@ -44,11 +44,6 @@ describe('unitCombatStats', () => {
     });
   });
 
-  it('adds the wall range bonus to a ranged unit only', () => {
-    expect(unitCombatStats('ARCHER', 1, 1, 1, true).attackRange).toBe(6.5);
-    expect(unitCombatStats('SPEARMAN', 1, 1, 1, true).attackRange).toBe(1.5);
-  });
-
   it('scales attack with research, Town Center aura and trainer level', () => {
     const base = unitCombatStats('SPEARMAN', 1, 1, 1).attackPower ?? 0;
     const buffed = unitCombatStats('SPEARMAN', 10, 10, 10).attackPower ?? 0;

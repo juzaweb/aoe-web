@@ -56,8 +56,8 @@ import {
   isDefaultTownCenter,
   CitadelLayout,
   citadelLayoutFor,
-  isCitadelStairTile,
-  isCitadelWallTopTile
+  isCitadelWallTopTile,
+  isRangedAttackRange
 } from '@chien-quoc/shared';
 import { BuildingState } from '../schema/BuildingState.js';
 import { RoadState } from '../schema/RoadState.js';
@@ -71,7 +71,6 @@ import {
   isProtectedCitadelInteriorBuilding,
   isVirtualCitadelCompound,
   citadelOwnerIdOf,
-  citadelStairTileSet,
   citadelWallTileSet,
   isInsideCitadelInterior,
   outsideCitadelGatePoint
@@ -98,8 +97,6 @@ export interface CommandPorts {
   rejectCommand(client: Client, message: string | LocalizedSpec, code: RejectCode): void;
   /** Replaces the unit's route with one to this point (SIM-01). */
   setWalkTarget(unit: UnitState, targetX: number, targetY: number): void;
-  /** Drops a pending stair transition when the order is cancelled. */
-  cancelElevationTransition(unitId: string): void;
   /** Pops the next queued waypoint into the active order (CTL-05). */
   advanceQueuedWaypoint(unit: UnitState): boolean;
   /** Drops the economy system's retarget type for a unit that got a new order. */
@@ -458,11 +455,7 @@ export class CommandSystem {
     }
 
     const roads = this.ports.roadGrid();
-    const stairs = citadelStairTileSet(this.state);
-    const buildable = tiles.filter(
-      (tile) =>
-        !stairs.has(roadTileKey(tile.x, tile.y)) && this.isRoadTileBuildable(tile, roads)
-    );
+    const buildable = tiles.filter((tile) => this.isRoadTileBuildable(tile, roads));
     if (buildable.length === 0) {
       this.ports.rejectCommand(client, 'Those tiles are already occupied', RejectCode.PLACEMENT);
       return;
@@ -713,7 +706,6 @@ export class CommandSystem {
     });
 
     for (const wall of citadelWallTileSet(this.state)) occupied.add(wall);
-    for (const stair of citadelStairTileSet(this.state)) occupied.add(stair);
 
     return { occupied, wallCount };
   }
@@ -1289,11 +1281,13 @@ export class CommandSystem {
     payload.unitIds.forEach((uId) => {
       const unit = this.state.units.get(uId);
       if (unit && unit.ownerId === ownerId) {
-        // A defender on the courtyard floor cannot fire through its own wall;
-        // only a unit on the wall top may engage an outside target.
+        // A melee defender on the courtyard floor cannot reach an outside
+        // target through its own wall; ranged units may fire out over it.
+        const unitBlueprint = UNIT_BLUEPRINTS[unit.type as UnitType];
+        const ranged = isRangedAttackRange(unitBlueprint?.attackRange ?? 0);
         if (
           citadelOwnerId === unit.ownerId &&
-          !unit.onWall &&
+          !ranged &&
           isInsideCitadelInterior(this.state, unit.x, unit.y) &&
           !targetInsideCitadel
         ) {
@@ -1320,7 +1314,7 @@ export class CommandSystem {
     if (blockedByWalls && ordered === 0) {
       this.ports.rejectCommand(
         client,
-        'Units on the courtyard floor cannot fire through the citadel wall',
+        'Melee units on the courtyard floor cannot reach a target outside the citadel wall',
         RejectCode.FORBIDDEN
       );
     }
@@ -1514,7 +1508,6 @@ export class CommandSystem {
       unit.targetY = unit.y;
       unit.pathX.clear();
       unit.pathY.clear();
-      this.ports.cancelElevationTransition(unit.id);
       // SIM-02: the load stays in hand (it was already taken from the world),
       // but the trip to a drop-off is cancelled with everything else.
       unit.dropOffId = '';
@@ -1916,19 +1909,6 @@ export class CommandSystem {
     ownerId?: string
   ): Array<{ x: number; y: number }> {
     const layout = this.citadelLayoutOf(ownerId);
-    const targetIsGate =
-      layout?.gates.some((gate) => gate.gridX === destX && gate.gridY === destY) ?? false;
-    const allOnWall = units.length > 0 && units.every((unit) => unit.onWall);
-    if (
-      layout &&
-      isCitadelWallTopTile(layout, destX, destY) &&
-      // A ground order on the gate means "walk through"; only a squad already
-      // on the wall treats the gate click as the gatehouse roof.
-      (!targetIsGate || allOnWall)
-    ) {
-      return this.assignWallFormation(units.length, layout, destX, destY, allOnWall);
-    }
-
     const offsets = computeFormationOffsets(units.length, FORMATION_SPACING);
     return units.map((_, idx) => {
       const x = Math.max(0, Math.min(this.state.mapWidth - 1, destX + offsets[idx].x));
@@ -1964,36 +1944,12 @@ export class CommandSystem {
     return layout;
   }
 
-  /** Spreads a wall order along the wall run near the clicked tile. */
-  private assignWallFormation(
-    count: number,
-    layout: CitadelLayout,
-    destX: number,
-    destY: number,
-    includeGates: boolean
-  ): Array<{ x: number; y: number }> {
-    const tiles = [...layout.walls, ...(includeGates ? layout.gates : [])]
-      .map((tile) => ({
-        x: tile.gridX,
-        y: tile.gridY,
-        distance: Math.hypot(tile.gridX - destX, tile.gridY - destY)
-      }))
-      .sort((a, b) => a.distance - b.distance || a.y - b.y || a.x - b.x);
-    if (tiles.length === 0) return Array.from({ length: count }, () => ({ x: destX, y: destY }));
-
-    return Array.from({ length: count }, (_, index) => {
-      const tile = tiles[index % tiles.length];
-      return { x: tile.x, y: tile.y };
-    });
-  }
-
   /** Clamps a ground destination off the wall ring into the courtyard. */
   private snapToCourtyard(
     layout: CitadelLayout,
     x: number,
     y: number
   ): { x: number; y: number } {
-    if (isCitadelStairTile(layout, x, y)) return { x, y };
     // The gate is ground-level traffic, not a wall cell to clamp off.
     if (layout.gates.some((gate) => gate.gridX === x && gate.gridY === y)) {
       return { x, y };
