@@ -6,6 +6,7 @@ import {
   hexRound,
   hexToPixel,
   levelDeltaColor,
+  levelDeltaLabel,
   pixelToHex,
   worldMapBounds
 } from './worldMapArt.js';
@@ -85,5 +86,20 @@ describe('assignHexTiles', () => {
     const first = assignHexTiles(['a', 'b']);
     const second = assignHexTiles(['a', 'b']);
     expect(Array.from(first.entries())).toEqual(Array.from(second.entries()));
+  });
+});
+
+describe('difficulty label (UIX-01)', () => {
+  it('signs a stronger neighbour with + and a weaker one with a bare minus', () => {
+    expect(levelDeltaLabel(0)).toBe('=');
+    expect(levelDeltaLabel(3)).toBe('+3');
+    expect(levelDeltaLabel(-2)).toBe('-2');
+    expect(levelDeltaLabel(5)).toBe('+5');
+  });
+
+  it('agrees with the colour buckets: same sign means same legend entry', () => {
+    expect(levelDeltaColor(-2, true)).toBe(levelDeltaColor(-1, true));
+    expect(levelDeltaColor(2, true)).toBe(levelDeltaColor(1, true));
+    expect(levelDeltaColor(0, true)).not.toBe(levelDeltaColor(1, true));
   });
 });

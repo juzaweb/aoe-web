@@ -82,7 +82,7 @@ export class CameraController {
   saveBookmark(slot: number) {
     const camera = this.camera;
     this.bookmarks.set(slot, { x: camera.midPoint.x, y: camera.midPoint.y, zoom: camera.zoom });
-    this.scene.commands.showFeedback(camera.midPoint.x, camera.midPoint.y, 0x22c55e);
+    this.scene.commands.showFeedback(camera.midPoint.x, camera.midPoint.y, 'focus');
   }
 
   /**
@@ -103,7 +103,7 @@ export class CameraController {
     this.camera.panEffect.reset();
     this.setZoom(bookmark.zoom);
     this.camera.centerOn(bookmark.x, bookmark.y);
-    this.scene.commands.showFeedback(bookmark.x, bookmark.y, 0x38bdf8);
+    this.scene.commands.showFeedback(bookmark.x, bookmark.y, 'focus');
     return true;
   }
 }

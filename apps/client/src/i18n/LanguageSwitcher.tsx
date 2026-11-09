@@ -31,7 +31,7 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({
         onChange={(event) => setLanguage(event.target.value as Language)}
         aria-label={t('common.language')}
         title={LANGUAGE_LABELS[language]}
-        className={`h-8 rounded border border-slate-700 bg-slate-900 px-1 text-[10px] font-semibold text-slate-200 ${className}`}
+        className={`h-8 rounded border border-slate-700 bg-slate-900 px-1 text-[11px] font-semibold text-slate-200 ${className}`}
       >
         {SUPPORTED_LANGUAGES.map((code) => (
           <option key={code} value={code}>

@@ -8,6 +8,7 @@ import {
   hexPolygonPoints,
   hexToPixel,
   levelDeltaColor,
+  levelDeltaLabel,
   worldMapBounds
 } from './worldMapArt.js';
 
@@ -143,6 +144,10 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
               if (!tile) return null;
               const centre = hexToPixel(tile);
               const isSelected = entry.userId === selectedId;
+              const delta = entry.townCenterLevel - selfLevel;
+              // Dark text on the bright green/yellow/red fills, light text on the
+              // slate "cannot attack" fill, so the label never disappears.
+              const labelFill = entry.canAttack ? '#0f172a' : '#e2e8f0';
               return (
                 <g
                   key={entry.userId}
@@ -151,7 +156,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 >
                   <polygon
                     points={hexPolygonPoints(tile)}
-                    fill={levelDeltaColor(entry.townCenterLevel - selfLevel, entry.canAttack)}
+                    fill={levelDeltaColor(delta, entry.canAttack)}
                     fillOpacity={isSelected ? 0.95 : 0.7}
                     stroke={isSelected ? '#fbbf24' : '#0f172a'}
                     strokeWidth={isSelected ? 3 : 1.5}
@@ -163,7 +168,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                     className="pointer-events-none select-none"
                     fontSize={11}
                     fontWeight={700}
-                    fill="#0f172a"
+                    fill={labelFill}
                   >
                     {entry.name.slice(0, 9)}
                   </text>
@@ -172,10 +177,23 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                     y={centre.y + 12}
                     textAnchor="middle"
                     className="pointer-events-none select-none"
-                    fontSize={10}
-                    fill="#0f172a"
+                    fontSize={11}
+                    fill={labelFill}
                   >
                     Lv {entry.townCenterLevel}
+                  </text>
+                  {/* UIX-01: signed delta, so the difficulty is readable without
+                      decoding the fill colour. */}
+                  <text
+                    x={centre.x}
+                    y={centre.y + 25}
+                    textAnchor="middle"
+                    className="pointer-events-none select-none"
+                    fontSize={11}
+                    fontWeight={700}
+                    fill={labelFill}
+                  >
+                    {levelDeltaLabel(delta)}
                   </text>
                 </g>
               );
@@ -205,7 +223,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 x={0}
                 y={12}
                 textAnchor="middle"
-                fontSize={10}
+                fontSize={11}
                 fill="#e2e8f0"
                 className="pointer-events-none select-none"
               >
@@ -222,6 +240,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             <span className="ml-2 inline-block h-2.5 w-2.5 rounded-sm bg-yellow-500" /> {t('worldMap.legendEqual')}
             <span className="ml-2 inline-block h-2.5 w-2.5 rounded-sm bg-red-500" /> {t('worldMap.legendStronger')}
           </div>
+          <p className="text-[11px] leading-tight text-slate-500">{t('worldMap.legendDelta')}</p>
 
           {!selected && (
             <p className="text-[11px] leading-relaxed text-slate-400">
@@ -245,8 +264,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 <span className="text-right font-semibold">{t('worldMap.level', { level: selected.townCenterLevel })}</span>
                 <span className="text-slate-400">{t('worldMap.delta')}</span>
                 <span className="text-right font-semibold">
-                  {selected.townCenterLevel - selfLevel > 0 ? '+' : ''}
-                  {selected.townCenterLevel - selfLevel}
+                  {levelDeltaLabel(selected.townCenterLevel - selfLevel)}
                 </span>
               </div>
 

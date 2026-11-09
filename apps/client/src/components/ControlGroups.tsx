@@ -43,7 +43,7 @@ export const ControlGroups: React.FC<ControlGroupsProps> = ({ groups, onSelectGr
       }`}
       data-control-groups
     >
-      <div className="flex items-center gap-1.5 border-b border-amber-800/40 pb-1 text-[10px] font-bold tracking-wider text-amber-400">
+      <div className="flex items-center gap-1.5 border-b border-amber-800/40 pb-1 text-[11px] font-bold tracking-wider text-amber-400">
         <Layers size={12} /> {t('controlGroups.title')}
       </div>
 
@@ -60,7 +60,7 @@ export const ControlGroups: React.FC<ControlGroupsProps> = ({ groups, onSelectGr
             compact ? 'min-h-[34px] py-0.5' : 'py-1'
           }`}
         >
-          <span className="w-4 shrink-0 text-center font-mono text-[10px] font-bold text-amber-300">
+          <span className="w-4 shrink-0 text-center font-mono text-[11px] font-bold text-amber-300">
             {group.index}
           </span>
           <span className="flex-1 truncate font-semibold text-[11px] text-slate-200">
@@ -68,7 +68,7 @@ export const ControlGroups: React.FC<ControlGroupsProps> = ({ groups, onSelectGr
               .map((entry) => `${unitShortLabels[entry.type] ?? entry.type} ${entry.count}`)
               .join(' · ')}
           </span>
-          <span className="shrink-0 font-mono text-[10px] text-slate-400 tabular-nums">
+          <span className="shrink-0 font-mono text-[11px] text-slate-400 tabular-nums">
             {group.count}
           </span>
         </button>

@@ -25,6 +25,7 @@ import {
 import { PhaserGame } from './game/PhaserGame.js';
 import { HUD } from './components/HUD.js';
 import { BuildMenu } from './components/BuildMenu.js';
+import { PlacementBanner } from './components/PlacementBanner.js';
 import type { RoadMode } from './game/input/RoadController.js';
 import type { WallMode } from './game/input/WallController.js';
 import { EntityDetails } from './components/EntityDetails.js';
@@ -858,6 +859,21 @@ export const App: React.FC = () => {
     setActiveBuildingType(mode === 'build' ? 'WALL' : null);
   };
 
+  /**
+   * UIX-02: one exit point for whichever placement mode is live. It delegates to
+   * the handler the matching toolbar button already uses, so the banner's Cancel
+   * and the button can never drift apart.
+   */
+  const handleCancelPlacement = () => {
+    if (roadMode) {
+      handleSelectRoad(roadMode);
+    } else if (wallMode === 'erase') {
+      handleSelectWallErase();
+    } else {
+      handleCancelBuilding();
+    }
+  };
+
   const handleTrainUnit = (buildingId: string, unitType: UnitType) => {
     if (room) {
       room.send(NetworkMessage.TRAIN_UNIT, {
@@ -1000,6 +1016,19 @@ export const App: React.FC = () => {
           underAttack={underAttack}
           compact={isCompact}
           onLeaveGame={handleLeaveGame}
+        />
+      )}
+
+      {/* UIX-02: name the placement mode and keep a Cancel button in reach while
+          the build sheet is closed over the map. */}
+      {isJoined && (activeBuildingType !== null || roadMode !== null || wallMode !== null) && (
+        <PlacementBanner
+          compact={isCompact}
+          buildingType={activeBuildingType}
+          roadMode={roadMode}
+          wallMode={wallMode}
+          resources={resources}
+          onCancel={handleCancelPlacement}
         />
       )}
 

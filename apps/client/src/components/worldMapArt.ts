@@ -85,6 +85,18 @@ export function worldMapBounds(size = HEX_SIZE, radius = WORLD_MAP_RADIUS) {
   return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
 }
 
+/**
+ * UIX-01: the signed level delta printed on a hex, e.g. `-2`, `=` or `+3`.
+ *
+ * A colour-only tile is unreadable in grayscale and for a colour-blind player,
+ * and the legend alone does not tell them which neighbour is which. The label
+ * is the secondary cue; the fill colour stays the primary one.
+ */
+export function levelDeltaLabel(delta: number): string {
+  if (delta === 0) return '=';
+  return delta > 0 ? `+${delta}` : String(delta);
+}
+
 /** Colour of a neighbour relative to the player's own Town Center level. */
 export function levelDeltaColor(delta: number, canAttack: boolean): string {
   if (!canAttack) return '#475569';

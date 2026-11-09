@@ -1,6 +1,8 @@
 import {
+  BUILDING_BLUEPRINTS,
   BuildingType,
   NetworkMessage,
+  UNIT_BLUEPRINTS,
   canTrainUnitsAt,
   gridToScreen,
   isBuildingUnlocked,
@@ -12,8 +14,11 @@ import * as Phaser from 'phaser';
 import type { ControlGroupSummary, WorldScene } from '../scenes/WorldScene.js';
 import { findBuildingAt, findOwnFoundationAt, findOwnGatherableAt, findResourceAt, findUnitAt } from './hitTest.js';
 import { BUILDING_HOTKEYS } from './buildingHotkeys.js';
+import { UNIT_TRAINING_HOTKEYS } from './unitHotkeys.js';
 import { guardKey } from './keyGuard.js';
 import { pointerWorldGrid, pointerWorldPoint } from './pointer.js';
+import { playCommandSound } from '../audio/commandSound.js';
+import { drawOrderFeedback, type OrderFeedbackKind } from '../render/orderFeedback.js';
 
 /**
  * Phaser emits `keydown-<NAME>` for every mapped keyCode, so these need no
@@ -135,6 +140,7 @@ export class CommandController {
     this.bindCancelKey(keyboard);
     this.bindOrderKeys(keyboard);
     this.bindStanceKey(keyboard);
+    this.bindTrainingKeys(keyboard);
     this.bindRoadKey(keyboard);
     this.bindBuildingKeys(keyboard);
     this.bindZoomKeys(keyboard);
@@ -512,6 +518,63 @@ export class CommandController {
   }
 
   /**
+   * UIX-04: `V` / `S` / `A` / `C` train a unit at the selected trainer.
+   *
+   * The keys overlap other commands on purpose (see `unitHotkeys.ts`), which is
+   * safe because the contexts are mutually exclusive: training needs exactly one
+   * selected own building and no unit selection, while stop / attack-move / the
+   * Stable build hotkey all need units. Every guard here mirrors the React
+   * button so the badge on that button never lies.
+   */
+  private bindTrainingKeys(keyboard: Phaser.Input.Keyboard.KeyboardPlugin) {
+    UNIT_TRAINING_HOTKEYS.forEach(({ key, unitType }) => {
+      keyboard.on(`keydown-${key}`, (event: KeyboardEvent) => {
+        if (event.repeat) return;
+        if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        const scene = this.scene;
+        if (scene.readOnly || !scene.room) return;
+        // Another mode owns the keyboard while it is live.
+        if (scene.buildingToPlace || scene.roadMode || scene.wallMode) return;
+        // A unit selection means the letter belongs to its command card.
+        if (scene.selectedUnitIds.size > 0) return;
+        if (!scene.selectedBuildingId) return;
+
+        const building = scene.room.state.buildings.get(scene.selectedBuildingId);
+        if (!building || !scene.isOwnBuilding(building.ownerId)) return;
+        if (!canTrainUnitsAt(building.type as BuildingType)) return;
+        const trainable = BUILDING_BLUEPRINTS[building.type as BuildingType]?.trainableUnits ?? [];
+        if (!trainable.includes(unitType)) return;
+
+        // Mirror the disabled production button: the server would refuse an
+        // unaffordable order anyway, and a rejection banner for a key that
+        // should look dead is worse than swallowing it here.
+        const player = scene.room.state.players?.get(scene.myOwnerId) as
+          | { wood: number; food: number; gold: number; stone: number }
+          | undefined;
+        if (!player) return;
+        const cost = UNIT_BLUEPRINTS[unitType].cost;
+        if (
+          cost.wood > player.wood ||
+          cost.food > player.food ||
+          cost.gold > player.gold ||
+          cost.stone > player.stone
+        ) {
+          return;
+        }
+
+        event.preventDefault();
+        scene.room.send(NetworkMessage.TRAIN_UNIT, {
+          buildingId: scene.selectedBuildingId,
+          unitType
+        });
+        const container = scene.buildingSprites.get(scene.selectedBuildingId);
+        if (container) this.showFeedback(container.x, container.y, 'build');
+        playCommandSound('build');
+      });
+    });
+  }
+
+  /**
    * Sends the next stance in the cycle for the current selection.
    *
    * The stance is read from the snapshot, not from local state: the server is
@@ -548,8 +611,9 @@ export class CommandController {
     // effect even when the unit was already standing still (IDLE -> IDLE).
     unitIds.forEach((uId) => {
       const container = scene.unitSprites.get(uId);
-      if (container) this.showFeedback(container.x, container.y, 0xfacc15);
+      if (container) this.showFeedback(container.x, container.y, 'stop');
     });
+    playCommandSound('stop');
   }
 
   /**
@@ -716,7 +780,8 @@ export class CommandController {
       targetGridX: grid.gridX,
       targetGridY: grid.gridY
     });
-    this.showFeedback(worldPoint.x, worldPoint.y, 0xef4444);
+    this.showFeedback(worldPoint.x, worldPoint.y, 'attack');
+    playCommandSound('attack');
   }
 
   /**
@@ -750,7 +815,8 @@ export class CommandController {
         targetEntityId: targetEnemyUnitId,
         targetType: 'unit'
       });
-      this.showFeedback(worldPoint.x, worldPoint.y, 0xef4444);
+      this.showFeedback(worldPoint.x, worldPoint.y, 'attack');
+      playCommandSound('attack');
       return;
     }
 
@@ -762,7 +828,8 @@ export class CommandController {
         targetEntityId: targetEnemyBuildingId,
         targetType: 'building'
       });
-      this.showFeedback(worldPoint.x, worldPoint.y, 0xef4444);
+      this.showFeedback(worldPoint.x, worldPoint.y, 'attack');
+      playCommandSound('attack');
       return;
     }
 
@@ -775,7 +842,8 @@ export class CommandController {
       const building = scene.room.state.buildings.get(ownBuildingId);
       if (building?.type === 'PORTAL') {
         scene.room.send(NetworkMessage.RAID_RETREAT, {});
-        this.showFeedback(worldPoint.x, worldPoint.y, 0xef4444);
+        this.showFeedback(worldPoint.x, worldPoint.y, 'rally');
+        playCommandSound('rally');
         return;
       }
     }
@@ -788,7 +856,8 @@ export class CommandController {
         unitIds: Array.from(scene.selectedUnitIds),
         buildingId: ownFoundationId
       });
-      this.showFeedback(worldPoint.x, worldPoint.y, 0xf97316);
+      this.showFeedback(worldPoint.x, worldPoint.y, 'build');
+      playCommandSound('build');
       return;
     }
 
@@ -799,7 +868,8 @@ export class CommandController {
         unitIds: Array.from(scene.selectedUnitIds),
         resourceNodeId: targetResourceNodeId
       });
-      this.showFeedback(worldPoint.x, worldPoint.y, 0xf59e0b);
+      this.showFeedback(worldPoint.x, worldPoint.y, 'gather');
+      playCommandSound('gather');
       return;
     }
 
@@ -814,7 +884,8 @@ export class CommandController {
         unitIds: Array.from(scene.selectedUnitIds),
         buildingId: ownFarmId
       });
-      this.showFeedback(worldPoint.x, worldPoint.y, 0xf59e0b);
+      this.showFeedback(worldPoint.x, worldPoint.y, 'gather');
+      playCommandSound('gather');
       return;
     }
 
@@ -825,7 +896,8 @@ export class CommandController {
       targetGridY: targetGrid.gridY,
       ...(queue ? { queue: true } : {})
     });
-    this.showFeedback(worldPoint.x, worldPoint.y, 0x22c55e);
+    this.showFeedback(worldPoint.x, worldPoint.y, 'move');
+    playCommandSound(queue ? 'rally' : 'move');
   }
 
   /**
@@ -857,7 +929,8 @@ export class CommandController {
     });
 
     const screenPos = gridToScreen(targetGridX, targetGridY);
-    this.showFeedback(screenPos.x, screenPos.y, 0x22c55e);
+    this.showFeedback(screenPos.x, screenPos.y, 'move');
+    playCommandSound('move');
   }
 
   // ---------------------------------------------------------------------------
@@ -892,7 +965,8 @@ export class CommandController {
       gridX: grid.gridX,
       gridY: grid.gridY
     });
-    this.showFeedback(worldPoint.x, worldPoint.y, 0x38bdf8);
+    this.showFeedback(worldPoint.x, worldPoint.y, 'rally');
+    playCommandSound('rally');
   }
 
   /**
@@ -1003,21 +1077,13 @@ export class CommandController {
     });
   }
 
-  /** Short-lived ring at the click point, so every order has visible effect. */
-  showFeedback(x: number, y: number, color: number) {
-    const feedback = this.scene.add.graphics();
-    feedback.lineStyle(2, color, 1);
-    feedback.strokeEllipse(x, y, 24, 10);
-    feedback.setDepth(999990);
-
-    this.scene.tweens.add({
-      targets: feedback,
-      scaleX: 1.5,
-      scaleY: 1.5,
-      alpha: 0,
-      duration: 400,
-      onComplete: () => feedback.destroy()
-    });
+  /**
+   * UIX-01: short-lived ground marker at the click point, so every order has a
+   * visible acknowledgement before the server snapshot reacts. See
+   * `orderFeedback.ts` for the per-order shapes and the shrink/fade timing.
+   */
+  showFeedback(x: number, y: number, kind: OrderFeedbackKind) {
+    drawOrderFeedback(this.scene, x, y, kind);
   }
 
   // ---------------------------------------------------------------------------
@@ -1076,7 +1142,8 @@ export class CommandController {
     if (!pos) return;
 
     scene.cameras.main.pan(pos.x, pos.y, 350, 'Power2');
-    this.showFeedback(pos.x, pos.y, 0x22d3ee);
+    this.showFeedback(pos.x, pos.y, 'focus');
+    playCommandSound('select');
   }
 
   /** Drops a dead/despawned unit from every control group. */

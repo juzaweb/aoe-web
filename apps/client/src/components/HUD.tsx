@@ -1,6 +1,18 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Axe, Drumstick, Coins, Mountain, Users, ShieldCheck, Wifi, LogOut, Map as MapIcon, Swords } from 'lucide-react';
+import {
+  Axe,
+  AlertTriangle,
+  Drumstick,
+  Coins,
+  Mountain,
+  Users,
+  ShieldCheck,
+  Wifi,
+  LogOut,
+  Map as MapIcon,
+  Swords
+} from 'lucide-react';
 import { CITADEL_HP_THRESHOLD, RAID_MAX_DURATION_MS, type CitadelStatus } from '@chien-quoc/shared';
 import { MOBILE_MIN_TAP_PX } from '../device/inputMode.js';
 import { LanguageSwitcher } from '../i18n/LanguageSwitcher.js';
@@ -47,7 +59,9 @@ const CitadelBar: React.FC<{ status: CitadelStatus; compact?: boolean }> = ({
   status,
   compact = false
 }) => {
+  const { t } = useTranslation();
   const pct = Math.max(0, Math.min(1, status.ratio));
+  const critical = pct <= CITADEL_HP_THRESHOLD;
   const color =
     pct <= CITADEL_HP_THRESHOLD
       ? 'bg-red-500'
@@ -64,16 +78,25 @@ const CitadelBar: React.FC<{ status: CitadelStatus; compact?: boolean }> = ({
         compact ? 'px-2 py-1' : 'px-3 py-1.5'
       }`}
     >
-      <span className={`font-medieval font-bold tracking-wide text-amber-300 ${compact ? 'text-[9px]' : 'text-[11px]'}`}>
+      <span className="font-medieval text-[11px] font-bold tracking-wide text-amber-300">
         THÀNH TRÌ
       </span>
+      {/* UIX-01: the threshold state gets a symbol as well as a colour, so a
+          colour-blind player still sees that the citadel is nearly gone. */}
+      {critical && (
+        <AlertTriangle
+          size={compact ? 11 : 13}
+          className="shrink-0 animate-pulse text-red-400"
+          aria-label={t('hud.citadelLow')}
+        />
+      )}
       <div className={`${compact ? 'h-1.5 w-16' : 'h-2 w-24'} overflow-hidden rounded-full bg-slate-800`}>
         <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct * 100}%` }} />
       </div>
       <span
         className={`font-semibold tabular-nums ${
           pct <= CITADEL_HP_THRESHOLD ? 'text-red-400 font-bold' : pct <= 0.25 ? 'text-red-300' : 'text-slate-200'
-        } ${compact ? 'text-[10px]' : 'text-[11px]'}`}
+        } text-[11px]`}
       >
         {Math.round(pct * 100)}%
       </span>
@@ -171,10 +194,13 @@ export const HUD: React.FC<HUDProps> = ({
           title={zoneLabel}
         />
         {underAttack && (
-          <span
-            className="h-2 w-2 shrink-0 rounded-full bg-red-500 animate-pulse"
-            title={t('hud.underAttack')}
-          />
+          <span title={t('hud.underAttack')} className="flex shrink-0">
+            <AlertTriangle
+              size={13}
+              className="animate-pulse text-red-400"
+              aria-label={t('hud.underAttack')}
+            />
+          </span>
         )}
       </div>
 
@@ -191,15 +217,26 @@ export const HUD: React.FC<HUDProps> = ({
 
         <div className="h-3.5 w-px bg-slate-700" />
 
-        <span className="flex items-center gap-1" title={t('hud.population')}>
+        <span
+          className="flex items-center gap-1"
+          title={population >= populationCap ? t('hud.populationCapped') : t('hud.population')}
+          data-population-capped={population >= populationCap ? 'true' : undefined}
+        >
           <ShieldCheck size={13} className="text-sky-400" />
           <span
             className={`text-[11px] font-semibold tabular-nums ${
-              population >= populationCap ? 'text-red-400' : 'text-slate-100'
+              population >= populationCap ? 'font-bold text-red-400' : 'text-slate-100'
             }`}
           >
             {population}/{populationCap}
           </span>
+          {population >= populationCap && (
+            <AlertTriangle
+              size={12}
+              className="animate-pulse text-red-400"
+              aria-label={t('hud.populationCapped')}
+            />
+          )}
         </span>
 
         <div className="h-3.5 w-px bg-slate-700" />
@@ -225,7 +262,7 @@ export const HUD: React.FC<HUDProps> = ({
         {inRaid ? (
           <div className="flex items-center gap-1">
             {formattedRaidTime && (
-              <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
+              <span className={`px-1.5 py-0.5 rounded text-[11px] font-mono font-bold ${
                 (raidTimeRemaining ?? 0) <= 60000
                   ? 'bg-red-900/90 text-red-300 border border-red-500 animate-pulse'
                   : 'bg-black/60 text-amber-300 border border-amber-600/60'
@@ -408,7 +445,11 @@ export const HUD: React.FC<HUDProps> = ({
         <div className="h-5 w-px bg-slate-700" />
 
         {/* Population */}
-        <div className="flex items-center gap-2" title={t('hud.populationTitle')}>
+        <div
+          className="flex items-center gap-2"
+          title={population >= populationCap ? t('hud.populationCapped') : t('hud.populationTitle')}
+          data-population-capped={population >= populationCap ? 'true' : undefined}
+        >
           <div className="w-7 h-7 rounded bg-sky-950/70 border border-sky-600/50 flex items-center justify-center p-0.5 shadow-inner">
             <img
               src="/assets/icons/population.png?v=3"
@@ -426,6 +467,15 @@ export const HUD: React.FC<HUDProps> = ({
           >
             {population} / {populationCap}
           </span>
+          {population >= populationCap && (
+            <span title={t('hud.populationCapped')} className="flex">
+              <AlertTriangle
+                size={14}
+                className="animate-pulse text-red-400"
+                aria-label={t('hud.populationCapped')}
+              />
+            </span>
+          )}
         </div>
 
         {/* Divider */}

@@ -470,14 +470,14 @@ export const Minimap: React.FC<MinimapProps> = ({
           }`}
         >
           <MapIcon size={18} />
-          <span className="text-[9px] font-semibold leading-none">{t('minimap.map')}</span>
+          <span className="text-[11px] font-semibold leading-none">{t('minimap.map')}</span>
         </button>
 
         {open && (
           <div className="aoe-panel absolute bottom-full left-0 z-30 mb-2 flex flex-col items-center rounded-lg p-1">
             <div className="mb-1 flex w-full items-center justify-between px-0.5">
               <span
-                className={`font-medieval text-[9px] font-bold tracking-wider ${
+                className={`font-medieval text-[11px] font-bold tracking-wider ${
                   zoneKind === 'battlefield' ? 'text-red-400' : 'text-amber-400'
                 }`}
               >
@@ -505,7 +505,7 @@ export const Minimap: React.FC<MinimapProps> = ({
               className="rounded cursor-crosshair border border-amber-900/50 shadow-inner"
               style={{ width: MINIMAP_COMPACT_CSS_SIZE, height: MINIMAP_COMPACT_CSS_SIZE }}
             />
-            <p className="mt-0.5 text-[8px] leading-tight text-slate-400">
+            <p className="mt-0.5 text-[11px] leading-tight text-slate-400">
               {t('minimap.hint')}
             </p>
           </div>
@@ -517,7 +517,7 @@ export const Minimap: React.FC<MinimapProps> = ({
   return (
     <div className="aoe-panel pointer-events-auto flex flex-col items-center rounded-lg p-2">
       <div
-        className={`font-medieval mb-1 text-[10px] font-bold tracking-wider ${
+        className={`font-medieval mb-1 text-[11px] font-bold tracking-wider ${
           zoneKind === 'battlefield' ? 'text-red-400' : 'text-amber-400'
         }`}
       >

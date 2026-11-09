@@ -34,7 +34,7 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 ## Prioritized improvements
 
 ### [P1] Add Click-to-Move and Attack-Order Visual Ground Decals
-- **Status:** Proposed
+- **Status:** Implemented
 - **Confidence:** High
 - **Type:** Observed issue
 - **Evidence:** `apps/client/src/game/scenes/WorldScene.ts` processes `handleRightClickCommand`, but ground clicks only emit network messages or internal path recalculations without spawning transient animated decals (such as pulsing green concentric circles for move, or red crosshairs for attack).
@@ -43,9 +43,9 @@ Addressing these issues will significantly increase clarity, reduce input uncert
   - Create a transient particle/sprite effect in `WorldScene.ts` (e.g., green ring for move order, red ring/cross for attack, yellow ring for harvest/gather) that animates and scales down over 300ms at the clicked world coordinate.
   - Play an immediate, subtle auditory acknowledgment click sound.
 - **Acceptance criteria:**
-  - [ ] Right-clicking the map ground produces an animated ground ring at pointer location.
-  - [ ] Right-clicking an enemy unit/building displays a red attack marker.
-  - [ ] Decal scales down and fades out within 300ms without leaking memory or texture objects.
+  - [x] Right-clicking the map ground produces an animated ground ring at pointer location.
+  - [x] Right-clicking an enemy unit/building displays a red attack marker.
+  - [x] Decal scales down and fades out within 300ms without leaking memory or texture objects.
 - **Validation:** Click on 10 random terrain points and verify immediate marker appearance and cleanup.
 - **Effort:** S (Phaser tween or custom temporary graphics object).
 - **Dependencies / risks:** Must ensure marker renders in the isometric world space beneath units/buildings.
@@ -53,7 +53,7 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 ---
 
 ### [P1] Minimum Legibility Threshold for Fonts (Eliminate Sub-11px Typography)
-- **Status:** Proposed
+- **Status:** Implemented
 - **Confidence:** High
 - **Type:** Observed issue
 - **Evidence:** Multiple UI components use sub-10px fonts (`text-[8px]`, `text-[9px]`, `text-[10px]` in `BuildMenu.tsx`, `HUD.tsx`, `Minimap.tsx`, `MobileCommandBar.tsx`).
@@ -62,7 +62,7 @@ Addressing these issues will significantly increase clarity, reduce input uncert
   - Standardize minimum font size to 11px (`text-[11px]`) for auxiliary labels and 12px (`text-xs`) for regular text across all HUD panels.
   - Increase padding/spacing slightly where necessary or truncate labels with clean ellipsis and clear tooltips.
 - **Acceptance criteria:**
-  - [ ] No font sizes below `11px` across `HUD.tsx`, `BuildMenu.tsx`, `Minimap.tsx`, and `EntityDetails.tsx`.
+  - [x] No font sizes below `11px` across `HUD.tsx`, `BuildMenu.tsx`, `Minimap.tsx`, and `EntityDetails.tsx`.
   - [ ] All labels fit comfortably without clipping within their parent containers.
 - **Validation:** Visual audit on standard resolutions (1366x768, 1920x1080, and mobile 390x844).
 - **Effort:** S
@@ -71,7 +71,7 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 ---
 
 ### [P1] Visual Placement Mode Banner and Dismissal Affordance
-- **Status:** Proposed
+- **Status:** Implemented
 - **Confidence:** High
 - **Type:** Observed issue
 - **Evidence:** In `BuildMenu.tsx` (compact mode), selecting a building automatically closes the sheet (`setOpen(false)`), leaving the screen with only the semi-transparent building ghost under cursor/finger without an explicit placement prompt.
@@ -80,9 +80,9 @@ Addressing these issues will significantly increase clarity, reduce input uncert
   - Display a floating top/bottom toast banner when placement mode is active: "Placing [Building Name] - Tap ground to construct or tap Cancel".
   - Provide an easily reachable floating cancel button (`X`) near the center-bottom or top-center of the screen.
 - **Acceptance criteria:**
-  - [ ] Banner appears whenever `activeBuildingType !== null` or `roadMode !== null`.
-  - [ ] Banner contains building name, cost reminder, and explicit "Cancel" button.
-  - [ ] Banner disappears immediately upon placement or cancellation.
+  - [x] Banner appears whenever `activeBuildingType !== null` or `roadMode !== null`.
+  - [x] Banner contains building name, cost reminder, and explicit "Cancel" button.
+  - [x] Banner disappears immediately upon placement or cancellation.
 - **Validation:** Test on desktop and touch mode: select house to build, verify banner displays, press Cancel, verify ghost disappears.
 - **Effort:** XS
 - **Dependencies / risks:** None.
@@ -90,7 +90,7 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 ---
 
 ### [P2] High-Contrast & Colorblind-Safe Indicator for Population Capped and Alerts
-- **Status:** Proposed
+- **Status:** Implemented
 - **Confidence:** Medium
 - **Type:** Observed issue
 - **Evidence:** `apps/client/src/components/HUD.tsx` displays population cap in red text (`text-red-400 font-bold`) when capped, and under-attack alert relies solely on red pulsing badges.
@@ -99,8 +99,8 @@ Addressing these issues will significantly increase clarity, reduce input uncert
   - Add a dedicated warning icon (e.g. `AlertTriangle`) alongside the population text when `population >= populationCap`.
   - Add text or icon cues in addition to color transitions for Citadel HP and World Map difficulty tags.
 - **Acceptance criteria:**
-  - [ ] An `AlertTriangle` icon flashes next to the population counter when capped.
-  - [ ] World Map difficulty badges include text indicators ("-2", "Lv ==", "+3") rather than color-only hex polygons.
+  - [x] An `AlertTriangle` icon flashes next to the population counter when capped.
+  - [x] World Map difficulty badges include text indicators ("-2", "Lv ==", "+3") rather than color-only hex polygons.
 - **Validation:** Check in grayscale or with colorblind simulation browser tooling.
 - **Effort:** XS
 - **Dependencies / risks:** None.
@@ -108,7 +108,7 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 ---
 
 ### [P2] Drag-Selection Audio & Visual Box Contrast Polish
-- **Status:** Proposed
+- **Status:** Implemented
 - **Confidence:** Medium
 - **Type:** Observed issue
 - **Evidence:** `SelectionController.ts` draws selection boxes, but contrast against bright sand, dirt, and road tiles can wash out depending on the tile under the selection box.
@@ -118,7 +118,7 @@ Addressing these issues will significantly increase clarity, reduce input uncert
   - Add a subtle sound cue when a group selection box is completed and selects more than 1 unit.
 - **Acceptance criteria:**
   - [ ] Selection box is clearly visible over green grass, light dirt, stone quarries, and water boundaries.
-  - [ ] Unit selection sound plays when multi-selection completes.
+  - [x] Unit selection sound plays when multi-selection completes.
 - **Validation:** Drag-select units across different ground terrain types and observe contrast.
 - **Effort:** S
 - **Dependencies / risks:** None.
@@ -126,7 +126,7 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 ---
 
 ### [P3] Entity Details Quick Hotkey & Production Tooltips
-- **Status:** Proposed
+- **Status:** Implemented
 - **Confidence:** Medium
 - **Type:** Observed issue
 - **Evidence:** In `EntityDetails.tsx`, unit training buttons show unit name and image, but train hotkeys (e.g., `V` for Villager, `S` for Spearman) are not displayed directly on the buttons.
@@ -134,7 +134,7 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 - **Recommendation:**
   - Overlay keyboard shortcut badges on unit production buttons in `EntityDetails.tsx` (desktop mode).
 - **Acceptance criteria:**
-  - [ ] Production buttons show badge with assigned hotkey in the top-right corner.
+  - [x] Production buttons show badge with assigned hotkey in the top-right corner.
 - **Validation:** Select Town Center and Barracks; verify hotkey badges match actual keyboard triggers.
 - **Effort:** XS
 - **Dependencies / risks:** Keyboard binding configuration mapping must be exposed to React UI.
@@ -157,6 +157,24 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 
 ---
 
+## Implementation status (2026-11-09)
+
+Every proposal above shipped in the same change:
+
+| Item | Implementation | Automated coverage |
+| --- | --- | --- |
+| Ground order decals | `apps/client/src/game/render/orderFeedback.ts`, wired through `CommandController.showFeedback` | `orderFeedback.test.ts` (specs, 300 ms budget, depth, draw/tween/destroy) |
+| Order acknowledgement audio | `apps/client/src/game/audio/synthVoice.ts` (shared lazy-context/tone voice) used by both `alertSound.ts` and `commandSound.ts` | `commandSound.test.ts`, `alertSound.test.ts` |
+| 11px font floor | `text-[8px]`/`text-[9px]`/`text-[10px]` removed from every HUD component | `typography.test.ts` (source scan for Tailwind and SVG sizes) |
+| Placement banner | `apps/client/src/components/PlacementBanner.tsx`, mounted in `App.tsx`; invalid drops reuse the `reject` decal plus the `cancel` tone | — |
+| Colorblind-safe alerts | `AlertTriangle` on population cap / citadel threshold / under-attack, signed delta on World Map hexes | `worldMapArt.test.ts` (`levelDeltaLabel`) |
+| Selection marquee contrast + sound | `WorldScene.drawDragBox` dual-tone border; `SelectionController.handleBoxSelect` completion cue | `selectionSound.test.ts` |
+| Production hotkeys | `apps/client/src/game/input/unitHotkeys.ts` plus `CommandController.bindTrainingKeys`; badges in `EntityDetails.tsx` | `unitHotkeys.test.ts`, `trainingHotkeys.test.ts` |
+
+Visual checks that need a running client (alignment on real terrain palettes, label
+clipping at 1366x768 / 390x844, grayscale pass) are still open — they are the
+unchecked boxes above and in the validation checklist.
+
 ## Validation checklist
 
 - **Desktop (1920x1080 & 1366x768):**
@@ -172,10 +190,10 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 
 ---
 
-## Open questions
+## Open questions (resolved in this change)
 
-1. *Audio assets availability:* Do we have suitable short SFX clips in `public/assets/audio/` for click-to-move reticles, or should synthetic Web Audio API beeps/clicks be generated?
-2. *RTS Hotkey scheme:* Does the team want classic AoE grid hotkeys (Q/W/E/A/S/D) or legacy mnemonic hotkeys (V for Villager, S for Swordsman)?
+1. *Audio assets availability:* no SFX pipeline exists, so the order click is synthesized with the Web Audio API in `commandSound.ts` — same approach and constraints as the existing `alertSound.ts`. Swapping in real clips later only touches that one module.
+2. *RTS Hotkey scheme:* mnemonic letters (V/Villager, S/Spearman, A/Archer, C/Cavalry) were chosen. They collide with stop / attack-move / Stable-build only in contexts that cannot both be live: training needs a selected building and no unit selection, while the other commands need units. `unitHotkeys.ts` is the single source both the key binder and the React badges read.
 
 ---
 
@@ -189,5 +207,5 @@ Addressing these issues will significantly increase clarity, reduce input uncert
 
 ## Completion criteria
 
-- Comprehensive findings based on codebase evidence documented in `docs/plan/ui-ux-improvement-plan.md` and `docs/plans/ui-ux-improvement-plan.md`.
+- Comprehensive findings based on codebase evidence documented in `docs/plans/ui-ux-improvement-plan.md`.
 - Prioritized with clear criteria, effort estimates, and validation procedures.

@@ -174,14 +174,14 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
           </div>
           <span
             className={`max-w-full truncate font-semibold leading-none text-slate-300 ${
-              compactTiles ? 'text-[8px]' : 'mb-0.5 max-w-[56px] text-[10px]'
+              compactTiles ? 'text-[11px]' : 'mb-0.5 max-w-[56px] text-[11px]'
             }`}
           >
             {buildingName(type)}
           </span>
           {/* MOB-06: no keyboard on a phone, so the hotkey badge is desktop only. */}
           {!compactTiles && (
-            <span className="absolute right-1 top-0.5 rounded bg-black/60 px-1 font-mono text-[9px] font-bold text-amber-400">
+            <span className="absolute right-1 top-0.5 rounded bg-black/60 px-1 font-mono text-[11px] font-bold text-amber-400">
               {hotkey}
             </span>
           )}
@@ -198,11 +198,11 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
             <div className="font-medieval mb-1 text-xs font-bold text-amber-300">{buildingName(type)}</div>
             <div className="mb-2 text-[11px] leading-tight text-slate-300">{buildingDescription(type)}</div>
             {!unlocked && (
-              <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-amber-300">
+              <div className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-amber-300">
                 <Lock size={10} /> {t('build.lockedAtLevel', { level: unlockLevel })}
               </div>
             )}
-            <div className="space-y-0.5 border-t border-slate-800 pt-1 font-mono text-[10px]">
+            <div className="space-y-0.5 border-t border-slate-800 pt-1 font-mono text-[11px]">
               {bp.cost.wood > 0 && <div className="text-amber-400">{resourceName('wood')}: {bp.cost.wood}</div>}
               {bp.cost.food > 0 && <div className="text-red-400">{resourceName('food')}: {bp.cost.food}</div>}
               {bp.cost.gold > 0 && <div className="text-yellow-400">{resourceName('gold')}: {bp.cost.gold}</div>}
@@ -285,7 +285,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
           </div>
           <span
             className={`max-w-full truncate font-semibold leading-none text-slate-300 ${
-              compactTiles ? 'text-[8px]' : 'mb-0.5 max-w-[56px] text-[10px]'
+              compactTiles ? 'text-[11px]' : 'mb-0.5 max-w-[56px] text-[11px]'
             }`}
           >
             {label}
@@ -310,7 +310,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
           }`}
         >
           <Hammer size={18} />
-          <span className="text-[9px] font-semibold leading-none">{t('build.buildButton')}</span>
+          <span className="text-[11px] font-semibold leading-none">{t('build.buildButton')}</span>
         </button>
 
         {open && (
@@ -360,7 +360,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
         {activeBuildingType && (
           <button
             onClick={onCancelBuilding}
-            className="rounded border border-red-800/50 bg-red-950/50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-red-400 hover:text-red-300"
+            className="rounded border border-red-800/50 bg-red-950/50 px-1.5 py-0.5 text-[11px] font-semibold uppercase text-red-400 hover:text-red-300"
           >
             {t('build.cancel')}
           </button>

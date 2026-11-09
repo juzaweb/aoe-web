@@ -74,7 +74,7 @@ const CommandButton: React.FC<CommandButtonProps> = ({
     }`}
   >
     {icon}
-    <span className="max-w-[52px] truncate text-[9px] font-semibold leading-none">{label}</span>
+    <span className="max-w-[52px] truncate text-[11px] font-semibold leading-none">{label}</span>
   </button>
 );
 

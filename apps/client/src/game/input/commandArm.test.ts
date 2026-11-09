@@ -23,27 +23,35 @@ function fakeScene() {
 
 const pointer = {} as never;
 
-/** Enough of Phaser's keyboard plugin to register and then fire one hotkey. */
+/**
+ * Enough of Phaser's keyboard plugin to register and then fire one hotkey.
+ *
+ * Phaser's EventEmitter keeps *every* listener for a key, and real commands do
+ * share keys across contexts (training `A` vs attack-move `A`), so the fake
+ * keeps a list per event instead of the last registration overwriting the rest.
+ */
 function fakeKeyboard() {
-  const handlers = new Map<string, (event: KeyboardEvent) => void>();
+  const handlers = new Map<string, Array<(event: KeyboardEvent) => void>>();
   const events: string[] = [];
   return {
     events,
     addKey: () => ({}),
     on(event: string, handler: (event: KeyboardEvent) => void) {
       events.push(event);
-      handlers.set(event, handler);
+      const list = handlers.get(event);
+      if (list) list.push(handler);
+      else handlers.set(event, [handler]);
     },
     press(event: string) {
-      handlers.get(event)?.(
-        {
+      handlers.get(event)?.forEach((handler) =>
+        handler({
           repeat: false,
           ctrlKey: false,
           metaKey: false,
           shiftKey: false,
           altKey: false,
           preventDefault: () => {}
-        } as unknown as KeyboardEvent
+        } as unknown as KeyboardEvent)
       );
     }
   };

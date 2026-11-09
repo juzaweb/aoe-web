@@ -20,6 +20,7 @@ import {
 } from '@chien-quoc/shared';
 import { Shield, UserPlus, Heart, Hammer, X, Trash2, Boxes, Swords, Crosshair, Timer, Gauge } from 'lucide-react';
 import { BuildingUpgradePanel, UnitResearchPanel } from './UpgradePanels.js';
+import { UNIT_TRAINING_HOTKEY_BY_TYPE } from '../game/input/unitHotkeys.js';
 import { buildingThumbnail } from './buildingThumbnails.js';
 import { useTranslation } from 'react-i18next';
 import {
@@ -198,7 +199,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
             <span className="font-medieval text-xs font-bold text-amber-300 truncate max-w-[170px]">
               {displayName}
             </span>
-            <span className="text-[10px] text-slate-400 uppercase font-mono tracking-wider">
+            <span className="text-[11px] text-slate-400 uppercase font-mono tracking-wider">
               {t(`entityType.${entity.type}`, { defaultValue: entity.type })}
               {entity.level !== undefined && (
                 <span className="ml-1.5 text-amber-400 normal-case">
@@ -242,10 +243,10 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
           damage the simulation deals instead of the raw blueprint number. */}
       {entity.type === 'unit' && entity.attackPower !== undefined && (
         <div className="border-t border-slate-800 pt-2 space-y-1" data-unit-power>
-          <span className="text-[10px] font-bold tracking-wider text-amber-300">
+          <span className="text-[11px] font-bold tracking-wider text-amber-300">
             {t('details.unitPower')}
           </span>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-slate-300">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-slate-300">
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-1">
                 <Swords size={12} className="text-red-400" /> {t('details.attackPower')}
@@ -286,18 +287,18 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
           the player reads the exact numbers instead of guessing from stats. */}
       {entity.type === 'building' && entity.subType === 'TOWN_CENTER' && entity.isOwner && (
         <div className="border-t border-amber-800/40 pt-2 space-y-1" data-town-center-aura>
-          <span className="text-[10px] font-bold tracking-wider text-amber-300">
+          <span className="text-[11px] font-bold tracking-wider text-amber-300">
             {t('details.empireBuff', { level: ownerTownCenterLevel })}
           </span>
-          <div className="flex justify-between text-[10px] text-slate-300">
+          <div className="flex justify-between text-[11px] text-slate-300">
             <span>{t('stats.buildingUnitHp')}</span>
             <span className="font-mono text-emerald-300">+{auraPercent}%</span>
           </div>
-          <div className="flex justify-between text-[10px] text-slate-300">
+          <div className="flex justify-between text-[11px] text-slate-300">
             <span>{t('stats.unitAttack')}</span>
             <span className="font-mono text-emerald-300">+{attackPercent}%</span>
           </div>
-          <div className="flex justify-between text-[10px] text-slate-300">
+          <div className="flex justify-between text-[11px] text-slate-300">
             <span>{t('stats.trainingTime')}</span>
             <span className="font-mono text-sky-300">-{auraPercent}%</span>
           </div>
@@ -306,16 +307,16 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
 
       {buildingIsOwnedAndFinished && isTrainerBuilding && (
         <div className="border-t border-slate-800 pt-2 space-y-1" data-trainer-effects>
-          <span className="text-[10px] font-bold tracking-wider text-amber-300">
+          <span className="text-[11px] font-bold tracking-wider text-amber-300">
             {t('details.trainerEffectHeader', { level: buildingLevel })}
           </span>
-          <div className="flex justify-between text-[10px] text-slate-300">
+          <div className="flex justify-between text-[11px] text-slate-300">
             <span>{t('stats.trainingTime')}</span>
             <span className="font-mono text-sky-300" data-trainer-speed>
               -{trainerSpeedPercent}%
             </span>
           </div>
-          <div className="flex justify-between text-[10px] text-slate-300">
+          <div className="flex justify-between text-[11px] text-slate-300">
             <span>{t('stats.unitHpAttack')}</span>
             <span className="font-mono text-emerald-300" data-trainer-buff>
               +{trainerBuffPercent}%
@@ -326,16 +327,16 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
 
       {buildingIsOwnedAndFinished && isDropOffCamp && (
         <div className="border-t border-slate-800 pt-2 space-y-1" data-camp-effects>
-          <span className="text-[10px] font-bold tracking-wider text-amber-300">
+          <span className="text-[11px] font-bold tracking-wider text-amber-300">
             {t('details.campEffectHeader', { level: buildingLevel })}
           </span>
-          <div className="flex justify-between text-[10px] text-slate-300">
+          <div className="flex justify-between text-[11px] text-slate-300">
             <span>{t('stats.gatherSpeed')}</span>
             <span className="font-mono text-emerald-300" data-gather-bonus>
               +{gatherPercent}%
             </span>
           </div>
-          <div className="flex justify-between text-[10px] text-slate-300">
+          <div className="flex justify-between text-[11px] text-slate-300">
             <span>{t('stats.unloadRadius')}</span>
             <span className="font-mono text-sky-300" data-unload-radius>
               {unloadRadius.toFixed(2)} tile
@@ -348,7 +349,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
           one. Right-clicking it is the second way to retreat. */}
       {entity.type === 'building' && entity.isPortal && entity.isOwner && inRaid && (
         <div className="border-t border-red-800/60 pt-2 space-y-1.5">
-          <span className="text-[10px] font-bold text-red-300 tracking-wider">
+          <span className="text-[11px] font-bold text-red-300 tracking-wider">
             {t('details.retreatGate')}
           </span>
           <button
@@ -358,7 +359,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
           >
             {t('details.retreatAll')}
           </button>
-          <p className="text-[10px] text-slate-400 italic">
+          <p className="text-[11px] text-slate-400 italic">
             {interactionHint === 'long-press'
               ? t('details.retreatHintTouch')
               : t('details.retreatHintMouse')}
@@ -380,7 +381,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
             >
               {stanceName(entity.stance)}
             </span>
-            <span className="text-[10px] text-slate-500 font-mono">(D)</span>
+            <span className="text-[11px] text-slate-500 font-mono">(D)</span>
           </span>
         </div>
       )}
@@ -406,7 +407,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
               {entity.remainingAmount} / {entity.maxAmount}
             </span>
           </div>
-          <p className="text-[10px] text-slate-400 italic">
+          <p className="text-[11px] text-slate-400 italic">
             {interactionHint === 'long-press'
               ? entity.type === 'building'
                 ? t('details.harvestFarmTouch')
@@ -439,7 +440,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
           </div>
           <button
             onClick={() => onCancelBuilding(entity.id)}
-            className="w-full px-2 py-1 rounded border border-red-800/70 bg-red-950/50 text-[10px] font-semibold text-red-300 hover:border-red-500 transition-all flex items-center justify-center gap-1"
+            className="w-full px-2 py-1 rounded border border-red-800/70 bg-red-950/50 text-[11px] font-semibold text-red-300 hover:border-red-500 transition-all flex items-center justify-center gap-1"
             title={t('details.cancelBuildingTitle')}
           >
             <X size={12} /> {t('details.cancelBuilding')}
@@ -451,12 +452,12 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
       {entity.isOwner && trainableUnits.length > 0 && (
         <div className="border-t border-slate-800 pt-2 space-y-1.5">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-amber-400 tracking-wider flex items-center gap-1">
+            <span className="text-[11px] font-bold text-amber-400 tracking-wider flex items-center gap-1">
               <UserPlus size={12} /> {t('details.trainingTitle')}
             </span>
             {entity.trainingQueue && entity.trainingQueue.length > 0 && (
               <span className="flex items-center gap-1">
-                <span className="text-[10px] text-amber-300 font-mono">
+                <span className="text-[11px] text-amber-300 font-mono">
                   {t('details.queue', { count: entity.trainingQueue.length })}
                 </span>
                 {/* CMD-04a — cancel the unit currently at the head of the queue */}
@@ -496,12 +497,14 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
               );
               const effectiveTrainSeconds =
                 getEffectiveTrainTimeMs(uType, ownerTownCenterLevel, buildingLevel) / 1000;
+              const trainHotkey = UNIT_TRAINING_HOTKEY_BY_TYPE[uType];
 
               return (
                 <div key={uType} className="relative group/train">
                   <button
                     onClick={() => onTrainUnit(entity.id, uType)}
                     disabled={!canAffordUnit}
+                    data-train-hotkey={trainHotkey}
                     className={`px-2.5 py-1.5 rounded border text-[11px] font-semibold transition-all flex flex-col items-center gap-1 ${
                       canAffordUnit
                         ? 'aoe-button text-slate-200 hover:border-amber-400'
@@ -519,23 +522,35 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
                     <span>{unitName(uType)}</span>
                   </button>
 
+                  {/* UIX-04: the hotkey the panel advertises is the one
+                      `CommandController` actually binds, both read from
+                      `unitHotkeys.ts`. Desktop only: a phone has no keyboard. */}
+                  {!compact && (
+                    <span
+                      className="pointer-events-none absolute right-0.5 top-0.5 rounded bg-black/70 px-1 font-mono text-[11px] font-bold text-amber-400"
+                      title={t('details.hotkey', { key: trainHotkey })}
+                    >
+                      {trainHotkey}
+                    </span>
+                  )}
+
                   {/* Tooltip */}
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-44 p-2 rounded bg-slate-950 border border-amber-600/70 shadow-2xl opacity-0 group-hover/train:opacity-100 transition-opacity pointer-events-none z-50 text-left">
                     <div className="font-medieval text-xs font-bold text-amber-300 mb-0.5">{unitName(uType)}</div>
-                    <div className="text-[10px] text-slate-300 mb-1">{unitDescription(uType)}</div>
-                    <div className="text-[10px] space-y-0.5 border-t border-slate-800 pt-1 font-mono">
+                    <div className="text-[11px] text-slate-300 mb-1">{unitDescription(uType)}</div>
+                    <div className="text-[11px] space-y-0.5 border-t border-slate-800 pt-1 font-mono">
                       {uBp.cost.food > 0 && <span className="text-red-400 mr-2">{resourceName('food')}: {uBp.cost.food}</span>}
                       {uBp.cost.wood > 0 && <span className="text-amber-400 mr-2">{resourceName('wood')}: {uBp.cost.wood}</span>}
                       {uBp.cost.gold > 0 && <span className="text-yellow-400 mr-2">{resourceName('gold')}: {uBp.cost.gold}</span>}
-                      <div className="text-slate-400 text-[9px] mt-0.5">
+                      <div className="text-slate-400 text-[11px] mt-0.5">
                         {t('details.attack', { value: unitAttack })} | {t('details.hpStat', { value: unitMaxHp })}
                       </div>
-                      <div className="text-slate-400 text-[9px]">
+                      <div className="text-slate-400 text-[11px]">
                         {t('details.currentLevel', { level: unitLevel, max: getUnitMaxLevel() })}
                       </div>
                       {/* UIX-02: AoE2 tooltips advertise the training time, which is
                           the only way to compare two units' cost-per-second. */}
-                      <div className="text-slate-400 text-[9px]">
+                      <div className="text-slate-400 text-[11px]">
                         {t('details.trainTime', { seconds: effectiveTrainSeconds.toFixed(1) })}
                       </div>
                     </div>
@@ -598,7 +613,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
           <div className="border-t border-slate-800 pt-2">
             <button
               onClick={() => onCancelBuilding(entity.id)}
-              className="w-full px-2 py-1.5 rounded border border-red-800/70 bg-red-950/50 text-[10px] font-semibold text-red-300 hover:border-red-500 hover:bg-red-900/60 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+              className="w-full px-2 py-1.5 rounded border border-red-800/70 bg-red-950/50 text-[11px] font-semibold text-red-300 hover:border-red-500 hover:bg-red-900/60 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
               title={t('details.deleteBuildingTitle')}
             >
               <Trash2 size={12} /> {t('details.deleteBuilding')}

@@ -1470,7 +1470,6 @@ export class WorldScene extends Phaser.Scene {
    */
   private drawDragBox(current: { x: number; y: number }) {
     this.dragSelectionGraphics.clear();
-    this.dragSelectionGraphics.lineStyle(1.5, 0x38bdf8, 1);
     this.dragSelectionGraphics.fillStyle(0x0284c7, 0.2);
 
     const start = this.dragStartScreen;
@@ -1479,18 +1478,20 @@ export class WorldScene extends Phaser.Scene {
     const width = Math.abs(current.x - start.x);
     const height = Math.abs(current.y - start.y);
 
-    this.dragSelectionGraphics.fillRect(
-      this.cameras.main.worldView.x + minX / this.cameras.main.zoom,
-      this.cameras.main.worldView.y + minY / this.cameras.main.zoom,
-      width / this.cameras.main.zoom,
-      height / this.cameras.main.zoom
-    );
-    this.dragSelectionGraphics.strokeRect(
-      this.cameras.main.worldView.x + minX / this.cameras.main.zoom,
-      this.cameras.main.worldView.y + minY / this.cameras.main.zoom,
-      width / this.cameras.main.zoom,
-      height / this.cameras.main.zoom
-    );
+    const worldX = this.cameras.main.worldView.x + minX / this.cameras.main.zoom;
+    const worldY = this.cameras.main.worldView.y + minY / this.cameras.main.zoom;
+    const worldWidth = width / this.cameras.main.zoom;
+    const worldHeight = height / this.cameras.main.zoom;
+
+    this.dragSelectionGraphics.fillRect(worldX, worldY, worldWidth, worldHeight);
+
+    // UIX-05: dual-tone border. The bright inner line is the marquee the player
+    // reads, while the dark outer stroke keeps it visible over bright sand,
+    // dirt and road tiles where a single light line washes out completely.
+    this.dragSelectionGraphics.lineStyle(4, 0x0f172a, 0.85);
+    this.dragSelectionGraphics.strokeRect(worldX, worldY, worldWidth, worldHeight);
+    this.dragSelectionGraphics.lineStyle(1.5, 0x38bdf8, 1);
+    this.dragSelectionGraphics.strokeRect(worldX, worldY, worldWidth, worldHeight);
   }
 
   private handlePointerDown(pointer: Phaser.Input.Pointer) {

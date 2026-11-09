@@ -9,6 +9,7 @@ import {
 import type * as Phaser from 'phaser';
 import type { WorldScene } from '../scenes/WorldScene.js';
 import { buildingArt, type BuildingArt } from '../render/buildingArt.js';
+import { playCommandSound } from '../audio/commandSound.js';
 import { pointerWorldGrid } from './pointer.js';
 
 /**
@@ -221,7 +222,10 @@ export class PlacementController {
       gridX + blueprint.sizeX / 2 - 0.5,
       gridY + blueprint.sizeY / 2 - 0.5
     );
-    scene.commands.showFeedback(ghostPos.x, ghostPos.y, 0xef4444);
+    scene.commands.showFeedback(ghostPos.x, ghostPos.y, 'reject');
+    // The refusal is the one click that does nothing, so it gets the "cancel"
+    // tone as well as the red marker.
+    playCommandSound('cancel');
   }
 
   private ghostArt(type: BuildingType): BuildingArt {

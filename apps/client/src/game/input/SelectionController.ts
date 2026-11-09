@@ -3,6 +3,7 @@ import type * as Phaser from 'phaser';
 import type { WorldScene } from '../scenes/WorldScene.js';
 import { findBuildingAtPoint, findResourceAt, findUnitAt, getUnitBodyBox } from './hitTest.js';
 import { pointerWorldPoint } from './pointer.js';
+import { playCommandSound } from '../audio/commandSound.js';
 
 /**
  * CTL-02: a second click on the same unit within this window selects every
@@ -202,6 +203,10 @@ export class SelectionController {
     if (added > 0) this.clearEntity();
 
     scene.notifySelectionChange();
+
+    // UIX-05: a box that landed more than one unit gets an audible confirmation,
+    // so the player knows the drag took the whole squad without counting rings.
+    if (added > 0 && scene.selectedUnitIds.size > 1) playCommandSound('select');
   }
 
   /** Rings one unit on. Max-selection overflow is the caller's problem. */

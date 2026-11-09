@@ -37,7 +37,7 @@ const RESOURCE_TEXT: Record<keyof Resources, string> = {
 const RESOURCE_ORDER: Array<keyof Resources> = ['wood', 'food', 'gold', 'stone'];
 
 const CostChips: React.FC<{ cost: Resources }> = ({ cost }) => (
-  <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-[9px] leading-tight font-mono">
+  <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-[11px] leading-tight font-mono">
     {RESOURCE_ORDER.filter((resource) => cost[resource] > 0).map((resource) => (
       <span key={String(resource)} className={RESOURCE_TEXT[resource]}>
         {resourceName(String(resource))}: {cost[resource]}
@@ -155,12 +155,12 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
   return (
     <div className="border-t border-slate-800 pt-2 space-y-1.5" data-upgrade>
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold text-amber-400 tracking-wider flex items-center gap-1">
+        <span className="text-[11px] font-bold text-amber-400 tracking-wider flex items-center gap-1">
           <ArrowUp size={12} /> {t('upgrades.buildingTitle')}
         </span>
         <span className="flex items-center gap-2">
           <span
-            className={`text-[9px] font-mono ${
+            className={`text-[11px] font-mono ${
               slotsFull ? 'text-red-400' : 'text-slate-400'
             }`}
             title={t('upgrades.slotTitle', { count: MAX_CONCURRENT_BUILDING_UPGRADES })}
@@ -170,7 +170,7 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
               max: MAX_CONCURRENT_BUILDING_UPGRADES
             })}
           </span>
-          <span className="text-[10px] text-amber-300 font-mono">
+          <span className="text-[11px] text-amber-300 font-mono">
             Lv {level}/{cap}
           </span>
         </span>
@@ -178,7 +178,7 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
 
       {visualTierCount > 1 && visualTierName && (
         <div
-          className="flex items-center justify-between gap-2 text-[9px] font-mono text-slate-400"
+          className="flex items-center justify-between gap-2 text-[11px] font-mono text-slate-400"
           data-visual-tier
           title={t('upgrades.visualTierTitle')}
         >
@@ -198,11 +198,11 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
       {requiredCoreLevel > 0 && !isMaxed && (
         <div className="rounded border border-slate-800 bg-slate-950/60 p-1.5 space-y-1" data-gate>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[9px] font-semibold text-slate-300 flex items-center gap-1">
+            <span className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
               <Shield size={10} className="text-amber-400" /> {t('upgrades.requiresCore', { level: requiredCoreLevel })}
             </span>
             <span
-              className={`text-[9px] font-mono ${
+              className={`text-[11px] font-mono ${
                 unmetGates.length === 0 ? 'text-emerald-300' : 'text-red-400'
               }`}
             >
@@ -213,7 +213,7 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
             {gates.map(({ type: coreType, current, required, met }) => (
               <span
                 key={coreType}
-                className={`text-[9px] font-mono ${met ? 'text-emerald-300' : 'text-red-400'}`}
+                className={`text-[11px] font-mono ${met ? 'text-emerald-300' : 'text-red-400'}`}
               >
                 {BUILDING_BLUEPRINTS[coreType] ? buildingName(coreType) : coreType}: {current}/{required}
               </span>
@@ -227,25 +227,25 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
           className="rounded border border-emerald-900/60 bg-emerald-950/20 p-1.5 space-y-0.5"
           data-town-center-buff
         >
-          <div className="flex items-center justify-between text-[9px] font-semibold text-emerald-300">
+          <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-300">
             <span>{t('upgrades.currentBuff')}</span>
             {!isMaxed && <span className="text-slate-400">{t('upgrades.afterUpgrade')}</span>}
           </div>
-          <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
+          <div className="flex items-center justify-between text-[11px] font-mono text-slate-300">
             <span>{t('stats.buildingUnitHp')}</span>
             <span>
               <span className="text-emerald-300">+{auraNow}%</span>
               {!isMaxed && <span className="text-slate-500"> → +{auraNext}%</span>}
             </span>
           </div>
-          <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
+          <div className="flex items-center justify-between text-[11px] font-mono text-slate-300">
             <span>{t('stats.unitAttack')}</span>
             <span>
               <span className="text-emerald-300">+{attackNow}%</span>
               {!isMaxed && <span className="text-slate-500"> → +{attackNext}%</span>}
             </span>
           </div>
-          <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
+          <div className="flex items-center justify-between text-[11px] font-mono text-slate-300">
             <span>{t('stats.trainingTime')}</span>
             <span>
               <span className="text-sky-300">-{auraNow}%</span>
@@ -260,18 +260,18 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
           className="rounded border border-emerald-900/60 bg-emerald-950/20 p-1.5 space-y-0.5"
           data-trainer-buff
         >
-          <div className="flex items-center justify-between text-[9px] font-semibold text-emerald-300">
+          <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-300">
             <span>{t('upgrades.barracksEffect')}</span>
             {!isMaxed && <span className="text-slate-400">{t('upgrades.afterUpgrade')}</span>}
           </div>
-          <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
+          <div className="flex items-center justify-between text-[11px] font-mono text-slate-300">
             <span>{t('stats.trainingTime')}</span>
             <span>
               <span className="text-sky-300">-{trainerSpeedNow}%</span>
               {!isMaxed && <span className="text-slate-500"> → -{trainerSpeedNext}%</span>}
             </span>
           </div>
-          <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
+          <div className="flex items-center justify-between text-[11px] font-mono text-slate-300">
             <span>{t('stats.unitHpAttack')}</span>
             <span>
               <span className="text-emerald-300">+{trainerBuffNow}%</span>
@@ -286,18 +286,18 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
           className="rounded border border-emerald-900/60 bg-emerald-950/20 p-1.5 space-y-0.5"
           data-camp-buff
         >
-          <div className="flex items-center justify-between text-[9px] font-semibold text-emerald-300">
+          <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-300">
             <span>{t('upgrades.campEffect')}</span>
             {!isMaxed && <span className="text-slate-400">{t('upgrades.afterUpgrade')}</span>}
           </div>
-          <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
+          <div className="flex items-center justify-between text-[11px] font-mono text-slate-300">
             <span>{t('stats.gatherSpeed')}</span>
             <span>
               <span className="text-emerald-300">+{gatherNow}%</span>
               {!isMaxed && <span className="text-slate-500"> → +{gatherNext}%</span>}
             </span>
           </div>
-          <div className="flex items-center justify-between text-[9px] font-mono text-slate-300">
+          <div className="flex items-center justify-between text-[11px] font-mono text-slate-300">
             <span>{t('stats.unloadRadius')}</span>
             <span>
               <span className="text-sky-300">{radiusNow.toFixed(2)} tile</span>
@@ -322,19 +322,19 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
           <ProgressBar percent={progressPercent} tone="amber" />
           <button
             onClick={() => onCancel(buildingId)}
-            className="w-full px-2 py-1 rounded border border-red-800/70 bg-red-950/40 text-[10px] font-semibold text-red-300 hover:border-red-500 transition-all flex items-center justify-center gap-1"
+            className="w-full px-2 py-1 rounded border border-red-800/70 bg-red-950/40 text-[11px] font-semibold text-red-300 hover:border-red-500 transition-all flex items-center justify-center gap-1"
             title={t('upgrades.cancelTitle')}
           >
             <X size={12} /> {t('upgrades.cancel')}
           </button>
         </>
       ) : isMaxed ? (
-        <p className="text-[10px] text-emerald-300/90 italic">{t('upgrades.maxed')}</p>
+        <p className="text-[11px] text-emerald-300/90 italic">{t('upgrades.maxed')}</p>
       ) : (
         <>
           <div className="flex items-center justify-between gap-2">
             <CostChips cost={cost} />
-            <span className="text-[9px] text-slate-400 font-mono shrink-0">
+            <span className="text-[11px] text-slate-400 font-mono shrink-0">
               {formatDuration(duration)}
             </span>
           </div>
@@ -350,7 +350,7 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
                     ? t('upgrades.insufficient')
                     : t('upgrades.upgradeTo', { level: level + 1 })
             }
-            className={`w-full px-2 py-1 rounded border text-[10px] font-semibold transition-all flex items-center justify-center gap-1 ${
+            className={`w-full px-2 py-1 rounded border text-[11px] font-semibold transition-all flex items-center justify-center gap-1 ${
               canUpgrade
                 ? 'aoe-button text-amber-200 hover:border-amber-400'
                 : 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed opacity-50'
@@ -359,7 +359,7 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
             <ArrowUp size={12} /> {t('upgrades.upgradeTo', { level: level + 1 })}
           </button>
           {(slotsFull || unmetGates.length > 0) && (
-            <p className="text-[9px] text-red-400/90 text-center">
+            <p className="text-[11px] text-red-400/90 text-center">
               {slotsFull
                 ? t('upgrades.slotsFull', { count: MAX_CONCURRENT_BUILDING_UPGRADES })
                 : t('upgrades.requiresCoreFirstShort')}
@@ -414,10 +414,10 @@ export const UnitResearchPanel: React.FC<UnitResearchPanelProps> = ({
   return (
     <div className="border-t border-slate-800 pt-2 space-y-1.5" data-research>
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold text-amber-400 tracking-wider flex items-center gap-1">
+        <span className="text-[11px] font-bold text-amber-400 tracking-wider flex items-center gap-1">
           <Swords size={12} /> {t('upgrades.researchTitle')}
         </span>
-        <span className="text-[9px] text-slate-500 font-mono">{t('upgrades.global')}</span>
+        <span className="text-[11px] text-slate-500 font-mono">{t('upgrades.global')}</span>
       </div>
 
       {researchingType && (
@@ -460,11 +460,11 @@ export const UnitResearchPanel: React.FC<UnitResearchPanelProps> = ({
               className="rounded border border-slate-800 bg-slate-950/40 p-1.5 space-y-1"
             >
               <div className="flex items-center justify-between gap-1">
-                <span className="text-[10px] font-semibold text-slate-200 truncate">
+                <span className="text-[11px] font-semibold text-slate-200 truncate">
                   {unitName(unitType)}
                 </span>
                 <span
-                  className={`text-[9px] font-mono shrink-0 ${
+                  className={`text-[11px] font-mono shrink-0 ${
                     atMax ? 'text-emerald-300' : 'text-amber-300'
                   }`}
                 >
@@ -473,7 +473,7 @@ export const UnitResearchPanel: React.FC<UnitResearchPanelProps> = ({
               </div>
 
               {atMax ? (
-                <div className="text-[9px] text-emerald-300/80 text-center py-1">{t('upgrades.max')}</div>
+                <div className="text-[11px] text-emerald-300/80 text-center py-1">{t('upgrades.max')}</div>
               ) : (
                 <>
                   <CostChips cost={cost} />
@@ -481,7 +481,7 @@ export const UnitResearchPanel: React.FC<UnitResearchPanelProps> = ({
                     onClick={() => onUpgradeUnitType(unitType)}
                     disabled={busy || !affordable}
                     title={`${t('upgrades.upgradeTo', { level: level + 1 })} • ${(duration / 1000).toFixed(1)}s`}
-                    className={`w-full px-1 py-0.5 rounded border text-[9px] font-semibold transition-all ${
+                    className={`w-full px-1 py-0.5 rounded border text-[11px] font-semibold transition-all ${
                       busy || !affordable
                         ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed opacity-50'
                         : 'aoe-button text-amber-200 hover:border-amber-400'
