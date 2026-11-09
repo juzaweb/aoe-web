@@ -5,6 +5,7 @@ import {
   CITADEL_HEIGHT,
   CITADEL_HP_THRESHOLD,
   CITADEL_WIDTH,
+  clearCitadelLayoutCache,
   citadelLayoutFor,
   citadelStatus,
   citadelTownCenterFor,
@@ -72,6 +73,17 @@ function allBuildings(state: WorldState): BuildingState[] {
 }
 
 describe('citadel layout', () => {
+  it('memoizes citadelLayoutFor calls across multiple invocations', () => {
+    clearCitadelLayoutCache();
+    const layout1 = citadelLayoutFor(TC_X, TC_Y);
+    const layout2 = citadelLayoutFor(TC_X, TC_Y);
+    expect(layout1).toBe(layout2);
+
+    const layoutDifferent = citadelLayoutFor(TC_X + 1, TC_Y);
+    expect(layoutDifferent).not.toBe(layout1);
+    expect(layoutDifferent.originX).toBe(layout1.originX + 1);
+  });
+
   it('places one Town Center, one barracks, one archery range and five houses', () => {
     const layout = citadelLayoutFor(TC_X, TC_Y);
     expect(layout.slots).toHaveLength(8);
