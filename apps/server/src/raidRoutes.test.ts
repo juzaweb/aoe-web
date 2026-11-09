@@ -216,4 +216,22 @@ describe('POST /raid/retreat', () => {
     expect(res.status).toBe(200);
     expect(retreatRaid).toHaveBeenCalledWith('raid-1', 'attacker');
   });
+
+  it('rate limits excessive retreat requests with 429 Too Many Requests', async () => {
+    retreatRaid.mockResolvedValue(null);
+
+    // raidRateLimit allows 20 requests per minute
+    let lastRes: Response | null = null;
+    for (let i = 0; i < 25; i++) {
+      lastRes = await fetch(`${baseUrl}/raid/retreat`, {
+        method: 'POST',
+        headers: auth,
+        body: JSON.stringify({ raidId: 'raid-1' })
+      });
+    }
+
+    expect(lastRes).not.toBeNull();
+    expect(lastRes!.status).toBe(429);
+    expect(lastRes!.headers.get('retry-after')).toBeDefined();
+  });
 });

@@ -195,7 +195,8 @@ app.post('/raid/start', raidRateLimit, async (req, res) => {
   }
 });
 
-app.post('/raid/retreat', async (req, res) => {
+// Rate limit retreat requests to prevent spamming transactions and database lookups
+app.post('/raid/retreat', raidRateLimit, async (req, res) => {
   try {
     const account = await requireAccount(req, res);
     if (!account) return;
