@@ -105,6 +105,9 @@ app.get('/auth/me', async (req, res) => {
 // World map and raids (Phase 23)
 // ---------------------------------------------------------------------------
 
+/** Rate limit for world-map lookup to prevent database connection exhaustion. */
+const worldMapRateLimit = createRateLimit({ limit: 60, windowMs: 60_000 });
+
 /** Rate limit for raid creation: a broken client must not spam transactions. */
 const raidRateLimit = createRateLimit({ limit: 20, windowMs: 60_000 });
 
@@ -131,7 +134,7 @@ async function requireAccount(
   return { id: user.id, displayName: user.displayName };
 }
 
-app.get('/world-map', async (req, res) => {
+app.get('/world-map', worldMapRateLimit, async (req, res) => {
   try {
     const account = await requireAccount(req, res);
     if (!account) return;

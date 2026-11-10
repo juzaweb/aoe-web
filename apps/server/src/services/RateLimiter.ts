@@ -20,16 +20,28 @@ export function createRateLimit(options: {
   limit: number;
   /** Window length in milliseconds. */
   windowMs: number;
+  /** Maximum tracked keys to prevent unbounded memory growth DoS. Defaults to 10,000. */
+  maxBuckets?: number;
 }): RequestHandler {
+  const maxBuckets = options.maxBuckets ?? 10_000;
   const buckets = new Map<string, Bucket>();
   let lastSweep = Date.now();
 
-  /** Drops expired buckets so the map cannot grow without bound. */
+  /** Drops expired buckets and bounds memory usage to prevent memory exhaustion DoS. */
   const sweep = (now: number) => {
-    if (now - lastSweep < options.windowMs) return;
+    if (now - lastSweep < options.windowMs && buckets.size < maxBuckets) return;
     lastSweep = now;
     for (const [key, bucket] of buckets) {
       if (bucket.resetAt <= now) buckets.delete(key);
+    }
+    // Evict oldest entries if still at or above capacity under high IP churn
+    if (buckets.size >= maxBuckets) {
+      const excess = buckets.size - maxBuckets + 1;
+      let count = 0;
+      for (const key of buckets.keys()) {
+        buckets.delete(key);
+        if (++count >= excess) break;
+      }
     }
   };
 
