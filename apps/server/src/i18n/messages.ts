@@ -107,6 +107,7 @@ export const CATALOG: Record<string, Entry> = {
   'Retreat from inside the raid.': { vi: 'Hãy rút quân trong trận đánh.' },
   'Could not retreat. Please try again.': { vi: 'Không thể rút quân. Vui lòng thử lại.' },
   'Too many attempts. Please wait and try again.': { vi: 'Quá nhiều lần thử. Vui lòng đợi rồi thử lại.' },
+  'World restore failed. Please try again.': { vi: 'Khôi phục bản đồ thất bại. Vui lòng thử lại.' },
 
   // -------------------------------------------------------- raid service
   'Owner is offline': { vi: 'Chủ thành đang ngoại tuyến' },
