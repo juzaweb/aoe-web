@@ -1,207 +1,312 @@
 # 2D Game UI/UX Improvement Plan
 
-- **Date:** 2026-11-09
+- **Date:** 2026-11-10
 - **Project / engine:** Phaser 3 (Canvas/WebGL) + React 18 (HUD/Overlays) + Tailwind CSS + Colyseus.js
-- **Audit scope:** Client frontend components (`apps/client/src/components/*`), input controllers (`apps/client/src/game/input/*`), scenes (`WorldScene.ts`), stylesheets (`index.css`), mobile interactions (`MobileCommandBar.tsx`, `useInputMode.ts`), and localization files (`apps/client/src/i18n/*`).
-- **Limitations:** Backend server runtime and live multi-client sessions under real player latency were not actively simulated with live users during this audit. Live gameplay verification was conducted by static inspection of rendering logic, event handlers, and client unit tests rather than interactive human play sessions.
+- **Audit scope:** Client frontend components (`apps/client/src/components/*`), input controllers (`apps/client/src/game/input/*`), scenes (`WorldScene.ts`), stylesheets (`index.css`), mobile interactions (`MobileCommandBar.tsx`, `useInputMode.ts`, `OrientationGate.tsx`), audio cues (`commandSound.ts`, `alertSound.ts`), and localization catalogs (`apps/client/src/i18n/*`).
+- **Limitations:** Live multi-client battles under real high-latency WAN conditions and physical VoiceOver/NVDA screen reader sessions were not interactively tested in this environment; verification relies on static code analysis, DOM hierarchy inspection, CSS math calculation, and Vitest test suites.
 
 ---
 
 ## Executive summary
 
-The 2D MMO RTS web game *Chiến Quốc* delivers a classic *Age of Empires*-inspired experience with isometric rendering, responsive HUD elements, multi-unit drag selection, and touch controls. However, auditing the UI/UX architecture revealed several key friction points:
-1. **Critical Feedback Gaps:** Left-click and right-click ground clicks lack immediate audio-visual ground markers (e.g. green animated movement waypoints, red attack reticles), leaving players uncertain if an order was received before server state syncs.
-2. **Readability & Information Hierarchy:** Sub-10px font sizes in dense desktop tooltips and mobile HUD badges (`text-[8px]`, `text-[9px]`, `text-[10px]`) cause eye strain on high-DPI and mobile screens.
-3. **Accessibility & Color Reliance:** Crucial gameplay states (e.g. population limit warning, low health, under attack, world map difficulty) rely heavily on red/green hues without distinct secondary symbols or patterns.
-4. **Mobile & Touch Friction:** On compact viewports, the BuildMenu sheet closes immediately upon selecting a building without clarifying that a placement tap is now required on the ground canvas.
+The 2D MMO RTS web game *Chiến Quốc* delivers a responsive isometric RTS experience inspired by classic *Age of Empires*, complete with procedural rendering, touch command bars, placement banners, and minimap navigation.
 
-Addressing these issues will significantly increase clarity, reduce input uncertainty, and improve accessibility across both desktop and mobile platforms.
+While core feedback features (such as ground order decals, audio synthesis, placement banners, and font floors) have been implemented, a deep audit of recent additions reveals critical UI/UX and accessibility friction points:
+1. **Screen Reader Blindspots:** Critical gameplay status changes (command rejected notifications and under-attack alert banners) lack ARIA live region attributes (`role="status"` or `role="alert"`), preventing assistive technology users from receiving feedback.
+2. **Keyboard Focus & Modal Containment:** Full-screen overlays (`WorldMapOverlay`, `SpectatorOverlay`) and mobile drawer sheets (`BuildMenu`, `Minimap`) lack dialog semantics (`role="dialog"`, `aria-modal="true"`) and focus management, allowing keyboard `Tab` navigation to bleed into the underlying HUD while hidden.
+3. **Overlay Stacking Collisions:** Multiple top-center banners (`PlacementBanner`, `RejectNotification`, and under-attack warning) use independent absolute `top-*` coordinates, causing visual overlap on standard and compact viewports.
+4. **Localization Leakage:** In the HUD, citadel health and label strings (`THÀNH TRÌ`) remain hardcoded in Vietnamese even when English locale is selected.
+5. **Contrast & Reduced Motion:** Secondary auxiliary labels (`text-slate-500`) fall below WCAG AA contrast ratios (3.07:1 - 4.24:1 vs required 4.5:1), and CSS animations (`animate-bounce`, `animate-pulse`, `animate-spin`) lack `prefers-reduced-motion` fallbacks.
+6. **Mobile Tap Target Ergonomics:** Dismiss buttons on compact drawer panels are sized at 36px (`h-9 w-9`), falling short of the project's 44px (`MOBILE_MIN_TAP_PX`) touch target guideline.
+
+Addressing these issues will elevate the game's polish, accessibility compliance, visual harmony, and multi-device usability.
 
 ---
 
 ## Current experience and evidence
 
 ### Player Flows & Codebase Mapping
-- **Game Launch & Session Recovery:** `apps/client/src/App.tsx` handles session restoration, authentication, and reconnection gates (`SessionBlocked.tsx`, `AuthScreen.tsx`).
-- **Resource & Status Monitoring:** `apps/client/src/components/HUD.tsx` tracks wood, food, gold, stone, population, idle villagers, and citadel status.
-- **Unit & Building Inspection:** `apps/client/src/components/EntityDetails.tsx` dynamically renders combat stats, research queues, construction bars, and upgrade buttons.
-- **Construction & Base Building:** `apps/client/src/components/BuildMenu.tsx` provides grid-based construction buttons with hotkey tags and hover tooltips.
-- **Minimap Navigation:** `apps/client/src/components/Minimap.tsx` renders ground rasters, forest clusters, entity blips, and camera viewport rectangles.
-- **Touch / Mobile Bar:** `apps/client/src/components/mobile/MobileCommandBar.tsx` replaces keyboard shortcuts with 44px+ touch targets on compact viewports.
+- **Game Launch & Authentication:** `apps/client/src/App.tsx`, `AuthScreen.tsx`, `SessionBlocked.tsx`.
+- **Top HUD & Resource Monitoring:** `apps/client/src/components/HUD.tsx` tracks resources, population, idle villagers, and citadel status.
+- **Placement & Tooling Banner:** `apps/client/src/components/PlacementBanner.tsx` provides status pills and cancel buttons during construction or road/wall painting.
+- **Command Rejection & Error Feedback:** `apps/client/src/components/RejectNotification.tsx` and `apps/client/src/game/alerts/rejectVisuals.ts`.
+- **Unit & Building Inspection:** `apps/client/src/components/EntityDetails.tsx` and `UpgradePanels.tsx` render combat stats, production queues, and upgrade actions.
+- **Base Construction & Wall Brush:** `apps/client/src/components/BuildMenu.tsx` manages building blueprints and wall tools.
+- **Minimap Radar:** `apps/client/src/components/Minimap.tsx` renders real-time entity blips and camera viewports.
+- **World Map & Raiding:** `apps/client/src/components/WorldMapOverlay.tsx` displays hex-grid neighbours, power differentials, and spectate/attack actions.
+- **Spectator Mode:** `apps/client/src/components/SpectatorOverlay.tsx` provides a secondary read-only world view.
 
 ---
 
 ## Prioritized improvements
 
-### [P1] Add Click-to-Move and Attack-Order Visual Ground Decals
-- **Status:** Implemented
+### [P1] Accessible Live Regions for Toasts and Under-Attack Alerts
+- **Status:** Proposed
 - **Confidence:** High
 - **Type:** Observed issue
-- **Evidence:** `apps/client/src/game/scenes/WorldScene.ts` processes `handleRightClickCommand`, but ground clicks only emit network messages or internal path recalculations without spawning transient animated decals (such as pulsing green concentric circles for move, or red crosshairs for attack).
-- **Player impact:** Players frequently double- or triple-click because there is no immediate visual confirmation that their command was registered before server replication moves the units.
+- **Evidence:** In `apps/client/src/components/RejectNotification.tsx:46`, the reject banner renders as an unannotated `div` lacking `role` or `aria-live`. In `apps/client/src/App.tsx:1168`, the under-attack banner uses a plain `div` without live region markup. In `PlacementBanner.tsx:142-143`, `role="status"` wraps both the announcement text and the interactive "Cancel" button.
+- **Player impact:** Screen reader players never receive auditory notification when an action fails (e.g., insufficient wood/food) or when their base is under siege. In placement mode, screen readers announce control buttons redundantly as status updates.
 - **Recommendation:**
-  - Create a transient particle/sprite effect in `WorldScene.ts` (e.g., green ring for move order, red ring/cross for attack, yellow ring for harvest/gather) that animates and scales down over 300ms at the clicked world coordinate.
-  - Play an immediate, subtle auditory acknowledgment click sound.
+  - Assign `role="status"` and `aria-live="polite"` with dynamic incrementing `key={seq}` to `RejectNotification` so repeated error messages trigger announcements.
+  - Assign `role="alert"` and `aria-live="assertive"` to the under-attack banner in `App.tsx`.
+  - Refactor `PlacementBanner` so `role="status"` wraps only the text block, leaving the Cancel button as a sibling.
+  - Mark decorative icons with `aria-hidden="true"`.
 - **Acceptance criteria:**
-  - [x] Right-clicking the map ground produces an animated ground ring at pointer location.
-  - [x] Right-clicking an enemy unit/building displays a red attack marker.
-  - [x] Decal scales down and fades out within 300ms without leaking memory or texture objects.
-- **Validation:** Click on 10 random terrain points and verify immediate marker appearance and cleanup.
-- **Effort:** S (Phaser tween or custom temporary graphics object).
-- **Dependencies / risks:** Must ensure marker renders in the isometric world space beneath units/buildings.
+  - [ ] Screen readers announce server rejection messages on trigger.
+  - [ ] Repeated error messages (e.g. repeated "Insufficient wood") trigger re-announcements.
+  - [ ] Under-attack alerts announce assertively.
+  - [ ] Interactive buttons are excluded from `role="status"` containers.
+- **Validation:** Inspect DOM accessibility tree in browser DevTools; verify `aria-live` regions update as expected on command rejection.
+- **Effort:** XS
+- **Dependencies / risks:** None.
 
 ---
 
-### [P1] Minimum Legibility Threshold for Fonts (Eliminate Sub-11px Typography)
-- **Status:** Implemented
+### [P1] Dialog Semantics and Focus Management for Overlays
+- **Status:** Proposed
 - **Confidence:** High
 - **Type:** Observed issue
-- **Evidence:** Multiple UI components use sub-10px fonts (`text-[8px]`, `text-[9px]`, `text-[10px]` in `BuildMenu.tsx`, `HUD.tsx`, `Minimap.tsx`, `MobileCommandBar.tsx`).
-- **Player impact:** On high-DPI mobile screens and 1080p+ monitors, text is difficult to read and fails standard WCAG legibility guidelines.
+- **Evidence:** `apps/client/src/components/WorldMapOverlay.tsx:93`, `SpectatorOverlay.tsx:41`, `BuildMenu.tsx:317`, and `Minimap.tsx:477` lack `role="dialog"`, `aria-modal="true"`, or `aria-labelledby`. None of these overlays trap keyboard focus or restore focus on close.
+- **Player impact:** Keyboard players navigating with `Tab` cycle through interactive elements underneath the modal backdrop, causing accidental inputs and disorientation.
 - **Recommendation:**
-  - Standardize minimum font size to 11px (`text-[11px]`) for auxiliary labels and 12px (`text-xs`) for regular text across all HUD panels.
-  - Increase padding/spacing slightly where necessary or truncate labels with clean ellipsis and clear tooltips.
+  - Implement a reusable `useModalFocus(containerRef, isOpen, onClose)` hook.
+  - Trap `Tab` and `Shift+Tab` within the active overlay while open.
+  - Automatically focus the primary close button on open, and restore focus to the trigger element on close (`Esc` or button click).
+  - Add `role="dialog"`, `aria-modal="true"`, and `aria-labelledby` referencing existing title headings.
 - **Acceptance criteria:**
-  - [x] No font sizes below `11px` across `HUD.tsx`, `BuildMenu.tsx`, `Minimap.tsx`, and `EntityDetails.tsx`.
-  - [ ] All labels fit comfortably without clipping within their parent containers.
-- **Validation:** Visual audit on standard resolutions (1366x768, 1920x1080, and mobile 390x844).
+  - [ ] Tabbing inside `WorldMapOverlay` and `SpectatorOverlay` cycles exclusively within the modal.
+  - [ ] Closing overlays via `Esc` or close button returns focus to the trigger button in the HUD.
+  - [ ] Compact mobile sheets for `BuildMenu` and `Minimap` trap focus when opened.
+- **Validation:** Open `WorldMapOverlay`, press `Tab` 10 times, verify focus never leaves the modal container, press `Esc`, verify focus returns to HUD map icon.
 - **Effort:** S
-- **Dependencies / risks:** Component container heights may need minor adjustments to avoid overflow.
+- **Dependencies / risks:** Must ensure focus trap does not conflict with canvas key event listeners.
 
 ---
 
-### [P1] Visual Placement Mode Banner and Dismissal Affordance
-- **Status:** Implemented
+### [P1] Unified Top-Center Notification & Banner Stack
+- **Status:** Proposed
 - **Confidence:** High
 - **Type:** Observed issue
-- **Evidence:** In `BuildMenu.tsx` (compact mode), selecting a building automatically closes the sheet (`setOpen(false)`), leaving the screen with only the semi-transparent building ghost under cursor/finger without an explicit placement prompt.
-- **Player impact:** Players, especially new mobile players, get confused about why their menu closed and whether they are in placement mode or normal mode.
+- **Evidence:** `PlacementBanner.tsx:140` uses `top-20` (desktop) and `top-[calc(env(safe-area-inset-top)+4.75rem)]` (mobile). `RejectNotification.tsx` uses `top-16` with `animate-bounce`. `App.tsx:1168` renders the under-attack banner at `top-16` or `top-24`. When multiple states are active simultaneously, they collide and occlude one another.
+- **Player impact:** During a raid or simultaneous construction while receiving an error, banners overlap, making text unreadable and blocking the Cancel button.
 - **Recommendation:**
-  - Display a floating top/bottom toast banner when placement mode is active: "Placing [Building Name] - Tap ground to construct or tap Cancel".
-  - Provide an easily reachable floating cancel button (`X`) near the center-bottom or top-center of the screen.
+  - Introduce a unified `TopOverlayStack` container (`pointer-events-none fixed left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-1.5`).
+  - Sequence components in priority order: Under-Attack Banner -> Command Rejection Toast -> Placement Banner.
+  - Ensure individual banner pills have `pointer-events-auto` while parent stack allows clicks through to canvas.
 - **Acceptance criteria:**
-  - [x] Banner appears whenever `activeBuildingType !== null` or `roadMode !== null`.
-  - [x] Banner contains building name, cost reminder, and explicit "Cancel" button.
-  - [x] Banner disappears immediately upon placement or cancellation.
-- **Validation:** Test on desktop and touch mode: select house to build, verify banner displays, press Cancel, verify ghost disappears.
+  - [ ] Simultaneous under-attack alert, reject toast, and placement banner render stacked vertically without overlapping.
+  - [ ] Placement Cancel button remains fully clickable when stacked.
+  - [ ] On compact screens, stack anchors below the `CitadelBar` without clipping.
+- **Validation:** Force trigger reject message while in placement mode and under attack; verify vertical alignment and clickability at 1920x1080 and 390x844.
+- **Effort:** S
+- **Dependencies / risks:** Requires coordination in `App.tsx` layout.
+
+---
+
+### [P1] Resolve HUD Citadel Localization Leakage
+- **Status:** Proposed
+- **Confidence:** High
+- **Type:** Observed issue
+- **Evidence:** In `apps/client/src/components/HUD.tsx:76`, tooltip is hardcoded as `Thành trì: ${Math.ceil(status.hp)} / ${Math.ceil(status.maxHp)} máu`. In `HUD.tsx:82`, the label is hardcoded as `THÀNH TRÌ`. There is no `hud.citadel` key in `apps/client/src/i18n/en.ts`.
+- **Player impact:** English-speaking players see Vietnamese text for the central citadel indicator, breaking immersion and localization completeness.
+- **Recommendation:**
+  - Add `hud.citadel` ("CITADEL" / "THÀNH TRÌ") and `hud.citadelTitle` ("Citadel: {{hp}} / {{maxHp}} HP" / "Thành trì: {{hp}} / {{maxHp}} máu") to `en.ts` and `vi.ts`.
+  - Replace hardcoded strings in `HUD.tsx` with `t('hud.citadel')` and `t('hud.citadelTitle', { hp: ..., maxHp: ... })`.
+- **Acceptance criteria:**
+  - [ ] Switching language to English displays "CITADEL" and English tooltip.
+  - [ ] Switching language to Vietnamese displays "THÀNH TRÌ" and Vietnamese tooltip.
+  - [ ] Zero untranslated Vietnamese strings remain in `HUD.tsx`.
+- **Validation:** Toggle language switcher between EN and VI; verify label and tooltip text.
 - **Effort:** XS
 - **Dependencies / risks:** None.
 
 ---
 
-### [P2] High-Contrast & Colorblind-Safe Indicator for Population Capped and Alerts
-- **Status:** Implemented
-- **Confidence:** Medium
+### [P2] Elevate Sub-AA Contrast on 11px Auxiliary Information
+- **Status:** Proposed
+- **Confidence:** High
 - **Type:** Observed issue
-- **Evidence:** `apps/client/src/components/HUD.tsx` displays population cap in red text (`text-red-400 font-bold`) when capped, and under-attack alert relies solely on red pulsing badges.
-- **Player impact:** Players with protanopia/deuteranopia cannot easily distinguish red warning states from standard white/amber text.
+- **Evidence:** Multiple informational labels use `text-slate-500` (e.g., in `UpgradePanels.tsx`, `WorldMapOverlay.tsx`, `HUD.tsx`, and `EntityDetails.tsx`). Slate-500 (`#64748b`) against dark backgrounds (`#020617`, `#0f172a`, and panel `#1e293b`) yields contrast ratios of 3.07:1 to 4.24:1, failing WCAG AA (minimum 4.5:1 for 11px text).
+- **Player impact:** Auxiliary gameplay information (cooldown remaining, building requirements, unit stats) is difficult to read in dim environments or on low-contrast screens.
 - **Recommendation:**
-  - Add a dedicated warning icon (e.g. `AlertTriangle`) alongside the population text when `population >= populationCap`.
-  - Add text or icon cues in addition to color transitions for Citadel HP and World Map difficulty tags.
+  - Update informational labels from `text-slate-500` to `text-slate-400` (yielding 5.9:1 to 7.87:1 contrast ratio).
+  - Retain `text-slate-500` or `text-slate-600` strictly for truly disabled or inactive buttons.
 - **Acceptance criteria:**
-  - [x] An `AlertTriangle` icon flashes next to the population counter when capped.
-  - [x] World Map difficulty badges include text indicators ("-2", "Lv ==", "+3") rather than color-only hex polygons.
-- **Validation:** Check in grayscale or with colorblind simulation browser tooling.
+  - [ ] All informational text achieves >= 4.5:1 contrast against its background.
+  - [ ] Visual hierarchy is preserved without causing auxiliary text to overpower primary labels.
+- **Validation:** Measure contrast using Lighthouse / WebAIM contrast checker across all HUD panels.
 - **Effort:** XS
 - **Dependencies / risks:** None.
 
 ---
 
-### [P2] Drag-Selection Audio & Visual Box Contrast Polish
-- **Status:** Implemented
-- **Confidence:** Medium
+### [P2] Support Operating System `prefers-reduced-motion`
+- **Status:** Proposed
+- **Confidence:** High
 - **Type:** Observed issue
-- **Evidence:** `SelectionController.ts` draws selection boxes, but contrast against bright sand, dirt, and road tiles can wash out depending on the tile under the selection box.
-- **Player impact:** Group-selecting units during chaotic combat over roads or bright areas causes the selection boundary to blend into the ground.
+- **Evidence:** `apps/client/src/index.css` lacks `@media (prefers-reduced-motion: reduce)`. CSS classes `animate-bounce` (`rejectVisuals.ts:10`), `animate-pulse` (11 instances across `HUD.tsx` and alerts), and `animate-spin` run continuously. Phaser order feedback tweens run without reduced motion checks.
+- **Player impact:** Users with vestibular motion disorders or sensory sensitivities may experience dizziness or distraction from pulsing and bouncing UI elements.
 - **Recommendation:**
-  - Add a 1px dark outer stroke around the glowing selection marquee (dual-tone border: inner bright green/gold, outer dark outline) ensuring visibility on both dark grass and bright dirt/sand.
-  - Add a subtle sound cue when a group selection box is completed and selects more than 1 unit.
+  - In `index.css`, add a global `@media (prefers-reduced-motion: reduce)` block that disables continuous animation on `.animate-bounce`, `.animate-pulse`, and `.animate-spin` (preserving static visibility).
+  - In `orderFeedback.ts`, check `window.matchMedia('(prefers-reduced-motion: reduce)').matches`; when true, render decals statically with an immediate cleanup timeout instead of scaling/alpha tweening.
 - **Acceptance criteria:**
-  - [ ] Selection box is clearly visible over green grass, light dirt, stone quarries, and water boundaries.
-  - [x] Unit selection sound plays when multi-selection completes.
-- **Validation:** Drag-select units across different ground terrain types and observe contrast.
+  - [ ] Enabling reduced motion stops bouncing and pulsing on banners and HUD icons while keeping them visible.
+  - [ ] Ground click feedback markers appear and disappear cleanly without motion tweens.
+  - [ ] Standard motion behavior is preserved when the preference is disabled.
+- **Validation:** Emulate `prefers-reduced-motion: reduce` in browser DevTools rendering tab and observe UI behavior.
 - **Effort:** S
 - **Dependencies / risks:** None.
 
 ---
 
-### [P3] Entity Details Quick Hotkey & Production Tooltips
-- **Status:** Implemented
+### [P2] Mobile Tap Target Ergonomics for Close Buttons
+- **Status:** Proposed
+- **Confidence:** High
+- **Type:** Observed issue
+- **Evidence:** In `BuildMenu.tsx:327` and `Minimap.tsx:491`, compact close buttons are styled with `h-9 w-9` (36px). In `WorldMapOverlay.tsx:304,315`, buttons use `min-h-[42px]`. The project's mobile standard (`MOBILE_MIN_TAP_PX` in `inputMode.ts`) is 44px.
+- **Player impact:** On touch devices, closing compact build sheets or minimap popups leads to missed taps or misclicks on neighboring tiles.
+- **Recommendation:**
+  - In compact mode, enforce minimum dimensions of 44x44px (`min-h-[44px] min-w-[44px]`) on panel close buttons.
+  - Increase World Map action buttons to `min-h-[44px]`.
+- **Acceptance criteria:**
+  - [ ] All close buttons and primary actions on compact viewports meet or exceed 44x44px.
+  - [ ] Compact sheet headers accommodate the larger tap targets without visual distortion.
+- **Validation:** Inspect touch target bounding client rects in mobile viewport emulation (390x844).
+- **Effort:** XS
+- **Dependencies / risks:** Header container padding may require slight adjustment.
+
+---
+
+### [P2] Keyboard & Touch Accessible Tooltips for Production and Buildings
+- **Status:** Proposed
 - **Confidence:** Medium
 - **Type:** Observed issue
-- **Evidence:** In `EntityDetails.tsx`, unit training buttons show unit name and image, but train hotkeys (e.g., `V` for Villager, `S` for Spearman) are not displayed directly on the buttons.
-- **Player impact:** Players who prefer keyboard shortcuts must guess or memorize hotkeys without in-game visual reminders.
+- **Evidence:** In `BuildMenu.tsx:197` and `EntityDetails.tsx:538`, tooltips rely exclusively on `group-hover` and `group-hover/train`. They lack `group-focus-within`, `focus:opacity-100`, or touch activation hooks.
+- **Player impact:** Players navigating via keyboard or touch cannot inspect costs, unit descriptions, attack stats, or train times before clicking.
 - **Recommendation:**
-  - Overlay keyboard shortcut badges on unit production buttons in `EntityDetails.tsx` (desktop mode).
+  - Add `group-focus-within:opacity-100` and `focus-visible:opacity-100` to tooltips.
+  - Link tooltips to their buttons using `id` and `aria-describedby`.
+  - For touch devices, support viewing cost and stat details via long-press or tap-to-inspect toggle.
 - **Acceptance criteria:**
-  - [x] Production buttons show badge with assigned hotkey in the top-right corner.
-- **Validation:** Select Town Center and Barracks; verify hotkey badges match actual keyboard triggers.
+  - [ ] Tabbing to a building or unit train button reveals its tooltip.
+  - [ ] Screen readers announce costs and stats via `aria-describedby`.
+  - [ ] Touch players can preview unit costs before triggering production.
+- **Validation:** Tab through the build menu and barracks training buttons; verify tooltips display on focus.
+- **Effort:** S
+- **Dependencies / risks:** Ensure tooltips do not clip outside `overflow-y-auto` panels.
+
+---
+
+### [P3] Master Sound Control & Persistence
+- **Status:** Proposed
+- **Confidence:** Medium
+- **Type:** Observed issue
+- **Evidence:** `commandSound.ts:48` provides `setCommandSoundEnabled`, but it has no UI binding. `alertSound.ts` lacks an enable/disable switch. There is no sound toggle in the game HUD.
+- **Player impact:** Players in quiet environments or using external music players cannot mute game sounds without muting their entire browser tab.
+- **Recommendation:**
+  - Create a lightweight `audioSettings.ts` helper with localStorage persistence (`cq.sound`).
+  - Add a mute/unmute icon button (`Volume2` / `VolumeX`) to the HUD adjacent to the connectivity indicator.
+  - Connect the toggle to both `commandSound.ts` and `alertSound.ts`.
+- **Acceptance criteria:**
+  - [ ] Clicking the sound button mutes/unmutes all synthesized game sounds.
+  - [ ] Sound preference persists across browser refreshes in `localStorage`.
+- **Validation:** Toggle sound off, issue move orders and trigger alert, confirm silence, refresh tab, confirm state remains muted.
+- **Effort:** S
+- **Dependencies / risks:** Web Audio context requires user interaction to initialize.
+
+---
+
+### [P3] Unified Focus-Visible Rings
+- **Status:** Proposed
+- **Confidence:** High
+- **Type:** Observed issue
+- **Evidence:** In `index.css`, there is no global `:focus-visible` styling. In `AuthScreen.tsx:109,127,146`, inputs use `focus:outline-none`. Keyboard navigation relies on inconsistent default browser rings that clash with the medieval theme.
+- **Player impact:** Keyboard users lose track of focus position when navigating menus and HUD controls.
+- **Recommendation:**
+  - Add a consistent global focus-visible ring in `index.css`:
+    `:focus-visible { outline: 2px solid #f59e0b; outline-offset: 2px; }`
+  - Remove `focus:outline-none` from form inputs.
+- **Acceptance criteria:**
+  - [ ] Keyboard tabbing displays a crisp amber 2px ring with 2px offset on all interactive elements.
+  - [ ] Mouse clicks do not trigger focus rings (restricted to `:focus-visible`).
+- **Validation:** Navigate all screens with `Tab` and verify amber outline clarity.
 - **Effort:** XS
-- **Dependencies / risks:** Keyboard binding configuration mapping must be exposed to React UI.
+- **Dependencies / risks:** None.
 
 ---
 
 ## Implementation phases
 
-### Phase 1: Immediate Clarity & Feedback (Now)
-- [P1] Add Click-to-Move and Attack-Order Visual Ground Decals.
-- [P1] Visual Placement Mode Banner and Dismissal Affordance.
+### Phase 1: High-Priority Accessibility & Feedback (Now)
+- [P1] Accessible Live Regions for Toasts and Under-Attack Alerts.
+- [P1] Unified Top-Center Notification & Banner Stack.
+- [P1] Dialog Semantics and Focus Management for Overlays.
+- [P1] Resolve HUD Citadel Localization Leakage.
 
-### Phase 2: Readability & Accessibility (Next)
-- [P1] Minimum Legibility Threshold for Fonts (Eliminate Sub-11px Typography).
-- [P2] High-Contrast & Colorblind-Safe Indicator for Population Capped and Alerts.
+### Phase 2: Readability, Motion, & Ergonomics (Next)
+- [P2] Elevate Sub-AA Contrast on 11px Auxiliary Information.
+- [P2] Support Operating System `prefers-reduced-motion`.
+- [P2] Mobile Tap Target Ergonomics for Close Buttons.
+- [P2] Keyboard & Touch Accessible Tooltips for Production and Buildings.
 
-### Phase 3: Selection & Desktop Hotkey Polish (Later)
-- [P2] Drag-Selection Audio & Visual Box Contrast Polish.
-- [P3] Entity Details Quick Hotkey & Production Tooltips.
+### Phase 3: Sound Controls & Polish (Later)
+- [P3] Master Sound Control & Persistence.
+- [P3] Unified Focus-Visible Rings.
 
 ---
 
-## Implementation status (2026-11-09)
+## Historical implementation status (2026-11-09)
 
-Every proposal above shipped in the same change:
+The initial audit recommendations shipped with comprehensive automated test coverage:
 
 | Item | Implementation | Automated coverage |
 | --- | --- | --- |
 | Ground order decals | `apps/client/src/game/render/orderFeedback.ts`, wired through `CommandController.showFeedback` | `orderFeedback.test.ts` (specs, 300 ms budget, depth, draw/tween/destroy) |
 | Order acknowledgement audio | `apps/client/src/game/audio/synthVoice.ts` (shared lazy-context/tone voice) used by both `alertSound.ts` and `commandSound.ts` | `commandSound.test.ts`, `alertSound.test.ts` |
 | 11px font floor | `text-[8px]`/`text-[9px]`/`text-[10px]` removed from every HUD component | `typography.test.ts` (source scan for Tailwind and SVG sizes) |
-| Placement banner | `apps/client/src/components/PlacementBanner.tsx`, mounted in `App.tsx`; invalid drops reuse the `reject` decal plus the `cancel` tone | — |
+| Placement banner | `apps/client/src/components/PlacementBanner.tsx`, mounted in `App.tsx` | — |
 | Colorblind-safe alerts | `AlertTriangle` on population cap / citadel threshold / under-attack, signed delta on World Map hexes | `worldMapArt.test.ts` (`levelDeltaLabel`) |
 | Selection marquee contrast + sound | `WorldScene.drawDragBox` dual-tone border; `SelectionController.handleBoxSelect` completion cue | `selectionSound.test.ts` |
 | Production hotkeys | `apps/client/src/game/input/unitHotkeys.ts` plus `CommandController.bindTrainingKeys`; badges in `EntityDetails.tsx` | `unitHotkeys.test.ts`, `trainingHotkeys.test.ts` |
 
-Visual checks that need a running client (alignment on real terrain palettes, label
-clipping at 1366x768 / 390x844, grayscale pass) are still open — they are the
-unchecked boxes above and in the validation checklist.
+---
 
 ## Validation checklist
 
 - **Desktop (1920x1080 & 1366x768):**
   - [ ] HUD elements fit without vertical overlap.
   - [ ] Ground click reticles align precisely with cursor tip.
-  - [ ] Entity details text is comfortably legible from normal viewing distance.
+  - [ ] Simultaneous placement banner, reject toast, and under-attack alert stack vertically without clipping.
+  - [ ] `Tab` navigation displays amber `:focus-visible` ring across all interactive controls.
 - **Mobile / Touch (390x844 landscape):**
-  - [ ] Minimum tap targets remain >= 44px.
-  - [ ] Placement banner is clearly dismissible.
+  - [ ] All interactive buttons (including close buttons and world map actions) meet >= 44x44px.
+  - [ ] Placement banner Cancel button remains easily reachable and does not occlude the citadel bar.
   - [ ] Minimap toggle remains accessible without blocking bottom dock commands.
-- **Colorblindness & Contrast:**
+- **Accessibility & Motion:**
+  - [ ] Screen readers announce command rejections politely and under-attack alerts assertively.
+  - [ ] Modal overlays trap focus and release it upon closing.
   - [ ] Population limit, under-attack state, and citadel damage readable under grayscale filter.
+  - [ ] System reduced motion setting disables continuous bouncing, pulsing, and spinning.
+- **Localization & Audio:**
+  - [ ] Citadel HP and label correctly localized in English ("CITADEL") and Vietnamese ("THÀNH TRÌ").
+  - [ ] HUD sound toggle silences all synthesized SFX and persists choice in localStorage.
 
 ---
 
-## Open questions (resolved in this change)
+## Open questions
 
-1. *Audio assets availability:* no SFX pipeline exists, so the order click is synthesized with the Web Audio API in `commandSound.ts` — same approach and constraints as the existing `alertSound.ts`. Swapping in real clips later only touches that one module.
-2. *RTS Hotkey scheme:* mnemonic letters (V/Villager, S/Spearman, A/Archer, C/Cavalry) were chosen. They collide with stop / attack-move / Stable-build only in contexts that cannot both be live: training needs a selected building and no unit selection, while the other commands need units. `unitHotkeys.ts` is the single source both the key binder and the React badges read.
+1. *Screen reader verbosity during combat:* Under-attack alerts fire assertively. If an attack is prolonged, should consecutive alerts be throttled (e.g. at most once every 10 seconds) to avoid auditory fatigue?
+2. *Touch tooltip interaction:* On touch screens where hover does not exist, should tapping a unit train button once show the tooltip and a second tap trigger production, or should a dedicated info badge be used?
+3. *Settings overlay vs HUD toggle:* As UI settings grow (audio volume, graphics quality, language, keybindings), should they move into a dedicated modal settings menu rather than expanding individual HUD icons?
 
 ---
 
 ## Out of scope
 
-- Backend protocol changes, Colyseus room refactoring, or database schema migrations.
-- Complete overhaul of pixel art assets or redesign of core game mechanics.
-- Replacing Phaser 3 canvas renderer or Tailwind CSS design framework.
+- Backend protocol changes, Colyseus room schemas, or SQLite database migrations.
+- Canvas screen reader virtual DOM generation (Phaser isometric canvas rendering remains visual).
+- Full redesign of medieval pixel art sprites or tile sets.
+- Removing `maximum-scale=1, user-scalable=no` (required for custom canvas gesture handling).
 
 ---
 
