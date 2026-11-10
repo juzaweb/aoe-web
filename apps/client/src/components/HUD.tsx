@@ -247,12 +247,13 @@ export const HUD: React.FC<HUDProps> = ({
           disabled={idleVillagers === 0}
           data-idle-villagers={idleVillagers}
           title={t('hud.idleVillagers')}
+          aria-label={`${t('hud.idleVillagers')}: ${idleVillagers}`}
           style={{ minHeight: MOBILE_MIN_TAP_PX, minWidth: MOBILE_MIN_TAP_PX }}
           className={`flex items-center justify-center gap-1 ${
             idleVillagers > 0 ? 'cursor-pointer text-amber-300' : 'cursor-default text-slate-500'
           }`}
         >
-          <Users size={13} className={idleVillagers > 0 ? 'animate-pulse' : ''} />
+          <Users size={13} className={idleVillagers > 0 ? 'animate-pulse' : ''} aria-hidden="true" />
           <span className="text-[11px] font-semibold tabular-nums">{idleVillagers}</span>
         </button>
       </div>
@@ -489,13 +490,14 @@ export const HUD: React.FC<HUDProps> = ({
           disabled={idleVillagers === 0}
           data-idle-villagers={idleVillagers}
           title={t('hud.idleVillagersTitle')}
+          aria-label={`${t('hud.idleVillagersTitle')}: ${idleVillagers}`}
           className={`flex items-center gap-1.5 transition-colors ${
             idleVillagers > 0
               ? 'text-amber-300 hover:text-amber-200 cursor-pointer'
               : 'text-slate-500 cursor-default'
           }`}
         >
-          <Users size={15} className={idleVillagers > 0 ? 'animate-pulse' : ''} />
+          <Users size={15} className={idleVillagers > 0 ? 'animate-pulse' : ''} aria-hidden="true" />
           <span className="font-semibold text-sm tabular-nums">{idleVillagers}</span>
         </button>
       </div>
