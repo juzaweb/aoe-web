@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, Loader2, Lock, LogIn, Swords, UserPlus } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, Loader2, Lock, LogIn, Swords, UserPlus } from 'lucide-react';
 import { AuthUser, login, register } from '../auth/api.js';
 import { useInputMode } from '../device/useInputMode.js';
 import { LanguageSwitcher } from '../i18n/LanguageSwitcher.js';
@@ -18,6 +18,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** MOB-07: the shortcut cheat-sheet has to teach the gesture this device has. */
@@ -133,18 +134,29 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
             <label htmlFor="auth-password" className="block text-xs font-semibold text-slate-300 mb-1">
               {t('auth.password')}
             </label>
-            <input
-              id="auth-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={mode === 'register' ? t('auth.passwordHint') : '••••••'}
-              autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
-              required
-              minLength={mode === 'register' ? 6 : undefined}
-              maxLength={128}
-              className="w-full min-h-[44px] rounded border border-amber-800 bg-slate-900 px-3 py-2 text-base text-slate-100 placeholder-slate-500 focus:border-amber-400 focus:outline-none"
-            />
+            <div className="relative flex items-center">
+              <input
+                id="auth-password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={mode === 'register' ? t('auth.passwordHint') : '••••••'}
+                autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+                required
+                minLength={mode === 'register' ? 6 : undefined}
+                maxLength={128}
+                className="w-full min-h-[44px] rounded border border-amber-800 bg-slate-900 pl-3 pr-11 py-2 text-base text-slate-100 placeholder-slate-500 focus:border-amber-400 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
+                title={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
+                className="absolute right-1 flex h-10 w-10 items-center justify-center rounded text-slate-400 transition-colors hover:text-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 cursor-pointer"
+              >
+                {showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+              </button>
+            </div>
           </div>
 
           {error && (
