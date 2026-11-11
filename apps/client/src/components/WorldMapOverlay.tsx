@@ -120,16 +120,10 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 p-2 md:flex-row">
-        {/* Hex grid */}
-        {/*
-          The continent painting is scenery, so it sits in the container's own
-          background: it cannot intercept a click and never enters the a11y
-          tree. The flat gradient layer above it is the scrim that keeps the hex
-          fills dominant and the tile labels at their measured contrast; without
-          it the parchment competes with the grass tiles. A background on a
-          scroll container stays pinned to the box (attachment `scroll`), so the
-          painting does not slide away when the grid is panned.
-        */}
+        {/* Hex grid over the continent painting. The painting is scenery: it
+            lives in the container's own background, so it never takes a click
+            or enters the a11y tree. The flat gradient above it is the scrim
+            that keeps the hex fills the brightest thing on screen. */}
         <div
           className="relative min-h-0 flex-1 overflow-auto rounded-lg border border-slate-800 bg-slate-950/70 bg-cover bg-center"
           style={{

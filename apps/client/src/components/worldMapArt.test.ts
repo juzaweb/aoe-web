@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -108,22 +108,21 @@ describe('difficulty label (UIX-01)', () => {
 });
 
 describe('background painting', () => {
-  const REPO_ROOT = join(__dirname, '../../../..');
   const path = join(
-    REPO_ROOT,
+    __dirname,
+    '../../../..',
     'apps/client/public',
     WORLD_MAP_BACKGROUND_URL.split('?')[0].replace(/^\//, '')
   );
 
-  it('ships the continent relief the overlay paints behind the grid', () => {
-    expect(existsSync(path)).toBe(true);
-  });
-
-  it('is wide enough to cover a full-screen overlay without upscaling', () => {
+  it('ships the painting the overlay draws behind the grid, at a usable size', () => {
+    // Read once: a missing file fails here with ENOENT, which names the URL the
+    // overlay would 404 on instead of an assertion about a boolean.
     const header = readFileSync(path);
     expect(header.subarray(1, 4).toString('ascii')).toBe('PNG');
-    // The grid panel is ~1600 CSS px wide on a desktop overlay, so anything
-    // narrower than 1024 would be stretched and visibly soft behind the hexes.
+    // The grid panel is wider than 1024 CSS px on a desktop overlay, so this is
+    // a floor against shipping a thumbnail or a placeholder, not a promise of
+    // 1:1 pixels; the painting is blurred and scrimmed behind the hexes anyway.
     expect(header.readUInt32BE(16)).toBeGreaterThanOrEqual(1024);
   });
 });
