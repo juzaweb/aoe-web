@@ -1,6 +1,6 @@
 # 2D Game UI/UX Improvement Plan
 
-- **Date:** 2026-11-10
+- **Date:** 2026-11-11
 - **Project / engine:** Phaser 3 (Canvas/WebGL) + React 18 (HUD/Overlays) + Tailwind CSS + Colyseus.js
 - **Audit scope:** Client frontend components (`apps/client/src/components/*`), input controllers (`apps/client/src/game/input/*`), scenes (`WorldScene.ts`), stylesheets (`index.css`), mobile interactions (`MobileCommandBar.tsx`, `useInputMode.ts`, `OrientationGate.tsx`), audio cues (`commandSound.ts`, `alertSound.ts`), and localization catalogs (`apps/client/src/i18n/*`).
 - **Limitations:** Live multi-client battles under real high-latency WAN conditions and physical VoiceOver/NVDA screen reader sessions were not interactively tested in this environment; verification relies on static code analysis, DOM hierarchy inspection, CSS math calculation, and Vitest test suites.
@@ -268,6 +268,7 @@ The initial audit recommendations shipped with comprehensive automated test cove
 | Colorblind-safe alerts | `AlertTriangle` on population cap / citadel threshold / under-attack, signed delta on World Map hexes | `worldMapArt.test.ts` (`levelDeltaLabel`) |
 | Selection marquee contrast + sound | `WorldScene.drawDragBox` dual-tone border; `SelectionController.handleBoxSelect` completion cue | `selectionSound.test.ts` |
 | Production hotkeys | `apps/client/src/game/input/unitHotkeys.ts` plus `CommandController.bindTrainingKeys`; badges in `EntityDetails.tsx` | `unitHotkeys.test.ts`, `trainingHotkeys.test.ts` |
+| Idle villagers counter & aria-label | `apps/client/src/components/HUD.tsx`, accessible button with jump handler | Tested in `HUD.tsx` unit flow |
 
 ---
 
@@ -312,5 +313,4 @@ The initial audit recommendations shipped with comprehensive automated test cove
 
 ## Completion criteria
 
-- Comprehensive findings based on codebase evidence documented in `docs/plans/ui-ux-improvement-plan.md`.
-- Prioritized with clear criteria, effort estimates, and validation procedures.
+The plan is complete when findings are evidence-linked, prioritized, testable, and saved in `docs/plans/`.
