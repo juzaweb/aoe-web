@@ -4,6 +4,7 @@ import { ChevronRight, Eye, Map as MapIcon, Shield, Swords, X } from 'lucide-rea
 import { RAID_MAX_UNITS, WorldMapEntry, WorldMapPayload } from '@chien-quoc/shared';
 import { fetchWorldMap } from '../auth/api.js';
 import {
+  WORLD_MAP_BACKGROUND_URL,
   assignHexTiles,
   hexPolygonPoints,
   hexToPixel,
@@ -120,7 +121,21 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 p-2 md:flex-row">
         {/* Hex grid */}
-        <div className="relative min-h-0 flex-1 overflow-auto rounded-lg border border-slate-800 bg-slate-950/70">
+        {/*
+          The continent painting is scenery, so it sits in the container's own
+          background: it cannot intercept a click and never enters the a11y
+          tree. The flat gradient layer above it is the scrim that keeps the hex
+          fills dominant and the tile labels at their measured contrast; without
+          it the parchment competes with the grass tiles. A background on a
+          scroll container stays pinned to the box (attachment `scroll`), so the
+          painting does not slide away when the grid is panned.
+        */}
+        <div
+          className="relative min-h-0 flex-1 overflow-auto rounded-lg border border-slate-800 bg-slate-950/70 bg-cover bg-center"
+          style={{
+            backgroundImage: `linear-gradient(rgba(2, 6, 23, 0.45), rgba(2, 6, 23, 0.45)), url('${WORLD_MAP_BACKGROUND_URL}')`
+          }}
+        >
           {loading && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/60">
               <div className="h-7 w-7 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />

@@ -5,6 +5,7 @@
     "apps/client/public/assets/buildings/mill.png": "067b41bb0101ced00c04a2133e433ec5ef14febeb557c83da26b4dbc9201d242",
     "apps/client/public/assets/buildings/mining_camp.png": "1d4ae4397058c65a25131d847316fb580caa978c51f7de6ea7ee3b0b2835a730",
     "apps/client/public/assets/buildings/siege_workshop.png": "959feea67d1fa991bf87a55efa6549525952cdd9a87ba1b7079e06e6fcb5a054",
+    "apps/client/public/assets/citadel/stairs.png": "398fdbc18c887650158cedf99cb846168c3d945a9cb25c2c1258966d0b9c487a",
     "apps/client/public/assets/cursors/attack.png": "6a4969515fe20e59c79e2fc37d603ac3f5aa9f476bccbd66e93c67d0ebac325c",
     "apps/client/public/assets/cursors/build-blocked.png": "91cf73a85574ab0736ec89764b47930aa4a22ad3989d5f0281b42de4e1e7ce92",
     "apps/client/public/assets/cursors/build.png": "d528ff72109c8c6408d1168773fa3ea81debbfc1c75fd7dc2f382c70610b5d1d",
@@ -51,7 +52,8 @@
     "apps/client/public/assets/units/spearman_idle.png": "f1ad151727972670b66b28c40065bc0d357b234fd5383acbe1e85385c4546311",
     "apps/client/public/assets/units/spearman_sheet.png": "2c55e34221e23942911df3e15440ddf88807c0ce23a5b88fdbaf5410159616b5",
     "apps/client/public/assets/units/villager_idle.png": "1e1aadc5f8fe0969bd532b104a4fa798a8f07305c5c5657e8758c5854263a791",
-    "apps/client/public/assets/units/villager_sheet.png": "c54f16566cc731e9b84cf64e45c4e031d0ff7da70bf035784548218257435877"
+    "apps/client/public/assets/units/villager_sheet.png": "c54f16566cc731e9b84cf64e45c4e031d0ff7da70bf035784548218257435877",
+    "apps/client/public/assets/worldmap/world_map.png": "14b0bb0f4f501e6bbd724d2dddfd050742b6ca98b070762b9803f2aaf4f289e9"
   },
   "sources": {
     "oga.bleed-galata-tower": {

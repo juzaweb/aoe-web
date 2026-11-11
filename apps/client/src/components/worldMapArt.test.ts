@@ -1,6 +1,9 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   HEX_SIZE,
+  WORLD_MAP_BACKGROUND_URL,
   assignHexTiles,
   hexPolygonPoints,
   hexRound,
@@ -101,5 +104,26 @@ describe('difficulty label (UIX-01)', () => {
     expect(levelDeltaColor(-2, true)).toBe(levelDeltaColor(-1, true));
     expect(levelDeltaColor(2, true)).toBe(levelDeltaColor(1, true));
     expect(levelDeltaColor(0, true)).not.toBe(levelDeltaColor(1, true));
+  });
+});
+
+describe('background painting', () => {
+  const REPO_ROOT = join(__dirname, '../../../..');
+  const path = join(
+    REPO_ROOT,
+    'apps/client/public',
+    WORLD_MAP_BACKGROUND_URL.split('?')[0].replace(/^\//, '')
+  );
+
+  it('ships the continent relief the overlay paints behind the grid', () => {
+    expect(existsSync(path)).toBe(true);
+  });
+
+  it('is wide enough to cover a full-screen overlay without upscaling', () => {
+    const header = readFileSync(path);
+    expect(header.subarray(1, 4).toString('ascii')).toBe('PNG');
+    // The grid panel is ~1600 CSS px wide on a desktop overlay, so anything
+    // narrower than 1024 would be stretched and visibly soft behind the hexes.
+    expect(header.readUInt32BE(16)).toBeGreaterThanOrEqual(1024);
   });
 });

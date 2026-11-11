@@ -11,6 +11,15 @@ import { HexPosition, WORLD_MAP_RADIUS, hexGridSize, hexTileAt } from '@chien-qu
 /** Distance from a hex centre to a corner, in CSS pixels. */
 export const HEX_SIZE = 34;
 
+/**
+ * Relief painting of the continent, drawn behind the hex grid.
+ *
+ * The overlay dims it with a scrim instead of baking the dimming into the PNG,
+ * so the tile fills stay the brightest thing on screen. `?v` busts Vite's
+ * immutable cache when the painting is replaced.
+ */
+export const WORLD_MAP_BACKGROUND_URL = '/assets/worldmap/world_map.png?v=1';
+
 /** Horizontal distance between adjacent columns. */
 const HEX_WIDTH = Math.sqrt(3) * HEX_SIZE;
 /** Vertical distance between rows. */
