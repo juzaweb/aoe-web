@@ -42,6 +42,8 @@ const en = {
     displayNameHint: 'The lord name may only contain letters, digits and underscores (_).',
     password: 'Password',
     passwordHint: 'At least 6 characters',
+    showPassword: 'Show password',
+    hidePassword: 'Hide password',
     unknownError: 'An unknown error occurred.',
     connecting: 'Connecting...',
     enterWorld: 'Enter the World',

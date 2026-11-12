@@ -45,6 +45,8 @@ const vi = {
     displayNameHint: 'Tên lãnh chúa chỉ gồm chữ cái, số và dấu gạch dưới (_).',
     password: 'Mật khẩu',
     passwordHint: 'Tối thiểu 6 ký tự',
+    showPassword: 'Hiện mật khẩu',
+    hidePassword: 'Ẩn mật khẩu',
     unknownError: 'Đã xảy ra lỗi không xác định.',
     connecting: 'Đang kết nối...',
     enterWorld: 'Vào Thế Giới',
