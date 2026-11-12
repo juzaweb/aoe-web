@@ -1,4 +1,4 @@
-# Chiến Quốc (Chien Quoc) - 2D MMO RTS Web Game
+# Age of Empires (AoE) - 2D MMO RTS Web Game
 
 A 2D Isometric Real-Time Strategy (RTS) MMO web game inspired by *Age of Empires* (AoE). Built with **Node.js**, **React**, **Vite**, **Phaser 3**, and **Colyseus.js** in a high-performance TypeScript monorepo.
 
