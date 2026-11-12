@@ -106,11 +106,16 @@ export const UNIT_ART: Record<string, UnitArt> = {
     }
   },
   /**
-   * The same paperdoll base as the villager with armour and a spear layered on,
-   * so it reuses the shared cell geometry rather than restating it.
+   * Rendered from the 3D knight-with-sword model onto 192x168 cells so the
+   * raised/extended blade never clips the frame edge while keeping feet anchored
+   * on the same ground line as the other units (`soleY ~145`).
    */
   SPEARMAN: {
     ...PACK_FIGURE,
+    frameWidth: 192,
+    frameHeight: 168,
+    scale: 0.95,
+    offsetY: -58,
     actions: {
       idle: { frames: 4 },
       walk: { frames: 11, fps: 16 },
