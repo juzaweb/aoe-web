@@ -31,6 +31,11 @@ import type { WallMode } from './game/input/WallController.js';
 import { EntityDetails } from './components/EntityDetails.js';
 import { Minimap } from './components/Minimap.js';
 import { ControlGroups } from './components/ControlGroups.js';
+import { DockBar } from './components/dock/DockBar.js';
+import {
+  selectionDisplayName,
+  type DockCommandHandlers
+} from './components/dock/commandPages.js';
 import { AuthScreen } from './components/AuthScreen.js';
 import { SessionBlocked } from './components/SessionBlocked.js';
 import { WorldMapOverlay } from './components/WorldMapOverlay.js';
@@ -123,6 +128,13 @@ export const App: React.FC = () => {
 
   // Selection & Placement
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntityData | null>(null);
+  /**
+   * DOCK-03: the id of the selection whose full sheet is open — not a boolean.
+   * Keying the popover to the entity makes "a new selection closes the sheet"
+   * a property of the value instead of an effect that closes it one paint
+   * later, and it cannot briefly show the previous entity's sheet.
+   */
+  const [detailsEntityId, setDetailsEntityId] = useState<string | null>(null);
   const [activeBuildingType, setActiveBuildingType] = useState<BuildingType | null>(null);
   /** Kingdom-only road paint tool; null when the tool is not open. */
   const [roadMode, setRoadMode] = useState<RoadMode | null>(null);
@@ -211,14 +223,20 @@ export const App: React.FC = () => {
    * not keep listening to the keyboard: Phaser binds keys at the window level,
    * so `A`/`P`/`Q`… would still order the player's own army from behind the
    * overlay. Input is restored when the viewer closes the window.
+   *
+   * DOCK-03: the detail popover is a modal sheet over the map for the same
+   * reason — Escape and the order keys must close it, not reach the army behind
+   * it — so it disables scene input through the same switch.
    */
   const spectateOpen = spectator !== null;
+  const detailsOpen = selectedEntity !== null && detailsEntityId === selectedEntity.id;
+  const detailsSheetOpen = !isCompact && detailsOpen;
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
-    scene.setInputEnabled(!spectateOpen);
+    scene.setInputEnabled(!spectateOpen && !detailsSheetOpen);
     return () => scene.setInputEnabled(true);
-  }, [spectateOpen]);
+  }, [spectateOpen, detailsSheetOpen]);
 
   // Restore a previous session on load so a refresh drops straight back in.
   useEffect(() => {
@@ -766,6 +784,7 @@ export const App: React.FC = () => {
     setIsJoined(false);
     setIsConnected(false);
     setSelectedEntity(null);
+    setDetailsEntityId(null);
     setControlGroups([]);
     setSwitchError(null);
     setAuthUser(null);
@@ -969,6 +988,60 @@ export const App: React.FC = () => {
   const showAuthGate = !isJoined && !sessionTaken && authUser === null && gatesIdle;
   const showDisconnectGate = !isJoined && !sessionTaken && authUser !== null && gatesIdle;
 
+  /**
+   * DOCK-02: the command card is a view over the handlers this screen already
+   * had, so touch, keyboard and mouse keep sharing one implementation per
+   * action. Assembled here instead of inside the dock to keep the dock a pure
+   * presenter that a test can render without a scene.
+   */
+  const dockHandlers: DockCommandHandlers = {
+    onSelectBuilding: handleSelectBuilding,
+    onSelectRoad: handleSelectRoad,
+    onSelectWallErase: handleSelectWallErase,
+    onTrainUnit: handleTrainUnit,
+    onCancelTrain: handleCancelTrain,
+    onUpgradeBuilding: handleUpgradeBuilding,
+    onCancelBuildingUpgrade: handleCancelBuildingUpgrade,
+    onUpgradeUnitType: handleUpgradeUnitType,
+    onCancelUnitUpgrade: handleCancelUnitUpgrade,
+    onArmAttackMove: handleArmAttackMove,
+    onArmPatrol: handleArmPatrol,
+    onStopUnits: handleStopUnits,
+    onCycleStance: handleCycleStance,
+    onClearSelection: handleClearSelection,
+    onCenterBase: handleCenterBase
+  };
+
+  /**
+   * The full entity sheet, mounted only while the popover is open. It is the
+   * same component the phone dock uses, so statistics, upgrades, research and
+   * the destructive buttons keep exactly one implementation.
+   */
+  /**
+   * One switch for the sheet: the strip button opens it, the popover's close
+   * button and its outside-press handler close it. Both paths go through the
+   * same updater so they can never disagree about what "open" means.
+   */
+  const toggleDetails = () =>
+    setDetailsEntityId((open) => (selectedEntity ? (open === selectedEntity.id ? null : selectedEntity.id) : null));
+
+  const detailsSheet = selectedEntity ? (
+    <EntityDetails
+      variant="popover"
+      entity={selectedEntity}
+      playerResources={resources}
+      inRaid={raidSession !== null}
+      onRetreat={handleRetreat}
+      onTrainUnit={handleTrainUnit}
+      onCancelTrain={handleCancelTrain}
+      onCancelBuilding={handleCancelFoundation}
+      onUpgradeBuilding={handleUpgradeBuilding}
+      onCancelBuildingUpgrade={handleCancelBuildingUpgrade}
+      onUpgradeUnitType={handleUpgradeUnitType}
+      onCancelUnitUpgrade={handleCancelUnitUpgrade}
+    />
+  ) : null;
+
   return (
     <div className="app-shell bg-slate-950 font-sans">
       {/* Phaser Canvas — stays mounted during a map switch so the new Room can
@@ -1097,7 +1170,6 @@ export const App: React.FC = () => {
                 (activeBuildingType !== null ||
                   selectedEntity?.villagerSelected === true) && (
                 <BuildMenu
-                  compact
                   playerResources={resources}
                   activeBuildingType={activeBuildingType}
                   onSelectBuilding={handleSelectBuilding}
@@ -1113,48 +1185,28 @@ export const App: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between pointer-events-none select-none z-20 gap-3">
-            {/* Left: Minimap */}
-            <Minimap room={room} sceneRef={sceneRef} onPanToGrid={handlePanToGrid} onCommandAtGrid={handleCommandAtGrid} />
-
-            {/* Center: Selected Entity Info & Unit Training. Nothing selected
-                means no card at all (UIX-07), matching the build dock. */}
-            {selectedEntity && (
-              <EntityDetails
-                entity={selectedEntity}
-                playerResources={resources}
-                inRaid={raidSession !== null}
-                onRetreat={handleRetreat}
-                onTrainUnit={handleTrainUnit}
-                onCancelTrain={handleCancelTrain}
-                onCancelBuilding={handleCancelFoundation}
-                onUpgradeBuilding={handleUpgradeBuilding}
-                onCancelBuildingUpgrade={handleCancelBuildingUpgrade}
-                onUpgradeUnitType={handleUpgradeUnitType}
-                onCancelUnitUpgrade={handleCancelUnitUpgrade}
-              />
-            )}
-
-            {/* Right: Building Construction Dock — villagers only (UIX-06). Nothing
-                selected means no card at all, exactly like AoE, so the empty-state
-                placeholder is gone rather than being drawn as blank slots. */}
-            {!raidSession &&
-              (activeBuildingType !== null ||
-                selectedEntity?.villagerSelected === true) && (
-              <BuildMenu
-                playerResources={resources}
-                activeBuildingType={activeBuildingType}
-                onSelectBuilding={handleSelectBuilding}
-                onCancelBuilding={handleCancelBuilding}
-                showRoadTools
-                roadMode={roadMode}
-                onSelectRoad={handleSelectRoad}
-                wallMode={wallMode}
-                onSelectWallErase={handleSelectWallErase}
-                townCenterLevel={townCenterLevel}
-              />
-            )}
-          </div>
+          // DOCK-01: one fixed 156 px band (radar + summary + 5x3 command grid).
+          // Nothing selected collapses it to the radar, so the map keeps the
+          // bottom of the screen whenever no card is needed (UIX-07).
+          <DockBar
+            entity={selectedEntity}
+            displayName={selectedEntity ? selectionDisplayName(selectedEntity) : ''}
+            resources={resources}
+            townCenterLevel={townCenterLevel}
+            inRaid={raidSession !== null}
+            armedOrder={armedOrder}
+            activeBuildingType={activeBuildingType}
+            roadMode={roadMode}
+            wallMode={wallMode}
+            room={room}
+            sceneRef={sceneRef}
+            detailsOpen={detailsOpen}
+            onToggleDetails={toggleDetails}
+            onPanToGrid={handlePanToGrid}
+            onCommandAtGrid={handleCommandAtGrid}
+            handlers={dockHandlers}
+            details={detailsSheet}
+          />
         )
       )}
 

@@ -515,14 +515,22 @@ export const Minimap: React.FC<MinimapProps> = ({
   }
 
   return (
-    <div className="aoe-panel pointer-events-auto flex flex-col items-center rounded-lg p-2">
-      <div
-        className={`font-medieval mb-1 text-[11px] font-bold tracking-wider ${
+    // DOCK-08: the desktop radar is a fixed 156 px tile of the command dock —
+    // 140 px raster + 2*6 px padding + 2*2 px panel border. The zone name used to
+    // be a flex row above the canvas and made the panel taller than the dock, so
+    // it is now an overlay chip painted on top of the map instead of a box that
+    // takes layout height.
+    <div
+      data-minimap-desktop
+      className="aoe-panel pointer-events-auto relative flex items-center justify-center rounded-lg p-1.5"
+    >
+      <span
+        className={`absolute left-1 top-1 z-10 rounded bg-slate-950/80 px-1.5 font-medieval text-[11px] font-bold tracking-wider ${
           zoneKind === 'battlefield' ? 'text-red-400' : 'text-amber-400'
         }`}
       >
-        {t('minimap.title', { zone: zoneLabel })}
-      </div>
+        {zoneLabel}
+      </span>
       <canvas
         ref={canvasRef}
         width={MINIMAP_SIZE}

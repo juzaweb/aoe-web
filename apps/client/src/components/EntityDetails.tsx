@@ -22,6 +22,7 @@ import { Shield, UserPlus, Heart, Hammer, X, Trash2, Boxes, Swords, Crosshair, T
 import { BuildingUpgradePanel, UnitResearchPanel } from './UpgradePanels.js';
 import { UNIT_TRAINING_HOTKEY_BY_TYPE } from '../game/input/unitHotkeys.js';
 import { buildingThumbnail } from './buildingThumbnails.js';
+import { resourceThumbnail } from './resourceThumbnails.js';
 import { useTranslation } from 'react-i18next';
 import {
   buildingName,
@@ -70,6 +71,12 @@ interface EntityDetailsProps {
   /** MOB-06: fit the landscape phone dock instead of the desktop centre column. */
   compact?: boolean;
   /**
+   * DOCK-07: `panel` is the historical self-sizing card; `popover` is the same
+   * content inside `DetailsPopover`, which owns the width and the scrolling, so
+   * the card must not impose its own 320 px width or its viewport height caps.
+   */
+  variant?: 'panel' | 'popover';
+  /**
    * MOB-06: how this player orders units. Touch players hold the target, mouse
    * players right-click it, and the help text must not teach the wrong gesture.
    */
@@ -89,7 +96,8 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
   onUpgradeUnitType,
   onCancelUnitUpgrade,
   compact = false,
-  interactionHint = 'right-click'
+  interactionHint = 'right-click',
+  variant = 'panel'
 }) => {
   const { t } = useTranslation();
   const buildingBp = entity.type === 'building' ? BUILDING_BLUEPRINTS[entity.subType as BuildingType] : null;
@@ -144,15 +152,25 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
     displayName = resourceNodeName(entity.subType) ?? entity.name;
   }
 
+  /**
+   * DOCK-07: the variant only changes sizing — sections, handlers and props stay
+   * identical, so the phone sheet and the desktop popover cannot drift apart.
+   * `panel` reproduces the original classes exactly. `popover` fills the popover
+   * box (`w-full`) and drops both the min-height and the viewport cap, because
+   * in that variant `DetailsPopover` is the element that sizes and scrolls.
+   */
+  const sizeClasses =
+    variant === 'popover'
+      ? 'w-full min-h-0 max-h-none p-3'
+      : compact
+        ? // MOB-06: full width of the dock's centre column, capped by the shorter
+          // landscape viewport, with every inner button lifted to a thumb target.
+          'w-full max-w-[420px] max-h-[28dvh] p-2 [&_button]:min-h-[44px]'
+        : 'w-80 min-h-[144px] max-h-[72vh] p-3';
+
   return (
     <div
-      className={`aoe-panel pointer-events-auto flex flex-col gap-2 overflow-y-auto rounded-lg ${
-        compact
-          ? // MOB-06: full width of the dock's centre column, capped by the shorter
-            // landscape viewport, with every inner button lifted to a thumb target.
-            'w-full max-w-[420px] max-h-[28dvh] p-2 [&_button]:min-h-[44px]'
-          : 'w-80 min-h-[144px] max-h-[72vh] p-3'
-      }`}
+      className={`aoe-panel pointer-events-auto flex flex-col gap-2 overflow-y-auto rounded-lg ${sizeClasses}`}
     >
       {/* Header Info */}
       <div className="flex items-center justify-between border-b border-amber-800/40 pb-2">
@@ -183,7 +201,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
             )
           ) : entity.type === 'resource' && entity.subType ? (
             <img
-              src={`/assets/resources/${entity.subType === 'TREE' ? 'tree' : entity.subType === 'GOLD_MINE' ? 'gold' : entity.subType === 'STONE_MINE' ? 'stone' : 'berry'}.png?v=3`}
+              src={resourceThumbnail(entity.subType)}
               alt={entity.name}
               className="w-10 h-10 object-contain rounded-md bg-slate-900/90 border border-amber-500/60 p-0.5 shadow-md"
               onError={(e) => {
