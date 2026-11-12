@@ -14,7 +14,7 @@ import type { BuildingType } from '@chien-quoc/shared';
  * file that only 404s.
  */
 export const BUILDING_THUMBNAIL: Partial<Record<BuildingType, string>> = {
-  TOWN_CENTER: '/assets/buildings/town_center.png?v=3',
+  TOWN_CENTER: '/assets/buildings/town_center.png?v=4',
   BARRACKS: '/assets/buildings/barracks.png?v=3',
   STABLE: '/assets/buildings/stable.png?v=3',
   ARCHERY_RANGE: '/assets/buildings/archery_range.png?v=3',

@@ -148,7 +148,8 @@ const DEFAULT_ART = { textureKey: 'b_town_center', offsetY: -130, hpBarY: -203 }
  * (measured by `scripts/process_generated_assets.py --check`).
  */
 const HP_BAR_Y: Partial<Record<BuildingType, number>> = {
-  TOWN_CENTER: -358,
+  // Canva rework 576x440 sheet: -130 - 440/2 + topInset 23 - 8.
+  TOWN_CENTER: -335,
   // Bleed's Galata Tower: -160 - 360/2 + topInset 9 - 8.
   TOWER: -339,
   BARRACKS: -260,

@@ -127,22 +127,18 @@ the lowest opaque row past the `iso_base` gate after downscaling, so a 180 alpha
 floor trims that fringe before the crop and again after the fit. No artwork is
 redrawn.
 
-### Medieval Barracks, Medieval Stable, Medieval Archery Range and Castle — feudalwars
+### Medieval Barracks, Medieval Stable and Medieval Archery Range — feudalwars
 
 - **Author:** feudalwars (made for [Feudal Wars](https://feudalwars.net/))
 - **Source:** https://opengameart.org/content/medieval-barracks-isometric-25d,
   https://opengameart.org/content/medieval-stable-isometric-25d,
-  https://opengameart.org/content/medieval-archery-range-isometric-25d,
-  https://opengameart.org/content/western-european-castle-isometric-25d
+  https://opengameart.org/content/medieval-archery-range-isometric-25d
 - **License:** CC0 1.0 (public domain dedication — attribution not required,
   kept here for provenance)
 - **Used for:** `assets/buildings/barracks.png` (barracks),
-  `assets/buildings/stable.png` (stable), `assets/buildings/archery_range.png`
-  (archery range) and `assets/buildings/town_center.png` (castle).
+  `assets/buildings/stable.png` (stable) and `assets/buildings/archery_range.png`
+  (archery range).
 
-**Changes made.** All four are cropped to alpha, scaled to the client's canvas
-and luminance-matched; the castle stands in for the town centre because the set
-has no town-hall building. The castle is also mirrored
-horizontally so its gate faces the direction the client's isometric camera
-looks from; the other buildings are unmodified apart from crop/scale.
+**Changes made.** All three are cropped to alpha, scaled to the client's canvas
+and luminance-matched; otherwise unmodified apart from crop/scale.
 

@@ -90,17 +90,15 @@ describe('asset pipeline lock', () => {
 describe('building health bar heights', () => {
   const lock = readLock();
   const MIGRATED: Record<string, keyof typeof SHEET_OFFSET_Y> = {
-    'building.town-center': 'TOWN_CENTER',
     'building.tower': 'TOWER',
     'building.barracks': 'BARRACKS',
     'building.stable': 'STABLE',
     'building.archery-range': 'ARCHERY_RANGE',
     'building.house': 'HOUSE'
-    // The three economy camps (LUMBER_CAMP, MILL, MINING_CAMP) are
-    // project-original generated art pinned as `legacy` in the lock, so there is
-    // no measured `topInset` entry here to recompute their bars from; their
-    // `HP_BAR_Y` numbers are measured from the shipped 256x220 PNGs by
-    // `scripts/generate_buildings_assets.py`.
+    // `TOWN_CENTER` (Canva rework 576x440) and the three economy camps
+    // (LUMBER_CAMP, MILL, MINING_CAMP) are project-original art pinned as
+    // `legacy` in the lock, so there is no measured `topInset` entry here to
+    // recompute their bars from.
   };
   // `HP_BAR_Y` is hand-maintained, but its value is derivable: the bar sits 8 px
   // above the first visible row of art. Recomputing it from the lock means a
@@ -116,6 +114,21 @@ describe('building health bar heights', () => {
       expect(buildingHpBarY(buildingType)).toBe(expected);
     });
   }
+
+  it('TOWN_CENTER sits above the 576x440 Canva rework artwork', () => {
+    const townCenterPath = join(REPO_ROOT, 'apps/client/public/assets/buildings/town_center.png');
+    expect(existsSync(townCenterPath)).toBe(true);
+    const { width, height } = pngSize(townCenterPath);
+    expect({ width, height }).toEqual({ width: 576, height: 440 });
+
+    const art = buildingArt('TOWN_CENTER', () => true);
+    expect(art.textureKey).toBe('building_TOWN_CENTER');
+    expect(art.offsetY).toBe(SHEET_OFFSET_Y.TOWN_CENTER);
+
+    const measuredTopInset = 23;
+    const expectedHpBarY = SHEET_OFFSET_Y.TOWN_CENTER! - height / 2 + measuredTopInset - 8;
+    expect(buildingHpBarY('TOWN_CENTER')).toBe(expectedHpBarY);
+  });
 });
 
 /**
@@ -165,6 +178,10 @@ describe('house level invariance', () => {
 
 describe('wall art', () => {
   it('reuses the citadel masonry and aligns its base with the tile', () => {
+    const wallPath = join(REPO_ROOT, 'apps/client/public/assets/citadel/wall.png');
+    expect(existsSync(wallPath)).toBe(true);
+    expect(pngSize(wallPath)).toEqual({ width: 128, height: 184 });
+
     const art = buildingArt('WALL', () => true);
     expect(art.textureKey).toBe('citadel_wall');
     expect(art.offsetY).toBe(-60);

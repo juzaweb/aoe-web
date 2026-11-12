@@ -5,6 +5,7 @@
     "apps/client/public/assets/buildings/mill.png": "067b41bb0101ced00c04a2133e433ec5ef14febeb557c83da26b4dbc9201d242",
     "apps/client/public/assets/buildings/mining_camp.png": "1d4ae4397058c65a25131d847316fb580caa978c51f7de6ea7ee3b0b2835a730",
     "apps/client/public/assets/buildings/siege_workshop.png": "959feea67d1fa991bf87a55efa6549525952cdd9a87ba1b7079e06e6fcb5a054",
+    "apps/client/public/assets/buildings/town_center.png": "3b7d9774bde42863158173db24f5f3fb9d078c7bf5448a8c43b32431ffb54d22",
     "apps/client/public/assets/citadel/stairs.png": "398fdbc18c887650158cedf99cb846168c3d945a9cb25c2c1258966d0b9c487a",
     "apps/client/public/assets/cursors/attack.png": "6a4969515fe20e59c79e2fc37d603ac3f5aa9f476bccbd66e93c67d0ebac325c",
     "apps/client/public/assets/cursors/build-blocked.png": "91cf73a85574ab0736ec89764b47930aa4a22ad3989d5f0281b42de4e1e7ce92",
@@ -134,17 +135,6 @@
       },
       "license": "CC0-1.0",
       "page": "https://opengameart.org/content/medieval-barracks-isometric-25d"
-    },
-    "oga.feudal-castle": {
-      "author": "feudalwars",
-      "files": {
-        "sprite": {
-          "sha256": "09da8841806e1920b60e6e2c604aa750efe6d4482beab65160240c0c0555627e",
-          "url": "https://opengameart.org/sites/default/files/castle_7.png"
-        }
-      },
-      "license": "CC0-1.0",
-      "page": "https://opengameart.org/content/western-european-castle-isometric-25d"
     },
     "oga.feudal-stable": {
       "author": "feudalwars",
@@ -303,29 +293,6 @@
       "source": "oga.bleed-galata-tower",
       "sourceSha256": "439f82731beb070be6303bb9338cdbd49951f7a0b459d273db75fa2a4cd9abb3",
       "topInset": 9
-    },
-    "building.town-center": {
-      "author": "feudalwars",
-      "bbox": [
-        27,
-        0,
-        548,
-        440
-      ],
-      "bottomInset": 0,
-      "canvas": [
-        576,
-        440
-      ],
-      "license": "CC0-1.0",
-      "lumGain": 0.9881,
-      "out": "apps/client/public/assets/buildings/town_center.png",
-      "page": "https://opengameart.org/content/western-european-castle-isometric-25d",
-      "scale": 1.0427,
-      "sha256": "82f5a24dc2f8dd1712eeee7906f1d1f2ed423c740a864edd52c85f591de02a59",
-      "source": "oga.feudal-castle",
-      "sourceSha256": "09da8841806e1920b60e6e2c604aa750efe6d4482beab65160240c0c0555627e",
-      "topInset": 0
     },
     "decor.border-tree-01": {
       "author": "Bleed",

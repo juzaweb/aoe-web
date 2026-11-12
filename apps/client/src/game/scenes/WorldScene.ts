@@ -537,7 +537,7 @@ export class WorldScene extends Phaser.Scene {
     // v=27: the three economy camps (lumber camp, mill, mining camp) were
     // regenerated so the lumber camp no longer reuses the stable sprite.
     // Bump the key whenever a PNG under public/assets/buildings or /resources changes.
-    const v = 'v=27';
+    const v = 'v=28';
     this.load.image('building_TOWN_CENTER', `/assets/buildings/town_center.png?${v}`);
     this.load.image('building_BARRACKS', `/assets/buildings/barracks.png?${v}`);
     // MIL-01: both military branches now ship their own 400x320 sheet. The
@@ -593,7 +593,7 @@ export class WorldScene extends Phaser.Scene {
 
     // Citadel stone: floor tile, wall block, gatehouse and its portcullis.
     // Built by `scripts/process_citadel_assets.py`; bump when a PNG changes.
-    const cv = 'v=7';
+    const cv = 'v=8';
     this.load.image('citadel_floor', `/assets/citadel/floor.png?${cv}`);
     this.load.image('citadel_wall', `/assets/citadel/wall.png?${cv}`);
     this.load.image('citadel_gate', `/assets/citadel/gate.png?${cv}`);

@@ -99,14 +99,6 @@
           "archive": "zip"
         }
       }
-    },
-    "oga.feudal-castle": {
-      "page": "https://opengameart.org/content/western-european-castle-isometric-25d",
-      "author": "feudalwars",
-      "license": "CC0-1.0",
-      "files": {
-        "sprite": { "url": "https://opengameart.org/sites/default/files/castle_7.png" }
-      }
     }
   },
   "targets": {
@@ -184,13 +176,6 @@
       "op": { "alphaFloor": 180, "crop": "alpha", "fit": true, "matchLum": 74.8, "anchor": "bottom-center" },
       "out": "apps/client/public/assets/buildings/tower.png",
       "canvas": [160, 360]
-    },
-    "building.town-center": {
-      "source": "oga.feudal-castle",
-      "file": "sprite",
-      "op": { "crop": "alpha", "flip": "x", "fit": true, "matchLum": 74.8, "anchor": "bottom-center" },
-      "out": "apps/client/public/assets/buildings/town_center.png",
-      "canvas": [576, 440]
     },
     "decor.forb-01": {
       "source": "oga.hjm-forbs",
