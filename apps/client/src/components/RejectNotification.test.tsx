@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
@@ -28,9 +31,28 @@ describe('RejectNotification live region (UIX-08)', () => {
     expect(first).not.toEqual(second);
   });
 
-  it('stays clickable inside the pointer-events-none stack', () => {
+  it('does not swallow map clicks: it carries no control', () => {
     const html = renderToString(<RejectNotification message="x" code={null} seq={3} />);
 
-    expect(html).toContain('pointer-events-auto');
+    // The toast lives in the `pointer-events-none` stack. It has nothing to
+    // press, so it must stay transparent to clicks instead of becoming a dead
+    // zone over the map for the 3.5 s it is visible.
+    expect(html).not.toContain('pointer-events-auto');
+    expect(html).not.toContain('<button');
+  });
+});
+
+describe('re-announcement mechanism (UIX-08)', () => {
+  const source = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), 'RejectNotification.tsx'),
+    'utf8'
+  );
+
+  it('remounts the live region for every new sequence number', () => {
+    // `key` is the actual mechanism: a polite region whose markup did not change
+    // is not re-read, and "insufficient wood" twice in a row is normal play.
+    // Rendering cannot observe a remount here, so the wiring is asserted at the
+    // source — the same gate this suite uses for the other Tailwind-only fixes.
+    expect(source).toMatch(/key=\{seq\}/);
   });
 });

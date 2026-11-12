@@ -82,6 +82,38 @@ describe('HUD sound toggle (UIX-16)', () => {
     const html = renderHud();
     expect(html).toContain('aria-label="Hiệu ứng âm thanh"');
   });
+
+  it('shows the muted state, not just the stored flag', async () => {
+    await i18n.changeLanguage('en');
+    const on = renderHud();
+
+    // `audioSettings` reads storage lazily on render, so a faked `window` is
+    // enough to prove the icon and the pressed state follow the preference —
+    // asserting only `data-sound-toggle` would pass even if the icon never
+    // changed, which is the bug a player would actually notice.
+    const singleton = globalThis as { window?: unknown };
+    const previous = singleton.window;
+    singleton.window = {
+      localStorage: {
+        getItem: (key: string) => (key === 'cq.sound' ? 'off' : null),
+        setItem: () => {},
+        removeItem: () => {}
+      }
+    };
+    let off: string;
+    try {
+      off = renderHud();
+    } finally {
+      singleton.window = previous;
+    }
+
+    expect(off).toContain('data-sound-toggle="off"');
+    expect(off).toContain('aria-pressed="false"');
+    expect(off).toContain('title="Turn sound on"');
+
+    const icons = (html: string) => (html.match(/<svg[\s\S]*?<\/svg>/g) ?? []).join('');
+    expect(icons(off)).not.toBe(icons(on));
+  });
 });
 
 /**

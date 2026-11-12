@@ -10,7 +10,6 @@ import {
 import { BrickWall, Eraser, Hammer, Lock, Route, X } from 'lucide-react';
 import type { RoadMode } from '../game/input/RoadController.js';
 import type { WallMode } from '../game/input/WallController.js';
-import { BUILDING_HOTKEY_BY_TYPE } from '../game/input/buildingHotkeys';
 import { buildingThumbnail } from './buildingThumbnails.js';
 import { buildingIcon } from './buildingIcons.js';
 import { buildingDescription, buildingName, resourceName } from '../i18n/labels.js';
@@ -40,8 +39,10 @@ interface BuildMenuProps {
 
 /**
  * The order the sheet lists buildings in: structures first, economy after,
- * military last. The hotkeys printed on the buttons come from
- * `BUILDING_HOTKEY_BY_TYPE`, which is the table `CommandController` binds.
+ * military last. The sheet prints no hotkey badges — a touch sheet has no
+ * keyboard — but the order is kept aligned with the binding table
+ * `CommandController` builds from `BUILDING_HOTKEY_BY_TYPE`, so the two never
+ * disagree about which building sits where.
  */
 const BUILDINGS: BuildingType[] = [
   'TOWN_CENTER',
@@ -129,7 +130,6 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
 
   const tiles = () =>
     BUILDINGS.map((type, index) => {
-      const hotkey = BUILDING_HOTKEY_BY_TYPE[type];
       const bp = BUILDING_BLUEPRINTS[type];
       const thumbnail = buildingThumbnail(type);
       const affordable = canAfford(type);

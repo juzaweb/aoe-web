@@ -27,7 +27,7 @@ Addressing these issues will elevate the game's polish, accessibility compliance
 
 All ten recommendations below shipped as phase 27 slices `UIX-08..UIX-17` (see
 [`27-ui-ux-recheck-fixes.md`](./27-ui-ux-recheck-fixes.md)). Verification for this round came from the
-client test suite (55 files / 663 tests) plus `tsc` and a production build; no interactive screen-reader,
+client test suite (56 files / 669 tests) plus `tsc` and a production build; no interactive screen-reader,
 physical touch-device, or multi-client battle session was run.
 
 Checkbox legend: `[x]` verified by an automated test; `[ ] ⏳` implemented and covered at the markup/unit

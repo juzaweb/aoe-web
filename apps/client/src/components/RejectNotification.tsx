@@ -58,7 +58,7 @@ export const RejectNotification: React.FC<{
       aria-live="polite"
       data-reject-notification
       data-reject-seq={seq}
-      className={`${visual.containerClass} pointer-events-auto`}
+      className={visual.containerClass}
     >
       <RejectIcon iconKey={visual.iconKey} className={visual.iconClass} />
       <span>{message}</span>

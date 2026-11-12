@@ -228,7 +228,7 @@ UIX-18 sau cùng
 ## 6. Verify chung
 
 ```bash
-pnpm --filter @chien-quoc/client test      # thực tế 2026-11-12: 55 file / 663 test pass
+pnpm --filter @chien-quoc/client test      # thực tế 2026-11-12: 56 file / 669 test pass
 pnpm --filter @chien-quoc/server test      # thực tế: 31 file / 468 test pass (không đổi)
 pnpm build                                 # thực tế: pass (shared + client + server)
 ```
@@ -265,7 +265,7 @@ Checklist tay:
 
 ## 9. Kết quả triển khai (2026-11-12)
 
-Đo trên working tree sau khi cả 11 slice vào code: client **55 file / 663 test pass** (nền trước phase:
+Đo trên working tree sau khi cả 11 slice vào code: client **56 file / 669 test pass** (nền trước phase:
 43/574 → thêm 89 test), server **31 file / 468 test pass**, `tsc --noEmit` sạch, `pnpm build` xanh.
 Không có thay đổi nào ở `packages/shared`, `apps/server`, schema, DB hay protocol.
 
@@ -275,15 +275,17 @@ Không có thay đổi nào ở `packages/shared`, `apps/server`, schema, DB hay
 | --- | --- |
 | `apps/client/src/components/TopOverlayStack.tsx` | Cột stack top-center dùng chung cho 3 banner |
 | `apps/client/src/components/useModalFocus.ts` | Hook trap Tab + trả focus cho 4 overlay |
+| `apps/client/src/components/UnderAttackBanner.tsx` | Banner under-attack tách khỏi `App` để render-test được |
 | `apps/client/src/game/audio/audioSettings.ts` | Công tắc âm thanh dùng chung + `localStorage` `cq.sound` |
 | `apps/client/src/game/render/prefersReducedMotion.ts` | Đọc `prefers-reduced-motion` có guard |
 
-### Test mới (89 test)
+### Test mới (95 test)
 
 `useModalFocus.test.ts` (13), `overlayAccessibility.test.ts` (13), `audioSettings.test.ts` (12),
 `HUD.test.tsx` (9), `authSurfaces.test.ts` (7), `styles.test.ts` (6), `TopOverlayStack.test.tsx` (6),
 `EntityDetails.test.tsx` (5), `prefersReducedMotion.test.ts` (5), `PlacementBanner.test.tsx` (4),
-`RejectNotification.test.tsx` (3), `auxiliaryTextContrast.test.tsx` (3), `orderFeedback.test.ts` (+3).
+`RejectNotification.test.tsx` (4), `UnderAttackBanner.test.tsx` (4), `auxiliaryTextContrast.test.tsx` (3),
+`orderFeedback.test.ts` (+3).
 
 ### Lệch so với đề xuất
 
@@ -307,5 +309,31 @@ Không có thay đổi nào ở `packages/shared`, `apps/server`, schema, DB hay
    chuột/cảm ứng. Vá triệt để cần đổi sang `aria-disabled` + chặn `onClick`, ngoài phạm vi phase này.
 3. **Tooltip trong `EntityDetails` vẫn có thể bị cắt mép trên** khi hàng nút đã nằm sẵn trong ~140px đầu
    vùng scroll. Vá triệt để cần render tooltip qua portal — ngoài 2 file của slice.
-4. **`BuildMenu` còn biến `hotkey` và import `BUILDING_HOTKEY_BY_TYPE` chết** từ trước phase này; nên
-   dọn ở slice riêng.
+4. ~~`BuildMenu` còn biến `hotkey` và import `BUILDING_HOTKEY_BY_TYPE` chết~~ — đã dọn ở đợt review, xem §10.
+
+## 10. Review follow-up (2026-11-12)
+
+Đợt review 5 trục (correctness, readability, architecture, security, performance) trên toàn bộ diff
+phase 27 tìm ra 3 việc phải sửa + 3 việc nên sửa, tất cả đã xử lý trong cùng working tree:
+
+| Mức | Phát hiện | Xử lý |
+| --- | --- | --- |
+| Required | `BuildMenu.tsx` còn `const hotkey = BUILDING_HOTKEY_BY_TYPE[type]` chết (badge hotkey đã bị bỏ ở `d01ffa9`) + import chỉ phục vụ dòng đó + comment nói "hotkeys printed on the buttons" (sai) | Xoá biến + import, viết lại comment |
+| Required | Cơ chế `key={seq}` — chính là thứ khiến toast lặp lại được đọc lại — không test nào phủ; mutation bỏ `key={seq}` vẫn xanh | Thêm assertion ở `RejectNotification.test.tsx`; mutation giờ fail |
+| Required | Banner under-attack là JSX inline 20 dòng trong `App.tsx` (1 435 dòng), nên phần tử `role="alert"` duy nhất của game chỉ kiểm được bằng quét source | Tách `UnderAttackBanner.tsx` + render-test (en/vi, role, aria-live, icon ẩn) |
+| Optional | Toast từ chối và banner under-attack bật `pointer-events-auto` dù không có control → nuốt click xuống map | Bỏ `pointer-events-auto`; test khoá lại (UIX-10 AC "vùng trống vẫn xuyên click") |
+| Optional | Icon loa không được test theo trạng thái; mutation "luôn hiện `VolumeX`" vẫn xanh | Thêm test render trạng thái tắt (fake `window.localStorage`) so sánh cả icon |
+| Optional | `TopOverlayStack` không ghi vì sao chọn `top-16` desktop | Bổ sung comment lý do (64 px = 8 px inset + hàng control 44 px) |
+
+Mutation đã chạy để kiểm chứng test thật sự bắt lỗi: `nextFocusIndex` wrap, mặc định công tắc âm thanh,
+`pointer-events-none` của stack, nhánh reduced-motion của decal, CSS reduced-motion, `focus-within` của
+tooltip, focus-in/Esc/focus-restore của hook, `subscribeSound`, ghi `localStorage`, nhãn thành trì, và
+`aria-live` của banner. Tổng 21 điểm logic đã bị đảo: trước khi vá có 2 điểm sống sót (`key={seq}`, icon loa), sau khi vá **21/21 bị test bắt**.
+
+Không sửa (ghi nhận):
+- Hai tooltip (`BuildMenu`, `EntityDetails`) gần trùng nhau (`role="tooltip"` + id + `aria-describedby` +
+  `group-hover/focus-within/active`). Chưa tách helper chung vì mới 2 chỗ dùng và nội dung/ cách canh khác
+  nhau; lần dùng thứ ba thì tách.
+- 3 file test quét source cùng kiểm `text-slate-500` (`overlayAccessibility`, `authSurfaces`,
+  `auxiliaryTextContrast`). Chưa gom helper vì mỗi file chỉ ~10 dòng và phạm vi file khác nhau.
+- Rủi ro đã ghi ở §9 (nút train `disabled`, tooltip bị cắt mép trên, `Esc` tới cả Phaser).

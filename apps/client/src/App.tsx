@@ -60,6 +60,7 @@ import { useTranslation } from 'react-i18next';
 import { playUnderAttackAlert } from './game/audio/alertSound.js';
 import { RejectNotification } from './components/RejectNotification.js';
 import { TopOverlayStack } from './components/TopOverlayStack.js';
+import { UnderAttackBanner } from './components/UnderAttackBanner.js';
 import {
   type RaidSession,
   clearStoredRaid,
@@ -1223,16 +1224,7 @@ export const App: React.FC = () => {
       {hasTopOverlays && (
         <TopOverlayStack compact={isCompact}>
           {/* ATK-05: under-attack banner (separate from the error notification). */}
-          {underAttack && (
-            <div
-              role="alert"
-              aria-live="assertive"
-              className="pointer-events-auto flex items-center gap-2 rounded border border-red-500/80 bg-red-950/90 px-4 py-2 text-sm text-red-200 shadow-2xl backdrop-blur-md animate-pulse"
-            >
-              <AlertCircle size={16} className="text-red-400" aria-hidden="true" />
-              <span>{t('app.underAttack')}</span>
-            </div>
-          )}
+          {underAttack && <UnderAttackBanner />}
 
           {/* In-game Notification Banner */}
           {notification && (

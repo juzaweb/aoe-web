@@ -60,12 +60,14 @@ describe('App top-centre wiring (UIX-08 / UIX-10)', () => {
     expect(appSource.match(/<TopOverlayStack/g)).toHaveLength(1);
     expect(appSource.match(/<PlacementBanner/g)).toHaveLength(1);
     expect(appSource.match(/<RejectNotification/g)).toHaveLength(1);
+    expect(appSource.match(/<UnderAttackBanner/g)).toHaveLength(1);
   });
 
-  it('announces the under-attack banner assertively and hides its icon', () => {
-    expect(appSource).toContain('role="alert"');
-    expect(appSource).toContain('aria-live="assertive"');
-    expect(appSource).toContain('aria-hidden="true"');
+  it('leaves no banner markup inline in App', () => {
+    // The three banners are components so their accessibility markup is
+    // render-tested; an inline copy here would only be source-scannable.
+    expect(appSource).not.toContain('role="alert"');
+    expect(appSource).not.toContain('aria-live=');
   });
 
   it('stamps every notification with a new sequence so repeats are re-read', () => {
