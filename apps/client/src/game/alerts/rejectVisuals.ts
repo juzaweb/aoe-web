@@ -6,8 +6,12 @@ export interface RejectVisual {
   iconKey: string;
 }
 
+/**
+ * Positioning deliberately lives in `TopOverlayStack` (UIX-10), not here: every
+ * banner that carried its own `top-*` collided with its neighbours.
+ */
 const BASE =
-  'absolute top-16 left-1/2 -translate-x-1/2 px-4 py-2 rounded shadow-2xl backdrop-blur-md flex items-center gap-2 z-50 text-sm animate-bounce';
+  'px-4 py-2 rounded shadow-2xl backdrop-blur-md flex items-center gap-2 text-sm animate-bounce';
 
 const DEFAULT_VISUAL: RejectVisual = {
   containerClass: `${BASE} bg-red-950/90 border border-red-500/80 text-red-200`,

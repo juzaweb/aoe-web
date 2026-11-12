@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronRight, Eye, Map as MapIcon, Shield, Swords, X } from 'lucide-react';
 import { RAID_MAX_UNITS, WorldMapEntry, WorldMapPayload } from '@chien-quoc/shared';
@@ -12,6 +12,7 @@ import {
   levelDeltaLabel,
   worldMapBounds
 } from './worldMapArt.js';
+import { useModalFocus } from './useModalFocus.js';
 
 interface WorldMapOverlayProps {
   open: boolean;
@@ -47,6 +48,12 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  // UIX-09: this overlay covers the whole map, so while it is open the dialog
+  // owns the keyboard (Tab circles inside it, Esc closes it, focus returns to
+  // the dock button that opened it) instead of Tab walking the HUD behind it.
+  useModalFocus(containerRef, open, onClose);
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -65,16 +72,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     reload();
   }, [open, reload]);
 
-  // `Esc` closes the map, matching every other panel in the game.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
   const tiles = useMemo(() => {
     if (!payload) return new Map<string, { q: number; r: number }>();
     return assignHexTiles(payload.neighbors.map((entry) => entry.userId));
@@ -91,11 +88,20 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   const canSend = Boolean(selected?.canAttack) && armySize > 0 && !tooMany && !busy;
 
   return (
-    <div className="absolute inset-0 z-[60] flex flex-col bg-slate-950/95 backdrop-blur-md">
+    <div
+      ref={containerRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      className="absolute inset-0 z-[60] flex flex-col bg-slate-950/95 backdrop-blur-md"
+    >
       <header className="flex items-center gap-3 border-b border-amber-700/50 px-3 py-2">
         <MapIcon size={18} className="text-amber-400" />
         <div className="min-w-0 flex-1">
-          <h2 className="font-medieval text-sm font-bold tracking-wider text-amber-200">
+          <h2
+            id={titleId}
+            className="font-medieval text-sm font-bold tracking-wider text-amber-200"
+          >
             {t('worldMap.title')}
           </h2>
           <p className="truncate text-[11px] text-slate-400">
@@ -249,7 +255,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             <span className="ml-2 inline-block h-2.5 w-2.5 rounded-sm bg-yellow-500" /> {t('worldMap.legendEqual')}
             <span className="ml-2 inline-block h-2.5 w-2.5 rounded-sm bg-red-500" /> {t('worldMap.legendStronger')}
           </div>
-          <p className="text-[11px] leading-tight text-slate-500">{t('worldMap.legendDelta')}</p>
+          <p className="text-[11px] leading-tight text-slate-400">{t('worldMap.legendDelta')}</p>
 
           {!selected && (
             <p className="text-[11px] leading-relaxed text-slate-400">
@@ -282,12 +288,12 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                   <Shield size={12} className="text-slate-400" />
                   {selected.blockReason}
                   {selected.shieldUntil > 0 && (
-                    <span className="text-slate-500">
+                    <span className="text-slate-400">
                       {t('worldMap.remaining', { time: formatRemaining(selected.shieldUntil, t) })}
                     </span>
                   )}
                   {selected.lockedUntil > 0 && (
-                    <span className="text-slate-500">
+                    <span className="text-slate-400">
                       {t('worldMap.remaining', { time: formatRemaining(selected.lockedUntil, t) })}
                     </span>
                   )}
@@ -310,7 +316,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 type="button"
                 disabled={!canSend}
                 onClick={() => onAttack(selected, selectedUnitIds)}
-                className="mt-1 flex min-h-[42px] items-center justify-center gap-2 rounded border-2 border-red-600 bg-gradient-to-r from-red-800 to-red-900 text-xs font-bold uppercase tracking-wider text-red-50 transition-all enabled:hover:border-red-400 disabled:cursor-not-allowed disabled:border-slate-700 disabled:from-slate-800 disabled:to-slate-900 disabled:text-slate-500"
+                className="mt-1 flex min-h-[44px] items-center justify-center gap-2 rounded border-2 border-red-600 bg-gradient-to-r from-red-800 to-red-900 text-xs font-bold uppercase tracking-wider text-red-50 transition-all enabled:hover:border-red-400 disabled:cursor-not-allowed disabled:border-slate-700 disabled:from-slate-800 disabled:to-slate-900 disabled:text-slate-500"
               >
                 <Swords size={15} />
                 {busy ? t('worldMap.attacking') : t('worldMap.attack')}
@@ -321,7 +327,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 type="button"
                 disabled={busy}
                 onClick={() => onSpectate(selected)}
-                className="flex min-h-[42px] items-center justify-center gap-2 rounded border border-amber-600/70 bg-slate-950/60 text-xs font-bold uppercase tracking-wider text-amber-200 transition-all enabled:hover:border-amber-400 disabled:cursor-not-allowed disabled:border-slate-700 disabled:text-slate-500"
+                className="flex min-h-[44px] items-center justify-center gap-2 rounded border border-amber-600/70 bg-slate-950/60 text-xs font-bold uppercase tracking-wider text-amber-200 transition-all enabled:hover:border-amber-400 disabled:cursor-not-allowed disabled:border-slate-700 disabled:text-slate-500"
               >
                 <Eye size={15} />
                 {busy ? t('worldMap.opening') : t('worldMap.spectate')}

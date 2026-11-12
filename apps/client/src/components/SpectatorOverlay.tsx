@@ -1,10 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useId, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import * as Phaser from 'phaser';
 import { Room } from '@colyseus/sdk';
 import { Eye, X } from 'lucide-react';
 import { PhaserGame } from '../game/PhaserGame.js';
 import type { WorldScene } from '../game/scenes/WorldScene.js';
+import { useModalFocus } from './useModalFocus.js';
 
 interface SpectatorOverlayProps {
   /** The spectator room, or null while it is still being joined. */
@@ -27,22 +28,29 @@ export const SpectatorOverlay: React.FC<SpectatorOverlayProps> = ({ room, target
   const { t } = useTranslation();
   const gameRef = useRef<Phaser.Game | null>(null);
   const sceneRef = useRef<WorldScene | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
 
-  // `Esc` closes the window, matching the world map and every other panel.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  // UIX-09: the second window covers the player's own kingdom, so it is a modal
+  // dialog for as long as it is mounted: focus starts and stays inside, Esc
+  // closes it, and the dock button that opened it gets the keyboard back.
+  useModalFocus(containerRef, true, onClose);
 
   return (
-    <div className="absolute inset-0 z-[55] flex flex-col bg-slate-950">
+    <div
+      ref={containerRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      className="absolute inset-0 z-[55] flex flex-col bg-slate-950"
+    >
       <header className="flex items-center gap-3 border-b border-amber-700/50 bg-slate-900/95 px-3 py-2">
         <Eye size={18} className="shrink-0 text-amber-400" />
         <div className="min-w-0 flex-1">
-          <h2 className="truncate font-medieval text-sm font-bold tracking-wider text-amber-200">
+          <h2
+            id={titleId}
+            className="truncate font-medieval text-sm font-bold tracking-wider text-amber-200"
+          >
             {t('spectator.title', { name: target.name })}
           </h2>
           <p className="truncate text-[11px] text-slate-400">

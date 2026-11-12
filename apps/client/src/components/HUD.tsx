@@ -9,6 +9,8 @@ import {
   Users,
   ShieldCheck,
   Wifi,
+  Volume2,
+  VolumeX,
   LogOut,
   Map as MapIcon,
   Swords
@@ -16,6 +18,7 @@ import {
 import { CITADEL_HP_THRESHOLD, RAID_MAX_DURATION_MS, type CitadelStatus } from '@chien-quoc/shared';
 import { MOBILE_MIN_TAP_PX } from '../device/inputMode.js';
 import { LanguageSwitcher } from '../i18n/LanguageSwitcher.js';
+import { isSoundEnabled, setSoundEnabled, subscribeSound } from '../game/audio/audioSettings.js';
 
 interface HUDProps {
   playerName: string;
@@ -73,13 +76,16 @@ const CitadelBar: React.FC<{ status: CitadelStatus; compact?: boolean }> = ({
 
   return (
     <div
-      title={`Thành trì: ${Math.ceil(status.hp)} / ${Math.ceil(status.maxHp)} máu`}
+      title={t('hud.citadelTitle', {
+        hp: Math.ceil(status.hp),
+        maxHp: Math.ceil(status.maxHp)
+      })}
       className={`pointer-events-auto flex items-center gap-1.5 rounded-md border border-slate-700/80 bg-slate-950/90 shadow-lg backdrop-blur-md ${
         compact ? 'px-2 py-1' : 'px-3 py-1.5'
       }`}
     >
       <span className="font-medieval text-[11px] font-bold tracking-wide text-amber-300">
-        THÀNH TRÌ
+        {t('hud.citadel')}
       </span>
       {/* UIX-01: the threshold state gets a symbol as well as a colour, so a
           colour-blind player still sees that the citadel is nearly gone. */}
@@ -121,6 +127,39 @@ const ResourceChip: React.FC<ResourceChipProps> = ({ icon, value, label }) => (
     <span className="text-[11px] font-semibold tabular-nums text-slate-100">{Math.floor(value)}</span>
   </span>
 );
+
+/**
+ * UIX-16: the one switch for both synthesized SFX sources.
+ *
+ * The button subscribes instead of polling so any surface that flips the
+ * switch updates this icon too; the audio modules themselves are driven by
+ * `audioSettings`, so nothing here knows which sounds exist.
+ */
+const SoundToggle: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
+  const { t } = useTranslation();
+  const [enabled, setEnabled] = React.useState(isSoundEnabled);
+
+  React.useEffect(() => subscribeSound(setEnabled), []);
+
+  const Icon = enabled ? Volume2 : VolumeX;
+
+  return (
+    <button
+      type="button"
+      onClick={() => setSoundEnabled(!enabled)}
+      aria-pressed={enabled}
+      aria-label={t('hud.soundLabel')}
+      title={enabled ? t('hud.soundOff') : t('hud.soundOn')}
+      data-sound-toggle={enabled ? 'on' : 'off'}
+      style={compact ? { minHeight: MOBILE_MIN_TAP_PX, minWidth: MOBILE_MIN_TAP_PX } : undefined}
+      className={`flex items-center justify-center rounded transition-colors hover:text-amber-300 ${
+        enabled ? 'text-slate-200' : 'text-slate-400'
+      }`}
+    >
+      <Icon size={compact ? 14 : 15} aria-hidden="true" />
+    </button>
+  );
+};
 
 /**
  * Resource bar + empire identity.
@@ -306,6 +345,7 @@ export const HUD: React.FC<HUDProps> = ({
           title={isConnected ? t('hud.online') : t('hud.offline')}
         />
         <Wifi size={13} className={isConnected ? 'text-emerald-400' : 'text-red-500'} />
+        <SoundToggle compact />
         {onLeaveGame && (
           <button
             type="button"
@@ -513,6 +553,7 @@ export const HUD: React.FC<HUDProps> = ({
         <span className={isConnected ? 'text-emerald-400' : 'text-red-400'}>
           {isConnected ? t('hud.online') : t('hud.offline')}
         </span>
+        <SoundToggle />
         <LanguageSwitcher compact />
       </div>
     </div>

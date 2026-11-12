@@ -10,7 +10,11 @@ describe('rejectVisuals', () => {
       const v = getRejectVisual(code);
       expect(v).toBe(REJECT_VISUALS[code]);
       expect(v.iconKey).toBeTruthy();
-      expect(v.containerClass).toContain('absolute');
+      // UIX-10: the visual is only the pill. Position comes from
+      // `TopOverlayStack`, so no banner can pick a `top-*` of its own and land
+      // on a neighbour.
+      expect(v.containerClass).not.toContain('absolute');
+      expect(v.containerClass).not.toContain('top-');
     }
   });
 

@@ -107,7 +107,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
               spellCheck={false}
               required
               maxLength={24}
-              className="w-full min-h-[44px] rounded border border-amber-800 bg-slate-900 px-3 py-2 text-base text-slate-100 placeholder-slate-500 focus:border-amber-400 focus:outline-none"
+              className="w-full min-h-[44px] rounded border border-amber-800 bg-slate-900 px-3 py-2 text-base text-slate-100 placeholder-slate-500 focus:border-amber-400"
             />
           </div>
 
@@ -125,7 +125,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
                 pattern="[a-zA-Z0-9_]+"
                 title={t('auth.displayNameHint')}
                 maxLength={24}
-                className="w-full min-h-[44px] rounded border border-amber-800 bg-slate-900 px-3 py-2 text-base text-slate-100 placeholder-slate-500 focus:border-amber-400 focus:outline-none"
+                className="w-full min-h-[44px] rounded border border-amber-800 bg-slate-900 px-3 py-2 text-base text-slate-100 placeholder-slate-500 focus:border-amber-400"
               />
             </div>
           )}
@@ -145,7 +145,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
                 required
                 minLength={mode === 'register' ? 6 : undefined}
                 maxLength={128}
-                className="w-full min-h-[44px] rounded border border-amber-800 bg-slate-900 pl-3 pr-11 py-2 text-base text-slate-100 placeholder-slate-500 focus:border-amber-400 focus:outline-none"
+                className="w-full min-h-[44px] rounded border border-amber-800 bg-slate-900 pl-3 pr-11 py-2 text-base text-slate-100 placeholder-slate-500 focus:border-amber-400"
               />
               <button
                 type="button"
@@ -190,7 +190,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
           </button>
         </form>
 
-        <div className="mt-5 flex items-center gap-1.5 text-[11px] text-slate-500">
+        <div className="mt-5 flex items-center gap-1.5 text-[11px] text-slate-400">
           <Lock size={12} />
           <span>{t('auth.passwordEncrypted')}</span>
         </div>

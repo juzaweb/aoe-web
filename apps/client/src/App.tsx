@@ -59,6 +59,7 @@ import { AlertCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { playUnderAttackAlert } from './game/audio/alertSound.js';
 import { RejectNotification } from './components/RejectNotification.js';
+import { TopOverlayStack } from './components/TopOverlayStack.js';
 import {
   type RaidSession,
   clearStoredRaid,
@@ -142,7 +143,17 @@ export const App: React.FC = () => {
   const [wallMode, setWallMode] = useState<WallMode | null>(null);
 
   // Notifications
-  const [notification, setNotification] = useState<{ message: string; code: RejectCode | null } | null>(null);
+  const [notification, setNotification] = useState<{
+    message: string;
+    code: RejectCode | null;
+    /**
+     * UIX-08: bumped for every notification so the live region remounts. A
+     * polite region whose markup is identical is not re-announced, and the same
+     * rejection twice in a row ("insufficient wood") is a normal thing to do.
+     */
+    seq: number;
+  } | null>(null);
+  const notificationSeqRef = useRef(0);
   // ATK-05: under-attack banner state.
   const [underAttack, setUnderAttack] = useState<boolean>(false);
   const underAttackTimerRef = useRef<number | null>(null);
@@ -178,7 +189,7 @@ export const App: React.FC = () => {
   const resumingRef = useRef(false);
 
   const showNotification = (msg: string, code: RejectCode | null = null) => {
-    const next = { message: msg, code };
+    const next = { message: msg, code, seq: ++notificationSeqRef.current };
     setNotification(next);
     setTimeout(() => {
       setNotification((curr) => (curr === next ? null : curr));
@@ -231,6 +242,14 @@ export const App: React.FC = () => {
   const spectateOpen = spectator !== null;
   const detailsOpen = selectedEntity !== null && detailsEntityId === selectedEntity.id;
   const detailsSheetOpen = !isCompact && detailsOpen;
+  /**
+   * UIX-10: everything that lives in the top-centre column, in priority order.
+   * Placement is a steady state, a rejection is transient feedback, and
+   * under-attack is the one that cannot wait.
+   */
+  const placementActive =
+    isJoined && (activeBuildingType !== null || roadMode !== null || wallMode !== null);
+  const hasTopOverlays = notification !== null || underAttack || placementActive;
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
@@ -1092,19 +1111,6 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* UIX-02: name the placement mode and keep a Cancel button in reach while
-          the build sheet is closed over the map. */}
-      {isJoined && (activeBuildingType !== null || roadMode !== null || wallMode !== null) && (
-        <PlacementBanner
-          compact={isCompact}
-          buildingType={activeBuildingType}
-          roadMode={roadMode}
-          wallMode={wallMode}
-          resources={resources}
-          onCancel={handleCancelPlacement}
-        />
-      )}
-
       {/* Bottom dock. Desktop keeps the AoE-style three-column bar; touch stacks
           the command bar above a tighter row, because a 390 px landscape phone has
           no room for a 140 px minimap, a 320 px card and an 8-button build panel
@@ -1210,17 +1216,46 @@ export const App: React.FC = () => {
         )
       )}
 
-      {/* In-game Notification Banner */}
-      {notification && (
-        <RejectNotification message={notification.message} code={notification.code} />
-      )}
+      {/* UIX-08 + UIX-10: one column for the top-centre banners. Under-attack is
+          `assertive` because it is the only one where a missed message costs
+          the player a castle; the reject toast stays polite so a burst of
+          failed commands does not talk over the game. */}
+      {hasTopOverlays && (
+        <TopOverlayStack compact={isCompact}>
+          {/* ATK-05: under-attack banner (separate from the error notification). */}
+          {underAttack && (
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="pointer-events-auto flex items-center gap-2 rounded border border-red-500/80 bg-red-950/90 px-4 py-2 text-sm text-red-200 shadow-2xl backdrop-blur-md animate-pulse"
+            >
+              <AlertCircle size={16} className="text-red-400" aria-hidden="true" />
+              <span>{t('app.underAttack')}</span>
+            </div>
+          )}
 
-      {/* ATK-05: under-attack banner (separate from the error notification). */}
-      {underAttack && (
-        <div className={`absolute ${notification ? 'top-24' : 'top-16'} left-1/2 -translate-x-1/2 bg-red-950/90 border border-red-500/80 text-red-200 px-4 py-2 rounded shadow-2xl backdrop-blur-md flex items-center gap-2 z-50 text-sm animate-pulse`}>
-          <AlertCircle size={16} className="text-red-400" />
-          <span>{t('app.underAttack')}</span>
-        </div>
+          {/* In-game Notification Banner */}
+          {notification && (
+            <RejectNotification
+              message={notification.message}
+              code={notification.code}
+              seq={notification.seq}
+            />
+          )}
+
+          {/* UIX-02: name the placement mode and keep a Cancel button in reach
+              while the build sheet is closed over the map. */}
+          {placementActive && (
+            <PlacementBanner
+              compact={isCompact}
+              buildingType={activeBuildingType}
+              roadMode={roadMode}
+              wallMode={wallMode}
+              resources={resources}
+              onCancel={handleCancelPlacement}
+            />
+          )}
+        </TopOverlayStack>
       )}
 
       {/* SESS-06: the account is in use elsewhere (or was taken over) */}
@@ -1273,7 +1308,7 @@ export const App: React.FC = () => {
           <div className="aoe-panel px-8 py-6 rounded-xl flex flex-col items-center gap-3 shadow-2xl border-2 border-violet-500">
             <div className="w-8 h-8 rounded-full border-2 border-violet-400 border-t-transparent animate-spin" />
             <span className="text-sm text-slate-300">{t('app.switchingMap')}</span>
-            <span className="text-[11px] text-slate-500">{t('app.switchingMapDetail')}</span>
+            <span className="text-[11px] text-slate-400">{t('app.switchingMapDetail')}</span>
             <button
               type="button"
               onClick={() => window.location.reload()}

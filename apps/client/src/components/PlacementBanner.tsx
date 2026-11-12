@@ -133,35 +133,34 @@ const PlacementShell: React.FC<PlacementShellProps> = ({
 }) => {
   const { t } = useTranslation();
   return (
-    // `role="status"` announces the mode when it opens, so a screen-reader
-    // player learns that the next map tap places a building.
     <div
-      className={`pointer-events-none absolute inset-x-0 z-30 flex justify-center px-2 ${
-        compact ? 'top-[calc(env(safe-area-inset-top)+4.75rem)]' : 'top-20'
-      }`}
-      role="status"
-      aria-live="polite"
+      className="pointer-events-auto flex max-w-full items-center gap-2 rounded-lg border-2 border-amber-500/80 bg-slate-950/95 px-2.5 py-1.5 shadow-2xl backdrop-blur-md"
       data-placement-banner
     >
-      <div className="pointer-events-auto flex max-w-full items-center gap-2 rounded-lg border-2 border-amber-500/80 bg-slate-950/95 px-2.5 py-1.5 shadow-2xl backdrop-blur-md">
-        <span className="shrink-0">{icon}</span>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[11px] font-bold uppercase tracking-wide text-amber-200">{title}</div>
-          <div className="truncate text-[11px] text-slate-300">{hint}</div>
-          {footer}
-        </div>
-        <button
-          type="button"
-          onClick={onCancel}
-          title={t('placement.cancelTitle')}
-          aria-label={t('placement.cancelTitle')}
-          style={compact ? { minHeight: 44, minWidth: 44 } : undefined}
-          className="flex shrink-0 items-center justify-center gap-1 rounded-md border border-red-700/80 bg-red-950/70 px-2 py-1 text-[11px] font-bold uppercase text-red-200 transition-colors hover:border-red-400 hover:text-red-100"
-        >
-          <X size={14} />
-          <span className="hidden sm:inline">{t('placement.cancel')}</span>
-        </button>
+      <span className="shrink-0" aria-hidden="true">
+        {icon}
+      </span>
+      {/* `role="status"` announces the mode when it opens, so a screen-reader
+          player learns that the next map tap places a building. It deliberately
+          wraps the words only: a live region that also contains the Cancel
+          button re-announces a control label as if it were status text, and
+          makes the button harder to reach in a screen reader's form list. */}
+      <div className="min-w-0 flex-1" role="status" aria-live="polite">
+        <div className="truncate text-[11px] font-bold uppercase tracking-wide text-amber-200">{title}</div>
+        <div className="truncate text-[11px] text-slate-300">{hint}</div>
+        {footer}
       </div>
+      <button
+        type="button"
+        onClick={onCancel}
+        title={t('placement.cancelTitle')}
+        aria-label={t('placement.cancelTitle')}
+        style={compact ? { minHeight: 44, minWidth: 44 } : undefined}
+        className="flex shrink-0 items-center justify-center gap-1 rounded-md border border-red-700/80 bg-red-950/70 px-2 py-1 text-[11px] font-bold uppercase text-red-200 transition-colors hover:border-red-400 hover:text-red-100"
+      >
+        <X size={14} aria-hidden="true" />
+        <span className="hidden sm:inline">{t('placement.cancel')}</span>
+      </button>
     </div>
   );
 };

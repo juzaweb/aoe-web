@@ -103,3 +103,31 @@ canvas {
   border-color: #d97706;
 }
 
+/*
+ * UIX-17: one keyboard focus ring for the whole UI. `:focus-visible` rather
+ * than `:focus`, so a mouse click never draws it while keyboard users always
+ * get one. Components must not opt out with `focus:outline-none` — that class
+ * has higher specificity than this rule and would silently remove the only
+ * pointer a keyboard player has.
+ */
+:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+}
+
+/*
+ * UIX-13: honour the OS reduced-motion setting for the three looping
+ * animations only. Each one keeps its resting frame instead of being hidden or
+ * frozen mid-cycle, because they still carry meaning: the spinner says "still
+ * loading", the pulse marks a live threat, the bounce pulls the eye to a
+ * refused order. A blanket `*` rule is avoided on purpose — transitions and
+ * one-shot feedback elsewhere must keep working.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .animate-bounce,
+  .animate-pulse,
+  .animate-spin {
+    animation: none !important;
+  }
+}
+

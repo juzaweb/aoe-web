@@ -45,6 +45,7 @@ export function playCommandSound(kind: CommandSoundKind): void {
   singleton.play(kind);
 }
 
+/** Driven by `audioSettings.ts`, the single user-facing sound switch (UIX-16). */
 export function setCommandSoundEnabled(enabled: boolean): void {
   if (!singleton) singleton = new CommandSound();
   singleton.setEnabled(enabled);

@@ -57,7 +57,7 @@ export const SessionBlocked: React.FC<SessionBlockedProps> = ({
           </button>
         </div>
 
-        <p className="mt-5 text-[11px] text-slate-500">{t('session.note')}</p>
+        <p className="mt-5 text-[11px] text-slate-400">{t('session.note')}</p>
       </div>
     </div>
   );

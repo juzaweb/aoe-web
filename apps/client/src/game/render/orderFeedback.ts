@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser';
 import { getIsoDepth, screenToGrid } from '@chien-quoc/shared';
+import { prefersReducedMotion } from './prefersReducedMotion.js';
 
 /**
  * UIX-01: the transient ground marker an order leaves where it was issued.
@@ -8,7 +9,9 @@ import { getIsoDepth, screenToGrid } from '@chien-quoc/shared';
  * units, so players double- and triple-click the same tile. The marker is a
  * purely cosmetic Graphics object (no texture, no particle manager) that is
  * drawn once, shrinks and fades in {@link ORDER_FEEDBACK_DURATION_MS}, then
- * destroys itself — so there is nothing to leak.
+ * destroys itself — so there is nothing to leak. With reduced motion on
+ * (UIX-13) it is drawn at rest and destroyed after
+ * {@link ORDER_FEEDBACK_STATIC_DURATION_MS} instead.
  *
  * Each order flavour gets its own colour *and* shape. Colour alone would be
  * unreadable for a colour-blind player and indistinguishable in a busy fight;
@@ -39,6 +42,13 @@ export interface OrderFeedbackSpec {
 
 /** The whole decal is gone in under a third of a second (UIX-01 AC). */
 export const ORDER_FEEDBACK_DURATION_MS = 300;
+
+/**
+ * UIX-13: how long the untweened decal stays when reduced motion is on. Short
+ * enough to still read as "your order landed here, then it was gone", and it
+ * keeps the same under-a-third-of-a-second budget as the animated branch.
+ */
+export const ORDER_FEEDBACK_STATIC_DURATION_MS = 150;
 
 /**
  * Ground decals sit just above the terrain and decor bands and below every
@@ -82,7 +92,8 @@ export function orderFeedbackDepth(worldX: number, worldY: number): number {
 
 /**
  * Draws the marker at `(x, y)` — a world point, already projected — and starts
- * the shrink/fade tween.
+ * the shrink/fade tween, unless the player asked for reduced motion (UIX-13), in
+ * which case the decal is left at rest and removed on a short timer.
  *
  * The Graphics object is *positioned* at the point and its shapes are drawn
  * around the local origin: a tween on `scaleX/scaleY` then shrinks the decal in
@@ -133,6 +144,17 @@ export function drawOrderFeedback(
 
   decal.fillStyle(spec.accent, 0.9);
   decal.fillCircle(0, 0, 3);
+
+  // UIX-13: the decal is feedback, not decoration — a player who asked for
+  // reduced motion still has to see the order land somewhere, then see it leave.
+  // Only the shrink/fade goes away: the rings are drawn at their resting size
+  // and a short timer removes the object. Tweening meant a constant scale change
+  // at the exact point the player was looking at, which is the motion this
+  // preference exists to remove.
+  if (prefersReducedMotion()) {
+    scene.time.delayedCall(ORDER_FEEDBACK_STATIC_DURATION_MS, () => decal.destroy());
+    return decal;
+  }
 
   decal.setScale(1.45);
   decal.setAlpha(1);

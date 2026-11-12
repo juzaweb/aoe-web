@@ -29,6 +29,7 @@ export function playUnderAttackAlert(): void {
   singleton.play();
 }
 
+/** Driven by `audioSettings.ts`, the single user-facing sound switch (UIX-16). */
 export function setUnderAttackAlertEnabled(enabled: boolean): void {
   if (!singleton) singleton = new UnderAttackSound();
   singleton.setEnabled(enabled);

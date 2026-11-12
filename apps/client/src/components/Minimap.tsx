@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Map as MapIcon, X } from 'lucide-react';
 import { Room } from '@colyseus/sdk';
 import { MAP_GRID_HEIGHT, MAP_GRID_WIDTH, TILE_HEIGHT, TILE_WIDTH, screenToGrid, terrainForZone } from '@chien-quoc/shared';
 import { WorldScene } from '../game/scenes/WorldScene.js';
 import { UNKNOWN_OWNER_COLOR, colorToCss } from '../game/render/ownerColor.js';
+import { useModalFocus } from './useModalFocus.js';
 import {
   MINIMAP_COLORS,
   MINIMAP_COMPACT_CSS_SIZE,
@@ -161,6 +162,12 @@ export const Minimap: React.FC<MinimapProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** MOB-06: compact only — the radar is collapsed behind its button by default. */
   const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  // UIX-09: the floated radar is the compact layout's only panel, so it behaves
+  // as a modal dialog while open. The desktop radar lives inside the fixed dock
+  // band and stays a plain region — `compact` keeps the hook off there.
+  useModalFocus(panelRef, compact && open, () => setOpen(false));
   /**
    * MOB-06: a long-press on the minimap is the touch right-click, so a move order
    * needs a timer and the pan that the tap would otherwise fire must be suppressed.
@@ -474,20 +481,31 @@ export const Minimap: React.FC<MinimapProps> = ({
         </button>
 
         {open && (
-          <div className="aoe-panel absolute bottom-full left-0 z-30 mb-2 flex flex-col items-center rounded-lg p-1">
+          <div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            className="aoe-panel absolute bottom-full left-0 z-30 mb-2 flex flex-col items-center rounded-lg p-1"
+          >
             <div className="mb-1 flex w-full items-center justify-between px-0.5">
-              <span
+              <h2
+                id={titleId}
                 className={`font-medieval text-[11px] font-bold tracking-wider ${
                   zoneKind === 'battlefield' ? 'text-red-400' : 'text-amber-400'
                 }`}
               >
                 {zoneLabel}
-              </span>
+              </h2>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label={t('minimap.closeMap')}
                 title={t('minimap.close')}
+                // UIX-14: the 36 px box stays the visual size; the 44 px floor is
+                // what a finger actually needs on the phone layout this panel
+                // only exists in.
+                style={{ minHeight: 44, minWidth: 44 }}
                 className="flex h-9 w-9 items-center justify-center rounded border border-slate-700 text-slate-300"
               >
                 <X size={13} />

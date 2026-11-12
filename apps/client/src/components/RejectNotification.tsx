@@ -28,7 +28,9 @@ const REJECT_ICON_MAP: Record<string, LucideIcon> = {
 
 function RejectIcon({ iconKey, className }: { iconKey: string; className: string }) {
   const Icon = REJECT_ICON_MAP[iconKey] ?? AlertCircle;
-  return <Icon size={16} className={className} />;
+  // Decorative: the message already says what went wrong, so announcing the
+  // icon name as well only makes the screen-reader output longer.
+  return <Icon size={16} className={className} aria-hidden="true" />;
 }
 
 /**
@@ -37,13 +39,27 @@ function RejectIcon({ iconKey, className }: { iconKey: string; className: string
  * Kept out of `App` so the component tree stays readable: this is presentation
  * only, driven by the code the server sends with the message.
  */
-export const RejectNotification: React.FC<{ message: string; code: RejectCode | null }> = ({
-  message,
-  code
-}) => {
+export const RejectNotification: React.FC<{
+  message: string;
+  code: RejectCode | null;
+  /**
+   * Monotonic counter from `showNotification`, used as the node key. A polite
+   * live region is only re-read when its content changes, so rejecting the same
+   * command twice ("insufficient wood") would be silent the second time without
+   * a remount.
+   */
+  seq: number;
+}> = ({ message, code, seq }) => {
   const visual = getRejectVisual(code);
   return (
-    <div className={visual.containerClass}>
+    <div
+      key={seq}
+      role="status"
+      aria-live="polite"
+      data-reject-notification
+      data-reject-seq={seq}
+      className={`${visual.containerClass} pointer-events-auto`}
+    >
       <RejectIcon iconKey={visual.iconKey} className={visual.iconClass} />
       <span>{message}</span>
     </div>

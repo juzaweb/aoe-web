@@ -235,21 +235,21 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
             <span>{t('stats.buildingUnitHp')}</span>
             <span>
               <span className="text-emerald-300">+{auraNow}%</span>
-              {!isMaxed && <span className="text-slate-500"> → +{auraNext}%</span>}
+              {!isMaxed && <span className="text-slate-400"> → +{auraNext}%</span>}
             </span>
           </div>
           <div className="flex items-center justify-between text-[11px] font-mono text-slate-300">
             <span>{t('stats.unitAttack')}</span>
             <span>
               <span className="text-emerald-300">+{attackNow}%</span>
-              {!isMaxed && <span className="text-slate-500"> → +{attackNext}%</span>}
+              {!isMaxed && <span className="text-slate-400"> → +{attackNext}%</span>}
             </span>
           </div>
           <div className="flex items-center justify-between text-[11px] font-mono text-slate-300">
             <span>{t('stats.trainingTime')}</span>
             <span>
               <span className="text-sky-300">-{auraNow}%</span>
-              {!isMaxed && <span className="text-slate-500"> → -{auraNext}%</span>}
+              {!isMaxed && <span className="text-slate-400"> → -{auraNext}%</span>}
             </span>
           </div>
         </div>
@@ -268,14 +268,14 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
             <span>{t('stats.trainingTime')}</span>
             <span>
               <span className="text-sky-300">-{trainerSpeedNow}%</span>
-              {!isMaxed && <span className="text-slate-500"> → -{trainerSpeedNext}%</span>}
+              {!isMaxed && <span className="text-slate-400"> → -{trainerSpeedNext}%</span>}
             </span>
           </div>
           <div className="flex items-center justify-between text-[11px] font-mono text-slate-300">
             <span>{t('stats.unitHpAttack')}</span>
             <span>
               <span className="text-emerald-300">+{trainerBuffNow}%</span>
-              {!isMaxed && <span className="text-slate-500"> → +{trainerBuffNext}%</span>}
+              {!isMaxed && <span className="text-slate-400"> → +{trainerBuffNext}%</span>}
             </span>
           </div>
         </div>
@@ -294,7 +294,7 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
             <span>{t('stats.gatherSpeed')}</span>
             <span>
               <span className="text-emerald-300">+{gatherNow}%</span>
-              {!isMaxed && <span className="text-slate-500"> → +{gatherNext}%</span>}
+              {!isMaxed && <span className="text-slate-400"> → +{gatherNext}%</span>}
             </span>
           </div>
           <div className="flex items-center justify-between text-[11px] font-mono text-slate-300">
@@ -302,7 +302,7 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
             <span>
               <span className="text-sky-300">{radiusNow.toFixed(2)} tile</span>
               {!isMaxed && (
-                <span className="text-slate-500"> → {radiusNext.toFixed(2)} tile</span>
+                <span className="text-slate-400"> → {radiusNext.toFixed(2)} tile</span>
               )}
             </span>
           </div>
@@ -417,7 +417,7 @@ export const UnitResearchPanel: React.FC<UnitResearchPanelProps> = ({
         <span className="text-[11px] font-bold text-amber-400 tracking-wider flex items-center gap-1">
           <Swords size={12} /> {t('upgrades.researchTitle')}
         </span>
-        <span className="text-[11px] text-slate-500 font-mono">{t('upgrades.global')}</span>
+        <span className="text-[11px] text-slate-400 font-mono">{t('upgrades.global')}</span>
       </div>
 
       {researchingType && (

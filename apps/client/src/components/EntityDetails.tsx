@@ -399,7 +399,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
             >
               {stanceName(entity.stance)}
             </span>
-            <span className="text-[11px] text-slate-500 font-mono">(D)</span>
+            <span className="text-[11px] text-slate-400 font-mono">(D)</span>
           </span>
         </div>
       )}
@@ -491,7 +491,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
           </div>
 
           <div className="flex gap-2">
-            {trainableUnits.map((uType) => {
+            {trainableUnits.map((uType, index) => {
               const uBp = UNIT_BLUEPRINTS[uType];
               const canAffordUnit =
                 playerResources.wood >= uBp.cost.wood &&
@@ -516,14 +516,27 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
               const effectiveTrainSeconds =
                 getEffectiveTrainTimeMs(uType, ownerTownCenterLevel, buildingLevel) / 1000;
               const trainHotkey = UNIT_TRAINING_HOTKEY_BY_TYPE[uType];
+              // UIX-15: the button names this box with `aria-describedby`, so one
+              // id per trainable unit per entity keeps the pair unique.
+              const tooltipId = `train-tooltip-${entity.id}-${uType}`;
+              // UIX-15: a centred 176 px box hangs ~60 px past the panel edge on
+              // the first button, and the panel's `overflow-y-auto` clips it, so
+              // the edge buttons pin their box to the row instead of centring.
+              const tooltipAlign =
+                index === 0
+                  ? 'left-0'
+                  : index === trainableUnits.length - 1
+                    ? 'right-0'
+                    : 'left-1/2 -translate-x-1/2';
 
               return (
-                <div key={uType} className="relative group/train">
+                <div key={uType} className="relative group">
                   <button
                     onClick={() => onTrainUnit(entity.id, uType)}
                     disabled={!canAffordUnit}
+                    aria-describedby={tooltipId}
                     data-train-hotkey={trainHotkey}
-                    className={`px-2.5 py-1.5 rounded border text-[11px] font-semibold transition-all flex flex-col items-center gap-1 ${
+                    className={`scroll-mt-36 px-2.5 py-1.5 rounded border text-[11px] font-semibold transition-all flex flex-col items-center gap-1 ${
                       canAffordUnit
                         ? 'aoe-button text-slate-200 hover:border-amber-400'
                         : 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed opacity-50'
@@ -552,8 +565,18 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
                     </span>
                   )}
 
-                  {/* Tooltip */}
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-44 p-2 rounded bg-slate-950 border border-amber-600/70 shadow-2xl opacity-0 group-hover/train:opacity-100 transition-opacity pointer-events-none z-50 text-left">
+                  {/* UIX-15: hover alone used to reveal this box, which left
+                      keyboard and touch players unable to read a unit's price
+                      and stats. Focus and a touch press reveal the same box,
+                      and the button's `aria-describedby` lets a screen reader
+                      announce it without any pointer at all. `scroll-mt` keeps
+                      the row clear of the panel's top edge when focus scrolls
+                      it into view, so the box above it is not cut off. */}
+                  <div
+                    id={tooltipId}
+                    role="tooltip"
+                    className={`pointer-events-none absolute bottom-full mb-2 w-44 rounded border border-amber-600/70 bg-slate-950 p-2 text-left opacity-0 shadow-2xl transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 group-active:opacity-100 z-50 ${tooltipAlign}`}
+                  >
                     <div className="font-medieval text-xs font-bold text-amber-300 mb-0.5">{unitName(uType)}</div>
                     <div className="text-[11px] text-slate-300 mb-1">{unitDescription(uType)}</div>
                     <div className="text-[11px] space-y-0.5 border-t border-slate-800 pt-1 font-mono">
