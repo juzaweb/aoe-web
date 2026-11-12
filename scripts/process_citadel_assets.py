@@ -71,6 +71,11 @@ CAP_INSET = 12
 WALL_LEFT_LUM = 105.0
 WALL_RIGHT_LUM = 80.0
 WALL_CAP_LUM = 150.0
+# Shipped wall brightness band, checked by `wall_failures`. A wall outside it
+# stops matching the floor apron in the same frame, so it is a contract, not a
+# preference.
+WALL_LUM_RANGE = (92.0, 130.0)
+WALL_MIN_OPAQUE = 0.55
 WALL_OUTLINE = (0x3A, 0x3F, 0x47)
 # The 1024px source has ~80px blocks. Mapped straight onto a 64px-wide face they
 # turn into 5px noise, so only a quarter of the sheet is used: same stone, but
@@ -353,7 +358,18 @@ def load_stone_rect(path: Path, width: int, height: int) -> np.ndarray:
     return np.clip(texture * np.array(STONE_GAIN), 0.0, 255.0)
 
 
-def build_wall(source: Path, out_root: Path, cap_source: Path | None = None) -> dict:
+def build_wall(
+    source: Path,
+    out_root: Path,
+    cap_source: Path | None = None,
+    rel: Path = WALL_REL,
+) -> dict:
+    """Draw the wall block.
+
+    ``rel`` is the output path relative to ``out_root``, so a variant such as
+    ``citadel/wall_v2.png`` can be built next to the shipped ``wall.png``
+    without editing the module constants.
+    """
     texture = load_stone(source, WALL_TEXTURE_CROP)
     # The cap is a horizontal plane, so it uses the floor texture (a top-down
     # stone surface) rather than the wall elevation: mapping the elevation onto
@@ -391,7 +407,7 @@ def build_wall(source: Path, out_root: Path, cap_source: Path | None = None) -> 
     canvas[..., 3] = np.rint(body_mask * 255.0).astype(np.uint8)
     canvas = bleed_rgb(canvas)
 
-    target = out_root / WALL_REL
+    target = out_root / rel
     target.parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(canvas, mode="RGBA").save(target, "PNG", optimize=True)
     return {"name": target.name, "size": WALL_SIZE, "meanLum": measure_mean_lum(canvas)}
@@ -708,6 +724,22 @@ def measure(path: Path) -> dict:
     }
 
 
+def wall_failures(measured: dict) -> list[str]:
+    """Every contract breach of a wall block, so `check` and the variant builder
+    validate against the same numbers."""
+    failures: list[str] = []
+    if measured["size"] != WALL_SIZE:
+        failures.append(f"wall size {measured['size']} != {WALL_SIZE}")
+    low, high = WALL_LUM_RANGE
+    if not low <= measured["meanLum"] <= high:
+        failures.append(f"wall lum {measured['meanLum']:.1f} outside {low:.0f}-{high:.0f}")
+    if measured["bbox"] is None or measured["bbox"][3] != WALL_SIZE[1]:
+        failures.append("wall base is not on the last row")
+    if measured["opaque"] <= WALL_MIN_OPAQUE:
+        failures.append(f"wall covers only {measured['opaque']:.2f} of the canvas")
+    return failures
+
+
 def check(out_root: Path) -> int:
     failures: list[str] = []
 
@@ -729,10 +761,7 @@ def check(out_root: Path) -> int:
 
     wall = measure_path(WALL_REL)
     if wall:
-        expect(wall["size"] == WALL_SIZE, f"wall size {wall['size']} != {WALL_SIZE}")
-        expect(92.0 <= wall["meanLum"] <= 130.0, f"wall lum {wall['meanLum']:.1f} outside 92-130")
-        expect(wall["bbox"] is not None and wall["bbox"][3] == WALL_SIZE[1], "wall base is not on the last row")
-        expect(wall["opaque"] > 0.55, f"wall covers only {wall['opaque']:.2f} of the canvas")
+        failures.extend(wall_failures(wall))
 
     gate = measure_path(GATE_REL)
     if gate:
