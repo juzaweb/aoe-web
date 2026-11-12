@@ -7,14 +7,13 @@ import type { WallMode } from '../../game/input/WallController.js';
 import { Minimap } from '../Minimap.js';
 import { CommandCard } from './CommandCard.js';
 import { SelectionStrip } from './SelectionStrip.js';
-import { DetailsPopover } from './DetailsPopover.js';
 import { buildDockPages, type DockCommandHandlers } from './commandPages.js';
 import { DOCK_HEIGHT_PX, DOCK_INSET_PX } from './dockMetrics.js';
 
 export interface DockBarProps {
   /** Current selection; `null` collapses the dock to the radar alone. */
   entity: SelectedEntityData | null;
-  /** Localized name of the selection, shared with the popover title. */
+  /** Localized name of the selection. */
   displayName: string;
   resources: Resources;
   /** Own capital level, which is what unlocks the three drop-off camps. */
@@ -27,15 +26,10 @@ export interface DockBarProps {
   wallMode: WallMode | null;
   room: Room | null;
   sceneRef: React.RefObject<WorldScene | null>;
-  /** The detail popover is open above the dock. */
-  detailsOpen: boolean;
-  onToggleDetails: () => void;
   onPanToGrid: (gx: number, gy: number) => void;
   onCommandAtGrid: (gx: number, gy: number) => void;
   /** Every command routes to a handler `App` already owned. */
   handlers: DockCommandHandlers;
-  /** The full entity sheet, shown only while the popover is open. */
-  details: React.ReactNode;
 }
 
 /**
@@ -63,12 +57,9 @@ export const DockBar: React.FC<DockBarProps> = ({
   wallMode,
   room,
   sceneRef,
-  detailsOpen,
-  onToggleDetails,
   onPanToGrid,
   onCommandAtGrid,
-  handlers,
-  details
+  handlers
 }) => {
   // Cheap to rebuild (15 commands) and always fresh: the card only keeps the
   // page index, never the commands, so a price or queue change is immediate.
@@ -106,25 +97,17 @@ export const DockBar: React.FC<DockBarProps> = ({
       />
 
       {entity && (
-        // The popover anchors to this wrapper, so `bottom-full` always lands
-        // directly above the dock regardless of the selection's name length.
-        //
         // `justify-between` plus a capped summary keeps the middle of the band
         // transparent: the map stays visible between the summary and the card
         // instead of a full-width panel covering everything below the horizon.
         <div className="relative flex min-w-0 flex-1 items-stretch justify-between gap-2">
-          <div className="flex min-w-0 max-w-[460px] flex-1 items-stretch">
+          <div className="flex min-w-0 max-w-[340px] flex-1 items-stretch">
             <SelectionStrip
               entity={entity}
               displayName={displayName}
-              detailsOpen={detailsOpen}
-              onToggleDetails={onToggleDetails}
             />
           </div>
           <CommandCard pages={pages} />
-          <DetailsPopover open={detailsOpen} title={displayName} onClose={onToggleDetails}>
-            {details}
-          </DetailsPopover>
         </div>
       )}
     </div>

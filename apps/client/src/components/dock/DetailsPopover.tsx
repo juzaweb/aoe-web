@@ -114,7 +114,7 @@ export const DetailsPopover: React.FC<DetailsPopoverProps> = ({
       role="dialog"
       aria-label={title}
       data-details-popover
-      className="absolute bottom-full right-0 z-30 mb-2 w-[360px] max-w-[calc(100vw-1rem)] max-h-[min(60vh,520px)] overflow-y-auto rounded-lg aoe-panel p-2 pointer-events-auto"
+      className="absolute bottom-full right-0 z-30 mb-2 w-[360px] max-w-[calc(100vw-1rem)] max-h-[min(60vh,520px)] overflow-y-auto rounded aoe-panel p-2 pointer-events-auto"
     >
       <div className="mb-1.5 flex items-center justify-between gap-2 border-b border-amber-800/40 pb-1.5">
         <span className="truncate font-medieval text-[11px] font-bold tracking-wider text-amber-300">

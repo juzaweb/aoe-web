@@ -35,7 +35,9 @@ function makeHandlers(): DockCommandHandlers {
     onStopUnits: vi.fn(),
     onCycleStance: vi.fn(),
     onClearSelection: vi.fn(),
-    onCenterBase: vi.fn()
+    onCenterBase: vi.fn(),
+    onCancelBuilding: vi.fn(),
+    onRetreat: vi.fn()
   };
 }
 
@@ -245,19 +247,22 @@ describe('buildDockPages — orders card', () => {
 });
 
 describe('buildDockPages — building cards', () => {
-  it('offers training and upgrades for an owned, finished barracks', () => {
+  it('offers training, upgrades, research and delete on a single page for an owned barracks', () => {
     const pages = buildDockPages(makeInput({ entity: building('BARRACKS') }));
-    expect(pages.map((page) => page.id)).toEqual(['TRAIN', 'UPGRADE']);
-    const train = pages[0].commands;
-    expect(ids(train)).toEqual(['train:SPEARMAN']);
-    expect(train[0].hotkey).toBe(UNIT_TRAINING_HOTKEY_BY_TYPE.SPEARMAN);
-    const upgrade = pages[1].commands;
-    expect(ids(upgrade)).toEqual(['upgrade:START', 'research:SPEARMAN']);
+    expect(pages.map((page) => page.id)).toEqual(['TRAIN']);
+    const cmds = pages[0].commands;
+    expect(ids(cmds)).toEqual([
+      'train:SPEARMAN',
+      'upgrade:START',
+      'research:SPEARMAN',
+      'building:DELETE'
+    ]);
+    expect(cmds[0].hotkey).toBe(UNIT_TRAINING_HOTKEY_BY_TYPE.SPEARMAN);
   });
 
   it('greys out training the player cannot pay for', () => {
     const pages = buildDockPages(makeInput({ entity: building('BARRACKS'), resources: BROKE }));
-    const train = pages.find((page) => page.id === 'TRAIN');
+    const train = pages[0];
     expect(train?.commands.find((command) => command.id === 'train:SPEARMAN')?.disabled).toBe(true);
   });
 
@@ -266,9 +271,15 @@ describe('buildDockPages — building cards', () => {
     const pages = buildDockPages(
       makeInput({ entity: building('BARRACKS', { trainingQueue: ['SPEARMAN'] }), handlers })
     );
-    const train = pages.find((page) => page.id === 'TRAIN');
-    expect(ids(train?.commands ?? [])).toEqual(['train:SPEARMAN', 'train:CANCEL']);
-    train?.commands.find((command) => command.id === 'train:CANCEL')?.action();
+    const cmds = pages[0]?.commands ?? [];
+    expect(ids(cmds)).toEqual([
+      'train:SPEARMAN',
+      'train:CANCEL',
+      'upgrade:START',
+      'research:SPEARMAN',
+      'building:DELETE'
+    ]);
+    cmds.find((command) => command.id === 'train:CANCEL')?.action();
     expect(handlers.onCancelTrain).toHaveBeenCalledWith('building-BARRACKS');
   });
 
@@ -277,9 +288,14 @@ describe('buildDockPages — building cards', () => {
     const pages = buildDockPages(
       makeInput({ entity: building('BARRACKS', { researchUnitType: 'SPEARMAN' }), handlers })
     );
-    const upgrade = pages.find((page) => page.id === 'UPGRADE');
-    expect(ids(upgrade?.commands ?? [])).toEqual(['upgrade:START', 'research:CANCEL']);
-    upgrade?.commands.find((command) => command.id === 'research:CANCEL')?.action();
+    const cmds = pages[0]?.commands ?? [];
+    expect(ids(cmds)).toEqual([
+      'train:SPEARMAN',
+      'upgrade:START',
+      'research:CANCEL',
+      'building:DELETE'
+    ]);
+    cmds.find((command) => command.id === 'research:CANCEL')?.action();
     expect(handlers.onCancelUnitUpgrade).toHaveBeenCalledWith('SPEARMAN');
   });
 
@@ -287,14 +303,18 @@ describe('buildDockPages — building cards', () => {
     const pages = buildDockPages(
       makeInput({ entity: building('BARRACKS', { upgradeTimeMs: 5000, upgradeProgressMs: 1000 }) })
     );
-    const upgrade = pages.find((page) => page.id === 'UPGRADE');
-    expect(ids(upgrade?.commands ?? [])).toEqual(['upgrade:CANCEL', 'research:SPEARMAN']);
+    const cmds = pages[0]?.commands ?? [];
+    expect(ids(cmds)).toEqual([
+      'train:SPEARMAN',
+      'upgrade:CANCEL',
+      'research:SPEARMAN',
+      'building:DELETE'
+    ]);
   });
 
   it('refuses the upgrade when both slots are taken, and explains it', () => {
     const pages = buildDockPages(makeInput({ entity: building('BARRACKS', { activeUpgrades: 2 }) }));
-    const upgrade = pages.find((page) => page.id === 'UPGRADE');
-    const start = upgrade?.commands.find((command) => command.id === 'upgrade:START');
+    const start = pages[0]?.commands.find((command) => command.id === 'upgrade:START');
     expect(start?.disabled).toBe(true);
     expect(start?.title).toContain(i18n.t('dock.slotsFull'));
   });
@@ -303,9 +323,7 @@ describe('buildDockPages — building cards', () => {
     const blocked = buildDockPages(
       makeInput({ entity: building('TOWN_CENTER', { coreLevels: {} }) })
     );
-    const start = blocked
-      .find((page) => page.id === 'UPGRADE')
-      ?.commands.find((command) => command.id === 'upgrade:START');
+    const start = blocked[0]?.commands.find((command) => command.id === 'upgrade:START');
     expect(start?.disabled).toBe(true);
     expect(start?.title).toContain(i18n.t('dock.gateBlocked'));
 
@@ -325,9 +343,7 @@ describe('buildDockPages — building cards', () => {
         })
       })
     );
-    const ready = open
-      .find((page) => page.id === 'UPGRADE')
-      ?.commands.find((command) => command.id === 'upgrade:START');
+    const ready = open[0]?.commands.find((command) => command.id === 'upgrade:START');
     expect(ready?.disabled).toBe(false);
   });
 
@@ -338,19 +354,67 @@ describe('buildDockPages — building cards', () => {
     expect(pages).toEqual([]);
   });
 
-  it('offers training on a foundation the panel also trains from', () => {
+  it('offers training and cancel on a single page for a foundation', () => {
+    const handlers = makeHandlers();
     const pages = buildDockPages(
-      makeInput({ entity: building('BARRACKS', { isConstructed: false, level: undefined }) })
+      makeInput({
+        entity: building('BARRACKS', { isConstructed: false, level: undefined }),
+        handlers
+      })
     );
     expect(pages.map((page) => page.id)).toEqual(['TRAIN']);
+    expect(ids(pages[0].commands)).toEqual(['train:SPEARMAN', 'building:CANCEL']);
+    pages[0].commands[1].action();
+    expect(handlers.onCancelBuilding).toHaveBeenCalledWith('building-BARRACKS');
+  });
+
+  it('routes building delete and portal retreat to the existing handlers', () => {
+    const handlers = makeHandlers();
+    const housePages = buildDockPages(makeInput({ entity: building('HOUSE'), handlers }));
+    const deleteCmd = housePages[0].commands.find((command) => command.id === 'building:DELETE');
+    expect(deleteCmd).toBeDefined();
+    deleteCmd?.action();
+    expect(handlers.onCancelBuilding).toHaveBeenCalledWith('building-HOUSE');
+
+    const tcPages = buildDockPages(
+      makeInput({ entity: building('TOWN_CENTER', { isDefaultTownCenter: true }), handlers })
+    );
+    expect(
+      tcPages.flatMap((page) => page.commands).some((command) => command.id === 'building:DELETE')
+    ).toBe(false);
+
+    const portalPages = buildDockPages(
+      makeInput({
+        entity: building('PORTAL', { isPortal: true }),
+        inRaid: true,
+        handlers
+      })
+    );
+    expect(portalPages.map((page) => page.id)).toEqual(['ORDERS']);
+    expect(ids(portalPages[0].commands)).toEqual(['building:RETREAT']);
+    portalPages[0].commands[0].action();
+    expect(handlers.onRetreat).toHaveBeenCalledTimes(1);
+
+    const idlePortalPages = buildDockPages(
+      makeInput({
+        entity: building('PORTAL', { isPortal: true }),
+        inRaid: false,
+        handlers
+      })
+    );
+    expect(idlePortalPages).toEqual([]);
+
+    const wallPages = buildDockPages(makeInput({ entity: building('WALL'), handlers }));
+    expect(wallPages.map((page) => page.id)).toEqual(['ORDERS']);
+    expect(ids(wallPages[0].commands)).toEqual(['building:DELETE']);
   });
 
   it('routes the train and upgrade clicks to the existing handlers', () => {
     const handlers = makeHandlers();
     const pages = buildDockPages(makeInput({ entity: building('BARRACKS'), handlers }));
-    pages[0].commands[0].action();
+    pages[0].commands.find((command) => command.id === 'train:SPEARMAN')?.action();
     expect(handlers.onTrainUnit).toHaveBeenCalledWith('building-BARRACKS', 'SPEARMAN');
-    pages[1].commands[0].action();
+    pages[0].commands.find((command) => command.id === 'upgrade:START')?.action();
     expect(handlers.onUpgradeBuilding).toHaveBeenCalledWith('building-BARRACKS');
   });
 });

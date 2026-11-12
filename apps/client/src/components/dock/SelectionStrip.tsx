@@ -1,7 +1,16 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Info } from 'lucide-react';
-import type { UnitType } from '@chien-quoc/shared';
+import { Crosshair, Gauge, Pickaxe, Shield, Swords, Timer } from 'lucide-react';
+import {
+  BUILDING_BLUEPRINTS,
+  type BuildingType,
+  type UnitType,
+  dropOffGatherMultiplier,
+  townCenterAuraMultiplier,
+  townCenterUnitAttackMultiplier,
+  trainerSpeedMultiplier,
+  trainerUnitBuffMultiplier
+} from '@chien-quoc/shared';
 import type { SelectedEntityData } from '../../game/scenes/WorldScene.js';
 import { buildingThumbnail } from '../buildingThumbnails.js';
 import { resourceThumbnail } from '../resourceThumbnails.js';
@@ -10,11 +19,8 @@ import { unitThumbnail } from './commandPages.js';
 
 export interface SelectionStripProps {
   entity: SelectedEntityData;
-  /** Localized name, shared with the popover title so both always agree. */
+  /** Localized name of the selected entity. */
   displayName: string;
-  /** The detail popover is open, which the Details button reflects. */
-  detailsOpen: boolean;
-  onToggleDetails: () => void;
 }
 
 /** CMB-01: same stance colours as `EntityDetails`, same order as the `D` key. */
@@ -40,21 +46,55 @@ interface StatusChip {
   tone: string;
 }
 
+/** Compact one-line summary of a building's level bonus or visual tier. */
+function summarizeBuildingStats(
+  entity: SelectedEntityData,
+  t: (key: string) => string
+): { icon: 'shield' | 'pickaxe'; text: string } | null {
+  if (entity.type !== 'building' || !entity.subType) return null;
+  const bType = entity.subType as BuildingType;
+  const bp = BUILDING_BLUEPRINTS[bType];
+  const level = entity.level ?? 1;
+
+  if (bType === 'TOWN_CENTER' && entity.isOwner) {
+    const ownerTc = entity.ownerTownCenterLevel ?? level;
+    const hpBuff = Math.round((townCenterAuraMultiplier(ownerTc) - 1) * 100);
+    const atkBuff = Math.round((townCenterUnitAttackMultiplier(ownerTc) - 1) * 100);
+    if (hpBuff > 0 || atkBuff > 0) {
+      return {
+        icon: 'shield',
+        text: `+${hpBuff}% HP · +${atkBuff}% ${t('details.attackPower')}`
+      };
+    }
+  } else if (bType === 'BARRACKS' || bType === 'STABLE' || bType === 'ARCHERY_RANGE') {
+    const speedPct = Math.round((1 - trainerSpeedMultiplier(level)) * 100);
+    const buffPct = Math.round((trainerUnitBuffMultiplier(level) - 1) * 100);
+    if (speedPct > 0 || buffPct > 0) {
+      return {
+        icon: 'shield',
+        text: `-${speedPct}% ${t('stats.trainingTime')} · +${buffPct}%`
+      };
+    }
+  } else if ((bp?.dropOffs.length ?? 0) > 0) {
+    const gatherPct = Math.round((dropOffGatherMultiplier(level) - 1) * 100);
+    if (gatherPct > 0) {
+      return {
+        icon: 'pickaxe',
+        text: `+${gatherPct}% ${t('stats.gatherSpeed')}`
+      };
+    }
+  }
+
+  return entity.visualTierName ? { icon: 'shield', text: entity.visualTierName } : null;
+}
+
 /**
- * DOCK-05: one line of identity, one line of health and one wrapped row of
- * statuses.
- *
- * The strip is a summary, not a second `EntityDetails`: at 156 px of dock the
- * only job is "what is selected, how hurt is it, what is it doing". Everything
- * that needs a paragraph (stats, upgrades, queues) lives in the popover this
- * button opens, so the strip can be pure read-only text with no scrolling —
- * the dock is height-locked and must never grow with a selection.
+ * DOCK-05: identity, health, core stats and status chips inside the fixed
+ * 156 px dock height with no scrolling.
  */
 export const SelectionStrip: React.FC<SelectionStripProps> = ({
   entity,
-  displayName,
-  detailsOpen,
-  onToggleDetails
+  displayName
 }) => {
   const { t } = useTranslation();
   const portrait = portraitUrl(entity);
@@ -116,24 +156,29 @@ export const SelectionStrip: React.FC<SelectionStripProps> = ({
     });
   }
 
+  const showUnitStats = entity.type === 'unit' && entity.attackPower !== undefined;
+  const showResourceStats = entity.remainingAmount !== undefined;
+  const buildingStatSummary =
+    !showUnitStats && !showResourceStats ? summarizeBuildingStats(entity, t) : null;
+
   return (
     <div
       data-selection-strip
-      className="aoe-panel pointer-events-auto flex h-full min-w-0 flex-1 flex-col gap-1 overflow-hidden rounded-lg p-2"
+      className="aoe-panel pointer-events-auto flex h-full min-w-0 flex-1 flex-col gap-1.5 overflow-hidden rounded p-2"
     >
-      {/* Row 1: portrait, name/type, and the one button that leaves the strip. */}
+      {/* Row 1: portrait and name/type. */}
       <div className="flex min-w-0 shrink-0 items-center gap-2">
         {portrait ? (
           <img
             src={portrait}
             alt=""
-            className="h-9 w-9 shrink-0 rounded-md border border-amber-500/60 bg-slate-900/90 object-contain p-0.5"
+            className="aoe-panel-inset h-9 w-9 shrink-0 rounded border border-amber-600/70 object-contain p-0.5"
             onError={(event) => {
               (event.currentTarget as HTMLImageElement).style.display = 'none';
             }}
           />
         ) : (
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-amber-500/60 bg-slate-900/90 text-[11px] font-bold text-amber-500">
+          <div className="aoe-panel-inset flex h-9 w-9 shrink-0 items-center justify-center rounded border border-amber-600/70 text-[11px] font-bold text-amber-500">
             ?
           </div>
         )}
@@ -156,53 +201,101 @@ export const SelectionStrip: React.FC<SelectionStripProps> = ({
             )}
           </span>
         </div>
-
-        <button
-          type="button"
-          onClick={onToggleDetails}
-          aria-expanded={detailsOpen}
-          aria-controls="dock-details"
-          title={t('dock.detailsTitle')}
-          aria-label={t('dock.detailsTitle')}
-          data-selection-details
-          className={`flex min-h-[28px] shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-semibold transition-colors ${
-            detailsOpen
-              ? 'border-amber-400 bg-amber-600/30 text-amber-100'
-              : 'aoe-button border-amber-900/70 text-slate-200'
-          }`}
-        >
-          <Info size={12} aria-hidden />
-          {t('dock.details')}
-        </button>
       </div>
 
       {/* Row 2: only entities that can take damage get a bar. */}
       {hpShown && (
         <div className="flex min-w-0 shrink-0 items-center gap-2" data-selection-hp>
-          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded border border-slate-700 bg-slate-900">
+          <div className="aoe-panel-inset h-2 min-w-0 flex-1 overflow-hidden rounded-sm">
             <div
               className={`h-full transition-all duration-200 ${hpClass}`}
               style={{ width: `${Math.max(0, Math.min(100, hpRatio * 100))}%` }}
             />
           </div>
-          <span className="shrink-0 font-mono text-[11px] text-slate-300">
+          <span className="shrink-0 font-mono text-[11px] tabular-nums text-amber-100/90">
             {entity.hp} / {entity.maxHp}
           </span>
         </div>
       )}
 
-      {/* Row 3: what the selection is doing right now, capped at two lines. */}
+      {/* Row 3: core stats bar so the middle AoE card stays informative without scrolling. */}
+      {showUnitStats && (
+        <div
+          data-selection-stats
+          className="aoe-panel-inset grid shrink-0 grid-cols-4 gap-1 rounded px-2 py-1 text-[11px] font-mono tabular-nums text-slate-200"
+        >
+          <span
+            className="flex items-center gap-1 truncate"
+            title={t('details.attackPower')}
+          >
+            <Swords size={12} className="shrink-0 text-red-400" aria-hidden />
+            <span className="text-emerald-300">{entity.attackPower}</span>
+          </span>
+          <span
+            className="flex items-center gap-1 truncate"
+            title={t('details.attackRange')}
+          >
+            <Crosshair size={12} className="shrink-0 text-sky-400" aria-hidden />
+            <span>{(entity.attackRange ?? 0).toFixed(1)}</span>
+          </span>
+          <span
+            className="flex items-center gap-1 truncate"
+            title={t('details.cooldown')}
+          >
+            <Timer size={12} className="shrink-0 text-amber-400" aria-hidden />
+            <span>{`${((entity.attackCooldownMs ?? 0) / 1000).toFixed(1)}s`}</span>
+          </span>
+          <span
+            className="flex items-center gap-1 truncate"
+            title={t('details.speed')}
+          >
+            <Gauge size={12} className="shrink-0 text-emerald-400" aria-hidden />
+            <span>{(entity.speed ?? 0).toFixed(1)}</span>
+          </span>
+        </div>
+      )}
+
+      {showResourceStats && (
+        <div
+          data-selection-stats
+          className="aoe-panel-inset flex shrink-0 items-center justify-between gap-2 rounded px-2 py-1 text-[11px]"
+        >
+          <span className="flex items-center gap-1 text-slate-300">
+            <Pickaxe size={12} className="shrink-0 text-amber-400" aria-hidden />
+            {t('details.remaining')}
+          </span>
+          <span className="font-mono font-semibold tabular-nums text-amber-200">
+            {`${entity.remainingAmount}${entity.maxAmount !== undefined ? ` / ${entity.maxAmount}` : ''}`}
+          </span>
+        </div>
+      )}
+
+      {buildingStatSummary && (
+        <div
+          data-selection-stats
+          className="aoe-panel-inset flex shrink-0 items-center gap-1.5 rounded px-2 py-1 text-[11px] text-amber-200"
+        >
+          {buildingStatSummary.icon === 'pickaxe' ? (
+            <Pickaxe size={12} className="shrink-0 text-amber-400" aria-hidden />
+          ) : (
+            <Shield size={12} className="shrink-0 text-amber-400" aria-hidden />
+          )}
+          <span className="truncate">{buildingStatSummary.text}</span>
+        </div>
+      )}
+
+      {/* Row 4: what the selection is doing right now. */}
       {chips.length > 0 && (
         <div
           data-selection-status
-          className="flex max-h-[38px] min-w-0 flex-wrap gap-1 overflow-hidden"
+          className="flex max-h-[34px] min-w-0 flex-wrap gap-1 overflow-hidden"
         >
           {chips.map((chip) => (
             <span
               key={chip.key}
               data-status-chip={chip.key}
               title={chip.label}
-              className={`truncate rounded border border-slate-700/70 bg-slate-900/70 px-1 py-0.5 text-[11px] leading-none ${chip.tone}`}
+              className={`aoe-panel-inset truncate rounded px-1.5 py-0.5 text-[11px] leading-tight ${chip.tone}`}
             >
               {chip.label}
             </span>

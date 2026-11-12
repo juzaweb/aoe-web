@@ -91,7 +91,7 @@ export const CommandCard: React.FC<CommandCardProps> = ({ pages }) => {
   return (
     <div
       data-command-card
-      className="aoe-panel pointer-events-auto flex h-full shrink-0 flex-col overflow-hidden rounded-lg"
+      className="aoe-panel pointer-events-auto flex h-full shrink-0 flex-col overflow-hidden rounded"
       style={{ width: DOCK_CARD_WIDTH_PX, padding: DOCK_PADDING_PX, gap: DOCK_GAP_PX }}
     >
       <div className="flex shrink-0 items-center gap-1" style={{ height: DOCK_HEADER_PX }}>
@@ -155,7 +155,7 @@ export const CommandCard: React.FC<CommandCardProps> = ({ pages }) => {
             key={`empty-${index}`}
             aria-hidden="true"
             data-command-slot-empty
-            className="rounded-md border border-slate-800/40 bg-slate-900/30"
+            className="aoe-panel-inset rounded opacity-60"
             style={{ height: DOCK_SLOT_PX }}
           />
         ))}
@@ -190,12 +190,12 @@ const CommandSlot: React.FC<CommandSlotProps> = ({ command, onHover }) => {
       onFocus={() => onHover(command.id)}
       onMouseLeave={() => onHover(null)}
       onBlur={() => onHover(null)}
-      className={`relative flex items-center justify-center rounded-md border transition-colors ${
+      className={`relative flex items-center justify-center rounded border transition-colors ${
         command.active
-          ? 'border-amber-400 bg-amber-600/30 ring-1 ring-amber-400'
+          ? 'border-amber-400 bg-amber-600/35 ring-1 ring-amber-400'
           : command.disabled
-            ? 'cursor-not-allowed border-slate-800 bg-slate-900/60 opacity-50'
-            : 'aoe-button border-amber-900/70 text-slate-200'
+            ? 'aoe-panel-inset cursor-not-allowed opacity-55'
+            : 'aoe-button text-amber-100'
       }`}
       style={{ width: DOCK_SLOT_PX, height: DOCK_SLOT_PX }}
     >
@@ -233,7 +233,7 @@ const CommandSlot: React.FC<CommandSlotProps> = ({ command, onHover }) => {
         <span
           aria-hidden="true"
           data-command-locked
-          className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-slate-950/70"
+          className="pointer-events-none absolute inset-0 flex items-center justify-center rounded bg-stone-950/75"
         >
           <Lock size={14} className="text-amber-400" />
         </span>

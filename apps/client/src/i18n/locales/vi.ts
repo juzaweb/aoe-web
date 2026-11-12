@@ -152,7 +152,10 @@ const vi = {
     cancelResearch: 'Huỷ nghiên cứu',
     cancelResearchTitle: 'Huỷ nghiên cứu đang chạy và hoàn lại giá',
     slotsFull: 'Đã dùng đủ 2 slot nâng cấp',
-    gateBlocked: 'Cần các công trình trụ cột đạt cùng cấp'
+    gateBlocked: 'Cần các công trình trụ cột đạt cùng cấp',
+    cancelBuilding: 'Huỷ công trình',
+    deleteBuilding: 'Xoá công trình',
+    retreat: 'Rút quân'
   },
   placement: {
     placing: 'Đang đặt {{name}}',

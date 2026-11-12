@@ -130,13 +130,6 @@ export const App: React.FC = () => {
 
   // Selection & Placement
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntityData | null>(null);
-  /**
-   * DOCK-03: the id of the selection whose full sheet is open — not a boolean.
-   * Keying the popover to the entity makes "a new selection closes the sheet"
-   * a property of the value instead of an effect that closes it one paint
-   * later, and it cannot briefly show the previous entity's sheet.
-   */
-  const [detailsEntityId, setDetailsEntityId] = useState<string | null>(null);
   const [activeBuildingType, setActiveBuildingType] = useState<BuildingType | null>(null);
   /** Kingdom-only road paint tool; null when the tool is not open. */
   const [roadMode, setRoadMode] = useState<RoadMode | null>(null);
@@ -235,14 +228,8 @@ export const App: React.FC = () => {
    * not keep listening to the keyboard: Phaser binds keys at the window level,
    * so `A`/`P`/`Q`… would still order the player's own army from behind the
    * overlay. Input is restored when the viewer closes the window.
-   *
-   * DOCK-03: the detail popover is a modal sheet over the map for the same
-   * reason — Escape and the order keys must close it, not reach the army behind
-   * it — so it disables scene input through the same switch.
    */
   const spectateOpen = spectator !== null;
-  const detailsOpen = selectedEntity !== null && detailsEntityId === selectedEntity.id;
-  const detailsSheetOpen = !isCompact && detailsOpen;
   /**
    * UIX-10: everything that lives in the top-centre column, in priority order.
    * Placement is a steady state, a rejection is transient feedback, and
@@ -254,9 +241,9 @@ export const App: React.FC = () => {
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
-    scene.setInputEnabled(!spectateOpen && !detailsSheetOpen);
+    scene.setInputEnabled(!spectateOpen);
     return () => scene.setInputEnabled(true);
-  }, [spectateOpen, detailsSheetOpen]);
+  }, [spectateOpen]);
 
   // Restore a previous session on load so a refresh drops straight back in.
   useEffect(() => {
@@ -804,7 +791,6 @@ export const App: React.FC = () => {
     setIsJoined(false);
     setIsConnected(false);
     setSelectedEntity(null);
-    setDetailsEntityId(null);
     setControlGroups([]);
     setSwitchError(null);
     setAuthUser(null);
@@ -1029,38 +1015,10 @@ export const App: React.FC = () => {
     onStopUnits: handleStopUnits,
     onCycleStance: handleCycleStance,
     onClearSelection: handleClearSelection,
-    onCenterBase: handleCenterBase
+    onCenterBase: handleCenterBase,
+    onCancelBuilding: handleCancelFoundation,
+    onRetreat: handleRetreat
   };
-
-  /**
-   * The full entity sheet, mounted only while the popover is open. It is the
-   * same component the phone dock uses, so statistics, upgrades, research and
-   * the destructive buttons keep exactly one implementation.
-   */
-  /**
-   * One switch for the sheet: the strip button opens it, the popover's close
-   * button and its outside-press handler close it. Both paths go through the
-   * same updater so they can never disagree about what "open" means.
-   */
-  const toggleDetails = () =>
-    setDetailsEntityId((open) => (selectedEntity ? (open === selectedEntity.id ? null : selectedEntity.id) : null));
-
-  const detailsSheet = selectedEntity ? (
-    <EntityDetails
-      variant="popover"
-      entity={selectedEntity}
-      playerResources={resources}
-      inRaid={raidSession !== null}
-      onRetreat={handleRetreat}
-      onTrainUnit={handleTrainUnit}
-      onCancelTrain={handleCancelTrain}
-      onCancelBuilding={handleCancelFoundation}
-      onUpgradeBuilding={handleUpgradeBuilding}
-      onCancelBuildingUpgrade={handleCancelBuildingUpgrade}
-      onUpgradeUnitType={handleUpgradeUnitType}
-      onCancelUnitUpgrade={handleCancelUnitUpgrade}
-    />
-  ) : null;
 
   return (
     <div className="app-shell bg-slate-950 font-sans">
@@ -1207,12 +1165,9 @@ export const App: React.FC = () => {
             wallMode={wallMode}
             room={room}
             sceneRef={sceneRef}
-            detailsOpen={detailsOpen}
-            onToggleDetails={toggleDetails}
             onPanToGrid={handlePanToGrid}
             onCommandAtGrid={handleCommandAtGrid}
             handlers={dockHandlers}
-            details={detailsSheet}
           />
         )
       )}

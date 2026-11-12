@@ -88,6 +88,8 @@ export interface DockCommandHandlers {
   onCycleStance: () => void;
   onClearSelection: () => void;
   onCenterBase: () => void;
+  onCancelBuilding: (buildingId: string) => void;
+  onRetreat: () => void;
 }
 
 export interface DockPageInput {
@@ -464,6 +466,45 @@ function upgradeCommands(entity: SelectedEntityData, input: DockPageInput): Dock
   return commands.slice(0, DOCK_SLOT_CAPACITY);
 }
 
+function buildingDeleteOrCancelCommand(
+  entity: SelectedEntityData,
+  handlers: DockCommandHandlers
+): DockCommand | null {
+  const isFoundation = entity.isConstructed === false;
+  const canDelete = entity.isConstructed === true && !entity.isPortal && !entity.isDefaultTownCenter;
+  if (!isFoundation && !canDelete) return null;
+
+  return {
+    id: isFoundation ? 'building:CANCEL' : 'building:DELETE',
+    label: i18n.t(isFoundation ? 'dock.cancelBuilding' : 'dock.deleteBuilding'),
+    title: i18n.t(isFoundation ? 'details.cancelBuildingTitle' : 'details.deleteBuildingTitle'),
+    hotkey: 'Del',
+    thumbnail: null,
+    art: isFoundation ? 'CANCEL_BUILDING' : 'DELETE_BUILDING',
+    disabled: false,
+    active: false,
+    action: () => handlers.onCancelBuilding(entity.id)
+  };
+}
+
+function buildingRetreatCommand(
+  entity: SelectedEntityData,
+  inRaid: boolean,
+  handlers: DockCommandHandlers
+): DockCommand | null {
+  if (!entity.isPortal || !inRaid) return null;
+  return {
+    id: 'building:RETREAT',
+    label: i18n.t('dock.retreat'),
+    title: i18n.t('details.retreatAll'),
+    thumbnail: null,
+    art: 'RETREAT',
+    disabled: false,
+    active: false,
+    action: () => handlers.onRetreat()
+  };
+}
+
 /**
  * The pages the card shows for the current selection, in reading order.
  *
@@ -493,12 +534,38 @@ export function buildDockPages(input: DockPageInput): DockPage[] {
 
   if (entity.type === 'building' && entity.isOwner === true) {
     const training = trainCommands(entity, input);
-    if (training.length > 0) {
-      pages.push({ id: 'TRAIN', label: i18n.t('dock.pageTrain'), commands: training });
-    }
     const upgrades = upgradeCommands(entity, input);
-    if (upgrades.length > 0) {
-      pages.push({ id: 'UPGRADE', label: i18n.t('dock.pageUpgrade'), commands: upgrades });
+    const deleteOrCancel = buildingDeleteOrCancelCommand(entity, input.handlers);
+    const retreat = buildingRetreatCommand(entity, input.inRaid, input.handlers);
+    const buildingOrders = [retreat, deleteOrCancel].filter(
+      (command): command is DockCommand => command !== null
+    );
+    const combined = [...training, ...upgrades, ...buildingOrders];
+
+    if (combined.length > 0 && combined.length <= DOCK_SLOT_CAPACITY) {
+      const id: DockPageId =
+        training.length > 0 ? 'TRAIN' : upgrades.length > 0 ? 'UPGRADE' : 'ORDERS';
+      const label =
+        id === 'TRAIN'
+          ? i18n.t('dock.pageTrain')
+          : id === 'UPGRADE'
+            ? i18n.t('dock.pageUpgrade')
+            : i18n.t('dock.pageOrders');
+      pages.push({ id, label, commands: combined });
+    } else if (combined.length > DOCK_SLOT_CAPACITY) {
+      if (training.length > 0) {
+        pages.push({ id: 'TRAIN', label: i18n.t('dock.pageTrain'), commands: training });
+      }
+      if (upgrades.length > 0) {
+        pages.push({ id: 'UPGRADE', label: i18n.t('dock.pageUpgrade'), commands: upgrades });
+      }
+      if (buildingOrders.length > 0) {
+        pages.push({
+          id: 'ORDERS',
+          label: i18n.t('dock.pageOrders'),
+          commands: buildingOrders.slice(0, DOCK_SLOT_CAPACITY)
+        });
+      }
     }
   }
 

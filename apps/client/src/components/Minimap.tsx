@@ -540,10 +540,10 @@ export const Minimap: React.FC<MinimapProps> = ({
     // takes layout height.
     <div
       data-minimap-desktop
-      className="aoe-panel pointer-events-auto relative flex items-center justify-center rounded-lg p-1.5"
+      className="aoe-panel pointer-events-auto relative flex items-center justify-center rounded p-1.5"
     >
       <span
-        className={`absolute left-1 top-1 z-10 rounded bg-slate-950/80 px-1.5 font-medieval text-[11px] font-bold tracking-wider ${
+        className={`absolute left-1 top-1 z-10 rounded border border-amber-800/60 bg-stone-950/85 px-1.5 font-medieval text-[11px] font-bold tracking-wider ${
           zoneKind === 'battlefield' ? 'text-red-400' : 'text-amber-400'
         }`}
       >
@@ -558,7 +558,7 @@ export const Minimap: React.FC<MinimapProps> = ({
         onPointerCancel={clearLongPress}
         onPointerLeave={clearLongPress}
         onContextMenu={handleMinimapContextMenu}
-        className="rounded cursor-crosshair border border-amber-900/50 shadow-inner"
+        className="rounded cursor-crosshair border border-amber-800/70 shadow-inner"
         style={{ width: MINIMAP_CSS_SIZE, height: MINIMAP_CSS_SIZE }}
       />
     </div>

@@ -149,7 +149,10 @@ const en = {
     cancelResearch: 'Cancel',
     cancelResearchTitle: 'Cancel the running research and refund its cost',
     slotsFull: 'Both upgrade slots are in use',
-    gateBlocked: 'Core buildings must reach the same level first'
+    gateBlocked: 'Core buildings must reach the same level first',
+    cancelBuilding: 'Cancel building',
+    deleteBuilding: 'Delete building',
+    retreat: 'Retreat'
   },
   placement: {
     placing: 'Placing {{name}}',

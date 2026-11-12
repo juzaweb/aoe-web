@@ -26,7 +26,9 @@ function handlers(): DockCommandHandlers {
     onStopUnits: vi.fn(),
     onCycleStance: vi.fn(),
     onClearSelection: vi.fn(),
-    onCenterBase: vi.fn()
+    onCenterBase: vi.fn(),
+    onCancelBuilding: vi.fn(),
+    onRetreat: vi.fn()
   };
 }
 
@@ -46,7 +48,6 @@ function villager(): SelectedEntityData {
 
 function renderDock(options: {
   entity?: SelectedEntityData | null;
-  detailsOpen?: boolean;
   displayName?: string;
 } = {}): string {
   const entity = options.entity === undefined ? villager() : options.entity;
@@ -63,12 +64,9 @@ function renderDock(options: {
       wallMode={null}
       room={null}
       sceneRef={React.createRef()}
-      detailsOpen={options.detailsOpen ?? false}
-      onToggleDetails={() => undefined}
       onPanToGrid={() => undefined}
       onCommandAtGrid={() => undefined}
       handlers={handlers()}
-      details={null}
     />
   );
 }
@@ -86,9 +84,8 @@ describe('DockBar server render', () => {
     expect(html).toContain(`height:${DOCK_HEIGHT_PX}px`);
     expect(countSlots(html)).toBe(DOCK_SLOT_CAPACITY);
     expect(html).toContain('data-selection-strip');
-    // UIX-07: the full entity sheet only exists once the player asks for it.
+    expect(html).not.toContain('data-selection-details');
     expect(html).not.toContain('data-details-popover');
-    expect(html).toContain('aria-expanded="false"');
   });
 
   it('collapses to the radar alone when nothing is selected', async () => {
@@ -132,15 +129,6 @@ describe('DockBar server render', () => {
     expect(houseHtml).not.toContain('data-command-page-prev');
   });
 
-  it('mounts the detail sheet inside the popover when it is open', async () => {
-    await i18n.changeLanguage('vi');
-    const html = renderDock({ detailsOpen: true, displayName: 'Nông dân' });
-
-    expect(html).toContain('data-details-popover');
-    expect(html).toContain('role="dialog"');
-    expect(html).toContain('aria-expanded="true"');
-  });
-
   it('follows the active language', async () => {
     await i18n.changeLanguage('en');
     const english = renderDock();
@@ -150,5 +138,55 @@ describe('DockBar server render', () => {
     const vietnamese = renderDock();
     expect(vietnamese).toContain(i18n.t('dock.pageBuild'));
     expect(english).not.toBe(vietnamese);
+  });
+
+  it('renders compact combat stats for units and remaining stockpile for resources', async () => {
+    await i18n.changeLanguage('en');
+    const unitHtml = renderDock({
+      entity: {
+        ...villager(),
+        attackPower: 5,
+        attackRange: 1.2,
+        attackCooldownMs: 1500,
+        speed: 3.5
+      }
+    });
+    expect(unitHtml).toContain('data-selection-stats');
+    expect(unitHtml).toContain('5');
+    expect(unitHtml).toContain('1.2');
+    expect(unitHtml).toContain('1.5s');
+    expect(unitHtml).toContain('3.5');
+
+    const resourceHtml = renderDock({
+      entity: {
+        id: 'tree-1',
+        type: 'resource',
+        name: 'TREE',
+        subType: 'TREE',
+        remainingAmount: 85,
+        maxAmount: 100
+      } as SelectedEntityData
+    });
+    expect(resourceHtml).toContain('data-selection-stats');
+    expect(resourceHtml).toContain('85 / 100');
+
+    const farmHtml = renderDock({
+      entity: {
+        id: 'farm-1',
+        type: 'building',
+        name: 'FARM',
+        subType: 'FARM',
+        isOwner: true,
+        isConstructed: true,
+        hp: 400,
+        maxHp: 400,
+        level: 1,
+        maxLevel: 10,
+        remainingAmount: 220,
+        maxAmount: 250
+      } as SelectedEntityData
+    });
+    expect(farmHtml).toContain('data-selection-stats');
+    expect(farmHtml).toContain('220 / 250');
   });
 });

@@ -1,16 +1,19 @@
 import React from 'react';
 import {
   ArrowUpCircle,
+  Ban,
   CircleSlash,
   Eraser,
   Hammer,
   Hand,
   Landmark,
+  LogOut,
   Repeat,
   RotateCcw,
   Route,
   Shield,
   Swords,
+  Trash2,
   Undo2,
   UserX,
   X
@@ -48,7 +51,10 @@ const COMMAND_ICONS: Record<string, IconComponent> = {
   CANCEL_TRAIN: UserX,
   CANCEL_UPGRADE: Undo2,
   CANCEL_RESEARCH: RotateCcw,
-  UPGRADE: ArrowUpCircle
+  UPGRADE: ArrowUpCircle,
+  CANCEL_BUILDING: Ban,
+  DELETE_BUILDING: Trash2,
+  RETREAT: LogOut
 };
 
 /**
