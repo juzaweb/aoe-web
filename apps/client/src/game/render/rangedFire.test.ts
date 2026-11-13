@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { BUILDING_BLUEPRINTS, UNIT_BLUEPRINTS } from '@chien-quoc/shared';
+import {
+  BUILDING_BLUEPRINTS,
+  UNIT_BLUEPRINTS,
+  attackReach,
+  distanceToFootprint
+} from '@chien-quoc/shared';
 import {
   ARCHER_DRAW_MS,
   RangedFireSim,
-  distanceToFootprint,
+  RangedWorldSnapshot,
   type BuildingShotSource,
   type RangedWorld,
   type UnitShotSource
@@ -110,6 +115,7 @@ describe('RangedFireSim archers', () => {
         fromX: 10,
         fromY: 10,
         targetId: 'enemy-1',
+        targetKind: 'unit',
         toX: 12,
         toY: 10
       }
@@ -199,6 +205,7 @@ describe('RangedFireSim archers', () => {
         fromX: 10,
         fromY: 10,
         targetId: 'house-1',
+        targetKind: 'building',
         toX: 15,
         toY: 9
       }
@@ -265,6 +272,7 @@ describe('RangedFireSim towers', () => {
         fromX: 1,
         fromY: 1,
         targetId: 'enemy-1',
+        targetKind: 'unit',
         toX: 3,
         toY: 3
       }
@@ -272,6 +280,19 @@ describe('RangedFireSim towers', () => {
 
     expect(sim.update(1, world(units, buildings))).toEqual([]);
     expect(sim.update(TOWER_COOLDOWN_MS, world(units, buildings))).toHaveLength(1);
+  });
+
+  it('breaks a tie between two equidistant enemies with the later one', () => {
+    const sim = new RangedFireSim();
+    // Identical positions, so distance cannot separate them. The server's scan
+    // keeps the last candidate when distances are equal; an arrow naming the
+    // other one would point at a unit the damage never touched.
+    const first = enemy({ id: 'enemy-a', x: 3, y: 3 });
+    const second = enemy({ id: 'enemy-b', x: 3, y: 3 });
+
+    const [shot] = sim.update(0, world([first, second], [tower()]));
+
+    expect(shot.targetId).toBe('enemy-b');
   });
 
   it('stays loaded while nothing is in range and fires the frame a target arrives', () => {
@@ -393,5 +414,99 @@ describe('RangedFireSim timer bookkeeping', () => {
     };
 
     expect(run()).toEqual(run());
+  });
+});
+
+describe('RangedFireSim reach against the server rule', () => {
+  it('fires inside the margin the server adds to a unit target', () => {
+    const sim = new RangedFireSim();
+    const reach = attackReach(ARCHER_RANGE, 'unit');
+    // Halfway into the margin band the server already counts a hit, so the
+    // client has to draw the arrow for it: HP dropping with nothing in the air
+    // is exactly the artefact this rule exists to prevent.
+    const inMargin = [archer(), enemy({ x: 10 + (ARCHER_RANGE + reach) / 2 })];
+
+    expect(sim.update(0, world(inMargin))).toEqual([]);
+    expect(sim.update(ARCHER_DRAW_MS, world(inMargin))).toHaveLength(1);
+  });
+
+  it('holds fire just outside the margin, where the server lands no hit', () => {
+    const sim = new RangedFireSim();
+    const reach = attackReach(ARCHER_RANGE, 'unit');
+    const beyond = [archer(), enemy({ x: 10 + reach + 0.1 })];
+
+    expect(sim.update(0, world(beyond))).toEqual([]);
+    expect(sim.update(ARCHER_DRAW_MS, world(beyond))).toEqual([]);
+    expect(sim.update(ARCHER_DRAW_MS * 2, world(beyond))).toEqual([]);
+  });
+
+  it('fires at exactly the reach the server allows, not one step inside it', () => {
+    const sim = new RangedFireSim();
+    const reach = attackReach(ARCHER_RANGE, 'unit');
+    const atEdge = [archer(), enemy({ x: 10 + reach })];
+
+    expect(sim.update(0, world(atEdge))).toEqual([]);
+    // The server's check is `distance <= reach`, so the boundary itself is a hit
+    // and the arrow has to exist there too.
+    expect(sim.update(ARCHER_DRAW_MS, world(atEdge))).toHaveLength(1);
+  });
+
+  it('uses the wider margin a building target gets', () => {
+    const sim = new RangedFireSim();
+    const reach = attackReach(ARCHER_RANGE, 'building');
+    // Footprint starts at x = 16, i.e. six tiles from the archer: inside the
+    // 1.5-tile building margin, outside the 0.5-tile unit margin.
+    const house = tower({ id: 'house-3', ownerId: 'player-2', type: 'HOUSE', gridX: 16, gridY: 8 });
+    const attacking = archer({ targetEntityId: 'house-3', targetEntityType: 'building' });
+
+    expect(reach).toBeGreaterThan(attackReach(ARCHER_RANGE, 'unit'));
+    expect(sim.update(0, world([attacking], [house]))).toEqual([]);
+    expect(sim.update(ARCHER_DRAW_MS, world([attacking], [house]))).toHaveLength(1);
+  });
+});
+
+describe('RangedWorldSnapshot', () => {
+  it('copies every field the simulation reads, in world order', () => {
+    const snapshot = new RangedWorldSnapshot();
+    snapshot.update([archer({ id: 'a' }), enemy({ id: 'b' })], [tower({ id: 't' })]);
+
+    expect(snapshot.units.map((unit) => unit.id)).toEqual(['a', 'b']);
+    expect(snapshot.units[0]).toEqual(archer({ id: 'a' }));
+    expect(snapshot.buildings[0]).toEqual(tower({ id: 't' }));
+  });
+
+  it('truncates when entities leave, so a dead unit cannot keep firing', () => {
+    const snapshot = new RangedWorldSnapshot();
+    snapshot.update([archer(), enemy()], [tower()]);
+    snapshot.update([archer()], []);
+
+    expect(snapshot.units).toHaveLength(1);
+    expect(snapshot.buildings).toHaveLength(0);
+  });
+
+  it('reuses the slot objects instead of allocating new ones per frame', () => {
+    const snapshot = new RangedWorldSnapshot();
+    snapshot.update([archer()], [tower()]);
+    const firstUnit = snapshot.units[0];
+    const firstBuilding = snapshot.buildings[0];
+
+    snapshot.update([archer({ x: 4, y: 4 })], [tower({ isConstructed: false })]);
+
+    expect(snapshot.units[0]).toBe(firstUnit);
+    expect(snapshot.buildings[0]).toBe(firstBuilding);
+    expect(snapshot.units[0].x).toBe(4);
+    expect(snapshot.buildings[0].isConstructed).toBe(false);
+  });
+
+  it('accepts one-shot iterables, like a Colyseus map values() iterator', () => {
+    const snapshot = new RangedWorldSnapshot();
+    function* units() {
+      yield archer();
+      yield enemy();
+    }
+    snapshot.update(units(), [][Symbol.iterator]());
+
+    expect(snapshot.units).toHaveLength(2);
+    expect(snapshot.buildings).toHaveLength(0);
   });
 });

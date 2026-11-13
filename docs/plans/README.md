@@ -38,6 +38,7 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | [`27-ui-ux-recheck-fixes.md`](./27-ui-ux-recheck-fixes.md) | Sửa phát hiện mới sau recheck UI/UX: live region cho toast/alert, dialog + focus cho 4 overlay, stack lớp phủ top-center, i18n nhãn thành trì, contrast 11px, reduced motion, tap target 44px, tooltip bàn phím/cảm ứng, công tắc âm thanh, focus-visible (`UIX-08..UIX-18`) | DONE 2026-11-12 — code + test (client 56 file/669 test, server 31/468, `pnpm build` xanh); còn các mục ⏳ verify tay |
 | [`28-aoe-command-dock.md`](./28-aoe-command-dock.md) | Dock lệnh kiểu AoE ở desktop: bỏ bảng Xây 336 px + panel chi tiết 320 px, thay bằng dải 156 px (radar · dải thông tin mỏng · lưới lệnh 5×3 · popover Chi tiết) (`DOCK-01`..`DOCK-08`) | IMPLEMENTED — chờ verify tay UI |
 | [`29-ranged-arrow-fx.md`](./29-ranged-arrow-fx.md) | Hiệu ứng bắn tên cho cung thủ và trụ canh: asset mũi tên vẽ bằng Canva (PNG tách nền) + projectile bay theo cung, cắm vào mục tiêu, bụi va chạm, tôn trọng reduced motion (`FX-01`) | IMPLEMENTED — chờ verify tay trong trận |
+| [`30-team-color-unit-sheets.md`](./30-team-color-unit-sheets.md) | Màu phe cho lính 3D: bake 2 lớp sheet (body + accent) từ `linh.glb`, accent render grayscale rồi `setTint` theo `OwnerColorRegistry`, giữ Phaser 2D không thêm three.js runtime (`TEAM-01..TEAM-08`) | APPROVED — chờ code |
 Status: `DRAFT` (chưa chốt quyết định) → `APPROVED` (bắt đầu code) → `DONE`.
 
 Phase 01 đã chốt 4 quyết định D1–D4 ngày 2026-11-01 (xem §11 của file phase); chưa có dòng code nào
@@ -116,6 +117,17 @@ panel, arm "Ra lệnh" bị phím `A` ghi đè, ghost bị ngón thứ hai kéo,
 tap target HUD lên 44 px — chi tiết ở §12. Còn verify trên máy thật (iOS Safari page-zoom,
 safe-area, reconnect sau khoá màn hình). Xem `11-mobile-touch.md` §2 (D1–D10), §4 (bảng cử chỉ),
 §11 (kết quả đo) và §12 (review & fix).
+
+Phase 30 (team color cho lính 3D) là phase **art pipeline + client visual-only**: không đổi
+`packages/shared`, server, schema hay DB. Chốt ngày 2026-11-13: **không** đưa three.js vào
+runtime (client là Phaser 2D, trộn hai renderer = hai WebGL context, không share depth buffer,
+phải tự y-sort chéo), thay vào đó bake **hai lớp sheet** từ `linh.glb` — body + accent — và
+`setTint(ownerColor)` lớp accent lúc chạy. Accent render `mask × luminance` (grayscale) chứ
+không trắng phẳng, vì tint là phép nhân và nếp gấp vải chỉ còn nếu lớp accent giữ shading.
+Mask accent bake bằng Blender `Emit` (D3), camera 2:1 dimetric 30°/45° khớp `TILE_WIDTH 128 /
+TILE_HEIGHT 64`, cell giữ 192×168 của `SPEARMAN`. Phase thay PNG của `SPEARMAN` thay vì thêm
+`UnitType` mới (D6), và bắt buộc có mục `CREDITS.md` cho model trước khi merge (D10). Xem
+`30-team-color-unit-sheets.md` §2 (D1–D10) và §6 (task breakdown).
 
 ## Quy ước
 

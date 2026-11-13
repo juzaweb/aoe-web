@@ -9,6 +9,7 @@ import {
   ResourceType,
   UnitType,
   UNIT_BLUEPRINTS,
+  distanceToFootprint,
   gatherIntervalMs,
   getUnitLevelStats
 } from '@chien-quoc/shared';
@@ -18,7 +19,6 @@ import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { UnitState } from '../schema/UnitState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { approachPointOutsideFootprint } from './construction.js';
-import { distanceToFootprint } from './geometry.js';
 import { gatheredCapacity, gatheredType } from './gatherables.js';
 import { ownerIdOf } from './identity.js';
 

@@ -6,8 +6,10 @@ import {
   UNIT_BLUEPRINTS,
   UnitBlueprint,
   UnitType,
+  attackReach,
   citadelLayoutFor,
   clampRaidTownCenterHp,
+  distanceToFootprint,
   getBuildingLevelStats,
   getEffectiveUnitAttackPower,
   isCitadelInteriorTile,
@@ -23,7 +25,6 @@ import {
   isCitadelBuilding,
   isProtectedCitadelInteriorBuilding
 } from './citadel.js';
-import { distanceToFootprint } from './geometry.js';
 
 
 /**
@@ -399,14 +400,16 @@ export class CombatSystem {
   }
 
   /**
-   * Weapon range against the current target type. A unit is hit from half a tile
-   * around its centre, a building from one and a half around its footprint, so
-   * the reach feels the same against a 1x1 tower and a 4x4 town centre.
+   * Weapon range against the current target type.
+   *
+   * The margins live in `@chien-quoc/shared` (`attackReach`) because the client's
+   * arrow effect applies the same rule: an arrow is only drawn for a shot the
+   * server counted, so the two numbers must not drift apart.
    */
   private attackRangeAgainstTarget(unit: UnitState, blueprint: UnitBlueprint): number {
-    return (
-      blueprint.attackRange +
-      (unit.targetEntityType === 'building' ? 1.5 : 0.5)
+    return attackReach(
+      blueprint.attackRange,
+      unit.targetEntityType === 'building' ? 'building' : 'unit'
     );
   }
 

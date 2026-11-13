@@ -54,8 +54,7 @@ import { UNIT_ART, unitArt, unitSheets } from '../render/unitArt.js';
 import { RENDER_DELAY_MS, visualActionState } from '../render/unitMotion.js';
 import type { UnitMotion } from '../render/unitMotion.js';
 import { ARROW_ASSET_URL, ARROW_TEXTURE_KEY, ProjectileLayer } from '../render/projectiles.js';
-import { RangedFireSim } from '../render/rangedFire.js';
-import type { BuildingShotSource, UnitShotSource } from '../render/rangedFire.js';
+import { RangedFireSim, RangedWorldSnapshot } from '../render/rangedFire.js';
 
 /**
  * How far the pointer may travel (in world pixels) before a left-button press
@@ -491,16 +490,10 @@ export class WorldScene extends Phaser.Scene {
    */
   private readonly rangedFire = new RangedFireSim();
   /**
-   * Snapshot buffers handed to the fire simulation every frame. They are reused
-   * in place instead of rebuilt: a 300-unit brawl would otherwise allocate a
-   * few hundred throwaway objects per frame.
+   * Reused bridge from the replicated room state to the simulation's input. It
+   * copies in place, so a 300-unit brawl allocates nothing per frame.
    */
-  private readonly shotUnits: UnitShotSource[] = [];
-  private readonly shotBuildings: BuildingShotSource[] = [];
-  private readonly shotWorld: {
-    units: UnitShotSource[];
-    buildings: BuildingShotSource[];
-  } = { units: this.shotUnits, buildings: this.shotBuildings };
+  private readonly shotWorld = new RangedWorldSnapshot();
 
   constructor() {
     super('WorldScene');
@@ -2376,49 +2369,18 @@ export class WorldScene extends Phaser.Scene {
    * FX-01: releases the arrows this frame's replicated state calls for.
    *
    * Skipped while the world is frozen (a travel swaps rooms and the last frame
-   * stays on screen). It allocates nothing per frame: the source objects are
-   * reused out of `shotUnits` / `shotBuildings`, only their count changes.
-   * `RangedFireSim` owns the range rules and the cooldowns; this method only
-   * translates Colyseus schema objects into the plain shapes it reads, then hands
-   * the shots to the layer that paints them.
+   * stays on screen) and until the room's state has arrived. `RangedFireSim`
+   * owns the range rules and the cooldowns, `RangedWorldSnapshot` owns the
+   * schema-to-plain-object bridge; this method is only the per-frame wiring.
    */
   private updateProjectiles(time: number) {
-    const room = this.room;
-    if (!this.projectiles || !room || this.worldFrozen) return;
+    const state = this.room?.state;
+    if (!this.projectiles || !state?.units || !state.buildings || this.worldFrozen) return;
 
-    let unitCount = 0;
-    room.state.units.forEach((unit: any) => {
-      const source = this.shotUnits[unitCount] ?? ({} as UnitShotSource);
-      this.shotUnits[unitCount] = source;
-      source.id = unit.id;
-      source.ownerId = unit.ownerId;
-      source.type = unit.type;
-      source.x = unit.x;
-      source.y = unit.y;
-      source.actionState = unit.actionState;
-      source.targetEntityId = unit.targetEntityId;
-      source.targetEntityType = unit.targetEntityType;
-      unitCount++;
-    });
-    this.shotUnits.length = unitCount;
-
-    let buildingCount = 0;
-    room.state.buildings.forEach((building: any) => {
-      const source = this.shotBuildings[buildingCount] ?? ({} as BuildingShotSource);
-      this.shotBuildings[buildingCount] = source;
-      source.id = building.id;
-      source.ownerId = building.ownerId;
-      source.type = building.type;
-      source.gridX = building.gridX;
-      source.gridY = building.gridY;
-      source.sizeX = building.sizeX;
-      source.sizeY = building.sizeY;
-      source.isConstructed = building.isConstructed;
-      buildingCount++;
-    });
-    this.shotBuildings.length = buildingCount;
-
-    const shots = this.rangedFire.update(time, this.shotWorld);
+    // `values()` rather than the map itself: a Colyseus `MapSchema` iterates as
+    // `[key, value]` pairs, and the simulation reads entities.
+    const world = this.shotWorld.update(state.units.values(), state.buildings.values());
+    const shots = this.rangedFire.update(time, world);
     for (const shot of shots) this.projectiles.spawn(shot, time);
     this.projectiles.update(time);
   }

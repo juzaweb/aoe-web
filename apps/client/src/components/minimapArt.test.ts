@@ -65,13 +65,21 @@ describe('ground raster', () => {
 
   it('leaves the kingdom raster free of roads when none are painted', () => {
     const pixels = buildGroundPixels(TERRAIN_KINGDOM);
+    // One assertion over a count instead of one `expect` per pixel: the raster is
+    // 200x200, so the old shape ran 160 000 matcher calls and took ~0.6 s on its
+    // own — enough to blow the 5 s test timeout when the whole suite runs its 58
+    // workers in parallel. Same guarantee, none of the load sensitivity.
+    let roadPixels = 0;
     for (let i = 0; i < pixels.length; i += 4) {
-      const isRoadColor =
+      if (
         pixels[i] === MINIMAP_COLORS.road[0] &&
         pixels[i + 1] === MINIMAP_COLORS.road[1] &&
-        pixels[i + 2] === MINIMAP_COLORS.road[2];
-      expect(isRoadColor).toBe(false);
+        pixels[i + 2] === MINIMAP_COLORS.road[2]
+      ) {
+        roadPixels += 1;
+      }
     }
+    expect(roadPixels).toBe(0);
   });
 
   it('handles both map sizes', () => {

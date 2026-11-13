@@ -725,6 +725,31 @@ export function isRangedAttackRange(attackRange: number): boolean {
 }
 
 /**
+ * Extra reach a unit is granted over its blueprint `attackRange`, in tiles.
+ *
+ * A unit is hit from half a tile around its centre, a building from one and a
+ * half around its footprint, so the reach feels the same against a 1x1 tower and
+ * a 4x4 town centre. The server applies this to every hit
+ * (`CombatSystem.attackRangeAgainstTarget`); it lives here because the client's
+ * arrow effect has to agree with it. A shot the server counted as a hit must
+ * draw an arrow, and a shot it did not must not — the difference is visible as
+ * HP dropping with nothing flying at the target.
+ */
+export const UNIT_REACH_MARGIN = 0.5;
+export const BUILDING_REACH_MARGIN = 1.5;
+
+/**
+ * The reach a unit actually has with `attackRange` against `targetKind`.
+ *
+ * See {@link UNIT_REACH_MARGIN} and {@link BUILDING_REACH_MARGIN}. Used by both
+ * the server's damage rule and the client's projectile rule so the two cannot
+ * drift into "the arrow is missing but the damage is real".
+ */
+export function attackReach(attackRange: number, targetKind: 'unit' | 'building'): number {
+  return attackRange + (targetKind === 'building' ? BUILDING_REACH_MARGIN : UNIT_REACH_MARGIN);
+}
+
+/**
  * The building that trains `unitType`, or `null` when nothing does (MIL-01).
  *
  * Derived by scanning the blueprints rather than kept in a second table, so a

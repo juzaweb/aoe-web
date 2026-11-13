@@ -150,13 +150,10 @@ export class ProjectileLayer {
       .setDepth(PROJECTILE_DEPTH)
       .setOrigin(0.5, 0.5);
     this.fitArrowSprite(sprite);
-
-    // The shooter kind says who fired; the *target* kind decides where the arrow
-    // lands. Both live in their own sprite map, so the id tells them apart
-    // without the simulation having to carry a second field.
-    const targetKind: 'unit' | 'building' = this.scene.unitSprites.has(shot.targetId)
-      ? 'unit'
-      : 'building';
+    // Point at the target before the first frame moves it: at t = 0 the arrow has
+    // no step behind it, so an angle taken from the previous position would draw
+    // it facing east whatever direction the shot really goes.
+    sprite.setRotation(arrowAngle(from, fallbackTarget));
 
     const arrow: LiveArrow = {
       sprite,
@@ -166,7 +163,7 @@ export class ProjectileLayer {
       from: { x: from.x, y: from.y },
       last: { x: from.x, y: from.y },
       targetId: shot.targetId,
-      targetKind,
+      targetKind: shot.targetKind,
       fallbackTarget: { x: fallbackTarget.x, y: fallbackTarget.y },
       landed: false
     };

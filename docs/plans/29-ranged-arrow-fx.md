@@ -5,14 +5,15 @@ bay theo cung đạn từ người bắn tới mục tiêu, cắm vào mục ti�
 lúc trúng. Asset mũi tên là art gốc của dự án, vẽ bằng **Canva** rồi tách nền thành PNG
 trong suốt.
 
-> **Status: `IMPLEMENTED`** (2026-11-13). `FX-01` code + test xanh (client 58 file / 698 test,
+> **Status: `IMPLEMENTED`** (2026-11-13). `FX-01` code + test xanh (client 58 file / 707 test, server 31 file / 468 test,
 > `tsc` sạch, `pnpm --filter @chien-quoc/client build` xanh, `python scripts/process_arrow_asset.py --check`
 > xanh). Đã xem hiệu ứng chạy thật trong một sandbox Phaser (mũi tên bay + cắm vào mục tiêu);
 > **chờ verify tay trong trận thật** (raid hoặc bị đánh) vì cần dựng quân + giao chiến.
 
-**Phạm vi:** `apps/client` (+ `scripts/`, `docs/plans`). **Không** đổi `apps/server`,
-`packages/shared`, schema, protocol hay DB: server đã replicate đủ dữ kiện để client tự dựng
-lại phát bắn.
+**Phạm vi:** `apps/client` (+ `scripts/`, `docs/plans`) và một thay đổi nhỏ ở
+`packages/shared` / `apps/server`: hai helper dùng chung (`distanceToFootprint`, `attackReach`)
+được chuyển vào shared để server và client không thể lệch luật. **Không** đổi schema, protocol
+hay DB: server đã replicate đủ dữ kiện để client tự dựng lại phát bắn.
 
 ---
 
@@ -20,7 +21,8 @@ lại phát bắn.
 
 | Thứ đã có | Chỗ code | Ghi chú |
 | --- | --- | --- |
-| Luật bắn của server | `apps/server/src/rooms/CombatSystem.ts` (`updateTowerCombat`, `nearestEnemyOf`) | trụ bắn mỗi `attackCooldownMs`, chọn enemy gần nhất trong `attackRange` |
+| Luật bắn của server | `apps/server/src/rooms/CombatSystem.ts` (`updateTowerCombat`, `nearestEnemyOf`, `attackRangeAgainstTarget`) | trụ bắn mỗi `attackCooldownMs`, chọn enemy gần nhất trong `attackRange`; đơn vị bắn trong `attackRange + margin` (0,5 ô với unit, 1,5 ô với building) |
+| Khoảng cách tới footprint | `apps/server/src/rooms/geometry.ts` | dùng bởi combat, construction, economy |
 | Cung thủ có animation bắn | `render/unitArt.ts` (`ARCHER.attack`, 9 frame @ 10 fps) | chỉ là animation giương cung, không có mũi tên |
 | Trạng thái để suy ra phát bắn | `UnitState.actionState` = `ATTACKING`, `targetEntityId`, `targetEntityType` | replicate sẵn, không cần message mới |
 | Số liệu tầm bắn / nhịp bắn | `packages/shared/src/constants/index.ts` (`UNIT_BLUEPRINTS`, `BUILDING_BLUEPRINTS`, `isRangedAttackRange`) | ARCHER 5.0 ô / 1400 ms, TOWER 8 ô / 2000 ms |
@@ -63,7 +65,15 @@ trim → resize premultiplied → PNG RGBA 164×28) và `--check` đo lại file
 biên trong suốt, có pixel đặc, không còn viền xanh. Cùng mô hình với
 `scripts/process_generated_assets.py` (cổng + đường đất).
 
-### D4 — CHỐT: hiệu ứng có trần và tôn trọng `prefers-reduced-motion`
+### D4 — CHỐT: luật dùng chung đặt trong `packages/shared`, không chép lại
+
+`distanceToFootprint` và biên tầm bắn (`UNIT_REACH_MARGIN` 0,5 / `BUILDING_REACH_MARGIN` 1,5 →
+`attackReach()`) được đưa vào shared và dùng bởi **cả** server lẫn client. Trước đó client giữ
+đúng `attackRange` của blueprint, trong khi server cộng thêm biên: dải 0,5 ô ngoài cùng của
+cung thủ bị mất máu mà không có mũi tên nào bay — đúng loại lỗi "hiệu ứng nói dối". Một nguồn
+sự thật duy nhất là cách duy nhất để nó không tái diễn khi cân bằng lại chỉ số.
+
+### D5 — CHỐT: hiệu ứng có trần và tôn trọng `prefers-reduced-motion`
 
 - Trần `MAX_LIVE_ARROWS = 160`: một trận 300 lính không thể làm nổ display list.
 - Reduced motion (UIX-13): bay thẳng (arc = 0), thời gian bay ~35%, không bụi, cắm rồi tan nhanh.
@@ -83,7 +93,9 @@ WorldScene.update()
 
 | File | Vai trò |
 | --- | --- |
-| `apps/client/src/game/render/rangedFire.ts` | luật bắn thuần: archer (ATTACKING + target trong tầm, draw 700 ms rồi theo cooldown), tower (enemy gần nhất trong tầm, bắn ngay rồi theo cooldown), prune timer |
+| `apps/client/src/game/render/rangedFire.ts` | luật bắn thuần: archer (ATTACKING + target trong tầm **theo `attackReach` của server**, draw 700 ms rồi theo cooldown), tower (enemy gần nhất trong tầm, bắn ngay rồi theo cooldown), prune timer, `RangedWorldSnapshot` (cầu nối state → input, tái sử dụng buffer) |
+| `packages/shared/src/utils/geometry.ts` | `distanceToFootprint` dùng chung (server: combat/construction/economy, client: hiệu ứng tên) |
+| `packages/shared/src/constants/index.ts` | `UNIT_REACH_MARGIN`, `BUILDING_REACH_MARGIN`, `attackReach()` — biên tầm bắn dùng chung |
 | `apps/client/src/game/render/arrowFlight.ts` | hình học: `gridToScreenPoint`, `flightDurationMs` (60 ms/ô, kẹp 140–520 ms), `arrowPositionAt` (arc), `arrowAngle` |
 | `apps/client/src/game/render/projectiles.ts` | `ProjectileLayer`: sprite, arc, xoay theo vận tốc, cắm + bụi, trần 160, fallback texture |
 | `apps/client/src/game/scenes/WorldScene.ts` | preload `fx_arrow`, tạo layer, `updateProjectiles`, `reset()` khi đổi map |
@@ -120,12 +132,12 @@ Chi tiết đáng nhớ:
 
 | Lệnh | Kết quả |
 | --- | --- |
-| `pnpm --filter @chien-quoc/client exec vitest run rangedFire` | 20/20 |
+| `pnpm --filter @chien-quoc/client exec vitest run rangedFire` | 29/29 (gồm biên tầm bắn, tie-break, snapshot) |
 | `pnpm --filter @chien-quoc/client exec vitest run arrowFlight` | 13/13 |
-| `pnpm --filter @chien-quoc/client exec vitest run` (toàn bộ) | 58 file / 698 test |
+| `bash scripts/run-tests.sh` (gate đầy đủ: shared build → prisma → build 2 app → test 2 app) | client 58 file / 707 test, server 31 file / 468 test, exit 0 |
 | `pnpm --filter @chien-quoc/client exec tsc --noEmit -p tsconfig.json` (cwd `apps/client`) | exit 0 |
 | `pnpm --filter @chien-quoc/client build` | xanh |
-| `python scripts/process_arrow_asset.py --check` | `ok ... (164, 28) alpha=255 solid=1285` |
+| `python scripts/process_arrow_asset.py --check` | `ok ... (164, 28) alpha=255 solid=1285` (gate chạy tay: CI chỉ có Node, không cài Python) |
 
 ---
 

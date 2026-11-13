@@ -1,8 +1,13 @@
-import { MAP_GRID_HEIGHT, MAP_GRID_WIDTH, UNIT_BLUEPRINTS, UnitType } from '@chien-quoc/shared';
+import {
+  MAP_GRID_HEIGHT,
+  MAP_GRID_WIDTH,
+  UNIT_BLUEPRINTS,
+  UnitType,
+  distanceToFootprint
+} from '@chien-quoc/shared';
 import type { MapSchema } from '@colyseus/schema';
 import { BuildingState } from '../schema/BuildingState.js';
 import { UnitState } from '../schema/UnitState.js';
-import { distanceToFootprint } from './geometry.js';
 
 /**
  * CMD-05: how far from a foundation's footprint edge a villager can stand and

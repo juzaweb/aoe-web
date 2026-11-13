@@ -1,6 +1,8 @@
 import {
   BUILDING_BLUEPRINTS,
   UNIT_BLUEPRINTS,
+  attackReach,
+  distanceToFootprint,
   isRangedAttackRange,
   type BuildingType,
   type UnitBlueprint,
@@ -104,24 +106,76 @@ export interface RangedShot {
   fromX: number;
   fromY: number;
   targetId: string;
+  /**
+   * What was hit. Carried explicitly rather than re-derived by the renderer from
+   * the sprite maps: a target's sprite is created a frame or two after the state
+   * arrives, and guessing "no sprite yet, must be a building" would aim the
+   * arrow at the wrong height for exactly those frames.
+   */
+  targetKind: 'unit' | 'building';
   /** Grid position the arrow is aimed at, in tiles. */
   toX: number;
   toY: number;
 }
 
 /**
- * Distance in tiles from a point to a building's footprint, `0` inside it.
+ * Reusable buffer that turns a room's replicated units and buildings into the
+ * plain shape {@link RangedFireSim} reads.
  *
- * Mirrors the server's `distanceToFootprint` (`apps/server/src/rooms/geometry.ts`)
- * on purpose: a building is measured to its footprint rather than its centre, so
- * an archer standing against a Town Center's wall is in range even though the
- * centre of a 4x6 building is several tiles inside it. The same rule decides
- * which unit a tower can reach.
+ * Without it the scene would copy seven fields per unit per frame inside its own
+ * update loop, mixing room plumbing into a 2 500-line renderer. Here the bridge
+ * is small, testable under Node, and allocates nothing per frame: the slot
+ * objects are reused and only the array lengths change.
+ *
+ * Both inputs are iterables of the shot-source shapes. A Colyseus `MapSchema`
+ * iterates as `[key, value]` pairs, so the caller passes
+ * `room.state.units.values()` — the order of that iterable is what the
+ * simulation's determinism relies on.
  */
-export function distanceToFootprint(x: number, y: number, building: BuildingShotSource): number {
-  const dx = Math.max(building.gridX - x, 0, x - (building.gridX + building.sizeX));
-  const dy = Math.max(building.gridY - y, 0, y - (building.gridY + building.sizeY));
-  return Math.hypot(dx, dy);
+export class RangedWorldSnapshot implements RangedWorld {
+  readonly units: UnitShotSource[] = [];
+  readonly buildings: BuildingShotSource[] = [];
+
+  /** Copies this frame's entities in and returns itself as the sim's input. */
+  update(
+    units: Iterable<UnitShotSource>,
+    buildings: Iterable<BuildingShotSource>
+  ): RangedWorld {
+    let unitCount = 0;
+    for (const unit of units) {
+      const slot = this.units[unitCount] ?? ({} as UnitShotSource);
+      this.units[unitCount] = slot;
+      slot.id = unit.id;
+      slot.ownerId = unit.ownerId;
+      slot.type = unit.type;
+      slot.x = unit.x;
+      slot.y = unit.y;
+      slot.actionState = unit.actionState;
+      slot.targetEntityId = unit.targetEntityId;
+      slot.targetEntityType = unit.targetEntityType;
+      unitCount += 1;
+    }
+    // Truncating the array is what removes the entities that died this frame.
+    this.units.length = unitCount;
+
+    let buildingCount = 0;
+    for (const building of buildings) {
+      const slot = this.buildings[buildingCount] ?? ({} as BuildingShotSource);
+      this.buildings[buildingCount] = slot;
+      slot.id = building.id;
+      slot.ownerId = building.ownerId;
+      slot.type = building.type;
+      slot.gridX = building.gridX;
+      slot.gridY = building.gridY;
+      slot.sizeX = building.sizeX;
+      slot.sizeY = building.sizeY;
+      slot.isConstructed = building.isConstructed;
+      buildingCount += 1;
+    }
+    this.buildings.length = buildingCount;
+
+    return this;
+  }
 }
 
 /**
@@ -304,6 +358,7 @@ export class RangedFireSim {
       fromX: unit.x,
       fromY: unit.y,
       targetId: this.target.id,
+      targetKind: this.target.footprint ? 'building' : 'unit',
       toX: this.target.x,
       toY: this.target.y
     };
@@ -320,15 +375,16 @@ export class RangedFireSim {
 
     // A building is measured to its footprint, a unit to its centre — the same
     // split the server's range checks make, and the reason an archer can stand
-    // against a wall and still be in range of the building behind it. The server
-    // adds a small margin on top of the blueprint range (half a tile around a
-    // unit, one and a half around a building) for feel; the client keeps the
-    // blueprint number, because an arrow for a hit that never happened is worse
-    // than a missing arrow at the very edge.
+    // against a wall and still be in range of the building behind it. The reach
+    // is the server's, margin included (`attackReach` in the shared package):
+    // the server damages out to that number, so an arrow has to exist out to it
+    // too, or the outer band of the archer's range loses HP with nothing in the
+    // air to explain it.
+    const targetKind: 'unit' | 'building' = this.target.footprint ? 'building' : 'unit';
     const distance = this.target.footprint
       ? distanceToFootprint(unit.x, unit.y, this.target.footprint)
       : Math.hypot(this.target.x - unit.x, this.target.y - unit.y);
-    return distance <= blueprint.attackRange;
+    return distance <= attackReach(blueprint.attackRange, targetKind);
   }
 
   /**
@@ -406,6 +462,7 @@ export class RangedFireSim {
       fromX: building.gridX + building.sizeX / 2,
       fromY: building.gridY + building.sizeY / 2,
       targetId: target.id,
+      targetKind: 'unit',
       toX: target.x,
       toY: target.y
     };
