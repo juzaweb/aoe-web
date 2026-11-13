@@ -141,47 +141,83 @@ def match_chroma(art: Image.Image, target: float = TOWN_CHROMA_TARGET) -> tuple[
     return Image.fromarray(np.clip(array, 0, 255).astype(np.uint8), "RGBA"), mix
 
 
-def build_town_center(source: Path) -> dict:
-    """Crop, warm, desaturate, fit and anchor the keep like every building sheet.
+def compose_keep(source: Path) -> tuple[Image.Image, dict]:
+    """Turn a raw keep render into the shipped 576x440 sheet.
 
-    Unlike the wall this keeps the art's own silhouette: the keep is a single 4:3
-    render, not a geometry contract, so it is composited the same way the house
-    and barracks are.
+    The one place the sprite is built. `build_town_center` writes that result and
+    `candidate_sheet` compares several, and both have to apply the *same* matte,
+    warmth, desaturation, luminance match, fit and anchor -- otherwise a candidate
+    measured in the proof sheet is not the sprite that would ship.
     """
     art = ops.crop_to_alpha(matte(source))
     art = ops.apply_gain(art, TOWN_WARM_GAIN)
     art, chroma_mix = match_chroma(art)
     art, gain = ops.match_luminance(art, TOWN_MATCH_LUM)
-
     scaled, scale = ops.fit(art, TOWN_CANVAS)
     sheet = ops.place(scaled, TOWN_CANVAS, TOWN_ANCHOR)
+    return sheet, {"gain": gain, "chromaMix": chroma_mix, "scale": scale}
 
-    span, offset = ops.iso_base(sheet)
-    if span > ops.ISO_BASE_MAX_SPAN or offset > ops.ISO_BASE_MAX_OFFSET:
-        raise SystemExit(
-            f"{TOWN_OUT_REL}: base row reads as a flat wall "
-            f"(span {span:.2f} > {ops.ISO_BASE_MAX_SPAN}, "
-            f"offset {offset:.2f} > {ops.ISO_BASE_MAX_OFFSET})"
-        )
+
+def keep_failures(sheet: Image.Image) -> list[str]:
+    """Every contract breach of a finished keep sheet, as bare messages.
+
+    Shared by `--check` and the candidate sheet, so a threshold lives in one
+    place. The palette band is deliberately *not* a failure here: the shipped
+    Town Center is still the pre-phase-31 castle render (chroma 8.4, lum 74.3),
+    which cannot meet a band written for a rebuilt keep, so gating it would fail
+    `--check` on a file nobody changed. `palette_note` reports it instead.
+    """
+    failures: list[str] = []
+    if sheet.size != TOWN_CANVAS:
+        failures.append(f"size {sheet.size} != {TOWN_CANVAS}")
     if ops.bottom_inset(sheet) != 0:
-        raise SystemExit(f"{TOWN_OUT_REL}: art does not sit on the canvas bottom row")
-    for column in (0, sheet.width - 1):
-        for row in (0, sheet.height - 1):
-            if sheet.getpixel((column, row))[3] != 0:
-                raise SystemExit(f"{TOWN_OUT_REL}: canvas corner ({column}, {row}) is opaque")
+        failures.append("art does not sit on the canvas bottom row")
+    corner_alpha = [
+        sheet.getpixel((0, 0))[3],
+        sheet.getpixel((sheet.width - 1, 0))[3],
+        sheet.getpixel((0, sheet.height - 1))[3],
+        sheet.getpixel((sheet.width - 1, sheet.height - 1))[3],
+    ]
+    if any(corner_alpha):
+        failures.append("an opaque canvas corner")
+    span, offset = ops.iso_base(sheet)
+    if span > ops.ISO_BASE_MAX_SPAN:
+        failures.append(f"iso base span {span:.3f} > {ops.ISO_BASE_MAX_SPAN}")
+    if offset > ops.ISO_BASE_MAX_OFFSET:
+        failures.append(f"iso base offset {offset:.3f} > {ops.ISO_BASE_MAX_OFFSET}")
+    return failures
+
+
+def palette_note(sheet: Image.Image) -> str:
+    """The chroma/lum reading, alongside the band a rebuilt keep should hit."""
+    chroma = pca.measure_chroma(np.asarray(sheet))
+    lum = ops.luminance(sheet)
+    low, high = TOWN_LUM_RANGE
+    return (
+        f"chroma {chroma:.1f}, lum {lum:.1f} "
+        f"(a rebuilt keep should land in {TOWN_CHROMA_MIN:.0f}-{TOWN_CHROMA_MAX:.0f} "
+        f"chroma and {low:.0f}-{high:.0f} lum)"
+    )
+
+
+def build_town_center(source: Path) -> dict:
+    """Compose the keep, validate it, and write the shipped sheet."""
+    sheet, tuning = compose_keep(source)
+    failures = keep_failures(sheet)
+    if failures:
+        raise SystemExit(f"{TOWN_OUT_REL}: " + "; ".join(failures))
 
     target = ASSET_ROOT / TOWN_OUT_REL
     target.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(target, "PNG", optimize=True)
+    span, offset = ops.iso_base(sheet)
     return {
         "name": target.name,
         "size": sheet.size,
         "bbox": ops.alpha_bbox(sheet),
         "lum": ops.luminance(sheet),
         "chroma": pca.measure_chroma(np.asarray(sheet)),
-        "gain": gain,
-        "chromaMix": chroma_mix,
-        "scale": scale,
+        **tuning,
         "span": span,
         "offset": offset,
     }
@@ -193,41 +229,15 @@ def town_center_failures() -> list[str]:
     if not path.exists():
         return [f"missing {TOWN_OUT_REL}"]
     sheet = ops.load_rgba(path)
-    failures: list[str] = []
-    if sheet.size != TOWN_CANVAS:
-        failures.append(f"{TOWN_OUT_REL} size {sheet.size} != {TOWN_CANVAS}")
-    if ops.bottom_inset(sheet) != 0:
-        failures.append(f"{TOWN_OUT_REL} does not sit on the canvas bottom row")
-    corner_alpha = [
-        sheet.getpixel((0, 0))[3],
-        sheet.getpixel((sheet.width - 1, 0))[3],
-        sheet.getpixel((0, sheet.height - 1))[3],
-        sheet.getpixel((sheet.width - 1, sheet.height - 1))[3],
-    ]
-    if any(corner_alpha):
-        failures.append(f"{TOWN_OUT_REL} has an opaque canvas corner")
-    span, offset = ops.iso_base(sheet)
-    if span > ops.ISO_BASE_MAX_SPAN or offset > ops.ISO_BASE_MAX_OFFSET:
-        failures.append(
-            f"{TOWN_OUT_REL} base reads as a flat wall (span {span:.2f}, offset {offset:.2f})"
-        )
-    array = np.asarray(sheet)
-    chroma = pca.measure_chroma(array)
-    lum = ops.luminance(sheet)
-    # Reported, not gated: the shipped Town Center is still the pre-phase-31
-    # castle render (chroma 8.4, lum 74.3), and the palette band described above
-    # is a target for a *rebuilt* keep, not a contract the old art can meet.
-    # Gating it here would fail `--check` on a file nobody changed.
-    print(
-        f"  town centre: chroma {chroma:.1f}, lum {lum:.1f} "
-        f"(a rebuilt keep should land in {TOWN_CHROMA_MIN:.0f}-{TOWN_CHROMA_MAX:.0f} "
-        f"chroma and {TOWN_LUM_RANGE[0]:.0f}-{TOWN_LUM_RANGE[1]:.0f} lum)"
-    )
-    return failures
+    return [f"{TOWN_OUT_REL}: {failure}" for failure in keep_failures(sheet)]
 
 
 def check() -> int:
     failures = town_center_failures()
+    shipped_keep = ASSET_ROOT / TOWN_OUT_REL
+    if shipped_keep.exists():
+        # Reported, never gated: see `keep_failures` for why.
+        print(f"  town centre: {palette_note(ops.load_rgba(shipped_keep))}")
     wall_path = ASSET_ROOT / WALL_OUT_REL
     if not wall_path.exists():
         failures.append(f"missing {WALL_OUT_REL}")
@@ -251,57 +261,48 @@ def preview() -> int:
 def candidate_sheet(sources: list[Path]) -> int:
     """Proof sheet for CIT-02: every keep candidate next to the shipped one.
 
-    Each candidate goes through the *real* build path (`matte` → warm → fit →
-    anchor), so the sheet shows what would actually ship rather than the raw
-    render. A candidate that breaks the iso-base or corner contract is drawn with
-    its failure instead of being silently dropped: the point of the sheet is to
-    compare, and a candidate rejected by the numeric gate must not look like a
+    Each panel is produced by `compose_keep`, i.e. the real build path, so the
+    sheet shows what would actually ship rather than the raw render. A candidate
+    that breaks the geometry contract is still drawn, with its failure printed:
+    the point is to compare, and a rejected candidate must not look like a
     winner.
     """
     if not sources:
         raise SystemExit("no candidate renders given")
-    panels: list[tuple[str, Image.Image, str]] = []
+    panels: list[tuple[Image.Image, str]] = []
 
     shipped = ASSET_ROOT / TOWN_OUT_REL
     if shipped.exists():
-        panels.append(("shipped", ops.crop_to_alpha(ops.load_rgba(shipped)), "current art"))
+        art = ops.crop_to_alpha(ops.load_rgba(shipped))
+        panels.append((art, f"shipped  {palette_note(art)}"))
 
     for index, source in enumerate(sources, start=1):
-        art = ops.crop_to_alpha(matte(source))
-        art = ops.apply_gain(art, TOWN_WARM_GAIN)
-        art, _ = match_chroma(art)
-        art, _ = ops.match_luminance(art, TOWN_MATCH_LUM)
-        scaled, scale = ops.fit(art, TOWN_CANVAS)
-        sheet = ops.place(scaled, TOWN_CANVAS, TOWN_ANCHOR)
-        span, offset = ops.iso_base(sheet)
+        sheet, tuning = compose_keep(source)
+        problems = keep_failures(sheet)
         chroma = pca.measure_chroma(np.asarray(sheet))
         lum = ops.luminance(sheet)
-        problems: list[str] = []
-        if span > ops.ISO_BASE_MAX_SPAN:
-            problems.append(f"span {span:.2f}>{ops.ISO_BASE_MAX_SPAN}")
-        if offset > ops.ISO_BASE_MAX_OFFSET:
-            problems.append(f"offset {offset:.2f}>{ops.ISO_BASE_MAX_OFFSET}")
         if not TOWN_CHROMA_MIN <= chroma <= TOWN_CHROMA_MAX:
-            problems.append(f"chroma {chroma:.1f} out of {TOWN_CHROMA_MIN:.0f}-{TOWN_CHROMA_MAX:.0f}")
+            problems.append(
+                f"chroma {chroma:.1f} outside {TOWN_CHROMA_MIN:.0f}-{TOWN_CHROMA_MAX:.0f}"
+            )
         low, high = TOWN_LUM_RANGE
         if not low <= lum <= high:
-            problems.append(f"lum {lum:.1f} out of {low:.0f}-{high:.0f}")
+            problems.append(f"lum {lum:.1f} outside {low:.0f}-{high:.0f}")
         note = (
-            f"{source.name}  scale {scale:.2f}  lum {lum:.1f}  chroma {chroma:.1f}"
+            f"{source.name}  scale {tuning['scale']:.2f}  "
+            f"lum {lum:.1f}  chroma {chroma:.1f}"
             + ("  FAIL: " + "; ".join(problems) if problems else "  ok")
         )
-        panels.append((f"candidate {index}", ops.crop_to_alpha(sheet), note))
+        panels.append((ops.crop_to_alpha(sheet), note))
 
     cell_w, cell_h = 460, 360
-    sheet = Image.new("RGBA", (cell_w * len(panels), cell_h + 60), (32, 32, 34, 255))
-    for index, (_label, art, note) in enumerate(panels):
+    sheet = Image.new("RGBA", (cell_w * len(panels), cell_h), (32, 32, 34, 255))
+    for index, (art, note) in enumerate(panels):
         scale = min(cell_w / art.width, cell_h / art.height)
         thumb = art.resize(
             (max(1, round(art.width * scale)), max(1, round(art.height * scale))),
             Image.Resampling.LANCZOS,
         )
-        x = index * cell_w + (cell_w - thumb.width) // 2
-        y = cell_h - thumb.height
         backdrop = Image.new("RGBA", (cell_w, cell_h), (88, 117, 45, 255))
         backdrop.alpha_composite(thumb, ((cell_w - thumb.width) // 2, cell_h - thumb.height))
         sheet.alpha_composite(backdrop, (index * cell_w, 0))

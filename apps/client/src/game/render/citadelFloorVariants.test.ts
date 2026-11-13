@@ -31,8 +31,11 @@ describe('citadel floor variants', () => {
   });
 
   it('does not paint diagonal stripes', () => {
-    // `(x + y) % 3` is constant along each anti-diagonal. A hashed pick has to
-    // break that: no single diagonal may be one value across the compound.
+    // `(x + y) % 3` is constant along every anti-diagonal. A hashed pick has to
+    // break that across the compound: no more than a couple of the 47 interior
+    // diagonals may collapse to a single variant (a hash leaves ~2), where the
+    // striped rule leaves all 47.
+    let constant = 0;
     for (let diagonal = 2; diagonal <= 48; diagonal++) {
       const values = new Set<number>();
       for (let x = 1; x <= 24; x++) {
@@ -40,10 +43,9 @@ describe('citadel floor variants', () => {
         if (y < 1 || y > 24) continue;
         values.add(floorVariantAt(x, y));
       }
-      if (values.size < 2) continue;
-      return;
+      if (values.size === 1) constant++;
     }
-    throw new Error('every interior anti-diagonal held a single variant');
+    expect(constant).toBeLessThanOrEqual(4);
   });
 
   it('maps variants onto the shipped texture keys', () => {

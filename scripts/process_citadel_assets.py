@@ -49,6 +49,20 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw
+from citadel_raster import (  # noqa: F401  (re-exported for existing callers)
+    add_outline,
+    apply_ao,
+    blend_polygon,
+    bleed_rgb,
+    load_rgba,
+    luminance,
+    map_parallelogram,
+    mortar_lines,
+    polygon_mask,
+    resize_rgb,
+    shade_region,
+    stroke_mask,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT = ROOT / "apps" / "client" / "public" / "assets"
@@ -96,7 +110,6 @@ WALL_CAP_LUM = 150.0
 # preference.
 WALL_LUM_RANGE = (92.0, 130.0)
 WALL_MIN_OPAQUE = 0.55
-WALL_OUTLINE = (0x3A, 0x3F, 0x47)
 # Merlons standing on the far (rear) edges of the cap. 9 px keeps every parapet
 # pixel inside the 12 px headroom above `TOP_Y`, so a wall run never paints over
 # the tile behind it; `check` asserts nothing reaches `y < 2`.
@@ -104,11 +117,9 @@ MERLON_H = 9
 MERLON_HALF = 13.0
 MERLON_T = (0.32, 0.78)
 MERLON_MIN_Y = 2
-# Ambient occlusion replaces the 1.2 px near-black cap outline. A dark ring
-# around every cap turned a wall run into a row of tombstones: it read as a gap
-# between blocks instead of a joint. 0.30 keeps the core at lum >= 70.
-AO_STRENGTH = 0.30
-AO_WIDTH = 1.4
+# Ambient occlusion replaces the 1.2 px near-black cap outline (`citadel_raster.
+# apply_ao`). A dark ring around every cap turned a wall run into a row of
+# tombstones: it read as a gap between blocks instead of a joint.
 # The 1024px source has ~80px blocks. Mapped straight onto a 64px-wide face they
 # turn into 5px noise, so only a quarter of the sheet is used: same stone, but
 # each block lands at a readable 16-20px.
@@ -165,224 +176,6 @@ GATE_RING_JOINT = (0x6B, 0x5F, 0x4D)
 GATE_RING_WIDTH = 13.0
 GATE_IRON = (0x2B, 0x2F, 0x36)
 GATE_IRON_HIGHLIGHT = (0x6C, 0x72, 0x7C)
-
-GATE_MIN_ALPHA = 8
-GATE_MIN_BLOB = 6
-
-LUM_WEIGHTS = (0.299, 0.587, 0.114)
-
-
-def luminance(rgb: np.ndarray) -> np.ndarray:
-    return (
-        rgb[..., 0] * LUM_WEIGHTS[0]
-        + rgb[..., 1] * LUM_WEIGHTS[1]
-        + rgb[..., 2] * LUM_WEIGHTS[2]
-    )
-
-
-def load_rgba(path: Path) -> np.ndarray:
-    return np.asarray(Image.open(path).convert("RGBA"), dtype=np.uint8)
-
-
-def resize_rgb(rgb: np.ndarray, size: tuple[int, int]) -> np.ndarray:
-    """LANCZOS resize of an RGB array (no alpha to premultiply)."""
-    image = Image.fromarray(rgb.astype(np.uint8), mode="RGB")
-    return np.asarray(image.resize(size, Image.LANCZOS), dtype=np.uint8)
-
-
-def resize_premultiplied(rgba: np.ndarray, size: tuple[int, int]) -> np.ndarray:
-    rgb = rgba[..., :3].astype(np.float64)
-    alpha = rgba[..., 3].astype(np.float64) / 255.0
-    premultiplied = rgb * alpha[..., None]
-
-    def resize(channel: np.ndarray) -> np.ndarray:
-        image = Image.fromarray(channel.astype(np.float32), mode="F")
-        return np.asarray(image.resize(size, Image.LANCZOS), dtype=np.float64)
-
-    out_alpha = np.clip(resize(alpha), 0.0, 1.0)
-    scaled = np.stack([resize(premultiplied[..., i]) for i in range(3)], axis=-1)
-    safe = np.maximum(out_alpha, 1e-6)[..., None]
-    out_rgb = np.clip(np.where(out_alpha[..., None] > 1e-6, scaled / safe, 0.0), 0.0, 255.0)
-    result = np.zeros((size[1], size[0], 4), dtype=np.uint8)
-    result[..., :3] = np.rint(out_rgb).astype(np.uint8)
-    result[..., 3] = np.rint(out_alpha * 255.0).astype(np.uint8)
-    return result
-
-
-def bleed_rgb(rgba: np.ndarray, passes: int = 2) -> np.ndarray:
-    """Copy edge colour into transparent pixels to avoid dark bilinear fringes."""
-    out = rgba.astype(np.float64)
-    known = out[..., 3] > 0
-    height, width = known.shape
-    for _ in range(passes):
-        acc = np.zeros((height, width, 3), dtype=np.float64)
-        count = np.zeros((height, width), dtype=np.float64)
-        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            src_rgb = np.zeros_like(acc)
-            src_known = np.zeros((height, width), dtype=bool)
-            dst_y = slice(max(0, dy), height + min(0, dy))
-            dst_x = slice(max(0, dx), width + min(0, dx))
-            src_y = slice(max(0, -dy), height + min(0, -dy))
-            src_x = slice(max(0, -dx), width + min(0, -dx))
-            src_rgb[dst_y, dst_x] = out[src_y, src_x, :3]
-            src_known[dst_y, dst_x] = known[src_y, src_x]
-            acc += src_rgb * src_known[..., None]
-            count += src_known
-        fill = (~known) & (count > 0)
-        out[..., :3][fill] = (acc / np.maximum(count, 1.0)[..., None])[fill]
-        known = known | fill
-    return np.clip(np.rint(out), 0, 255).astype(np.uint8)
-
-
-def clean_alpha(alpha: np.ndarray, min_alpha: int, min_blob: int) -> np.ndarray:
-    cleaned = np.where(alpha < min_alpha, 0, alpha).astype(np.uint8)
-    return cleaned
-
-
-def polygon_mask(
-    size: tuple[int, int], points: list[tuple[float, float]], ss: int = 4
-) -> np.ndarray:
-    width, height = size
-    mask = Image.new("L", (width * ss, height * ss), 0)
-    draw = ImageDraw.Draw(mask)
-    draw.polygon([(x * ss, y * ss) for x, y in points], fill=255)
-    return np.asarray(mask.resize(size, Image.LANCZOS), dtype=np.float64) / 255.0
-
-
-def stroke_mask(
-    size: tuple[int, int],
-    points: list[tuple[float, float]],
-    width_px: float,
-    ss: int = 4,
-    closed: bool = True,
-) -> np.ndarray:
-    width, height = size
-    mask = Image.new("L", (width * ss, height * ss), 0)
-    draw = ImageDraw.Draw(mask)
-    scaled = [(x * ss, y * ss) for x, y in points]
-    if closed:
-        scaled = scaled + [scaled[0]]
-    draw.line(scaled, fill=255, width=max(1, round(width_px * ss)), joint="curve")
-    return np.asarray(mask.resize(size, Image.LANCZOS), dtype=np.float64) / 255.0
-
-
-def map_parallelogram(
-    source: np.ndarray,
-    canvas_size: tuple[int, int],
-    origin: tuple[float, float],
-    along: tuple[float, float],
-    up: tuple[float, float],
-) -> np.ndarray:
-    """Map `source` onto the parallelogram origin / origin+along / origin+up."""
-    ox, oy = origin
-    ux, uy = along
-    vx, vy = up
-    determinant = ux * vy - uy * vx
-    if abs(determinant) < 1e-6:
-        raise ValueError("degenerate parallelogram")
-    inv_a = vy / determinant
-    inv_b = -vx / determinant
-    inv_c = -uy / determinant
-    inv_d = ux / determinant
-    src_h, src_w = source.shape[:2]
-    data = (
-        inv_a * src_w,
-        inv_b * src_w,
-        (-inv_a * ox - inv_b * oy) * src_w,
-        inv_c * src_h,
-        inv_d * src_h,
-        (-inv_c * ox - inv_d * oy) * src_h,
-    )
-    image = Image.fromarray(source.astype(np.uint8), mode="RGB")
-    return np.asarray(image.transform(canvas_size, Image.AFFINE, data, resample=Image.BICUBIC), dtype=np.float64)
-
-
-def shade_region(rgb: np.ndarray, mask: np.ndarray, target_lum: float) -> np.ndarray:
-    """Multiply one region so its opaque mean luminance lands on `target_lum`."""
-    weight = mask > 0.01
-    if not weight.any():
-        return rgb
-    current = float(luminance(rgb[weight]).mean())
-    gain = target_lum / max(current, 1e-6)
-    return np.clip(rgb * gain, 0.0, 255.0)
-
-
-def blend_polygon(
-    rgb: np.ndarray,
-    alpha: np.ndarray,
-    points: list[tuple[float, float]],
-    layer: np.ndarray,
-    target_lum: float,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Composite a textured layer through a polygon."""
-    mask = polygon_mask((rgb.shape[1], rgb.shape[0]), points)
-    shaded = shade_region(layer, mask, target_lum)
-    rgb[:] = rgb * (1.0 - mask[..., None]) + shaded * mask[..., None]
-    alpha[:] = np.maximum(alpha, mask)
-    return rgb, alpha
-
-
-def add_outline(
-    rgb: np.ndarray,
-    points: list[tuple[float, float]],
-    width_px: float,
-    closed: bool = True,
-    colour: tuple[int, int, int] = WALL_OUTLINE,
-) -> None:
-    mask = stroke_mask((rgb.shape[1], rgb.shape[0]), points, width_px, closed=closed)
-    rgb[:] = rgb * (1.0 - mask[..., None]) + np.array(colour, dtype=np.float64) * mask[..., None]
-
-def apply_ao(
-    rgb: np.ndarray,
-    points: list[tuple[float, float]],
-    width_px: float = AO_WIDTH,
-    strength: float = AO_STRENGTH,
-    closed: bool = True,
-) -> None:
-    """Darken a band just inside an edge by `strength`, instead of outlining it.
-
-    The wall used to stroke every cap with a 1.2 px `WALL_OUTLINE` (lum ~62)
-    against a cap face at lum 150. That is a 2.4x contrast step exactly where two
-    blocks meet, so a wall run read as separate tombstones with a gap between
-    them. Multiplying by (1 - strength) keeps the joint legible while the cap
-    stays at lum >= 70, which is the level the floor apron sits at.
-    """
-    mask = stroke_mask((rgb.shape[1], rgb.shape[0]), points, width_px, closed=closed)
-    rgb *= (1.0 - mask[..., None] * strength)
-
-def mortar_lines(
-    rgb: np.ndarray,
-    start: tuple[float, float],
-    end: tuple[float, float],
-    rise: float,
-    fractions: tuple[float, ...] = (0.34, 0.68),
-    colour: tuple[int, int, int] = (0x77, 0x6C, 0x59),
-    width_px: float = 1.0,
-) -> None:
-    """Fixed masonry courses along a wall face.
-
-    The source texture is pre-blurred so its joints survive the 5x downsample onto
-    a 64 px face; the cost is that the joint contrast itself is gone. These two
-    lines put it back at a fixed, measured brightness, which is also what keeps
-    the wall's chroma stable between texture exports.
-    """
-    size = (rgb.shape[1], rgb.shape[0])
-    mask = np.zeros((size[1], size[0]), dtype=np.float64)
-    for fraction in fractions:
-        offset = rise * fraction
-        mask = np.maximum(
-            mask,
-            stroke_mask(
-                size,
-                [
-                    (start[0], start[1] - offset),
-                    (end[0], end[1] - offset),
-                ],
-                width_px,
-                closed=False,
-            ),
-        )
-    rgb[:] = rgb * (1.0 - mask[..., None]) + np.array(colour, dtype=np.float64) * mask[..., None]
 
 
 # ---------------------------------------------------------------------------
@@ -863,15 +656,11 @@ def build_gate(wall_source: Path, floor_source: Path, out_root: Path) -> list[di
     # the joint drawn around it and disappeared at play zoom.
     band = stroke_mask(size, hole, GATE_RING_WIDTH)
     rgb = rgb * (1.0 - band[..., None]) + np.array(GATE_ARCH_RING, dtype=np.float64) * band[..., None]
-    add_outline(rgb, hole, 1.0, colour=GATE_RING_JOINT)
-    add_outline(rgb, hole, 2.2, closed=True, colour=GATE_RING_JOINT)
-    # Inner highlight just inside the intrados, then AO under the outer joint.
+    add_outline(rgb, hole, 2.2, colour=GATE_RING_JOINT)
+    # Inner highlight just inside the intrados, then AO outside the outer joint.
     inner = stroke_mask(size, hole, 3.0)
     rgb = rgb * (1.0 - inner[..., None] * 0.35) + np.array((0xE4, 0xD6, 0xBE), dtype=np.float64) * inner[..., None] * 0.35
-    outer = [
-        (x + 0.0, y + 0.0) for x, y in hole
-    ]
-    apply_ao(rgb, outer, width_px=GATE_RING_WIDTH + 4.0, strength=0.12)
+    apply_ao(rgb, hole, width_px=GATE_RING_WIDTH + 4.0, strength=0.12)
 
     # Crenellations along the front top edge.
     for index in range(5):
@@ -1171,8 +960,8 @@ def preview(out_root: Path) -> int:
     the rework is that the keep, the wall run and the courtyard floor read as one
     building — a proof sheet with an empty courtyard cannot show that.
     """
-    size = 26
-    gate_start = (size - CITADEL_GATE_WIDTH) // 2
+    size = CITADEL_WIDTH
+    gate_start = (CITADEL_HEIGHT - CITADEL_GATE_WIDTH) // 2
     origin_x = origin_y = 0
 
     floor_images = [
