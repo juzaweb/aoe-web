@@ -48,6 +48,26 @@ describe('unit sheets on disk', () => {
             sheet.frames
           );
         });
+
+        // TEAM-06: the accent layer is played frame-for-frame with the body, so a
+        // sheet that disagrees by even one column slides the surcoat off the
+        // figure. Same cell, same grid, same frame count - or the layer is not
+        // usable at all.
+        if (!art.accentSheet) continue;
+        it(`${sheet.sheetAction} accent matches the body grid`, () => {
+          const path = join(
+            ACTIONS_DIR,
+            `${unitType.toLowerCase()}_${sheet.sheetAction}_accent.png`
+          );
+          const size = pngSize(path);
+          expect(size, `missing accent sheet ${path}`).not.toBeNull();
+          expect(size!.width, 'accent width equals the body width').toBe(
+            sheet.frames * art.frameWidth
+          );
+          expect(size!.height, 'one accent row per compass direction').toBe(
+            art.frameHeight * DIRECTION_NAMES.length
+          );
+        });
       }
     });
   }

@@ -5,8 +5,9 @@ người chơi phủ lên đúng vùng khăn/viền** của lính mà không ph�
 Cách làm: bake **hai lớp sheet** (body + accent) từ Blender, lớp accent render grayscale rồi
 `setTint(ownerColor)` lúc runtime — đúng cách AoE2 DE / Diablo 2 làm team color.
 
-> **Status: `APPROVED`** (2026-11-13) — các quyết định D1–D10 đã chốt với user. Chưa có dòng
-> code nào; chưa có mask, chưa có script bake, `UNIT_ART.SPEARMAN` vẫn trỏ sheet OpenGameArt cũ.
+> **Status: `IMPLEMENTED`** (2026-11-13) — code + art + test xong; còn verify tay §7.
+> Toàn bộ 8 file sheet đã bake từ `linh.glb` (528 render), accent tô theo `OwnerColorRegistry`
+> cho cả lính sống và xác. Xem §9 cho các chỗ lệch so với D1–D10.
 
 **Phạm vi:** `apps/client` + `scripts/` + `docs/plans` + `CREDITS.md`. **Không** đổi
 `packages/shared`, `apps/server`, schema, protocol hay DB: màu phe đã có sẵn trong
@@ -203,7 +204,7 @@ Chi tiết đáng nhớ:
 | --- | --- |
 | `unitArt.sheets.test.ts` (mở rộng) | với mọi unit có `accentSheet`, kiểm cả `<unit>_<action>_accent.png`: tồn tại, `width % frameWidth == 0`, `height == frameHeight × 8`, `columns == frames` |
 | `entityAccent.test.ts` (mới) | bật/tắt accent theo cờ; tint lấy đúng từ registry; owner lạ → `UNKNOWN_OWNER_COLOR`; depth = body + 1; xác cũng có accent |
-| `scripts/pack_team_sheets.py --check` | kích thước từng sheet + số hàng/cột khớp `UNIT_ART` (cổng chạy tay: CI chỉ có Node) |
+| `scripts/pack_team_sheets.py --check` | kích thước từng sheet + số hàng/cột khớp `UNIT_ART` (cổng chạy tay: CI chỉ có Node); thêm cổng D5 cho lớp accent: sàn sáng ≥ 0,70 và dải sáng p98−p2 ≥ 0,15 (đo được: floor 0,757 · spread 0,239) |
 | `scripts/blender_make_mask.py --check` | mask 2048², có pixel trắng, tỉ lệ trắng trong khoảng hợp lý (không phải mask rỗng/toàn trắng) |
 
 Lệnh xác nhận:
@@ -247,11 +248,48 @@ rõ trong script là fallback và phải review mask bằng mắt trước khi d
 
 ## 8. Definition of Done
 
-- [ ] `cd apps/client && ../../node_modules/.bin/tsc --noEmit` sạch
-- [ ] `pnpm --filter @chien-quoc/client test` xanh (gồm test mới)
-- [ ] `pnpm build` xanh
-- [ ] 8 file sheet (4 action × 2 lớp: body + accent) đúng kích thước, `unitArt.sheets.test.ts` pass
-- [ ] Accent đổi màu theo `OwnerColorRegistry` cho cả unit sống và xác
-- [ ] Không tạo message mới, không đổi schema/DB
-- [ ] `CREDITS.md` có mục cho model 3D (D10)
+- [x] `cd apps/client && ../../node_modules/.bin/tsc --noEmit` sạch
+- [x] `pnpm --filter @chien-quoc/client test` xanh (707 → 727 test: +16 `entityAccent`, +4 accent-sheet); server 468 xanh
+- [x] `pnpm build` xanh
+- [x] 8 file sheet (4 action × 2 lớp: body + accent) đúng kích thước, `unitArt.sheets.test.ts` pass
+- [x] Accent đổi màu theo `OwnerColorRegistry` cho cả unit sống và xác
+- [x] Không tạo message mới, không đổi schema/DB
+- [x] `CREDITS.md` có mục cho model 3D (D10) — xem ghi chú provenance trong §9
 - [ ] Thao tác chạy được trong game thật (mục §7)
+
+---
+
+## 9. Nhật ký thực hiện — chỗ lệch so với D1–D10
+
+| Quyết định | Đã làm | Lý do |
+| --- | --- | --- |
+| D3 mask | Chọn **theo từng face** trong `bpy` (`select_accent_faces`) bằng 2 tín hiệu: đa số texel của face là vải nhuộm (hue 180–215°, S ≥ 0,25, V ≤ 0,85) **và** tâm face nằm dưới đường cổ (z < 1,50) | Không có người ngồi chọn face bằng tay. Cách này vẫn là "chọn face" đúng tinh thần D3: mỗi face hoặc 100% accent hoặc 0%, không lem, không thủng mask; hue một mình thì helmet + lưỡi kiếm cũng lọt (đã thử: 7.477 face sai), thêm điều kiện saturation + đường cổ thì sạch (6.983 face) |
+| D3 vùng accent | **Toàn bộ áo choàng (surcoat)**: thân trước/sau, vạt, 2 panel vai và miếng vai tay áo | Model không có khăn quàng riêng; surcoat là mảng vải nhuộm duy nhất và đúng quy ước team color của AoE2. Mask bake ra `scripts/raw_downloads/models/linh_teammask.png` (32,6% atlas) |
+| D5 accent pass | Không dùng `mask × luminance(baseColor)` mà dùng **ramp theo normal × key light**, rồi ép vào **0,76–1,0 tính theo giá trị hiển thị** (byte PNG), có node chuyển sRGB→linear trước khi phát sáng | Đo trên atlas: luminance của surcoat phẳng trong 4% (0,126–0,166 linear), nên công thức D5 ra một mảng đặc một màu, mất hết nếp gấp — đúng lỗi D5 muốn tránh. Ramp theo normal giữ nếp gấp. Cửa sổ phải là giá trị hiển thị: emission 0,76 **linear** xuất ra byte 225 (= 0,89), nếp gấp bị dồn vào 11% dải sáng — xem mục review dưới |
+| D7 idle | 4 frame **15, 17, 19, 21** của `Walking` | Đo `feet spread` từng frame: nửa sau cycle (55–90%) là lúc hai chân chụm dưới thân — đó mới là pose đứng; 4 frame sát nhau nên loop gần như tĩnh. Bản đầu lấy 25% cycle thì chân còn dạng ra (đang bước) |
+| D8 xác | `CorpseState` **không có** `ownerId`, mà phase này không được đổi schema ⇒ `EntityRenderer` nhớ `unitId → ownerId` lúc tạo sprite sống (`recentOwners`, cap 512), xác tra lại theo `corpse.id === unit.id` | Server xoá unit **trước** khi publish corpse trong cùng một patch, nên lúc nhận corpse thì unit đã biến mất. Không thêm field nào vào protocol |
+| D4 độ sáng | Đèn: world 2,4 · key 7,0 · fill 2,4 · rim 3,0 (EEVEE Next, 16 sample, view transform Standard) | Bản đầu ra quá tối (luminance trung bình 50 so với 86 của sheet OGA cũ); tăng lên thì lính đọc rõ trên nền cỏ |
+| D4 tỉ lệ | Đo chiều cao nhân vật ở **rest pose** (1,601 m ⇒ 51,8 px/m), không đo trên pose của clip | Đo trên pose clip thì cao thấp đổi ~5% giữa các frame (đầu gật, gối chùng, kiếm chĩa lên) ⇒ bake riêng một action là scale lệch, sheet lệch cỡ nhau |
+| D10 CREDITS | Mục mới trong `CREDITS.md`: mesh + texture là **art gốc của dự án** (chủ dự án xác nhận 2026-11-13), rig/clip ghi công Adobe Mixamo | Repo không có dữ liệu nguồn nào khác; đã hỏi thẳng chủ dự án thay vì tự suy ra license |
+
+### Review 2026-11-13 — lỗi tìm và sửa sau khi code xong
+
+| Mức | Lỗi | Sửa |
+| --- | --- | --- |
+| Required | Cửa sổ sáng của accent đặt theo **linear** nhưng tài liệu/kiểm tra đọc theo **giá trị hiển thị** ⇒ sàn thật của PNG là 0,886 chứ không phải 0,76, nếp gấp chỉ còn 11% dải sáng (đúng cái D5 muốn tránh). Không có gì bắt được vì `--check` chỉ kiểm kích thước | Thêm node `POWER 2.2` sau ramp; ramp lấy đúng percentile đo được của dot (p5 0,00 · median 0,38 · p95 0,82); `--check` thêm cổng sàn sáng + dải sáng |
+| Required | `entityRenderer.clearRememberedOwners()` gọi không có `?.`, trong khi hai chỗ khác trong scene dùng `entityRenderer?.` (scene có thể reset trước `create()`) | Đổi sang truy cập qua `entityRenderer?.recentOwners` |
+| Required | Accent bị `setVisible(false)` mà không bao giờ bật lại nếu unit quay lại action có accent | Bật lại khi `play` clip accent |
+| Required | `--all` của script bake ghi đè im lặng `--actions/--directions` (đã tự dính: rebake "chỉ idle" thành bake toàn bộ ở scale khác) | Bỏ `--all`; mặc định đã là toàn bộ |
+| Required | `--preview` mô tả là ghép body+accent nhưng chỉ xếp sheet thô | Cài đặt đúng: ghép body + accent nhuộm màu trên nền cỏ |
+| Nit | `socket()` trong script bake thành code chết; `container.setData('ownerId')` không ai đọc | Xoá cả hai |
+| Nit | Comment khẳng định cơ chế chưa chứng minh (Map Range "link rơi vào socket khác") | Viết lại theo quan sát (chain Map Range ra mảng phẳng, Math chain thì không) |
+| Consider | Cache `recentOwners` nằm trong `EntityRenderer`, logic eviction không test được | Tách `RecentOwnerIndex` sang `entityAccent.ts` (thuần, không Phaser) + 6 test (giới hạn capacity, forget, clear) |
+
+Lệnh tái lập toàn bộ art (khoảng 6 phút):
+
+```
+blender -b --python scripts/blender_make_mask.py
+blender -b --python scripts/blender_bake_sheet.py -- --all
+python3 scripts/pack_team_sheets.py
+python3 scripts/pack_team_sheets.py --check
+```

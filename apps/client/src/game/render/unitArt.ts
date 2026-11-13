@@ -49,6 +49,16 @@ export interface UnitArt {
    * back to the legacy single-facing sheet (`<unit>_sheet.png`) clips.
    */
   actions: Partial<Record<UnitAction, UnitActionArt>>;
+  /**
+   * TEAM-04: the unit also ships a second, translucent copy of every action
+   * sheet (`<unit>_<action>_accent.png`) whose alpha covers only the dyed cloth.
+   * The renderer tints that layer with the owner's colour, so one set of renders
+   * serves every team colour.
+   *
+   * Off for the units still drawn from painted 2D art: they have no second
+   * layer, and `setTint` on the body would recolour the whole figure.
+   */
+  accentSheet?: boolean;
 }
 
 /**
@@ -106,9 +116,11 @@ export const UNIT_ART: Record<string, UnitArt> = {
     }
   },
   /**
-   * Rendered from the 3D knight-with-sword model onto 192x168 cells so the
-   * raised/extended blade never clips the frame edge while keeping feet anchored
-   * on the same ground line as the other units (`soleY ~145`).
+   * Rendered from the project's own 3D soldier model (`scripts/raw_downloads/models/linh.glb`)
+   * onto 192x168 cells so the raised/extended blade never clips the frame edge,
+   * with the feet anchored on the same ground line as the other units
+   * (`soleY 145`). PHASE 30 also ships the accent layer for team colours, which
+   * is why this is the only unit with `accentSheet` on.
    */
   SPEARMAN: {
     ...PACK_FIGURE,
@@ -116,6 +128,7 @@ export const UNIT_ART: Record<string, UnitArt> = {
     frameHeight: 168,
     scale: 0.95,
     offsetY: -58,
+    accentSheet: true,
     actions: {
       idle: { frames: 4 },
       walk: { frames: 11, fps: 16 },

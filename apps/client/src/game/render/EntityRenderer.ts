@@ -13,11 +13,29 @@ import {
   unitActionTexture
 } from './unitDirections.js';
 import { UNIT_ART, hasDirectionalArt, unitArt, unitClips } from './unitArt.js';
+import {
+  RecentOwnerIndex,
+  accentActionKey,
+  accentDepth,
+  accentTexture,
+  resolveAccent
+} from './entityAccent.js';
 import type { UnitAction } from './unitDirections.js';
 import { UnitMotion, walkTimeScale } from './unitMotion.js';
 import { treeVariant } from './treeVariants.js';
 import { resourceLook } from './visualVariation.js';
 import { TownCenterFireEffect } from './BuildingFireEffect.js';
+
+/**
+ * A body clip together with the accent clip that has to play with it.
+ *
+ * `accent` is null when the unit has no accent layer or this action has no
+ * directional art, which is also the signal to hide the accent sprite.
+ */
+interface Clip {
+  key: string;
+  accent: string | null;
+}
 
 /**
  * Builds and maintains the visual object for every server entity: the container,
@@ -34,6 +52,19 @@ export class EntityRenderer {
    * whose owner colour actually changed.
    */
   private readonly ownershipSignatures = new Map<string, number>();
+
+  /**
+   * TEAM-05: owner colour actually applied to each unit's accent layer, so the
+   * players pass only retints units whose colour changed.
+   */
+  private readonly accentSignatures = new Map<string, number>();
+
+  /**
+   * TEAM-05: owners of units that have just left the world, so a corpse can keep
+   * the team colour of the unit it came from. The scene drops an entry when the
+   * corpse it belongs to is gone, which is why this is reachable from outside.
+   */
+  public readonly recentOwners = new RecentOwnerIndex();
 
   constructor(private readonly scene: WorldScene) {}
 
@@ -95,6 +126,21 @@ export class EntityRenderer {
             clip.repeat
           );
         });
+
+        // TEAM-04: the accent layer is one clip per (action, facing) too, built
+        // from the same row arithmetic - `directionIndex * frames + frame` - so
+        // the two layers cannot index different frames of the same pose.
+        const accentSheetKey = accentTexture(unitType, clip.sheetAction);
+        if (!unitArt(unitType).accentSheet || !scene.textures.exists(accentSheetKey)) continue;
+        DIRECTION_NAMES.forEach((_, direction) => {
+          registerAnim(
+            accentActionKey(unitType, clip.action, direction),
+            accentSheetKey,
+            actionRowFrames(direction, clip.frames),
+            clip.frameRate,
+            clip.repeat
+          );
+        });
       }
     }
   }
@@ -136,6 +182,37 @@ export class EntityRenderer {
       sprite.play(clip);
     }
     scene.corpseSprites.set(id, sprite);
+
+    // D8: a corpse keeps its team colour. The accent is its own scene object
+    // (a corpse never moves, so nothing has to follow it) and sits one depth
+    // step above the body. Its tint is fixed at creation: a player entry that
+    // arrives late is picked up for living units by `refreshAccentTint`, but a
+    // corpse is gone within a couple of seconds, so it is not worth tracking.
+    const accentSheetKey = accentTexture(unitType, 'death');
+    const decision = resolveAccent(
+      {
+        unitType,
+        ownerId: this.recentOwners.ownerOf(id),
+        sheetAvailable: scene.textures.exists(accentSheetKey)
+      },
+      scene.ownerColorRegistry
+    );
+    if (!decision.enabled) return;
+
+    const accent = scene.add.sprite(
+      screenPos.x,
+      screenPos.y + art.offsetY,
+      accentSheetKey,
+      0
+    );
+    accent.setScale(art.scale);
+    accent.setDepth(accentDepth(sprite.depth));
+    accent.setTint(decision.tint);
+    const accentClip = accentActionKey(unitType, 'death', DEFAULT_DIRECTION_INDEX);
+    if (scene.anims.exists(accentClip)) {
+      accent.play(accentClip);
+    }
+    scene.corpseAccentSprites.set(id, accent);
   }
 
   createResourceNodeSprite(id: string, node: any, cb?: any) {
@@ -516,11 +593,36 @@ export class EntityRenderer {
    * creation time is not enough. Only entities whose signature changed touch
    * their Graphics object, and ids that no longer exist are pruned.
    */
+  /**
+   * TEAM-05: repaints one unit's accent tint.
+   *
+   * Shares the OWN-05 refresh pass because an entity can be created before its
+   * owner's player entry exists (the world is restored from the database on
+   * server boot): such a unit starts grey and has to turn to the real colour
+   * once the player shows up. Unlike the ownership ring this marker never hides -
+   * a unit wears its owner's colour whether or not it is ours.
+   */
+  private refreshAccentTint(
+    container: Phaser.GameObjects.Container,
+    entityId: string,
+    ownerId: string
+  ) {
+    const accent = container.getData('accentSprite') as Phaser.GameObjects.Sprite | undefined;
+    if (!accent) return;
+    const tint = this.scene.ownerColorRegistry.colorOf(ownerId);
+    if (this.accentSignatures.get(entityId) === tint) return;
+    this.accentSignatures.set(entityId, tint);
+    accent.setTint(tint);
+  }
+
   refreshOwnershipVisuals() {
     const scene = this.scene;
     scene.unitSprites.forEach((container, id) => {
       const unit = scene.room?.state?.units?.get(id);
-      if (unit) this.refreshOwnerRing(container, id, unit.ownerId);
+      if (unit) {
+        this.refreshOwnerRing(container, id, unit.ownerId);
+        this.refreshAccentTint(container, id, unit.ownerId);
+      }
     });
     scene.buildingSprites.forEach((container, id) => {
       const building = scene.room?.state?.buildings?.get(id);
@@ -531,6 +633,9 @@ export class EntityRenderer {
       if (!scene.unitSprites.has(id) && !scene.buildingSprites.has(id)) {
         this.ownershipSignatures.delete(id);
       }
+    }
+    for (const id of this.accentSignatures.keys()) {
+      if (!scene.unitSprites.has(id)) this.accentSignatures.delete(id);
     }
   }
 
@@ -593,6 +698,32 @@ export class EntityRenderer {
 
     container.add(unitDisplay);
     container.setData('unitDisplay', unitDisplay);
+
+    // TEAM-05: the accent layer, inserted directly after the body so it draws on
+    // top of it and below the selection ring, health bar and every other overlay
+    // in the container. It is never interactive: it must not take pointer input
+    // away from the body's hit area.
+    const accentSheetKey = accentTexture(unitType, 'walk');
+    const accentDecision = resolveAccent(
+      {
+        unitType,
+        ownerId: unit.ownerId,
+        sheetAvailable: hasDirectionalSheet && scene.textures.exists(accentSheetKey)
+      },
+      scene.ownerColorRegistry
+    );
+    let accentSprite: Phaser.GameObjects.Sprite | undefined;
+    if (accentDecision.enabled) {
+      accentSprite = scene.add.sprite(0, visualOffsetY, accentSheetKey, 0);
+      accentSprite.setScale(visualScale);
+      accentSprite.setTint(accentDecision.tint);
+      container.add(accentSprite);
+      this.accentSignatures.set(id, accentDecision.tint);
+    }
+    container.setData('accentSprite', accentSprite);
+    // A corpse keeps the unit's id, and the unit is deleted before it is
+    // published, so the owner has to be remembered while the unit is still alive.
+    this.recentOwners.remember(id, unit.ownerId);
     // Body ellipse from the unit's art config, relative to the container origin
     // which sits at the unit's feet (the pack figures span y 10..112 of a 130 px
     // cell at scale 0.92, cavalry y 29..155 of 160 at 0.75).
@@ -657,22 +788,33 @@ export class EntityRenderer {
 
       // A directional clip wins when it exists; otherwise the legacy clip for that
       // state does, so a partially redrawn unit still animates instead of freezing.
-      const pickAnim = (action: UnitAction, legacyKey?: string): string | null => {
+      //
+      // Each pick carries the matching accent clip so the two layers are chosen
+      // in the same branch, and a fallback keeps whatever accent the clip it
+      // borrows has - a spearman walking has no `carry` art, so its accent has to
+      // come along with the walk cycle it replays.
+      const legacy = (key: string): Clip => ({ key, accent: null });
+      const pickAnim = (action: UnitAction, fallback?: Clip | null): Clip | null => {
         if (hasDirectionalSheet) {
           const directional = unitActionKey(unitType, action, direction);
-          if (scene.anims.exists(directional)) return directional;
+          if (scene.anims.exists(directional)) {
+            const accentClip = accentActionKey(unitType, action, direction);
+            return {
+              key: directional,
+              accent: scene.anims.exists(accentClip) ? accentClip : null
+            };
+          }
         }
-        if (legacyKey && scene.anims.exists(legacyKey)) return legacyKey;
-        return null;
+        return fallback ?? null;
       };
 
-      const idleAnim = pickAnim('idle', `${lowerType}_idle`) ?? `${lowerType}_idle`;
-      const walkAnim = pickAnim('walk', `${lowerType}_walk`) ?? idleAnim;
-      const attackAnim = pickAnim('attack', `${lowerType}_attack`) ?? idleAnim;
+      const idleClip = pickAnim('idle', legacy(`${lowerType}_idle`)) ?? legacy(`${lowerType}_idle`);
+      const walkClip = pickAnim('walk', legacy(`${lowerType}_walk`)) ?? idleClip;
+      const attackClip = pickAnim('attack', legacy(`${lowerType}_attack`)) ?? idleClip;
       // Only villagers ship the legacy harvest clip; for them BUILDING reuses it.
-      const harvestLegacy = blueprint?.canHarvest ? 'villager_harvest' : undefined;
+      const harvestLegacy = blueprint?.canHarvest ? legacy('villager_harvest') : null;
 
-      let desired: string | null;
+      let desired: Clip;
       // MOV-02: only the walk cycle is speed-locked; every other clip plays at
       // its authored rate.
       let walking = false;
@@ -686,30 +828,46 @@ export class EntityRenderer {
         // only the sprite changes - stride and speed stay identical. Units that
         // cannot carry (soldiers) have no carry clip and keep walking.
         case 'RETURNING':
-          desired = pickAnim('carry', walkAnim) ?? walkAnim;
+          desired = pickAnim('carry') ?? walkClip;
           walking = true;
           break;
         case 'HARVESTING':
-          desired = pickAnim('gather', harvestLegacy) ?? idleAnim;
+          desired = pickAnim('gather', harvestLegacy) ?? idleClip;
           break;
         case 'BUILDING':
-          desired = pickAnim('build', harvestLegacy) ?? pickAnim('gather', harvestLegacy) ?? idleAnim;
+          desired =
+            pickAnim('build', harvestLegacy) ?? pickAnim('gather', harvestLegacy) ?? idleClip;
           break;
         case 'ATTACKING':
           // Villagers have no attack animation — fall back to idle instead of
           // freezing on whatever clip happened to be playing before.
-          desired = attackAnim;
+          desired = attackClip;
           break;
         default:
-          desired = idleAnim;
+          desired = idleClip;
       }
 
-      if (!desired || !scene.anims.exists(desired)) {
-        desired = idleAnim;
+      if (!desired.key || !scene.anims.exists(desired.key)) {
+        desired = idleClip;
         walking = false;
       }
-      if (scene.anims.exists(desired) && unitDisplay.anims.currentAnim?.key !== desired) {
-        unitDisplay.play(desired);
+      if (scene.anims.exists(desired.key) && unitDisplay.anims.currentAnim?.key !== desired.key) {
+        unitDisplay.play(desired.key);
+      }
+
+      // The accent clip is played in the same branch as the body's, never from an
+      // event: one frame of difference would slide the surcoat off the figure.
+      if (accentSprite) {
+        if (desired.accent && scene.anims.exists(desired.accent)) {
+          // Unhide on the way in: an action with no accent art hides the layer,
+          // and `play` alone would leave it hidden for the rest of the unit's life.
+          if (!accentSprite.visible) accentSprite.setVisible(true);
+          if (accentSprite.anims.currentAnim?.key !== desired.accent) {
+            accentSprite.play(desired.accent);
+          }
+        } else {
+          accentSprite.setVisible(false);
+        }
       }
 
       // MOV-02: every walk sheet was drawn for one speed, but units travel
@@ -721,6 +879,11 @@ export class EntityRenderer {
       const timeScale = walking ? walkTimeScale(speed) : 1;
       if (unitDisplay.anims.timeScale !== timeScale) {
         unitDisplay.anims.timeScale = timeScale;
+      }
+      // Same rate on both layers, or the surcoat falls out of step with the legs
+      // as soon as a unit walks faster than the sheet's reference speed.
+      if (accentSprite && accentSprite.anims.timeScale !== timeScale) {
+        accentSprite.anims.timeScale = timeScale;
       }
     };
 

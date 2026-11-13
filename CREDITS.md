@@ -51,6 +51,31 @@ than its melee swing, and every unit's death sheet from `7_Death`.
 If you reuse this project's art elsewhere, keep this attribution with it. If you
 only reuse the original pack, attributing SKYZ0R directly satisfies the license.
 
+### 3D soldier and horse models (`linh`, `ngua`)
+
+- **Author:** the Chien Quoc project - original art, not a third-party pack.
+- **License:** same as the project. No third-party attribution is carried by the
+  mesh or by its 2048 px texture atlas; they were made for this game.
+- **Files:** `scripts/raw_downloads/models/linh.blend`, `linh.glb`, `ngua.blend`,
+  `ngua.glb` (~34 MB total). Source assets only — no `.glb` is served to the
+  browser.
+- **Rig:** the skeleton and clips come from an Adobe Mixamo rig
+  (`mixamorig:*` bones, `Walking`, `Running`, `Triple_Combo_Attack`,
+  `Archery_Shot_1`, `Left_Slash`, `BeHit_FlyUp`) with the project's own mesh
+  skinned onto it. The Mixamo clips keep Adobe's terms; the mesh and texture do
+  not come from Mixamo.
+- **Used for:** `assets/units/actions/spearman_*.png` - the `SPEARMAN` unit's
+  eight-direction sheets and their team-colour accent layers (phase 30). The horse
+  model is not rendered by any script yet.
+
+**Changes made.** Baked offline with Blender 4.5 (EEVEE Next); the runtime stays
+Phaser 2D and never loads a 3D asset. `scripts/blender_make_mask.py` bakes the
+team-colour mask from the mesh, `scripts/blender_bake_sheet.py` renders four
+actions in eight facings as a body layer and an accent layer, and
+`scripts/pack_team_sheets.py` downsamples and packs them into the client's
+192x168 x 8-row cell. The mesh, rig and textures are unmodified; only the camera,
+the lighting and the accent mask are ours.
+
 ## Buildings, trees and props
 
 The art below replaces the AI-generated building and tree sprites. It is built by

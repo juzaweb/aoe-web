@@ -51,6 +51,7 @@ import { shouldAlertOnBuildingRemoval } from '../alerts/foundationRemoval.js';
 import type { AttackPing, DamageResult } from '../alerts/underAttack.js';
 import { unitActionTexture } from '../render/unitDirections.js';
 import { UNIT_ART, unitArt, unitSheets } from '../render/unitArt.js';
+import { accentTexture, setAccentEnabled } from '../render/entityAccent.js';
 import { RENDER_DELAY_MS, visualActionState } from '../render/unitMotion.js';
 import type { UnitMotion } from '../render/unitMotion.js';
 import { ARROW_ASSET_URL, ARROW_TEXTURE_KEY, ProjectileLayer } from '../render/projectiles.js';
@@ -298,6 +299,13 @@ export class WorldScene extends Phaser.Scene {
    * minimap or command targeting, and the server deletes it on its own timer.
    */
   public corpseSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
+  /**
+   * TEAM-05: the accent sprite of each corpse, drawn one step above its body so
+   * a fallen soldier keeps its team colour (D8). Kept beside the body rather than
+   * in a container because a corpse never moves, so a plain depth offset is
+   * enough and the two sprites stay independently destroyable.
+   */
+  public corpseAccentSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   public resourceSprites: Map<string, Phaser.GameObjects.Container> = new Map();
 
   /**
@@ -504,7 +512,10 @@ export class WorldScene extends Phaser.Scene {
 
     // Preload generated unit assets with spritesheet & idle frame support (2x resolution)
     // Bumped whenever a sheet on disk changes: the URL is the cache key.
-    const uv = 'v=7';
+    // v=8: the spearman sheets were re-baked from the 3D soldier (phase 30) and
+    // gained an accent layer. One key covers every unit's action sheets, so the
+    // bump also re-fetches the villager's and archer's unchanged files.
+    const uv = 'v=8';
     // The legacy single-facing sheets stay loaded even for units that have been
     // redrawn: `EntityRenderer` falls back to them when a directional sheet is
     // missing, so an art regression still renders a unit instead of a green box.
@@ -545,6 +556,16 @@ export class WorldScene extends Phaser.Scene {
           `/assets/units/actions/${unitType.toLowerCase()}_${sheet.sheetAction}.png?${uv}`,
           { frameWidth: art.frameWidth, frameHeight: art.frameHeight }
         );
+        // TEAM-04: the accent layer is the same grid, so it loads as the same
+        // shape and animates off the same frame indices. Units without one skip
+        // the second request entirely.
+        if (art.accentSheet) {
+          this.load.spritesheet(
+            accentTexture(unitType, sheet.sheetAction),
+            `/assets/units/actions/${unitType.toLowerCase()}_${sheet.sheetAction}_accent.png?${uv}`,
+            { frameWidth: art.frameWidth, frameHeight: art.frameHeight }
+          );
+        }
       }
     }
 
@@ -625,6 +646,14 @@ export class WorldScene extends Phaser.Scene {
 
     // Natural AoE grass background clear color (eliminates any sub-pixel black seam line)
     this.cameras.main.setBackgroundColor('#58752d');
+
+    // TEAM-05: `?accent=0` draws the body layer alone, so the cost of the second
+    // sprite per unit can be measured against the same scene (the 300-unit case
+    // in the plan). It is a debug switch, not a setting.
+    if (typeof window !== 'undefined') {
+      const accent = new URLSearchParams(window.location.search).get('accent');
+      setAccentEnabled(accent !== '0');
+    }
 
     // Register unit animations if spritesheets are loaded
     this.entityRenderer = new EntityRenderer(this);
@@ -963,6 +992,9 @@ export class WorldScene extends Phaser.Scene {
     this.unitSprites.clear();
     this.corpseSprites.forEach((sprite) => sprite.destroy());
     this.corpseSprites.clear();
+    this.corpseAccentSprites.forEach((sprite) => sprite.destroy());
+    this.corpseAccentSprites.clear();
+    this.entityRenderer?.recentOwners.clear();
     this.resourceSprites.forEach((container) => container.destroy());
     this.resourceSprites.clear();
     this.pendingResources = [];
@@ -1347,6 +1379,14 @@ export class WorldScene extends Phaser.Scene {
         sprite.destroy();
         this.corpseSprites.delete(key);
       }
+      // TEAM-05: the accent is a separate object, so it goes with the body.
+      const accent = this.corpseAccentSprites.get(key);
+      if (accent) {
+        accent.destroy();
+        this.corpseAccentSprites.delete(key);
+      }
+      // TEAM-05: the remembered owner is only kept for this corpse.
+      this.entityRenderer.recentOwners.forget(key);
     });
 
     // 4. Ownership colours (OWN-05). Entities can enter the scene before their
