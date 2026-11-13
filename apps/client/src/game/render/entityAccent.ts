@@ -136,9 +136,35 @@ export interface AccentDecision {
  * (the "missing accent file" edge case in the plan).
  */
 export function resolveAccent(query: AccentQuery, colors: OwnerColorRegistry): AccentDecision {
-  const wanted = unitArt(query.unitType).accentSheet === true && query.sheetAvailable;
+  return accentDecision(
+    {
+      available: unitArt(query.unitType).accentSheet === true && query.sheetAvailable,
+      ownerId: query.ownerId
+    },
+    colors
+  );
+}
+
+export interface AccentAvailability {
+  /** Whether the accent art this entity would draw is in the texture cache. */
+  available: boolean;
+  /** Owner of the entity; unresolved owners fall back to `UNKNOWN_OWNER_COLOR`. */
+  ownerId: string;
+}
+
+/**
+ * The part of the accent decision that is the same for every entity kind.
+ *
+ * Units and buildings differ only in how they answer "is there accent art for
+ * this thing"; the debug switch and the owner lookup are identical, so they live
+ * here and `resolveAccent` is a thin wrapper over it.
+ */
+export function accentDecision(
+  query: AccentAvailability,
+  colors: OwnerColorRegistry
+): AccentDecision {
   return {
-    enabled: wanted && accentEnabled,
+    enabled: query.available && accentEnabled,
     tint: colors.colorOf(query.ownerId)
   };
 }

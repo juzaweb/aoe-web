@@ -220,6 +220,46 @@ export function buildingArt(
 }
 
 /**
+ * Building types whose art ships a team-colour accent layer.
+ *
+ * The accent is a second PNG, `<type>_accent.png`, drawn over the building and
+ * tinted with the owner's colour - the same two-layer trick the directional unit
+ * sheets use (see `docs/plans/31-team-color-building-accents.md`). The layer
+ * covers the roofs, or the banners on the two buildings that fly cloth, so the
+ * team colour reads from across the map without repainting the art per kingdom.
+ *
+ * A type missing from this list keeps its painted colours. `WALL` is the one
+ * case: a player-built segment borrows the citadel's masonry sheet, which is not
+ * part of the accent set, so it has no accent file to draw.
+ */
+export const BUILDING_ACCENT_TYPES: readonly BuildingType[] = [
+  'TOWN_CENTER',
+  'BARRACKS',
+  'STABLE',
+  'ARCHERY_RANGE',
+  'SIEGE_WORKSHOP',
+  'HOUSE',
+  'FARM',
+  'TOWER',
+  'PORTAL',
+  'LUMBER_CAMP',
+  'MILL',
+  'MINING_CAMP'
+];
+
+/**
+ * Texture key of a building's accent layer, e.g. `building_HOUSE_accent`.
+ *
+ * Derived from the body's key rather than from the type, so a tiered sheet
+ * (`building_HOUSE_2`) keeps its own accent and a sprite that degraded to a
+ * procedural placeholder (`b_house`) asks for a key nobody loaded instead of
+ * borrowing another building's accent. The caller checks the cache either way.
+ */
+export function buildingAccentKey(textureKey: string): string {
+  return `${textureKey}_accent`;
+}
+
+/**
  * The procedural placeholder, copied field by field.
  *
  * Spreading the table entry would leak its `hpBarY` into the returned

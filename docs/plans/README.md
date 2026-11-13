@@ -39,6 +39,7 @@ Thư mục này thay cho `docs/plan/` (số ít) đã bị xoá ở commit `94cc
 | [`28-aoe-command-dock.md`](./28-aoe-command-dock.md) | Dock lệnh kiểu AoE ở desktop: bỏ bảng Xây 336 px + panel chi tiết 320 px, thay bằng dải 156 px (radar · dải thông tin mỏng · lưới lệnh 5×3 · popover Chi tiết) (`DOCK-01`..`DOCK-08`) | IMPLEMENTED — chờ verify tay UI |
 | [`29-ranged-arrow-fx.md`](./29-ranged-arrow-fx.md) | Hiệu ứng bắn tên cho cung thủ và trụ canh: asset mũi tên vẽ bằng Canva (PNG tách nền) + projectile bay theo cung, cắm vào mục tiêu, bụi va chạm, tôn trọng reduced motion (`FX-01`) | IMPLEMENTED — chờ verify tay trong trận |
 | [`30-team-color-unit-sheets.md`](./30-team-color-unit-sheets.md) | Màu phe cho lính 3D: bake 2 lớp sheet (body + accent) từ `linh.glb`, accent render grayscale rồi `setTint` theo `OwnerColorRegistry`, giữ Phaser 2D không thêm three.js runtime (`TEAM-01..TEAM-08`) | IMPLEMENTED 2026-11-13 — code + art + test; còn verify tay §7 |
+| [`31-team-color-building-accents.md`](./31-team-color-building-accents.md) | Màu phe cho **công trình**: sinh mask accent 2D từ chính PNG vẽ sẵn (polygon/hue window), tint lúc chạy; **không** 3D hoá asset nhà, không đổi protocol/schema (`TEAM-09a..f`) | IMPLEMENTED 2026-11-13 — code + art + test; còn verify tay §7 |
 Status: `DRAFT` (chưa chốt quyết định) → `APPROVED` (bắt đầu code) → `DONE`.
 
 Phase 01 đã chốt 4 quyết định D1–D4 ngày 2026-11-01 (xem §11 của file phase); chưa có dòng code nào
@@ -128,6 +129,15 @@ Mask accent bake bằng Blender `Emit` (D3), camera 2:1 dimetric 30°/45° khớ
 TILE_HEIGHT 64`, cell giữ 192×168 của `SPEARMAN`. Phase thay PNG của `SPEARMAN` thay vì thêm
 `UnitType` mới (D6), và bắt buộc có mục `CREDITS.md` cho model trước khi merge (D10). Xem
 `30-team-color-unit-sheets.md` §2 (D1–D10) và §6 (task breakdown).
+
+Phase 31 nối tiếp phase 30 sang **công trình**, và cố ý đi đường rẻ hơn: art nhà là PNG vẽ sẵn
+(không có model 3D nguồn nào), nên thay vì dựng 12 model để bake, phase sinh **mask accent** từ chính PNG
+đó — polygon/hue window khai báo tay trong `ACCENT_SPECS`, script bake ra
+`<type>_accent.png` cùng canvas, client vẽ lớp thứ hai và `setTint(ownerColor)`. Cửa sổ sáng
+0,76–1,0 **theo giá trị hiển thị** là đúng D5 của phase 30 (linear vs display đã trả giá một lần).
+Accent phải là sprite riêng chứ không phải `setTint` trên ảnh nền, vì ECO-01 đã dùng tint nâu cho
+ruộng hết lúa. Không đổi `packages/shared`, server, schema hay DB. Xem
+`31-team-color-building-accents.md` §2 (D1–D7) và §6 (task breakdown).
 
 ## Quy ước
 

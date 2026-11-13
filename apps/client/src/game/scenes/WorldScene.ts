@@ -23,7 +23,7 @@ import {
   zoneKindOf
 } from '@chien-quoc/shared';
 import { generateProceduralTextures } from '../renderers/ProceduralSprites.js';
-import { buildingTierInfo } from '../render/buildingArt.js';
+import { BUILDING_ACCENT_TYPES, buildingAccentKey, buildingTierInfo } from '../render/buildingArt.js';
 import { CommandController } from '../input/CommandController.js';
 import { CursorController } from '../input/CursorController.js';
 import { PlacementController } from '../input/PlacementController.js';
@@ -591,6 +591,17 @@ export class WorldScene extends Phaser.Scene {
     this.load.image('building_LUMBER_CAMP', `/assets/buildings/lumber_camp.png?${v}`);
     this.load.image('building_MILL', `/assets/buildings/mill.png?${v}`);
     this.load.image('building_MINING_CAMP', `/assets/buildings/mining_camp.png?${v}`);
+
+    // TEAM-05, buildings: the team-colour layer of each building, drawn over the
+    // body and tinted at runtime. Same file naming as the body (`<type>_accent`),
+    // same cache-busting version, and a type with no accent simply stays absent
+    // from `BUILDING_ACCENT_TYPES`.
+    for (const accentType of BUILDING_ACCENT_TYPES) {
+      this.load.image(
+        buildingAccentKey(`building_${accentType}`),
+        `/assets/buildings/${accentType.toLowerCase()}_accent.png?${v}`
+      );
+    }
 
     // Preload generated resource node assets with cache-busting version
     this.load.image('res_node_TREE', `/assets/resources/tree.png?${v}`);

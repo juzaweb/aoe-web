@@ -3,6 +3,7 @@ import {
   ACCENT_DEPTH_OFFSET,
   RecentOwnerIndex,
   accentActionKey,
+  accentDecision,
   accentDepth,
   accentTexture,
   isAccentEnabled,
@@ -98,6 +99,21 @@ describe('entityAccent', () => {
       resolveAccent({ unitType: 'SPEARMAN', ownerId: 'alice', sheetAvailable: true }, colors)
         .enabled
     ).toBe(false);
+  });
+
+  it('shares one decision with the buildings, which answer "is there art" themselves', () => {
+    // TEAM-05, buildings: the building path has no `unitArt` entry to consult, so
+    // it calls the underlying decision directly. Same switch, same owner lookup.
+    expect(accentDecision({ available: true, ownerId: 'bob' }, colors)).toEqual({
+      enabled: true,
+      tint: 0xef4444
+    });
+    expect(accentDecision({ available: false, ownerId: 'bob' }, colors).enabled).toBe(false);
+    expect(accentDecision({ available: true, ownerId: 'stranger' }, colors).tint).toBe(
+      UNKNOWN_OWNER_COLOR
+    );
+    setAccentEnabled(false);
+    expect(accentDecision({ available: true, ownerId: 'bob' }, colors).enabled).toBe(false);
   });
 
   it('gives a corpse the same accent as the unit it came from', () => {

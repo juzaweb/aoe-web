@@ -2,7 +2,7 @@ import * as Phaser from 'phaser';
 import { TILE_HEIGHT, TILE_WIDTH, UNIT_BLUEPRINTS, getIsoDepth, gridToScreen } from '@chien-quoc/shared';
 import type { BuildingType } from '@chien-quoc/shared';
 import type { WorldScene } from '../scenes/WorldScene.js';
-import { buildingArt, buildingHpBarY } from './buildingArt.js';
+import { buildingAccentKey, buildingArt, buildingHpBarY } from './buildingArt.js';
 import { buildingDepth } from './isoDepth.js';
 import { syncBuildingFire } from './buildingFire.js';
 import {
@@ -16,6 +16,7 @@ import { UNIT_ART, hasDirectionalArt, unitArt, unitClips } from './unitArt.js';
 import {
   RecentOwnerIndex,
   accentActionKey,
+  accentDecision,
   accentDepth,
   accentTexture,
   resolveAccent
@@ -350,6 +351,29 @@ export class EntityRenderer {
     // rebuilding the container.
     container.setData('buildingImage', img);
 
+    // TEAM-05, buildings: the accent is a second image on the same offset, added
+    // straight after the body so the health bar and the level badge still draw on
+    // top of both. It has to be a separate object because a depleted field
+    // repaints the *body* brown in `updateBuildingBar` and the team colour has to
+    // survive that.
+    //
+    // The key is derived from the body's key, so a building that degraded to a
+    // procedural placeholder asks for an accent nobody loaded and simply draws
+    // body-only - the same "missing accent file" degradation as a unit.
+    const accentKey = buildingAccentKey(textureKey);
+    const accentLook = accentDecision(
+      { available: scene.textures.exists(accentKey), ownerId: building.ownerId },
+      scene.ownerColorRegistry
+    );
+    if (accentLook.enabled) {
+      const accent = scene.add.image(0, offsetY, accentKey);
+      accent.setScale(scale);
+      if (building.type === 'PORTAL') accent.setFlipX(true);
+      accent.setTint(accentLook.tint);
+      container.add(accent);
+      container.setData('accentSprite', accent);
+    }
+
     if (building.type === 'TOWN_CENTER') {
       const fireEffect = new TownCenterFireEffect(scene, container);
       container.setData('fireEffect', fireEffect);
@@ -443,6 +467,23 @@ export class EntityRenderer {
     image.setTexture(art.textureKey);
     image.setY(art.offsetY);
     image.setScale(art.scale);
+
+    // The accent follows the body: a tier swap has to move the layer to the new
+    // sheet, and a new sheet with no accent has to drop it. Keeping the old
+    // shape's colour over the new art would tint the wrong roof.
+    const accent = container.getData('accentSprite') as Phaser.GameObjects.Image | undefined;
+    if (accent) {
+      const accentKey = buildingAccentKey(art.textureKey);
+      if (this.scene.textures.exists(accentKey)) {
+        accent.setTexture(accentKey);
+        accent.setY(art.offsetY);
+        accent.setScale(art.scale);
+      } else {
+        this.accentSignatures.delete(container.getData('entityId') as string);
+        accent.destroy();
+        container.setData('accentSprite', null);
+      }
+    }
 
     const badge = container.getData('levelBadge') as Phaser.GameObjects.Text | undefined;
     if (badge) badge.setY(art.offsetY - image.displayHeight / 2 - 6);
@@ -586,28 +627,23 @@ export class EntityRenderer {
   }
 
   /**
-   * OWN-05: repaints every ownership marker after the players map changed.
-   *
-   * Entities can be created before their owner's player entry arrives (world
-   * restored from the database on server boot), so setting the colour only at
-   * creation time is not enough. Only entities whose signature changed touch
-   * their Graphics object, and ids that no longer exist are pruned.
-   */
-  /**
-   * TEAM-05: repaints one unit's accent tint.
+   * TEAM-05: repaints one entity's accent tint.
    *
    * Shares the OWN-05 refresh pass because an entity can be created before its
    * owner's player entry exists (the world is restored from the database on
-   * server boot): such a unit starts grey and has to turn to the real colour
-   * once the player shows up. Unlike the ownership ring this marker never hides -
-   * a unit wears its owner's colour whether or not it is ours.
+   * server boot): such a unit or building starts grey and has to turn to the real
+   * colour once the player shows up. Unlike the ownership ring this marker never
+   * hides - an entity wears its owner's colour whether or not it is ours.
    */
   private refreshAccentTint(
     container: Phaser.GameObjects.Container,
     entityId: string,
     ownerId: string
   ) {
-    const accent = container.getData('accentSprite') as Phaser.GameObjects.Sprite | undefined;
+    const accent = container.getData('accentSprite') as
+      | Phaser.GameObjects.Sprite
+      | Phaser.GameObjects.Image
+      | undefined;
     if (!accent) return;
     const tint = this.scene.ownerColorRegistry.colorOf(ownerId);
     if (this.accentSignatures.get(entityId) === tint) return;
@@ -615,6 +651,14 @@ export class EntityRenderer {
     accent.setTint(tint);
   }
 
+  /**
+   * OWN-05: repaints every ownership marker after the players map changed.
+   *
+   * Entities can be created before their owner's player entry arrives (world
+   * restored from the database on server boot), so setting the colour only at
+   * creation time is not enough. Only entities whose signature changed touch
+   * their Graphics object, and ids that no longer exist are pruned.
+   */
   refreshOwnershipVisuals() {
     const scene = this.scene;
     scene.unitSprites.forEach((container, id) => {
@@ -626,7 +670,11 @@ export class EntityRenderer {
     });
     scene.buildingSprites.forEach((container, id) => {
       const building = scene.room?.state?.buildings?.get(id);
-      if (building) this.refreshOwnerBase(container, id, building.ownerId);
+      if (!building) return;
+      this.refreshOwnerBase(container, id, building.ownerId);
+      // TEAM-05: the same late-player case the units have - a persisted
+      // building can be on screen before its owner's entry arrives.
+      this.refreshAccentTint(container, id, building.ownerId);
     });
 
     for (const id of this.ownershipSignatures.keys()) {
@@ -635,7 +683,9 @@ export class EntityRenderer {
       }
     }
     for (const id of this.accentSignatures.keys()) {
-      if (!scene.unitSprites.has(id)) this.accentSignatures.delete(id);
+      if (!scene.unitSprites.has(id) && !scene.buildingSprites.has(id)) {
+        this.accentSignatures.delete(id);
+      }
     }
   }
 
