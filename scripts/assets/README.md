@@ -166,6 +166,11 @@ pixel hash. `--check` also verifies that `apps/client/src/index.css` references
 each frame at the version the lock records (`?v=1`), so a re-cut asset cannot
 ship behind a stale URL.
 
+The proof sheets are rendered by `scripts/ui_preview.py` and written to
+`scripts/out/` (gitignored). They are review aids, not contract: nothing there
+is locked, so a template change cannot fail the gate. Serve the repo root to
+open the HTML preview, since it links the assets by a relative path.
+
 Two invariants keep the skin from changing layout:
 
 - **The frame paints inward.** `border-image-width` is larger than
