@@ -386,7 +386,6 @@ RIVET_RADIUS = {"rivets": 0.18, "screws": 0.14}
 
 
 def _corner_overlay(
-    width: int,
     ring: int,
     corner: str,
     tone: float,
@@ -527,7 +526,7 @@ def render_frame(
     pixels[..., 3] = np.where(ring_mask, 255, 0)
     frame = Image.fromarray(pixels, "RGBA")
 
-    ornament = _corner_overlay(width, ring_px, corner, tone)
+    ornament = _corner_overlay(ring_px, corner, tone)
     corner_mask = np.zeros((width, width), dtype=bool)
     corner_mask[:ring_px, :ring_px] = True
     corner_mask[:ring_px, -ring_px:] = True

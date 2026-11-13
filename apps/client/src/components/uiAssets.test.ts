@@ -48,6 +48,8 @@ interface Lock {
 }
 
 const LOCK = JSON.parse(readFileSync(LOCK_PATH, 'utf8')) as Lock;
+/** Cache-busting query the CSS must use; the lock version is the source. */
+const V = `?v=${LOCK.version}`;
 
 function rule(selector: string): string {
   // Comments are stripped first: a doc comment that mentions a class name must
@@ -113,16 +115,25 @@ const FRAMED: Array<{ selector: string; asset: string; fill: string | null; bord
 describe('UI chrome CSS contract (UI-01)', () => {
   it('renders every frame with the 9-slice kit', () => {
     for (const { selector, asset, fill } of FRAMED) {
-      expect(rule(selector), selector).toContain(`url('/assets/ui/${asset}.png?v=1')`);
-      if (fill) expect(rule(selector), selector).toContain(`url('/assets/ui/${fill}.png?v=1')`);
+      expect(rule(selector), selector).toContain(`url('/assets/ui/${asset}.png${V}')`);
+      if (fill) expect(rule(selector), selector).toContain(`url('/assets/ui/${fill}.png${V}')`);
     }
-    expect(rule('.aoe-backdrop')).toContain("url('/assets/ui/backdrop.png?v=1')");
+    expect(rule('.aoe-backdrop')).toContain(`url('/assets/ui/backdrop.png${V}')`);
   });
 
   it('replaces the old flat gradients instead of layering on top of them', () => {
     expect(rule('.aoe-panel')).not.toContain('gradient');
     expect(rule('.aoe-button')).not.toContain('gradient');
     expect(rule('.aoe-panel-inset')).not.toContain('linear-gradient');
+  });
+
+  it('keeps the thin surfaces free of a 9-slice ring', () => {
+    // 8 px HP troughs and 15 px chips cannot host an inward ring: the four
+    // corners would meet in the middle and cover the content.
+    for (const selector of ['.aoe-panel-inset', '.aoe-bar']) {
+      expect(rule(selector), selector).not.toContain('border-image');
+      expect(rule(selector), selector).toMatch(/border:\s*1px solid/);
+    }
   });
 
   it('paints the ring inward without moving the box', () => {
