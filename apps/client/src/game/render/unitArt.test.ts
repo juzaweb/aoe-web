@@ -49,11 +49,13 @@ describe('unitSheets', () => {
   });
 
   it('asks for nothing when a unit ships no directional art', () => {
-    expect(unitSheets('CAVALRY')).toEqual([]);
+    // The legacy fallback config has no actions at all; every shipped unit now
+    // has directional art, so an unknown type is the only empty case left.
+    expect(unitSheets('NOT_A_UNIT')).toEqual([]);
   });
 
   it('asks for one file per action on a soldier, none of them aliased', () => {
-    for (const type of ['SPEARMAN', 'ARCHER']) {
+    for (const type of ['SPEARMAN', 'ARCHER', 'CAVALRY']) {
       expect(unitSheets(type).map((sheet) => sheet.sheetAction), type).toEqual([
         'idle',
         'walk',
@@ -123,7 +125,7 @@ describe('actionFrameCount', () => {
 
   it('throws when the unit ships no such action', () => {
     expect(() => actionFrameCount('VILLAGER', 'idle')).not.toThrow();
-    expect(() => actionFrameCount('CAVALRY', 'walk')).toThrow(/no art for action/);
+    expect(() => actionFrameCount('NOT_A_UNIT', 'walk')).toThrow(/no art for action/);
   });
 
   it('throws instead of looping on an alias cycle', () => {
@@ -134,10 +136,13 @@ describe('actionFrameCount', () => {
 });
 
 describe('hasDirectionalArt', () => {
-  it('is true for every unit drawn from the pack, false for the legacy sheet', () => {
+  it('is true for every unit that ships a walk sheet, false for the fallback', () => {
     expect(hasDirectionalArt('VILLAGER')).toBe(true);
     expect(hasDirectionalArt('SPEARMAN')).toBe(true);
     expect(hasDirectionalArt('ARCHER')).toBe(true);
-    expect(hasDirectionalArt('CAVALRY')).toBe(false);
+    // Rendered from the local .blend models rather than an upstream pack, but
+    // shipped as the same eight-row grid, so it draws rotations like the rest.
+    expect(hasDirectionalArt('CAVALRY')).toBe(true);
+    expect(hasDirectionalArt('NOT_A_UNIT')).toBe(false);
   });
 });

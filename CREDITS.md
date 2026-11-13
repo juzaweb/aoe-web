@@ -8,8 +8,9 @@
 - **Source:** https://opengameart.org/content/400-items-basehumanmale-orc-skeleton
 - **License:** [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 - **Used for:** the villager, spearman and archer units
-  (`assets/units/actions/{villager,spearman,archer}_*.png`). Cavalry keeps its own
-  procedurally drawn art: the pack is humanoid only and ships no mounted base.
+  (`assets/units/actions/{villager,spearman,archer}_*.png`). The pack is humanoid
+  only and ships no mounted base, so the cavalry is rendered from the project's
+  own 3D sources instead (see *Cavalry* below).
 
 **Changes made.** The pack ships single frames per item, animation, camera and
 time step. We composite a base body with clothing layers, reorder the cameras into
@@ -147,6 +148,20 @@ and luminance-matched; otherwise unmodified apart from crop/scale.
 Everything in this section is drawn by this repository's own scripts. It has no
 upstream URL, no third-party author and no license to attribute, so it stays out
 of `scripts/assets/manifest.json`.
+
+### Cavalry
+
+`apps/client/public/assets/units/actions/cavalry_{idle,walk,attack,death}.png`
+are rendered in Blender from the two 3D sources checked into this repository
+(`scripts/raw_downloads/models/linh.blend`, a Mixamo-rigged knight, and
+`ngua.blend`, an armoured warhorse). The knight is seated on the saddle in a
+mounted pose, the horse plays its own walk cycle, the attack reuses the knight's
+sword combo with its leg channels removed, and the death rolls the pair onto its
+side. `scripts/blender/README.md` documents the camera, the 224 px cell and the
+eight-row order; `render_cavalry.py` + `assemble_cavalry_sheets.py` rebuild the
+sheets from the `.blend` files alone.
+
+**Changes made.** N/A - rendered, not derived from an image pack.
 
 ### UI chrome
 

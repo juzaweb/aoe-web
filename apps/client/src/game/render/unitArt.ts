@@ -139,19 +139,38 @@ export const UNIT_ART: Record<string, UnitArt> = {
       death: { frames: 8, fps: 9 }
     }
   },
-  // Cavalry has no directional art: the pack is humanoid only and ships no
-  // mounted base, so it keeps the procedurally drawn legacy sheet.
+  /**
+   * Rendered in Blender from the two local .blend sources (an armoured warhorse
+   * and a Mixamo-rigged knight seated on it), see `scripts/blender/`. The pack is
+   * humanoid only and ships no mounted base, so this is the one unit whose art
+   * is not from an upstream pack.
+   *
+   * 224 px cells: the mounted pair is longer and taller than a soldier, the
+   * attack holds a sword swung over the rider's head, and the death clip lays
+   * the whole mount across the frame. The 4.1 m camera square puts the tile's
+   * ground point ~25 px above the cell bottom, so the hooves facing the viewer
+   * stay inside the frame; `offsetY` is that row's distance from the cell centre
+   * at this scale.
+   */
   CAVALRY: {
-    frameWidth: 160,
-    frameHeight: 160,
-    scale: 0.75,
-    offsetY: -52,
-    bodyOffsetY: -43,
-    bodyRadiusX: 50,
+    frameWidth: 224,
+    frameHeight: 224,
+    scale: 0.9,
+    offsetY: -79,
+    bodyOffsetY: -44,
+    bodyRadiusX: 54,
     bodyRadiusY: 46,
-    ringRadiusX: 40,
-    ringRadiusY: 20,
-    actions: {}
+    ringRadiusX: 46,
+    ringRadiusY: 22,
+    actions: {
+      idle: { frames: 4 },
+      // 11 frames at 8 fps is a 1.35 s stride. The cavalry's 4 tiles/second run
+      // the clip at ~1.8x, which lands the stride near 0.75 s — a canter rather
+      // than the 0.38 s scurry a 16 fps cycle would produce at that speed.
+      walk: { frames: 11, fps: 8 },
+      attack: { frames: 10, fps: 12 },
+      death: { frames: 8, fps: 9 }
+    }
   }
 };
 
