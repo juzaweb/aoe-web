@@ -93,7 +93,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
-      className="absolute inset-0 z-[60] flex flex-col bg-slate-950/95 backdrop-blur-md"
+      className="aoe-backdrop absolute inset-0 z-[60] flex flex-col"
     >
       <header className="flex items-center gap-3 border-b border-amber-700/50 px-3 py-2">
         <MapIcon size={18} className="text-amber-400" />
@@ -111,7 +111,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         <button
           type="button"
           onClick={reload}
-          className="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:border-amber-500 hover:text-amber-200"
+          className="aoe-button px-2 py-1 text-[11px] text-slate-300 hover:text-amber-200"
         >
           {t('worldMap.refresh')}
         </button>
@@ -119,7 +119,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           type="button"
           onClick={onClose}
           aria-label={t('worldMap.close')}
-          className="rounded border border-slate-700 p-1 text-slate-300 hover:border-red-500 hover:text-red-300"
+          className="aoe-button p-1 text-slate-300 hover:text-red-300"
         >
           <X size={18} />
         </button>
@@ -131,7 +131,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             or enters the a11y tree. The flat gradient above it is the scrim
             that keeps the hex fills the brightest thing on screen. */}
         <div
-          className="relative min-h-0 flex-1 overflow-auto rounded-lg border border-slate-800 bg-slate-950/70 bg-cover bg-center"
+          className="aoe-frame-sm relative min-h-0 flex-1 overflow-auto bg-slate-950/70 bg-cover bg-center"
           style={{
             backgroundImage: `linear-gradient(rgba(2, 6, 23, 0.45), rgba(2, 6, 23, 0.45)), url('${WORLD_MAP_BACKGROUND_URL}')`
           }}
@@ -142,7 +142,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             </div>
           )}
           {error && (
-            <div className="absolute inset-x-3 top-3 z-10 rounded border border-red-700 bg-red-950/90 px-3 py-2 text-[11px] text-red-200">
+            <div className="aoe-frame-sm absolute inset-x-3 top-3 z-10 bg-red-950/90 px-3 py-2 text-[11px] text-red-200">
               {error}
             </div>
           )}
@@ -249,7 +249,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         </div>
 
         {/* Detail panel */}
-        <aside className="flex w-full shrink-0 flex-col gap-2 rounded-lg border border-slate-800 bg-slate-900/80 p-3 md:w-72">
+        <aside className="aoe-panel flex w-full shrink-0 flex-col gap-2 p-3 md:w-72">
           <div className="flex items-center gap-2 text-[11px] text-slate-400">
             <span className="inline-block h-2.5 w-2.5 rounded-sm bg-emerald-500" /> {t('worldMap.legendWeaker')}
             <span className="ml-2 inline-block h-2.5 w-2.5 rounded-sm bg-yellow-500" /> {t('worldMap.legendEqual')}
@@ -316,7 +316,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 type="button"
                 disabled={!canSend}
                 onClick={() => onAttack(selected, selectedUnitIds)}
-                className="mt-1 flex min-h-[44px] items-center justify-center gap-2 rounded border-2 border-red-600 bg-gradient-to-r from-red-800 to-red-900 text-xs font-bold uppercase tracking-wider text-red-50 transition-all enabled:hover:border-red-400 disabled:cursor-not-allowed disabled:border-slate-700 disabled:from-slate-800 disabled:to-slate-900 disabled:text-slate-500"
+                className="aoe-button aoe-button-danger mt-1 flex min-h-[44px] items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider text-red-50 transition-all disabled:cursor-not-allowed disabled:text-slate-500"
               >
                 <Swords size={15} />
                 {busy ? t('worldMap.attacking') : t('worldMap.attack')}
@@ -327,7 +327,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 type="button"
                 disabled={busy}
                 onClick={() => onSpectate(selected)}
-                className="flex min-h-[44px] items-center justify-center gap-2 rounded border border-amber-600/70 bg-slate-950/60 text-xs font-bold uppercase tracking-wider text-amber-200 transition-all enabled:hover:border-amber-400 disabled:cursor-not-allowed disabled:border-slate-700 disabled:text-slate-500"
+                className="aoe-button flex min-h-[44px] items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-200 transition-all disabled:cursor-not-allowed disabled:text-slate-500"
               >
                 <Eye size={15} />
                 {busy ? t('worldMap.opening') : t('worldMap.spectate')}

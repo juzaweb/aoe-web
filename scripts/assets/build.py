@@ -63,6 +63,12 @@ GENERATED_PATHS = frozenset(
     }
 )
 
+# Whole directories owned by another project-original generator. `ui/` is the
+# 9-slice chrome kit rebuilt by `scripts/generate_ui_assets.py`, which has its
+# own `--check` (pixel hashes, 9-slice geometry, fill tiling, CSS version).
+# Listing 25 individual paths here would drift the moment the kit gains a state.
+GENERATED_DIRS = ("apps/client/public/assets/ui/",)
+
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -272,7 +278,9 @@ def legacy_paths(lock: dict) -> set[str]:
         path.relative_to(ROOT).as_posix()
         for path in ASSET_ROOT.rglob("*.png")
     }
-    return present - owned - GENERATED_PATHS
+    return present - owned - GENERATED_PATHS - {
+        path for path in present if path.startswith(GENERATED_DIRS)
+    }
 
 
 def cmd_legacy() -> None:

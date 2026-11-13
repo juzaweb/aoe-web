@@ -23,7 +23,7 @@ export const UnderAttackBanner: React.FC = () => {
       role="alert"
       aria-live="assertive"
       data-under-attack-banner
-      className="flex items-center gap-2 rounded border border-red-500/80 bg-red-950/90 px-4 py-2 text-sm text-red-200 shadow-2xl backdrop-blur-md animate-pulse"
+      className="aoe-frame-sm flex items-center gap-2 bg-red-950/90 px-4 py-2 text-sm text-red-200 shadow-2xl backdrop-blur-md animate-pulse"
     >
       {/* Decorative: the sentence already says what happened. */}
       <AlertCircle size={16} className="text-red-400" aria-hidden="true" />

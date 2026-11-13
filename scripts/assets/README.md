@@ -145,6 +145,54 @@ and `gate_door.png` (192x169) are assembled from the same stone because the
 layout's 3-tile opening and 6-tile front are fixed geometry; the portcullis is a
 separate texture so `CitadelLayer` can raise it when a unit walks in.
 
+## UI chrome (project-original)
+
+`apps/client/public/assets/ui/*.png` is the interface skin: the 9-slice panel,
+modal, tooltip and chip frames, the button and slot state sets, and the tileable
+fills and backdrop they sit on. It is drawn by `scripts/generate_ui_assets.py`
+(Pillow + numpy, 4x supersampling, tileable value noise, deterministic seed per
+asset) so it has no upstream URL or license and stays out of `manifest.json`:
+
+```bash
+python scripts/generate_ui_assets.py            # rewrite every PNG + ui.lock.json
+python scripts/generate_ui_assets.py --check    # CI gate: lock + CSS references
+python scripts/generate_ui_assets.py --preview  # contact sheet + HTML proof
+python scripts/generate_ui_assets.py --only button_primary   # one family; keeps the rest of the lock
+```
+
+`scripts/assets/ui.lock.json` records every output's canvas, 9-slice inset,
+`border-image` width, core-ring alpha, edge uniformity, fill percentiles and
+pixel hash. `--check` also verifies that `apps/client/src/index.css` references
+each frame at the version the lock records (`?v=1`), so a re-cut asset cannot
+ship behind a stale URL.
+
+The proof sheets are rendered by `scripts/ui_preview.py` and written to
+`scripts/out/` (gitignored). They are review aids, not contract: nothing there
+is locked, so a template change cannot fail the gate. Serve the repo root to
+open the HTML preview, since it links the assets by a relative path.
+
+Two invariants keep the skin from changing layout:
+
+- **The frame paints inward.** `border-image-width` is larger than
+  `border-width` (8px vs 2px on `.aoe-panel`, 12px vs 2px on `.aoe-modal`), so
+  the ring is drawn inside the border box. Box sizes, the 156px dock band and
+  every 38px slot are unchanged; only the paint differs. Outer bevels are
+  `box-shadow` rings, which never affect layout.
+- **The centre is not part of the frame.** Frame PNGs are transparent inside the
+  ring and a separate tileable fill (`panel_fill`, `modal_fill`, `inset_fill`,
+  `button_fill`, `primary_fill`) repeats underneath, so a stretched centre cannot
+  smear. `.aoe-panel-inset` and `.aoe-bar` deliberately carry no `border-image`:
+  they are used on 8px troughs and 15px chips, where an 8px inward ring would
+  cover the content.
+
+`border-radius: 0` on the framed classes is intentional - the corner ornaments
+are in the artwork, and a CSS radius would clip them.
+
+A `border-*` utility next to a framed class is dead code: `border-image` paints
+the whole border area and wins over `border-color`, so `hover:border-amber-400`
+on an `.aoe-button` can never show. Semantic rims belong to the class
+(`.aoe-button-danger`) or to a child element's own border.
+
 ## Not migrated
 
 `terrain/{grass,dirt}*.png`, `resources/{gold,stone,berry}.png`,

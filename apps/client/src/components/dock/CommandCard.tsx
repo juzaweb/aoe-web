@@ -190,13 +190,7 @@ const CommandSlot: React.FC<CommandSlotProps> = ({ command, onHover }) => {
       onFocus={() => onHover(command.id)}
       onMouseLeave={() => onHover(null)}
       onBlur={() => onHover(null)}
-      className={`relative flex items-center justify-center rounded border transition-colors ${
-        command.active
-          ? 'border-amber-400 bg-amber-600/35 ring-1 ring-amber-400'
-          : command.disabled
-            ? 'aoe-panel-inset cursor-not-allowed opacity-55'
-            : 'aoe-button text-amber-100'
-      }`}
+      className="aoe-slot relative flex items-center justify-center text-amber-100"
       style={{ width: DOCK_SLOT_PX, height: DOCK_SLOT_PX }}
     >
       {command.thumbnail ? (

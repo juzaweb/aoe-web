@@ -51,11 +51,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
   };
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/85 p-3 backdrop-blur-md">
+    <div className="aoe-backdrop absolute inset-0 z-50 flex items-center justify-center overflow-y-auto p-3">
       <div className="absolute right-3 top-3 z-10">
         <LanguageSwitcher />
       </div>
-      <div className="aoe-panel my-auto flex max-h-[94dvh] w-full max-w-md flex-col items-center overflow-y-auto border-2 border-amber-600 p-4 text-center shadow-2xl sm:p-6">
+      <div className="aoe-modal my-auto flex max-h-[94dvh] w-full max-w-md flex-col items-center overflow-y-auto p-4 text-center sm:p-6">
         <div className="p-3 rounded-full bg-amber-950/60 border border-amber-600/50 mb-3 text-amber-400">
           <Swords size={36} />
         </div>
@@ -70,10 +70,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
           <button
             type="button"
             onClick={() => switchMode('login')}
-            className={`min-h-[44px] rounded border py-2 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-              mode === 'login'
-                ? 'bg-amber-600 text-slate-950 border-amber-400'
-                : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-amber-600'
+            aria-pressed={mode === 'login'}
+            className={`aoe-button min-h-[44px] py-2 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+              mode === 'login' ? 'text-amber-100' : 'text-slate-300'
             }`}
           >
             {t('auth.loginTab')}
@@ -81,10 +80,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
           <button
             type="button"
             onClick={() => switchMode('register')}
-            className={`min-h-[44px] rounded border py-2 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-              mode === 'register'
-                ? 'bg-amber-600 text-slate-950 border-amber-400'
-                : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-amber-600'
+            aria-pressed={mode === 'register'}
+            className={`aoe-button min-h-[44px] py-2 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+              mode === 'register' ? 'text-amber-100' : 'text-slate-300'
             }`}
           >
             {t('auth.registerTab')}
@@ -160,7 +158,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
           </div>
 
           {error && (
-            <div className="flex items-start gap-2 rounded bg-red-950/70 border border-red-600/70 px-3 py-2 text-[11px] text-red-200">
+            <div className="aoe-frame-sm flex items-start gap-2 bg-red-950/70 px-3 py-2 text-[11px] text-red-200">
               <AlertCircle size={14} className="shrink-0 mt-0.5 text-red-400" />
               <span>{error}</span>
             </div>
@@ -169,7 +167,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="flex min-h-[48px] w-full cursor-pointer items-center justify-center gap-2 rounded border border-amber-400 bg-gradient-to-r from-amber-600 to-amber-700 py-2.5 text-sm font-bold uppercase tracking-wider text-slate-950 shadow-lg transition-all hover:from-amber-500 hover:to-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+            className="aoe-button aoe-button-primary flex min-h-[48px] w-full cursor-pointer items-center justify-center gap-2 py-2.5 text-sm font-bold uppercase tracking-wider text-slate-950 transition-all disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? (
               <>

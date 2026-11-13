@@ -142,3 +142,24 @@ redrawn.
 **Changes made.** All three are cropped to alpha, scaled to the client's canvas
 and luminance-matched; otherwise unmodified apart from crop/scale.
 
+## Project-original art
+
+Everything in this section is drawn by this repository's own scripts. It has no
+upstream URL, no third-party author and no license to attribute, so it stays out
+of `scripts/assets/manifest.json`.
+
+### UI chrome
+
+`apps/client/public/assets/ui/*.png` is the wood-and-brass interface skin:
+9-slice panel, modal, tooltip and chip frames, the button/slot state sets
+(idle, hover, pressed, disabled, active), and the tileable fills and backdrop
+they sit on. It is drawn by `scripts/generate_ui_assets.py` (Pillow + numpy, 4x
+supersampling, tileable value noise) with a deterministic seed per asset, so the
+bytes are reproducible from the script alone.
+
+**Changes made.** N/A - generated, not derived. `scripts/assets/ui.lock.json`
+pins every output's size, 9-slice geometry, ring alpha, edge uniformity, fill
+percentiles and pixel hash; `--check` fails on drift, and
+`apps/client/src/components/uiAssets.test.ts` enforces the CSS contract that
+consumes these files.
+

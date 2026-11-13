@@ -11,7 +11,7 @@ export interface RejectVisual {
  * banner that carried its own `top-*` collided with its neighbours.
  */
 const BASE =
-  'px-4 py-2 rounded shadow-2xl backdrop-blur-md flex items-center gap-2 text-sm animate-bounce';
+  'aoe-frame-sm px-4 py-2 shadow-2xl backdrop-blur-md flex items-center gap-2 text-sm animate-bounce';
 
 const DEFAULT_VISUAL: RejectVisual = {
   containerClass: `${BASE} bg-red-950/90 border border-red-500/80 text-red-200`,

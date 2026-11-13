@@ -241,7 +241,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
               {entity.hp} / {entity.maxHp}
             </span>
           </div>
-          <div className="w-full h-2 rounded bg-slate-900 border border-slate-700 overflow-hidden">
+          <div className="aoe-bar w-full h-2 rounded overflow-hidden">
             <div
               className={`h-full transition-all duration-200 ${
                 entity.hp / entity.maxHp > 0.5
@@ -448,7 +448,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
               {Math.floor(entity.constructionProgress ?? 0)}%
             </span>
           </div>
-          <div className="w-full h-2 rounded bg-slate-900 border border-slate-700 overflow-hidden">
+          <div className="aoe-bar w-full h-2 rounded overflow-hidden">
             <div
               className="h-full bg-amber-500 transition-all duration-200"
               style={{
@@ -538,7 +538,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
                     data-train-hotkey={trainHotkey}
                     className={`scroll-mt-36 px-2.5 py-1.5 rounded border text-[11px] font-semibold transition-all flex flex-col items-center gap-1 ${
                       canAffordUnit
-                        ? 'aoe-button text-slate-200 hover:border-amber-400'
+                        ? 'aoe-button text-slate-200'
                         : 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed opacity-50'
                     }`}
                   >

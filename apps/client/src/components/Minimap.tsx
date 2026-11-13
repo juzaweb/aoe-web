@@ -470,10 +470,8 @@ export const Minimap: React.FC<MinimapProps> = ({
           onClick={() => setOpen((current) => !current)}
           aria-expanded={open}
           title={t('minimap.map')}
-          className={`flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-md border ${
-            open
-              ? 'border-amber-400 bg-amber-600/40 text-amber-100'
-              : 'aoe-button border-amber-900/70 text-slate-200'
+          className={`aoe-button flex h-12 w-12 flex-col items-center justify-center gap-0.5 ${
+            open ? 'text-amber-100' : 'text-slate-200'
           }`}
         >
           <MapIcon size={18} />
@@ -506,7 +504,7 @@ export const Minimap: React.FC<MinimapProps> = ({
                 // what a finger actually needs on the phone layout this panel
                 // only exists in.
                 style={{ minHeight: 44, minWidth: 44 }}
-                className="flex h-9 w-9 items-center justify-center rounded border border-slate-700 text-slate-300"
+                className="aoe-button flex h-9 w-9 items-center justify-center text-slate-300"
               >
                 <X size={13} />
               </button>

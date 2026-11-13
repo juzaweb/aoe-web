@@ -80,7 +80,7 @@ const CitadelBar: React.FC<{ status: CitadelStatus; compact?: boolean }> = ({
         hp: Math.ceil(status.hp),
         maxHp: Math.ceil(status.maxHp)
       })}
-      className={`pointer-events-auto flex items-center gap-1.5 rounded-md border border-slate-700/80 bg-slate-950/90 shadow-lg backdrop-blur-md ${
+      className={`aoe-panel pointer-events-auto flex items-center gap-1.5 ${
         compact ? 'px-2 py-1' : 'px-3 py-1.5'
       }`}
     >
@@ -96,7 +96,7 @@ const CitadelBar: React.FC<{ status: CitadelStatus; compact?: boolean }> = ({
           aria-label={t('hud.citadelLow')}
         />
       )}
-      <div className={`${compact ? 'h-1.5 w-16' : 'h-2 w-24'} overflow-hidden rounded-full bg-slate-800`}>
+      <div className={`aoe-bar ${compact ? 'h-1.5 w-16' : 'h-2 w-24'} overflow-hidden rounded-full`}>
         <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct * 100}%` }} />
       </div>
       <span
@@ -218,7 +218,7 @@ export const HUD: React.FC<HUDProps> = ({
     <>
       {/* Identity: a dot, a name short enough for a thumb-wide screen, and the
           map colour as a dot so the zone chip's text can be dropped. */}
-      <div className="pointer-events-auto flex items-center gap-1.5 rounded-md border border-amber-600/70 bg-slate-900/90 px-2 py-1 shadow-lg backdrop-blur-sm">
+      <div className="aoe-chip pointer-events-auto flex items-center gap-1.5 px-2 py-1">
         <div
           className="h-3 w-3 shrink-0 rounded-full border border-white/50"
           style={{ backgroundColor: playerColor || '#3b82f6' }}
@@ -244,7 +244,7 @@ export const HUD: React.FC<HUDProps> = ({
       </div>
 
       {/* Resources: icon + number only, dividers instead of labels. */}
-      <div className="pointer-events-auto flex items-center gap-2 rounded-md border border-amber-700/80 bg-slate-950/90 px-2 py-1 shadow-2xl backdrop-blur-md">
+      <div className="aoe-chip pointer-events-auto flex items-center gap-2 px-2 py-1">
         <ResourceChip icon={<Axe size={13} className="text-amber-400" />} value={wood} label={t('hud.wood')} />
         <ResourceChip
           icon={<Drumstick size={13} className="text-red-400" />}
@@ -316,7 +316,7 @@ export const HUD: React.FC<HUDProps> = ({
               title={t('hud.retreat')}
               aria-label={t('hud.retreat')}
               style={{ minHeight: MOBILE_MIN_TAP_PX, minWidth: MOBILE_MIN_TAP_PX }}
-              className="flex items-center justify-center rounded-md border border-red-700 bg-red-950/80 px-2 text-red-200"
+              className="aoe-button aoe-button-danger flex items-center justify-center px-2 text-red-200"
             >
               <Swords size={15} />
             </button>
@@ -329,7 +329,7 @@ export const HUD: React.FC<HUDProps> = ({
               title={t('hud.worldMap')}
               aria-label={t('hud.worldMap')}
               style={{ minHeight: MOBILE_MIN_TAP_PX, minWidth: MOBILE_MIN_TAP_PX }}
-              className="flex items-center justify-center rounded-md border border-amber-700 bg-slate-900/90 px-2 text-amber-300"
+              className="aoe-button flex items-center justify-center px-2 text-amber-300"
             >
               <MapIcon size={15} />
             </button>
@@ -337,7 +337,7 @@ export const HUD: React.FC<HUDProps> = ({
         )}
       </div>
 
-      <div className="pointer-events-auto flex items-center gap-1.5 rounded-md border border-slate-700/80 bg-slate-900/90 px-2 py-1 backdrop-blur-sm">
+      <div className="aoe-chip pointer-events-auto flex items-center gap-1.5 px-2 py-1">
         <span
           className={`h-2 w-2 rounded-full ${
             isConnected ? 'bg-emerald-400' : 'animate-pulse bg-red-500'
@@ -398,7 +398,7 @@ export const HUD: React.FC<HUDProps> = ({
               onClick={onRetreat}
               title={t('hud.retreat')}
               aria-label={t('hud.retreat')}
-              className="flex items-center gap-1.5 rounded-md border border-red-600/80 bg-slate-900/90 hover:bg-red-950/70 px-3 py-2 text-xs font-semibold text-red-200 hover:border-red-400 shadow-lg backdrop-blur-sm pointer-events-auto cursor-pointer transition-colors whitespace-nowrap active:scale-95"
+              className="aoe-button aoe-button-danger flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-red-200 pointer-events-auto cursor-pointer transition-colors whitespace-nowrap active:scale-95"
             >
               <Swords size={14} className="text-red-400" />
               <span>{t('hud.retreat')}</span>
@@ -411,7 +411,7 @@ export const HUD: React.FC<HUDProps> = ({
               onClick={onOpenWorldMap}
               title={t('hud.worldMap')}
               aria-label={t('hud.worldMap')}
-              className="flex items-center gap-1.5 rounded-md border border-amber-600/70 bg-slate-900/90 hover:bg-amber-950/60 px-3 py-2 text-xs font-semibold text-amber-200 hover:text-amber-100 hover:border-amber-400 shadow-lg backdrop-blur-sm pointer-events-auto cursor-pointer transition-colors whitespace-nowrap active:scale-95"
+              className="aoe-button flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-200 hover:text-amber-100 pointer-events-auto cursor-pointer transition-colors whitespace-nowrap active:scale-95"
             >
               <MapIcon size={14} className="text-amber-400" />
               <span>{t('hud.worldMap')}</span>
@@ -421,7 +421,7 @@ export const HUD: React.FC<HUDProps> = ({
       </div>
 
       {/* Central Resource Bar (AoE Classic Style) */}
-      <div className="flex items-center gap-5 bg-slate-950/85 border-2 border-amber-700/80 rounded-lg px-6 py-2 shadow-2xl backdrop-blur-md pointer-events-auto">
+      <div className="aoe-panel flex items-center gap-5 px-6 py-2 pointer-events-auto">
         {/* Wood */}
         <div className="flex items-center gap-2" title={t('hud.woodTitle')}>
           <div className="w-7 h-7 rounded bg-amber-950/70 border border-amber-600/50 flex items-center justify-center p-0.5 shadow-inner">
@@ -543,7 +543,7 @@ export const HUD: React.FC<HUDProps> = ({
       </div>
 
       {/* Network Status indicator */}
-      <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-700/80 rounded-md px-3 py-2 text-xs backdrop-blur-sm pointer-events-auto">
+      <div className="aoe-panel flex items-center gap-2 px-3 py-2 text-xs pointer-events-auto">
         {underAttack && (
           <span className="text-xs font-bold text-red-200 border border-red-500/80 bg-red-950/80 px-1.5 py-0.5 rounded animate-pulse">
             {t('hud.underAttack')}
