@@ -1,8 +1,9 @@
 import * as Phaser from 'phaser';
-import { TILE_HEIGHT, TILE_WIDTH, UNIT_BLUEPRINTS, getIsoDepth, gridToScreen } from '@chien-quoc/shared';
+import { UNIT_BLUEPRINTS, getIsoDepth, gridToScreen } from '@chien-quoc/shared';
 import type { BuildingType } from '@chien-quoc/shared';
 import type { WorldScene } from '../scenes/WorldScene.js';
 import { buildingArt, buildingHpBarY } from './buildingArt.js';
+import { footprintOutline } from './footprintOutline.js';
 import { buildingDepth } from './isoDepth.js';
 import { syncBuildingFire } from './buildingFire.js';
 import {
@@ -235,16 +236,19 @@ export class EntityRenderer {
 
     const container = scene.add.container(screenPos.x, screenPos.y);
 
-    // Age of Empires style foundation highlight on ground (2x tile dimensions)
+    // Age of Empires style foundation highlight on ground. The outline follows
+    // the footprint's true parallelogram: a 4x6 Town Center is 640 px wide, and
+    // its centre line sits 32 px above/below the symmetric diamond midpoint, so
+    // drawing it from `sizeX/sizeY` half extents alone left the highlight
+    // dropped below the walls (see `footprintOutline`).
     const foundation = scene.add.graphics();
-    const halfW = (building.sizeX * TILE_WIDTH) / 2;
-    const halfH = (building.sizeY * TILE_HEIGHT) / 2;
+    const outline = footprintOutline(building.sizeX, building.sizeY);
     foundation.lineStyle(2, 0x38bdf8, 0.9);
     foundation.beginPath();
-    foundation.moveTo(0, -halfH);
-    foundation.lineTo(halfW, 0);
-    foundation.lineTo(0, halfH);
-    foundation.lineTo(-halfW, 0);
+    foundation.moveTo(outline.north.x, outline.north.y);
+    foundation.lineTo(outline.east.x, outline.east.y);
+    foundation.lineTo(outline.south.x, outline.south.y);
+    foundation.lineTo(outline.west.x, outline.west.y);
     foundation.closePath();
     foundation.strokePath();
     foundation.fillStyle(0x0284c7, 0.2);
@@ -260,8 +264,7 @@ export class EntityRenderer {
     ownerBase.setVisible(false);
     container.add(ownerBase);
     container.setData('ownerBase', ownerBase);
-    container.setData('ownerBaseHalfW', halfW);
-    container.setData('ownerBaseHalfH', halfH);
+    container.setData('ownerOutline', outline);
 
     const img = scene.add.image(0, offsetY, textureKey);
     img.setScale(scale);
@@ -492,15 +495,18 @@ export class EntityRenderer {
       return;
     }
 
-    const halfW = container.getData('ownerBaseHalfW') as number;
-    const halfH = container.getData('ownerBaseHalfH') as number;
+    const outline = container.getData('ownerOutline') as
+      | ReturnType<typeof footprintOutline>
+      | undefined;
+    if (!outline) return;
+
     base.clear();
     base.lineStyle(2, color, 0.7);
     base.beginPath();
-    base.moveTo(0, -halfH);
-    base.lineTo(halfW, 0);
-    base.lineTo(0, halfH);
-    base.lineTo(-halfW, 0);
+    base.moveTo(outline.north.x, outline.north.y);
+    base.lineTo(outline.east.x, outline.east.y);
+    base.lineTo(outline.south.x, outline.south.y);
+    base.lineTo(outline.west.x, outline.west.y);
     base.closePath();
     base.fillStyle(color, 0.12);
     base.fillPath();

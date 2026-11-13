@@ -1,6 +1,6 @@
 import * as Phaser from 'phaser';
-import { TILE_HEIGHT, TILE_WIDTH } from '@chien-quoc/shared';
 import type { WorldScene } from '../scenes/WorldScene.js';
+import { footprintOutline } from './footprintOutline.js';
 
 /**
  * Overlay depth: above every entity, below the hover tile and the drag box.
@@ -86,22 +86,21 @@ export class FocusIndicator {
     });
   }
 
-  /** Diamond around a building's footprint, matching its foundation outline. */
+  /** Outline around a building's footprint, matching its foundation outline. */
   private drawBuildingMarker(
     container: Phaser.GameObjects.Container,
     building: { sizeX: number; sizeY: number },
     alpha: number
   ) {
-    const halfW = (building.sizeX * TILE_WIDTH) / 2;
-    const halfH = (building.sizeY * TILE_HEIGHT) / 2;
+    const outline = footprintOutline(building.sizeX, building.sizeY);
     const graphics = this.graphics;
 
     graphics.lineStyle(2, 0xef4444, alpha);
     graphics.beginPath();
-    graphics.moveTo(container.x, container.y - halfH);
-    graphics.lineTo(container.x + halfW, container.y);
-    graphics.lineTo(container.x, container.y + halfH);
-    graphics.lineTo(container.x - halfW, container.y);
+    graphics.moveTo(container.x + outline.north.x, container.y + outline.north.y);
+    graphics.lineTo(container.x + outline.east.x, container.y + outline.east.y);
+    graphics.lineTo(container.x + outline.south.x, container.y + outline.south.y);
+    graphics.lineTo(container.x + outline.west.x, container.y + outline.west.y);
     graphics.closePath();
     graphics.strokePath();
   }
