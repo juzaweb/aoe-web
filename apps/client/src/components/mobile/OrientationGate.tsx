@@ -23,19 +23,21 @@ export const OrientationGate: React.FC<OrientationGateProps> = ({ visible }) => 
 
   return (
     <div
-      className="absolute inset-0 z-[60] bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center gap-4 px-8 text-center"
+      className="aoe-backdrop absolute inset-0 z-[60] flex items-center justify-center p-4"
       data-orientation-gate
     >
-      <div className="relative flex items-center justify-center text-amber-400">
-        <Smartphone size={56} className="rotate-90" />
-        <RotateCw size={22} className="absolute -right-6 -top-2 animate-spin text-amber-300" />
+      <div className="aoe-modal flex max-w-sm flex-col items-center gap-4 p-6 text-center">
+        <div className="relative flex items-center justify-center text-amber-400">
+          <Smartphone size={56} className="rotate-90" />
+          <RotateCw size={22} className="absolute -right-6 -top-2 animate-spin text-amber-300" />
+        </div>
+        <h2 className="font-medieval text-lg font-bold tracking-wider text-amber-300">
+          {t('orientation.title')}
+        </h2>
+        <p className="max-w-xs text-xs leading-relaxed text-slate-300">
+          {t('orientation.body')}
+        </p>
       </div>
-      <h2 className="font-medieval text-lg font-bold tracking-wider text-amber-300">
-        {t('orientation.title')}
-      </h2>
-      <p className="max-w-xs text-xs leading-relaxed text-slate-300">
-        {t('orientation.body')}
-      </p>
     </div>
   );
 };

@@ -206,7 +206,7 @@ export const SelectionStrip: React.FC<SelectionStripProps> = ({
       {/* Row 2: only entities that can take damage get a bar. */}
       {hpShown && (
         <div className="flex min-w-0 shrink-0 items-center gap-2" data-selection-hp>
-          <div className="aoe-panel-inset h-2 min-w-0 flex-1 overflow-hidden rounded-sm">
+          <div className="aoe-bar h-2 min-w-0 flex-1 overflow-hidden rounded-sm">
             <div
               className={`h-full transition-all duration-200 ${hpClass}`}
               style={{ width: `${Math.max(0, Math.min(100, hpRatio * 100))}%` }}
@@ -295,7 +295,7 @@ export const SelectionStrip: React.FC<SelectionStripProps> = ({
               key={chip.key}
               data-status-chip={chip.key}
               title={chip.label}
-              className={`aoe-panel-inset truncate rounded px-1.5 py-0.5 text-[11px] leading-tight ${chip.tone}`}
+              className={`aoe-chip truncate rounded px-1.5 py-0.5 text-[11px] leading-tight ${chip.tone}`}
             >
               {chip.label}
             </span>

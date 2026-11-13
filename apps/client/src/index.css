@@ -75,60 +75,218 @@ canvas {
   background: rgba(148, 163, 184, 0.8);
 }
 
+/*
+ * UI-01: the chrome is a procedural 9-slice kit in `public/assets/ui/`.
+ *
+ * Every frame is drawn with `border-image-width` larger than `border-width`:
+ * the border box (and therefore every layout budget in `dockMetrics.ts`) stays
+ * exactly as it was, while the ring paints inward over the padding. The centre
+ * of a frame PNG is transparent and a tiled fill PNG shows through, so a 448 px
+ * modal never stretches a 16 px centre slice into a blur.
+ *
+ * `border-radius` is deliberately zero on the frame classes: the corner
+ * ornament is part of the artwork, and a rounded clip would cut it off.
+ */
 .aoe-panel {
-  background:
-    repeating-linear-gradient(
-      135deg,
-      rgba(255, 224, 160, 0.018) 0px,
-      rgba(255, 224, 160, 0.018) 2px,
-      transparent 2px,
-      transparent 6px
-    ),
-    linear-gradient(180deg, rgba(39, 32, 26, 0.96) 0%, rgba(22, 18, 15, 0.98) 65%, rgba(15, 12, 10, 0.99) 100%);
   border: 2px solid #9a5b13;
+  border-radius: 0;
+  border-image: url('/assets/ui/panel_frame.png?v=1') 32 / 8px stretch;
+  background-color: #171009;
+  background-image: url('/assets/ui/panel_fill.png?v=1');
+  background-size: 64px 64px;
+  background-repeat: repeat;
   box-shadow:
-    inset 0 1px 0 rgba(251, 191, 36, 0.28),
-    inset 1px 0 0 rgba(245, 158, 11, 0.14),
-    inset 0 -2px 0 rgba(0, 0, 0, 0.65),
-    inset -1px 0 0 rgba(0, 0, 0, 0.45),
-    0 0 0 1px rgba(10, 8, 6, 0.9),
+    0 0 0 1px #080604,
+    0 0 0 2px #8a5a1f,
+    0 0 0 3px #d9a441,
     0 10px 24px -4px rgba(0, 0, 0, 0.85);
 }
 
+/*
+ * Recessed surface. This one keeps its 1 px border and gains a tiled stone
+ * texture instead of a border-image: it is used on 8 px HP troughs and 15 px
+ * status chips, where a 4 px ring would erase the content.
+ */
 .aoe-panel-inset {
-  background: linear-gradient(180deg, rgba(14, 11, 9, 0.9) 0%, rgba(24, 20, 17, 0.85) 100%);
+  background-color: #0e0a07;
+  background-image: url('/assets/ui/inset_fill.png?v=1');
+  background-size: 32px 32px;
   border: 1px solid rgba(146, 84, 20, 0.55);
   box-shadow:
     inset 0 2px 4px rgba(0, 0, 0, 0.75),
     inset 0 -1px 0 rgba(251, 191, 36, 0.1);
 }
 
-.aoe-button {
-  background: linear-gradient(180deg, #473c31 0%, #2a221c 55%, #1e1813 100%);
+/* Frame-only variants: they keep the element's own background (semantic red,
+ * amber or a world-map painting) and only add the carved rim. */
+.aoe-frame {
+  border: 2px solid #9a5b13;
+  border-radius: 0;
+  border-image: url('/assets/ui/panel_frame.png?v=1') 32 / 8px stretch;
+}
+
+.aoe-frame-sm {
   border: 1px solid #8f5616;
+  border-radius: 0;
+  border-image: url('/assets/ui/tooltip_frame.png?v=1') 24 / 6px stretch;
+}
+
+.aoe-modal {
+  border: 2px solid #9a5b13;
+  border-radius: 0;
+  border-image: url('/assets/ui/modal_frame.png?v=1') 48 / 12px stretch;
+  background-color: #100b08;
+  background-image: url('/assets/ui/modal_fill.png?v=1');
+  background-size: 128px 128px;
+  background-repeat: repeat;
   box-shadow:
-    inset 0 1px 0 rgba(253, 230, 138, 0.2),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.55),
-    0 1px 2px rgba(0, 0, 0, 0.5);
-  transition: all 0.15s ease-in-out;
+    0 0 0 1px #080604,
+    0 0 0 3px #8a5a1f,
+    0 0 0 4px #d9a441,
+    0 24px 60px -10px rgba(0, 0, 0, 0.9);
+}
+
+.aoe-tooltip {
+  border: 1px solid #8a5a1f;
+  border-radius: 0;
+  border-image: url('/assets/ui/tooltip_frame.png?v=1') 24 / 6px stretch;
+  background-color: #0f0b08;
+  background-image: url('/assets/ui/inset_fill.png?v=1');
+  background-size: 32px 32px;
+  box-shadow:
+    0 0 0 1px #080604,
+    0 12px 32px -6px rgba(0, 0, 0, 0.9);
+}
+
+.aoe-chip {
+  border: 1px solid #7a4f1c;
+  border-radius: 0;
+  border-image: url('/assets/ui/chip_frame.png?v=1') 12 / 3px stretch;
+  background-color: #100c08;
+  background-image: url('/assets/ui/inset_fill.png?v=1');
+  background-size: 32px 32px;
+  box-shadow: 0 0 0 1px #080604;
+}
+
+/*
+ * Thin troughs (HP bars) cannot host a 9-slice ring: at 8 px tall the four
+ * corners would meet in the middle. They keep a clean inset gradient.
+ */
+.aoe-bar {
+  background: linear-gradient(180deg, #080604 0%, #1c1510 100%);
+  border: 1px solid #3b2a16;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.85);
+  overflow: hidden;
+}
+
+.aoe-backdrop {
+  background-color: #050403;
+  background-image:
+    radial-gradient(ellipse at 50% 38%, rgba(120, 80, 30, 0.18), transparent 62%),
+    url('/assets/ui/backdrop.png?v=1');
+  background-size: 100% 100%, 256px 256px;
+  background-repeat: no-repeat, repeat;
+}
+
+.aoe-button {
+  border: 1px solid #8f5616;
+  border-radius: 0;
+  border-image: url('/assets/ui/button_idle.png?v=1') 16 / 3px stretch;
+  background-color: #2a221c;
+  background-image: url('/assets/ui/button_fill.png?v=1');
+  background-size: 32px 32px;
+  background-repeat: repeat;
+  box-shadow:
+    0 0 0 1px #080604,
+    0 1px 2px rgba(0, 0, 0, 0.6);
+  transition: transform 0.15s ease-in-out, filter 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
 }
 .aoe-button:hover:not(:disabled) {
-  background: linear-gradient(180deg, #5d4d3d 0%, #382d24 55%, #271f19 100%);
-  border-color: #f59e0b;
+  border-image-source: url('/assets/ui/button_hover.png?v=1');
+  filter: brightness(1.05);
   box-shadow:
-    inset 0 1px 0 rgba(254, 243, 199, 0.3),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+    0 0 0 1px #080604,
     0 0 8px rgba(245, 158, 11, 0.22);
   transform: translateY(-1px);
 }
 .aoe-button:active:not(:disabled) {
-  background: linear-gradient(180deg, #241d17 0%, #342a21 100%);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.75);
+  border-image-source: url('/assets/ui/button_pressed.png?v=1');
+  filter: brightness(0.94);
+  box-shadow: 0 0 0 1px #080604;
   transform: translateY(1px);
 }
 .aoe-button:disabled {
-  opacity: 0.5;
+  border-image-source: url('/assets/ui/button_disabled.png?v=1');
+  opacity: 0.55;
   cursor: not-allowed;
+  filter: grayscale(0.65);
+}
+.aoe-button[aria-pressed='true']:not(:disabled),
+.aoe-button[aria-expanded='true']:not(:disabled) {
+  border-image-source: url('/assets/ui/button_active.png?v=1');
+  box-shadow:
+    0 0 0 1px #080604,
+    0 0 10px rgba(245, 158, 11, 0.35);
+}
+
+/* Red-tinted key for destructive orders (retreat, attack, cancel). The
+ * :not(:disabled) guard lets a disabled danger key fall back to the neutral
+ * grey `button_disabled` image above. */
+.aoe-button.aoe-button-danger:not(:disabled) {
+  border-image-source: url('/assets/ui/button_danger_idle.png?v=1');
+}
+.aoe-button.aoe-button-danger:hover:not(:disabled) {
+  border-image-source: url('/assets/ui/button_danger_hover.png?v=1');
+}
+.aoe-button.aoe-button-danger:active:not(:disabled) {
+  border-image-source: url('/assets/ui/button_danger_pressed.png?v=1');
+}
+
+/* Gold-faced call to action. Dark text is supplied by the component; the face
+ * is bright enough for `#0f172a` to clear AA. */
+.aoe-button.aoe-button-primary:not(:disabled) {
+  border-image-source: url('/assets/ui/button_primary_idle.png?v=1');
+  background-image: url('/assets/ui/primary_fill.png?v=1');
+  color: #0f172a;
+}
+.aoe-button.aoe-button-primary:hover:not(:disabled) {
+  border-image-source: url('/assets/ui/button_primary_hover.png?v=1');
+}
+.aoe-button.aoe-button-primary:active:not(:disabled) {
+  border-image-source: url('/assets/ui/button_primary_pressed.png?v=1');
+}
+
+/* Command slots. `aria-pressed` is already emitted by CommandCard, so the
+ * active state needs no extra class. */
+.aoe-slot {
+  border: 1px solid #6b4718;
+  border-radius: 0;
+  border-image: url('/assets/ui/slot_idle.png?v=1') 16 / 4px stretch;
+  background-color: #100c08;
+  background-image: url('/assets/ui/inset_fill.png?v=1');
+  background-size: 32px 32px;
+  background-repeat: repeat;
+  box-shadow: 0 0 0 1px #080604;
+  transition: transform 0.12s ease-in-out, filter 0.12s ease-in-out, box-shadow 0.12s ease-in-out;
+}
+.aoe-slot:hover:not(:disabled) {
+  border-image-source: url('/assets/ui/slot_hover.png?v=1');
+  filter: brightness(1.06);
+}
+.aoe-slot:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.aoe-slot[aria-pressed='true']:not(:disabled) {
+  border-image-source: url('/assets/ui/slot_active.png?v=1');
+  box-shadow:
+    0 0 0 1px #080604,
+    0 0 8px rgba(245, 158, 11, 0.35);
+}
+.aoe-slot:disabled {
+  border-image-source: url('/assets/ui/slot_disabled.png?v=1');
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: grayscale(0.6);
 }
 
 .aoe-gold-border {

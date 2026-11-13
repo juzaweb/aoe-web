@@ -42,7 +42,7 @@ export const SpectatorOverlay: React.FC<SpectatorOverlayProps> = ({ room, target
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
-      className="absolute inset-0 z-[55] flex flex-col bg-slate-950"
+      className="aoe-backdrop absolute inset-0 z-[55] flex flex-col"
     >
       <header className="flex items-center gap-3 border-b border-amber-700/50 bg-slate-900/95 px-3 py-2">
         <Eye size={18} className="shrink-0 text-amber-400" />
@@ -65,7 +65,7 @@ export const SpectatorOverlay: React.FC<SpectatorOverlayProps> = ({ room, target
           type="button"
           onClick={onClose}
           aria-label={t('spectator.close')}
-          className="flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:border-red-500 hover:text-red-300"
+          className="aoe-button flex items-center gap-1 px-2 py-1 text-[11px] text-slate-300 hover:text-red-300"
         >
           <X size={16} />
           {t('build.close')}

@@ -134,7 +134,7 @@ const PlacementShell: React.FC<PlacementShellProps> = ({
   const { t } = useTranslation();
   return (
     <div
-      className="pointer-events-auto flex max-w-full items-center gap-2 rounded-lg border-2 border-amber-500/80 bg-slate-950/95 px-2.5 py-1.5 shadow-2xl backdrop-blur-md"
+      className="aoe-frame-sm pointer-events-auto flex max-w-full items-center gap-2 bg-slate-950/95 px-2.5 py-1.5 shadow-2xl backdrop-blur-md"
       data-placement-banner
     >
       <span className="shrink-0" aria-hidden="true">
@@ -156,7 +156,7 @@ const PlacementShell: React.FC<PlacementShellProps> = ({
         title={t('placement.cancelTitle')}
         aria-label={t('placement.cancelTitle')}
         style={compact ? { minHeight: 44, minWidth: 44 } : undefined}
-        className="flex shrink-0 items-center justify-center gap-1 rounded-md border border-red-700/80 bg-red-950/70 px-2 py-1 text-[11px] font-bold uppercase text-red-200 transition-colors hover:border-red-400 hover:text-red-100"
+        className="aoe-button aoe-button-danger flex shrink-0 items-center justify-center gap-1 px-2 py-1 text-[11px] font-bold uppercase text-red-200 transition-colors hover:text-red-100"
       >
         <X size={14} aria-hidden="true" />
         <span className="hidden sm:inline">{t('placement.cancel')}</span>

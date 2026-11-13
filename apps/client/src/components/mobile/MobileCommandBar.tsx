@@ -65,12 +65,12 @@ const CommandButton: React.FC<CommandButtonProps> = ({
     title={title ?? label}
     aria-label={title ?? label}
     aria-pressed={active}
-    className={`flex h-12 min-w-[46px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-md border px-1.5 transition-colors ${
+    className={`aoe-button flex h-12 min-w-[46px] shrink-0 flex-col items-center justify-center gap-0.5 px-1.5 transition-colors ${
       active
-        ? 'border-amber-400 bg-amber-600/40 text-amber-100 shadow-[0_0_8px_rgba(245,158,11,0.5)]'
+        ? 'text-amber-100'
         : disabled
-          ? 'border-slate-800 bg-slate-900/60 text-slate-600'
-          : 'aoe-button border-amber-900/70 text-slate-200 active:brightness-125'
+          ? 'text-slate-600'
+          : 'text-slate-200'
     }`}
   >
     {icon}
@@ -114,7 +114,7 @@ export const MobileCommandBar: React.FC<MobileCommandBarProps> = ({
 
   return (
     <div
-      className="pointer-events-auto flex w-full items-center justify-start gap-1 overflow-x-auto rounded-lg border border-amber-800/60 bg-slate-950/85 px-1.5 py-1.5 shadow-2xl backdrop-blur-sm"
+      className="aoe-panel pointer-events-auto flex w-full items-center justify-start gap-1 overflow-x-auto px-1.5 py-1.5"
       data-mobile-command-bar
     >
       {armed !== null && (

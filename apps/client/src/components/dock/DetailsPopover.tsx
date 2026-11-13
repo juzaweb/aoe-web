@@ -126,7 +126,7 @@ export const DetailsPopover: React.FC<DetailsPopoverProps> = ({
           onClick={onClose}
           aria-label={t('dock.closeDetails')}
           title={t('dock.closeDetails')}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-slate-700 text-slate-300 transition-all hover:border-amber-500 hover:text-amber-200"
+          className="aoe-button flex h-8 w-8 shrink-0 items-center justify-center text-slate-300 hover:text-amber-200"
         >
           <X size={14} />
         </button>

@@ -56,7 +56,7 @@ export const ControlGroups: React.FC<ControlGroupsProps> = ({ groups, onSelectGr
           title={group.breakdown
             .map((entry) => `${unitShortLabels[entry.type] ?? entry.type} ×${entry.count}`)
             .join(', ')}
-          className={`flex items-center gap-2 rounded border border-slate-700/70 bg-slate-900/70 px-1.5 text-left transition-colors hover:border-amber-400 hover:bg-slate-800/80 ${
+          className={`aoe-frame-sm flex items-center gap-2 bg-slate-900/70 px-1.5 text-left transition-colors hover:brightness-110 ${
             compact ? 'min-h-[34px] py-0.5' : 'py-1'
           }`}
         >

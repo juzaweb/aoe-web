@@ -1220,8 +1220,8 @@ export const App: React.FC = () => {
           tab suspended, server restarted). Offering a retry beats silently showing
           the login screen with a token that is still valid. */}
       {showDisconnectGate && (
-          <div className="absolute inset-0 z-40 flex items-center justify-center bg-slate-950/90 p-3 backdrop-blur-md">
-            <div className="aoe-panel flex w-full max-w-sm flex-col items-center gap-3 rounded-xl border-2 border-amber-600 p-5 text-center shadow-2xl">
+          <div className="aoe-backdrop absolute inset-0 z-40 flex items-center justify-center p-3">
+            <div className="aoe-modal flex w-full max-w-sm flex-col items-center gap-3 p-5 text-center">
               <div className="flex items-center gap-2 text-amber-400">
                 <AlertCircle size={22} />
                 <span className="font-medieval text-sm font-bold tracking-wider">{t('app.disconnectTitle')}</span>
@@ -1233,14 +1233,14 @@ export const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleReconnect}
-                  className="min-h-[46px] flex-1 rounded border border-amber-400 bg-gradient-to-r from-amber-600 to-amber-700 text-xs font-bold uppercase tracking-wider text-slate-950"
+                  className="aoe-button aoe-button-primary min-h-[46px] flex-1 text-xs font-bold uppercase tracking-wider text-slate-950"
                 >
                   {t('app.reconnect')}
                 </button>
                 <button
                   type="button"
                   onClick={handleLeaveGame}
-                  className="min-h-[46px] flex-1 rounded border border-slate-700 bg-slate-900 text-xs font-bold uppercase tracking-wider text-slate-300"
+                  className="aoe-button min-h-[46px] flex-1 text-xs font-bold uppercase tracking-wider text-slate-300"
                 >
                   {t('app.logout')}
                 </button>
@@ -1252,14 +1252,14 @@ export const App: React.FC = () => {
       {/* MAPS: travel is in flight (leave + join the other room) */}
       {isSwitchingZone && (
         <div className="absolute inset-0 bg-slate-950/30 backdrop-blur-[1px] flex items-center justify-center z-50 p-4">
-          <div className="aoe-panel px-8 py-6 rounded-xl flex flex-col items-center gap-3 shadow-2xl border-2 border-violet-500">
+          <div className="aoe-modal px-8 py-6 flex flex-col items-center gap-3">
             <div className="w-8 h-8 rounded-full border-2 border-violet-400 border-t-transparent animate-spin" />
             <span className="text-sm text-slate-300">{t('app.switchingMap')}</span>
             <span className="text-[11px] text-slate-400">{t('app.switchingMapDetail')}</span>
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="px-3 py-1 rounded border border-slate-600 text-[11px] text-slate-300 hover:border-slate-400"
+              className="aoe-button px-3 py-1 text-[11px] text-slate-300 hover:text-slate-200"
             >
               {t('app.reload')}
             </button>
@@ -1269,22 +1269,22 @@ export const App: React.FC = () => {
 
       {/* MAPS: the destination room could not be joined; units are safe. */}
       {!isSwitchingZone && switchError && (
-        <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <div className="aoe-panel px-8 py-6 rounded-xl flex flex-col items-center gap-3 shadow-2xl border-2 border-red-600 max-w-sm text-center">
+        <div className="aoe-backdrop absolute inset-0 flex items-center justify-center z-50 p-4">
+          <div className="aoe-modal px-8 py-6 flex flex-col items-center gap-3 max-w-sm text-center">
             <AlertCircle size={28} className="text-red-400" />
             <span className="text-sm text-slate-200">{switchError}</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={retrySwitchZone}
-                className="px-4 py-2 rounded border border-amber-600 bg-amber-950/60 text-amber-200 text-sm hover:border-amber-400"
+                className="aoe-button px-4 py-2 text-amber-200 text-sm"
               >
                 {t('app.retry')}
               </button>
               <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="px-4 py-2 rounded border border-slate-600 text-slate-300 text-sm hover:border-slate-400"
+                className="aoe-button px-4 py-2 text-slate-300 text-sm"
               >
                 {t('app.reload')}
               </button>
@@ -1295,8 +1295,8 @@ export const App: React.FC = () => {
 
       {/* Session restore / world connection spinner */}
       {(isRestoringSession || (isJoining && !isSwitchingZone)) && (
-        <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-40 p-4">
-          <div className="aoe-panel px-8 py-6 rounded-xl flex flex-col items-center gap-3 shadow-2xl border-2 border-amber-600">
+        <div className="aoe-backdrop absolute inset-0 flex items-center justify-center z-40 p-4">
+          <div className="aoe-modal px-8 py-6 flex flex-col items-center gap-3">
             <div className="w-8 h-8 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
             <span className="text-sm text-slate-300">
               {isRestoringSession ? t('app.restoreSession') : t('app.connectingWorld')}
@@ -1310,7 +1310,7 @@ export const App: React.FC = () => {
         <button
           type="button"
           onClick={handleLeaveGame}
-          className="absolute top-16 right-2 z-30 px-3 py-1.5 rounded bg-slate-900/90 border border-slate-700 text-[11px] text-slate-300 hover:border-amber-500 hover:text-amber-300 transition-colors cursor-pointer"
+          className="aoe-button absolute top-16 right-2 z-30 px-3 py-1.5 text-[11px] text-slate-300 hover:text-amber-300 transition-colors cursor-pointer"
         >
           {t('app.logout')}
         </button>

@@ -151,12 +151,13 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
             // so the button has to point at it — `title` alone never reached a
             // screen reader as a description and never opened on focus.
             aria-describedby={tooltipId}
-            className={`relative flex h-full w-full flex-col items-center justify-between rounded-md border p-0.5 transition-all ${
+            aria-pressed={isSelected}
+            className={`aoe-button relative flex h-full w-full flex-col items-center justify-between p-0.5 transition-all ${
               isSelected
-                ? 'border-amber-400 bg-amber-600/40 ring-2 ring-amber-400/60 shadow-lg'
+                ? 'text-amber-100'
                 : disabled
-                  ? 'cursor-not-allowed border-slate-800 bg-slate-900/60 text-slate-600 opacity-50'
-                  : 'aoe-button text-slate-200'
+                  ? 'cursor-not-allowed text-slate-600'
+                  : 'text-slate-200'
             }`}
           >
             <div className="relative mt-0.5 flex h-7 w-7 items-center justify-center">
@@ -194,7 +195,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
           <div
             id={tooltipId}
             role="tooltip"
-            className={`pointer-events-none absolute bottom-full z-40 mb-1.5 w-44 rounded border border-amber-600/70 bg-slate-950 p-2 text-left opacity-0 shadow-2xl transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 group-active:opacity-100 ${
+            className={`aoe-tooltip pointer-events-none absolute bottom-full z-40 mb-1.5 w-44 p-2 text-left opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 group-active:opacity-100 ${
               hangsRight ? 'right-0' : 'left-1/2 -translate-x-1/2'
             }`}
           >
@@ -275,10 +276,9 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
         type="button"
         onClick={onClick}
         title={hint}
-        className={`relative flex h-12 w-12 flex-col items-center justify-between rounded-md border p-0.5 transition-all ${
-          active
-            ? 'border-amber-400 bg-amber-600/40 ring-2 ring-amber-400/60 shadow-lg'
-            : 'aoe-button text-slate-200'
+        aria-pressed={active}
+        className={`aoe-button relative flex h-12 w-12 flex-col items-center justify-between p-0.5 transition-all ${
+          active ? 'text-amber-100' : 'text-slate-200'
         }`}
       >
         <div className="mt-0.5 flex h-7 w-7 items-center justify-center text-amber-300">{icon}</div>
@@ -297,10 +297,8 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
         aria-expanded={open}
         aria-controls={sheetId}
         title={t('build.buildButton')}
-        className={`flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-md border ${
-          activeBuildingType
-            ? 'border-amber-400 bg-amber-600/40 text-amber-100'
-            : 'aoe-button border-amber-900/70 text-slate-200'
+        className={`aoe-button flex h-12 w-12 flex-col items-center justify-center gap-0.5 ${
+          activeBuildingType ? 'text-amber-100' : 'text-slate-200'
         }`}
       >
         <Hammer size={18} />
@@ -331,7 +329,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
               // UIX-14: 36 px is the desktop box; the sheet only exists on a
               // phone, so the 44 px floor always applies here.
               style={{ minHeight: 44, minWidth: 44 }}
-              className="flex h-9 w-9 items-center justify-center rounded border border-slate-700 text-slate-300"
+              className="aoe-button flex h-9 w-9 items-center justify-center text-slate-300"
             >
               <X size={14} />
             </button>
@@ -347,7 +345,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
                 onCancelBuilding();
                 setOpen(false);
               }}
-              className="mt-1.5 w-full rounded border border-red-800/60 bg-red-950/50 py-1.5 text-[11px] font-semibold uppercase text-red-300"
+              className="aoe-button aoe-button-danger mt-1.5 w-full py-1.5 text-[11px] font-semibold uppercase text-red-300"
             >
               {t('build.cancelPlacement')}
             </button>

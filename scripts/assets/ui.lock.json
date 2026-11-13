@@ -1,0 +1,333 @@
+{
+  "assets": {
+    "backdrop": {
+      "edgeDiff": 0,
+      "file": "backdrop.png",
+      "height": 256,
+      "meanRgb": [
+        7,
+        5,
+        3
+      ],
+      "p1Rgb": [
+        5,
+        4,
+        2
+      ],
+      "p99Rgb": [
+        9,
+        7,
+        4
+      ],
+      "pixelSha256": "b84432ab3e901a9370a5ef76fafd5d22ffe225df1615d185b11d8e3457e698fb",
+      "tile": true,
+      "width": 256
+    },
+    "button_active": {
+      "borderWidthPx": 3,
+      "edgeStdMax": 0.091,
+      "file": "button_active.png",
+      "height": 64,
+      "pixelSha256": "bd506cb23cfac57515a711232a6b4133d347b3aea7f601a1e5416139e510d292",
+      "ringMinAlpha": 254,
+      "slice": 16,
+      "width": 64
+    },
+    "button_danger_hover": {
+      "borderWidthPx": 3,
+      "edgeStdMax": 0.121,
+      "file": "button_danger_hover.png",
+      "height": 64,
+      "pixelSha256": "6decf3e17c3e160cd3dcdd6d1f5bb8279af7f25bf4ce7b1fc7c10ba2f48be8d3",
+      "ringMinAlpha": 254,
+      "slice": 16,
+      "width": 64
+    },
+    "button_danger_idle": {
+      "borderWidthPx": 3,
+      "edgeStdMax": 0.106,
+      "file": "button_danger_idle.png",
+      "height": 64,
+      "pixelSha256": "8fc6baf7b817001fd0dff2d38436f8e9ca984242e38315d10567d6f3f910e3f7",
+      "ringMinAlpha": 254,
+      "slice": 16,
+      "width": 64
+    },
+    "button_danger_pressed": {
+      "borderWidthPx": 3,
+      "edgeStdMax": 0.106,
+      "file": "button_danger_pressed.png",
+      "height": 64,
+      "pixelSha256": "878b30066dd7fd5e6de8768876a1472e93950626787c28dafc4071930237cfc8",
+      "ringMinAlpha": 254,
+      "slice": 16,
+      "width": 64
+    },
+    "button_disabled": {
+      "borderWidthPx": 3,
+      "edgeStdMax": 0.045,
+      "file": "button_disabled.png",
+      "height": 64,
+      "pixelSha256": "592ed4ee275b3d616bb7a5887f86d5e7243339558a3907fb3ede48309db96da2",
+      "ringMinAlpha": 254,
+      "slice": 16,
+      "width": 64
+    },
+    "button_fill": {
+      "edgeDiff": 6,
+      "file": "button_fill.png",
+      "height": 32,
+      "meanRgb": [
+        51,
+        38,
+        28
+      ],
+      "p1Rgb": [
+        44,
+        32,
+        24
+      ],
+      "p99Rgb": [
+        59,
+        44,
+        32
+      ],
+      "pixelSha256": "b60e7c88284af5af12e0a1f5397f59bab5ca8acf1720671233a7de790e5ab0e5",
+      "tile": true,
+      "width": 32
+    },
+    "button_hover": {
+      "borderWidthPx": 3,
+      "edgeStdMax": 0.106,
+      "file": "button_hover.png",
+      "height": 64,
+      "pixelSha256": "3a82c80cd0b05394743f7de60240b76136fe697e6691305df3886851b225a083",
+      "ringMinAlpha": 254,
+      "slice": 16,
+      "width": 64
+    },
+    "button_idle": {
+      "borderWidthPx": 3,
+      "edgeStdMax": 0.106,
+      "file": "button_idle.png",
+      "height": 64,
+      "pixelSha256": "abfec036274132707a8040b32de35ca63cc7e190025c128c12c1d3e0b96e547b",
+      "ringMinAlpha": 254,
+      "slice": 16,
+      "width": 64
+    },
+    "button_pressed": {
+      "borderWidthPx": 3,
+      "edgeStdMax": 0.151,
+      "file": "button_pressed.png",
+      "height": 64,
+      "pixelSha256": "dd66d3296014ca156c525f97b5f4caba74e05a3048286a1e8a9493599dfb6958",
+      "ringMinAlpha": 254,
+      "slice": 16,
+      "width": 64
+    },
+    "button_primary_hover": {
+      "borderWidthPx": 3,
+      "edgeStdMax": 0.091,
+      "file": "button_primary_hover.png",
+      "height": 64,
+      "pixelSha256": "699da1380787cc41f9267b1007e1fccf2a79fda207f4fa77851ca4581f68556d",
+      "ringMinAlpha": 254,
+      "slice": 16,
+      "width": 64
+    },
+    "button_primary_idle": {
+      "borderWidthPx": 3,
+      "edgeStdMax": 0.091,
+      "file": "button_primary_idle.png",
+      "height": 64,
+      "pixelSha256": "671a625d223f048f7ca5e68734e8651c70cf28eec930a185705b14ad0c43ece7",
+      "ringMinAlpha": 254,
+      "slice": 16,
+      "width": 64
+    },
+    "button_primary_pressed": {
+      "borderWidthPx": 3,
+      "edgeStdMax": 0.076,
+      "file": "button_primary_pressed.png",
+      "height": 64,
+      "pixelSha256": "cd6722f1a46c11abc5091e24d70ca2d1f55d858929befd153d9b9d8364eaafdc",
+      "ringMinAlpha": 254,
+      "slice": 16,
+      "width": 64
+    },
+    "chip_frame": {
+      "borderWidthPx": 3,
+      "edgeStdMax": 0.728,
+      "file": "chip_frame.png",
+      "height": 48,
+      "pixelSha256": "cb90cc39f97e277dc2557361a70233dea5b22e3c614a53b176468791a52a807c",
+      "ringMinAlpha": 254,
+      "slice": 12,
+      "width": 48
+    },
+    "inset_fill": {
+      "edgeDiff": 1,
+      "file": "inset_fill.png",
+      "height": 32,
+      "meanRgb": [
+        21,
+        17,
+        13
+      ],
+      "p1Rgb": [
+        17,
+        14,
+        11
+      ],
+      "p99Rgb": [
+        26,
+        22,
+        16
+      ],
+      "pixelSha256": "95b17256c794c3aec6f3bfa80e177a3df29b15e444511def11c839c7133f12a6",
+      "tile": true,
+      "width": 32
+    },
+    "modal_fill": {
+      "edgeDiff": 1,
+      "file": "modal_fill.png",
+      "height": 128,
+      "meanRgb": [
+        26,
+        17,
+        11
+      ],
+      "p1Rgb": [
+        22,
+        14,
+        9
+      ],
+      "p99Rgb": [
+        31,
+        21,
+        13
+      ],
+      "pixelSha256": "40e2bea7ac1724099812ded2f7e265a0a3cf13f0d25ce43bbb71737de9495c4d",
+      "tile": true,
+      "width": 128
+    },
+    "modal_frame": {
+      "borderWidthPx": 12,
+      "edgeStdMax": 0.003,
+      "file": "modal_frame.png",
+      "height": 192,
+      "pixelSha256": "5acdf043a61ba7a4bb788d6c6d6fb8052a0dbcc1273479d9436bc747027af2f6",
+      "ringMinAlpha": 254,
+      "slice": 48,
+      "width": 192
+    },
+    "panel_fill": {
+      "edgeDiff": 3,
+      "file": "panel_fill.png",
+      "height": 64,
+      "meanRgb": [
+        39,
+        26,
+        17
+      ],
+      "p1Rgb": [
+        31,
+        21,
+        13
+      ],
+      "p99Rgb": [
+        47,
+        32,
+        21
+      ],
+      "pixelSha256": "80c2274d70536bc24b2e10629b505f89e37f791cf724bc6629504f390bae039f",
+      "tile": true,
+      "width": 64
+    },
+    "panel_frame": {
+      "borderWidthPx": 8,
+      "edgeStdMax": 0.0,
+      "file": "panel_frame.png",
+      "height": 128,
+      "pixelSha256": "62a90a89331c3d787d735b16b73dfa8350dbfc867e1d4fd58b212be5cbb300ca",
+      "ringMinAlpha": 254,
+      "slice": 32,
+      "width": 128
+    },
+    "primary_fill": {
+      "edgeDiff": 1,
+      "file": "primary_fill.png",
+      "height": 32,
+      "meanRgb": [
+        219,
+        169,
+        74
+      ],
+      "p1Rgb": [
+        212,
+        159,
+        61
+      ],
+      "p99Rgb": [
+        224,
+        178,
+        91
+      ],
+      "pixelSha256": "8d01884dbab402189428158537f7846eca45c641bda0eb5a2dd293998603c49f",
+      "tile": true,
+      "width": 32
+    },
+    "slot_active": {
+      "borderWidthPx": 4,
+      "edgeStdMax": 0.076,
+      "file": "slot_active.png",
+      "height": 64,
+      "pixelSha256": "1f5e23ce8719010f599c44933aa4c3036c4935ad976270ad9fd6ba7bb144e469",
+      "ringMinAlpha": 254,
+      "slice": 16,
+      "width": 64
+    },
+    "slot_disabled": {
+      "borderWidthPx": 4,
+      "edgeStdMax": 0.045,
+      "file": "slot_disabled.png",
+      "height": 64,
+      "pixelSha256": "441e70211d8c4ebe59a25d816a65bed939dc6a6161c394033dbbcaec4a30a4e2",
+      "ringMinAlpha": 254,
+      "slice": 16,
+      "width": 64
+    },
+    "slot_hover": {
+      "borderWidthPx": 4,
+      "edgeStdMax": 0.091,
+      "file": "slot_hover.png",
+      "height": 64,
+      "pixelSha256": "91ebf0dd04374682384b06cb0ee3b05a5f44ababf2e547ece611b86fa39dd711",
+      "ringMinAlpha": 254,
+      "slice": 16,
+      "width": 64
+    },
+    "slot_idle": {
+      "borderWidthPx": 4,
+      "edgeStdMax": 0.106,
+      "file": "slot_idle.png",
+      "height": 64,
+      "pixelSha256": "62d0f26c259a6db0a85aed190ad66530c944a38194027fa901477b14f3771287",
+      "ringMinAlpha": 254,
+      "slice": 16,
+      "width": 64
+    },
+    "tooltip_frame": {
+      "borderWidthPx": 6,
+      "edgeStdMax": 0.008,
+      "file": "tooltip_frame.png",
+      "height": 96,
+      "pixelSha256": "2c4435d17d500884857e2d57f2743adab146b131c42a02856073e39ce6f91e97",
+      "ringMinAlpha": 254,
+      "slice": 24,
+      "width": 96
+    }
+  },
+  "version": 1
+}
