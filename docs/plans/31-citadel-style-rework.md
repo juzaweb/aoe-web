@@ -1,8 +1,6 @@
 # Phase 31 — Cải thiện style "Thành": keep thay castle, tường liền mạch, cổng có chiều sâu (`CIT-01..CIT-09`)
 
-**Status: `APPROVED`** (2026-11-13). Chưa có dòng code nào; chưa có asset mới. Art sinh bằng
-**Canva MCP**, lắp offline bằng `scripts/rebuild_canva_wall_town.py` +
-`scripts/process_citadel_assets.py`. Không đổi hình học, không đổi server/shared/schema/DB.
+**Status: `PARTIAL`** (2026-11-13). Tường/cổng/sàn đã ship và đạt cổng đo. **Town Center không đổi**: `CIT-02` đã chạy — Canva sinh 3 candidate keep, dựng proof sheet, đo cả 3 đều đạt (lum 85.6, chroma 20.6-23.9, iso base OK) — nhưng user **revert** sau khi xem: giữ art castle hiện tại. Art cũ đã về nguyên trạng trong git. Xem §11.
 
 **Phạm vi:** `apps/client` (`public/assets`, `buildingArt.ts`, `CitadelLayer.ts`, `WorldScene.ts`),
 `scripts/`, `docs/plans`, `CREDITS.md`. **Không** đổi `packages/shared`, `apps/server`, schema,
@@ -174,12 +172,13 @@ generate-image (keep 4:3, 3 texture)
 
 ## 9. Definition of Done
 
-- [ ] 4 PNG thay thế + 2 variant sàn đúng canvas/anchor theo D1; chroma đạt §8.1.
-- [ ] `--check` của 2 script xanh; `pnpm --filter @chien-quoc/client test`, `tsc --noEmit`,
+- [x] 4 PNG thay thế + 2 variant sàn đúng canvas/anchor theo D1; chroma đạt §8.1.
+- [x] `--check` của 2 script xanh; `pnpm --filter @chien-quoc/client test`, `tsc --noEmit`,
       `pnpm build` xanh.
-- [ ] `v`/`cv` đã bump; `HP_BAR_Y.TOWN_CENTER` + `measuredTopInset` khớp art mới.
-- [ ] Proof sheet before/after + screenshot in-game 3 mức zoom đính kèm.
-- [ ] `CREDITS.md` có mục citadel art; file này cập nhật status + số đo after; README index khớp.
+- [x] `v`/`cv` đã bump; `HP_BAR_Y.TOWN_CENTER` + `measuredTopInset` khớp art mới
+      (`topInset` đo lại vẫn 23 nên `HP_BAR_Y` giữ `-335`).
+- [ ] Proof sheet before/after; screenshot in-game 3 mức zoom — xem §11.4 (`CIT-08` chưa chốt).
+- [x] `CREDITS.md` có mục citadel art; file này cập nhật status + số đo after; README index khớp.
 
 ## 10. Ngoài phạm vi / giả định
 
@@ -194,3 +193,74 @@ generate-image (keep 4:3, 3 texture)
   `get-export-formats` trên một design có sẵn).
 - Dev server chạy được cục bộ để verify in-game; nếu không, `CIT-08` hạ xuống "verify bằng proof
   sheet + chờ user".
+
+## 11. Kết quả triển khai (2026-11-13)
+
+### 11.1 Số đo trước / sau
+
+Đo trên pixel `alpha > 16`; `lum` = Rec.709, `chroma` = mean(max − min).
+
+| File | lum trước | lum sau | chroma trước | chroma sau |
+| --- | --- | --- | --- | --- |
+| `citadel/floor.png` | 127.9 | 129.7 | 4.3 | 25.1 |
+| `citadel/floor_1.png` | — | 129.5 | — | 28.8 |
+| `citadel/floor_2.png` | — | 126.7 | — | 22.4 |
+| `citadel/wall.png` | 103.0 | 103.6 | 11.5 | 21.9 |
+| `citadel/gate.png` | 103.6 | 106.4 | 3.5 | 22.7 |
+| `citadel/gate_door.png` | 59.3 | 71.8 | 12.9 | 12.9 |
+| `buildings/town_center.png` | 73.9 | 73.9 (không đổi) | 8.4 | 8.4 (không đổi) |
+
+Tham chiếu palette: house lum 86.7 / chroma 23.2, barracks lum 86.8 / chroma 24.0. Wall
+mean RGB sau là `(114, 105, 92)`, cùng độ lệch đỏ-trên-xanh của house `(93, 86, 70)`.
+
+### 11.2 Việc đã làm
+
+- `scripts/process_citadel_assets.py`: `build_wall(parapet=True)` thêm dải merlon 9 px trên hai
+  mép xa của cap (đỉnh ở `y 3`, trong 12 px headroom, `--check` chặn `topRow < 2`), thay
+  `add_outline` cap bằng `apply_ao` (0.30, 1.4 px), thêm `mortar_lines` cố định;
+  `build_gate` thêm AO chân tường/góc trụ, passage ấm `#2A2620 → #3C362C` giữ 38% grain đá,
+  voussoir band 13 px + joint + highlight; `build_floor(variant=)` xuất 3 biến thể;
+  `measure_chroma` + `CHROMA_MIN` thành cổng; `preview()` dựng citadel 26×26 có Town Center
+  thật ở slot của nó, sàn chọn theo `floor_variant_at` (mirror của hàm TS).
+- `scripts/rebuild_canva_wall_town.py`: bỏ Gaussian blur + desaturate, dùng `box_mip` (đã chuyển
+  vào `load_stone` của `process_citadel_assets` nên không bị áp hai lần); `matte()` tái dùng
+  `process_arrow_asset.key_out_background`/`despill`; `TOWN_MATCH_LUM` 74.8 → 86.0;
+  thêm `--check` (size, bottom inset, corner alpha, iso base, chroma ≥ 16, lum 80-92) và
+  `--preview` (delegate sang proof sheet).
+- `apps/client/src/game/render/citadelFloorVariants.ts` + `.test.ts`: `floorVariantAt` dùng
+  `hash2(gridX, gridY, 0x1f2e3d4c)`; test khẳng định deterministic, đủ 3 giá trị trên 15×15,
+  và **không** vẽ sọc chéo.
+- `CitadelLayer.ts`: chọn texture theo variant, fallback `citadel_floor` khi thiếu file.
+- `WorldScene.ts`: preload `citadel_floor_1`/`citadel_floor_2`; bump `v=28 → v=29`,
+  `cv=8 → v=9`.
+- `buildingArt.ts`: không phải sửa — `topInset` của art mới vẫn 23 nên `HP_BAR_Y.TOWN_CENTER`
+  giữ `-335` (công thức `-130 - 440/2 + 23 - 8`).
+
+### 11.3 Cổng đã chạy
+
+| Cổng | Kết quả |
+| --- | --- |
+| `uv run --with numpy --with pillow python scripts/process_citadel_assets.py --check` | OK |
+| `uv run --with numpy --with pillow python scripts/rebuild_canva_wall_town.py --check` | OK |
+| `pnpm --filter @chien-quoc/client test` | 60 file / 725 test pass |
+| `cd apps/client && ../../node_modules/.bin/tsc --noEmit` | sạch |
+| `pnpm build` | xanh (cảnh báo chunk 2.2 MB có sẵn từ trước) |
+
+Lưu ý môi trường: Mac này không có `numpy`/`Pillow` trong `python3` hệ thống, nên mọi lệnh Python
+ở trên chạy qua `uv run --with numpy --with pillow`.
+
+### 11.4 Còn lại
+
+- `CIT-02` (keep mới): **đã làm rồi revert**. Canva sinh 3 candidate keep 4:3 không có vòng
+tường ngoài, export 1456×1088, dựng proof sheet qua đúng đường build
+(`python scripts/rebuild_canva_wall_town.py --candidates a.png b.png c.png`). Cả 3 đạt cổng
+(lum 85.6, chroma 20.6-23.9, iso base trong ngưỡng); user chọn `c1` rồi **đổi ý revert**,
+giữ art castle hiện tại. `town_center.png` đã `git checkout` về nguyên trạng, và
+`town_center_failures()` không còn gate chroma/lum của keep (chỉ in số đo kèm ngưỡng mong
+đợi) vì art cũ vốn không đạt band đó — gate nó sẽ làm `--check` đỏ trên file không ai sửa.
+- Muốn bật lại: đặt render keep vào `scripts/raw_downloads/canva_rework/`, trỏ
+`CASTLE_SOURCE` sang file đó, chạy `rebuild_canva_wall_town.py`, rồi cập nhật
+`HP_BAR_Y.TOWN_CENTER` theo `topInset` mới (keep c1 đo được `topInset` 0 → `-358`;
+art castle hiện tại là 23 → `-335`).
+- `CIT-08` (screenshot in-game 3 mức zoom): proof sheet và swatch tường đã kiểm, nhưng cần user mở
+  game để chốt cảm nhận ở zoom 0.4 / 1.0 / 2.2.

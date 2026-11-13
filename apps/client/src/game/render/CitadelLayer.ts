@@ -8,6 +8,7 @@ import {
 } from '@chien-quoc/shared';
 import type * as Phaser from 'phaser';
 import type { WorldScene } from '../scenes/WorldScene.js';
+import { floorTextureKey, floorVariantAt } from './citadelFloorVariants.js';
 import { wallDepth } from './isoDepth.js';
 
 /**
@@ -193,10 +194,21 @@ export class CitadelLayer {
     const layout = citadelLayoutFor(townCenterGridX, townCenterGridY);
 
     // Stone apron inside the walls, just above the grass and below roads.
+    // Three hashed variants instead of one texture: 576 identical diamonds is a
+    // flat plate, and the choice is derived from the tile, so no state is
+    // replicated and every client draws the same courtyard.
     for (let y = layout.innerMinY; y <= layout.innerMaxY; y++) {
       for (let x = layout.innerMinX; x <= layout.innerMaxX; x++) {
         const pos = gridToScreen(x, y);
-        const tile = this.scene.add.image(pos.x, pos.y, 'citadel_floor');
+        const variant = floorVariantAt(x, y);
+        const key = floorTextureKey(variant);
+        const tile = this.scene.add.image(
+          pos.x,
+          pos.y,
+          // A variant that failed to load degrades to the base diamond rather
+          // than to Phaser's missing-texture square.
+          this.scene.textures.exists(key) ? key : 'citadel_floor'
+        );
         tile.setDepth(-99996);
         this.floorTiles.push(tile);
       }

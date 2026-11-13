@@ -551,8 +551,9 @@ export class WorldScene extends Phaser.Scene {
     // Preload generated building assets with cache-busting version (2x resolution)
     // v=27: the three economy camps (lumber camp, mill, mining camp) were
     // regenerated so the lumber camp no longer reuses the stable sprite.
+    // v=29 (phase 31): the town centre was rebuilt as a warm-sandstone keep.
     // Bump the key whenever a PNG under public/assets/buildings or /resources changes.
-    const v = 'v=28';
+    const v = 'v=29';
     this.load.image('building_TOWN_CENTER', `/assets/buildings/town_center.png?${v}`);
     this.load.image('building_BARRACKS', `/assets/buildings/barracks.png?${v}`);
     // MIL-01: both military branches now ship their own 400x320 sheet. The
@@ -610,10 +611,15 @@ export class WorldScene extends Phaser.Scene {
     // file is missing the load fails softly and `ProjectileLayer` draws its own.
     this.load.image(ARROW_TEXTURE_KEY, ARROW_ASSET_URL);
 
-    // Citadel stone: floor tile, wall block, gatehouse and its portcullis.
-    // Built by `scripts/process_citadel_assets.py`; bump when a PNG changes.
-    const cv = 'v=8';
+    // Citadel stone: floor tile (three hashed variants), wall block, gatehouse
+    // and its portcullis. Built by `scripts/process_citadel_assets.py`; bump when
+    // a PNG changes.
+    // cv=9 (phase 31): merlon parapet, AO instead of a black cap outline, deeper
+    // gate, warm stone, and the two extra floor diamonds.
+    const cv = 'v=9';
     this.load.image('citadel_floor', `/assets/citadel/floor.png?${cv}`);
+    this.load.image('citadel_floor_1', `/assets/citadel/floor_1.png?${cv}`);
+    this.load.image('citadel_floor_2', `/assets/citadel/floor_2.png?${cv}`);
     this.load.image('citadel_wall', `/assets/citadel/wall.png?${cv}`);
     this.load.image('citadel_gate', `/assets/citadel/gate.png?${cv}`);
     this.load.image('citadel_gate_door', `/assets/citadel/gate_door.png?${cv}`);

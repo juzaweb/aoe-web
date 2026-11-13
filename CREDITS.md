@@ -163,3 +163,28 @@ percentiles and pixel hash; `--check` fails on drift, and
 `apps/client/src/components/uiAssets.test.ts` enforces the CSS contract that
 consumes these files.
 
+### Citadel stone and Town Center
+
+`apps/client/public/assets/citadel/{floor,floor_1,floor_2,wall,gate,gate_door}.png`
+and `apps/client/public/assets/buildings/town_center.png` are project-original:
+the stone textures and the keep render were produced with Canva, and the shipped
+PNGs are assembled offline by two scripts, so no third-party licence applies and
+none of them appears in `scripts/assets/manifest.json`.
+
+- `scripts/process_citadel_assets.py` builds the floor diamonds (three hashed
+  variants), the wall block (merlon parapet, ambient occlusion instead of a cap
+  outline, fixed masonry courses) and the gatehouse (voussoir band, warm recessed
+  passage, contact shadow) plus its iron portcullis, all at the exact geometry
+  `CitadelLayer` and `packages/shared/src/utils/citadel.ts` measure against.
+- `scripts/rebuild_canva_wall_town.py` keys the keep render out of its flat
+  backdrop, warms it to the shipped building palette, fits it to the 576x440
+  canvas and anchors it on the bottom row.
+
+Both scripts have a `--check` gate that re-measures the shipped PNGs (size,
+anchor, corner alpha, iso base, mean luminance, chroma, parapet headroom) instead
+of comparing a hash, so the art can be regenerated from a new export without
+rewriting a lock.
+
+**Changes made.** N/A - generated, not derived. The raw Canva exports these
+scripts consume live in `scripts/raw_downloads/canva_rework/`.
+

@@ -56,12 +56,32 @@ DEFAULT_OUT = ROOT / "apps" / "client" / "public" / "assets"
 TILE_W = 128
 TILE_H = 64
 
+# Mirrors `packages/shared/src/utils/citadel.ts`. Duplicated (not imported) on
+# purpose: this script is offline tooling and must not depend on a Node/tsserver
+# build to draw a proof sheet.
+CITADEL_WIDTH = 26
+CITADEL_HEIGHT = 26
+CITADEL_GATE_WIDTH = 3
+CITADEL_TC_OFFSET_X = 5
+CITADEL_TC_OFFSET_Y = 10
+FLOOR_VARIANT_SEED = 0x1F2E3D4C
+
 FLOOR_REL = Path("citadel") / "floor.png"
+# Two extra textures, picked per tile by `citadelFloorVariants.ts`. 225 identical
+# diamonds read as one flat plate; three hashed variants break that up without
+# the server replicating a single byte.
+FLOOR_VARIANT_RELS = (
+    FLOOR_REL,
+    Path("citadel") / "floor_1.png",
+    Path("citadel") / "floor_2.png",
+)
 FLOOR_SIZE = (TILE_W, TILE_H)
 # Mean luminance of the shipped `citadel_floor` (0x7b7f88), so the stone reads
 # at the same brightness as the grass and the old procedural apron.
 FLOOR_LUM = 134.0
-FLOOR_EDGE_LUM = 104.0
+# Rim was 104.0: against a 134 body it read as a dark grid, which is what the
+# wall's cap outline was doing too. 112 keeps the flagstone edge without the grid.
+FLOOR_EDGE_LUM = 112.0
 
 WALL_REL = Path("citadel") / "wall.png"
 WALL_RISE = 120
@@ -77,13 +97,36 @@ WALL_CAP_LUM = 150.0
 WALL_LUM_RANGE = (92.0, 130.0)
 WALL_MIN_OPAQUE = 0.55
 WALL_OUTLINE = (0x3A, 0x3F, 0x47)
+# Merlons standing on the far (rear) edges of the cap. 9 px keeps every parapet
+# pixel inside the 12 px headroom above `TOP_Y`, so a wall run never paints over
+# the tile behind it; `check` asserts nothing reaches `y < 2`.
+MERLON_H = 9
+MERLON_HALF = 13.0
+MERLON_T = (0.32, 0.78)
+MERLON_MIN_Y = 2
+# Ambient occlusion replaces the 1.2 px near-black cap outline. A dark ring
+# around every cap turned a wall run into a row of tombstones: it read as a gap
+# between blocks instead of a joint. 0.30 keeps the core at lum >= 70.
+AO_STRENGTH = 0.30
+AO_WIDTH = 1.4
 # The 1024px source has ~80px blocks. Mapped straight onto a 64px-wide face they
 # turn into 5px noise, so only a quarter of the sheet is used: same stone, but
 # each block lands at a readable 16-20px.
 WALL_TEXTURE_CROP = 360
-# The generated stone is slightly warm; the client's old wall was a cool
-# blue-grey (0x5b606a), so the channels are nudged back before luminance match.
-STONE_GAIN = (0.96, 1.0, 1.07)
+# The stone sheet is 1264-1456 px wide and lands on a 64 px face. Averaging 4x4
+# blocks is the missing mip level; without it the grain aliases into speckle.
+TEXTURE_MIP = 4
+# The generated stone is a cool blue-grey; the house and barracks the citadel has
+# to sit beside are warm (chroma 23-24), so the channels are pulled warm before
+# the luminance match. Tuned by measuring the shipped block: this gain puts the
+# wall at chroma 21.9 with mean RGB (114, 105, 92), i.e. the same red-over-blue
+# offset the house carries (93, 86, 70). Anything bluer and it reads as concrete;
+# anything warmer and it turns terracotta (chroma 47 at 0.86 blue).
+STONE_GAIN = (1.10, 1.0, 0.88)
+# Chroma floor per sprite, in the 0-255 max-minus-min channel range. Measured on
+# the pre-rework files: floor 4.3, wall 11.5, gate 3.5, against house 23.2 and
+# barracks 24.0. The citadel has to read as the same stone family as those.
+CHROMA_MIN = {"floor": 10.0, "wall": 16.0, "gate": 12.0}
 
 # --- Gate geometry ---------------------------------------------------------
 #
@@ -111,11 +154,17 @@ GATE_ARCH_RADIUS = 34
 GATE_FRONT_LUM = 108.0
 GATE_SIDE_LUM = 84.0
 GATE_CAP_LUM = 150.0
-GATE_PASSAGE_TOP = (0x0B, 0x0D, 0x10)
-GATE_PASSAGE_BOTTOM = (0x1C, 0x20, 0x26)
-GATE_ARCH_RING = (0x9A, 0x9F, 0xA8)
+# Warm passage instead of near-black: a flat #0b0d10 hole is what made the gate
+# read as "grey box with a black hole". The floor still sees stone through it.
+GATE_PASSAGE_TOP = (0x2A, 0x26, 0x20)
+GATE_PASSAGE_BOTTOM = (0x3C, 0x36, 0x2C)
+GATE_ARCH_RING = (0xC6, 0xB4, 0x96)
+GATE_RING_JOINT = (0x6B, 0x5F, 0x4D)
+# Voussoir band thickness, up from 8 px: at 8 the ring was thinner than the joint
+# line it was framed by, so the arch still read as a cut-out.
+GATE_RING_WIDTH = 13.0
 GATE_IRON = (0x2B, 0x2F, 0x36)
-GATE_IRON_HIGHLIGHT = (0x4A, 0x50, 0x5A)
+GATE_IRON_HIGHLIGHT = (0x6C, 0x72, 0x7C)
 
 GATE_MIN_ALPHA = 8
 GATE_MIN_BLOB = 6
@@ -283,6 +332,58 @@ def add_outline(
     mask = stroke_mask((rgb.shape[1], rgb.shape[0]), points, width_px, closed=closed)
     rgb[:] = rgb * (1.0 - mask[..., None]) + np.array(colour, dtype=np.float64) * mask[..., None]
 
+def apply_ao(
+    rgb: np.ndarray,
+    points: list[tuple[float, float]],
+    width_px: float = AO_WIDTH,
+    strength: float = AO_STRENGTH,
+    closed: bool = True,
+) -> None:
+    """Darken a band just inside an edge by `strength`, instead of outlining it.
+
+    The wall used to stroke every cap with a 1.2 px `WALL_OUTLINE` (lum ~62)
+    against a cap face at lum 150. That is a 2.4x contrast step exactly where two
+    blocks meet, so a wall run read as separate tombstones with a gap between
+    them. Multiplying by (1 - strength) keeps the joint legible while the cap
+    stays at lum >= 70, which is the level the floor apron sits at.
+    """
+    mask = stroke_mask((rgb.shape[1], rgb.shape[0]), points, width_px, closed=closed)
+    rgb *= (1.0 - mask[..., None] * strength)
+
+def mortar_lines(
+    rgb: np.ndarray,
+    start: tuple[float, float],
+    end: tuple[float, float],
+    rise: float,
+    fractions: tuple[float, ...] = (0.34, 0.68),
+    colour: tuple[int, int, int] = (0x77, 0x6C, 0x59),
+    width_px: float = 1.0,
+) -> None:
+    """Fixed masonry courses along a wall face.
+
+    The source texture is pre-blurred so its joints survive the 5x downsample onto
+    a 64 px face; the cost is that the joint contrast itself is gone. These two
+    lines put it back at a fixed, measured brightness, which is also what keeps
+    the wall's chroma stable between texture exports.
+    """
+    size = (rgb.shape[1], rgb.shape[0])
+    mask = np.zeros((size[1], size[0]), dtype=np.float64)
+    for fraction in fractions:
+        offset = rise * fraction
+        mask = np.maximum(
+            mask,
+            stroke_mask(
+                size,
+                [
+                    (start[0], start[1] - offset),
+                    (end[0], end[1] - offset),
+                ],
+                width_px,
+                closed=False,
+            ),
+        )
+    rgb[:] = rgb * (1.0 - mask[..., None]) + np.array(colour, dtype=np.float64) * mask[..., None]
+
 
 # ---------------------------------------------------------------------------
 # Floor
@@ -290,14 +391,61 @@ def add_outline(
 
 FLOOR_DIAMOND = [(64, 0), (128, 32), (64, 64), (0, 32)]
 
+# Per-variant dressing. Variant 0 is the plain flagstone; 1 adds a chip scar in
+# one quadrant, 2 lets moss creep out of the joints. Every blob stays clear of
+# the rim stroke, so all three still tile into the same diamond grid.
+FLOOR_VARIANTS = (
+    {"moss": 0.0, "scar": 0.0, "warm": 0.0},
+    {"moss": 0.0, "scar": 0.55, "warm": 0.008},
+    {"moss": 0.5, "scar": 0.0, "warm": -0.006},
+)
+MOSS_RGB = (0x5C, 0x6B, 0x3C)
+SCAR_RGB = (0x8A, 0x84, 0x78)
 
-def build_floor(source: Path, out_root: Path) -> dict:
+def _blob_mask(
+    size: tuple[int, int], centre: tuple[float, float], radius: float, seed: int
+) -> np.ndarray:
+    """Soft irregular disc, deterministic for a given seed."""
+    width, height = size
+    ys, xs = np.mgrid[0:height, 0:width].astype(np.float64)
+    rng = np.random.default_rng(seed)
+    wobble = 0.72 + 0.28 * np.sin(xs / (3.0 + rng.random() * 4.0) + seed)
+    distance = np.hypot(xs - centre[0], (ys - centre[1]) * 1.6) / max(radius, 1e-6)
+    return np.clip((1.0 - distance * wobble) * 2.2, 0.0, 1.0)
+
+
+def build_floor(
+    source: Path, out_root: Path, variant: int = 0, rel: Path | None = None
+) -> dict:
+    """Draw one floor diamond.
+
+    `variant` indexes `FLOOR_VARIANTS`; `rel` overrides the output path, so
+    `floor.png`, `floor_1.png` and `floor_2.png` all come out of this function
+    with no duplicated geometry.
+    """
+    if not 0 <= variant < len(FLOOR_VARIANTS):
+        raise ValueError(f"unknown floor variant {variant}")
+    spec = FLOOR_VARIANTS[variant]
     rgba = load_rgba(source)
     texture = resize_rgb(rgba[..., :3], FLOOR_SIZE).astype(np.float64)
     texture = np.clip(texture * np.array(STONE_GAIN), 0.0, 255.0)
+    if spec["warm"]:
+        texture *= np.array(
+            [1.0 + spec["warm"] * 3.0, 1.0 + spec["warm"] * 1.2, 1.0 - spec["warm"] * 2.0]
+        )
 
     mask = polygon_mask(FLOOR_SIZE, FLOOR_DIAMOND)
     body = shade_region(texture, mask, FLOOR_LUM)
+
+    if spec["scar"]:
+        scar = _blob_mask(FLOOR_SIZE, (78.0, 34.0), 15.0, 17 + variant) * spec["scar"]
+        body = body * (1.0 - scar[..., None]) + np.array(SCAR_RGB, dtype=np.float64) * scar[..., None]
+    if spec["moss"]:
+        moss = _blob_mask(FLOOR_SIZE, (44.0, 30.0), 17.0, 29 + variant) * spec["moss"]
+        # Moss only takes where the flagstone is bright, i.e. on the surface and
+        # not in the joint, so it never lifts the rim above the body.
+        moss = moss * np.clip((body.max(axis=-1, keepdims=True) - 60.0) / 80.0, 0.35, 1.0)[..., 0]
+        body = body * (1.0 - moss[..., None]) + np.array(MOSS_RGB, dtype=np.float64) * moss[..., None]
 
     # A soft joint along the diamond rim reads as the cut edge of a flagstone
     # and hides the seam where one tile meets the next.
@@ -309,10 +457,15 @@ def build_floor(source: Path, out_root: Path) -> dict:
     canvas[..., 3] = np.rint(mask * 255.0).astype(np.uint8)
     canvas = bleed_rgb(canvas)
 
-    target = out_root / FLOOR_REL
+    target = out_root / (rel if rel is not None else FLOOR_VARIANT_RELS[variant])
     target.parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(canvas, mode="RGBA").save(target, "PNG", optimize=True)
-    return {"name": target.name, "size": FLOOR_SIZE, "meanLum": measure_mean_lum(canvas)}
+    return {
+        "name": target.name,
+        "size": FLOOR_SIZE,
+        "meanLum": measure_mean_lum(canvas),
+        "chroma": float(measure_chroma(canvas)),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -338,10 +491,40 @@ def center_crop(rgb: np.ndarray, size: int) -> np.ndarray:
     y0 = (height - side) // 2
     return rgb[y0 : y0 + side, x0 : x0 + side]
 
+def box_mip(rgb: np.ndarray, factor: int = TEXTURE_MIP) -> np.ndarray:
+    """Average `factor` x `factor` blocks: a real mip level for the sprite.
+
+    A 1264-1456 px stone sheet mapped onto a 64 px face aliases into speckle. The
+    pipeline used to answer that with a Gaussian, which erased the mortar joints
+    and left the wall at chroma 11.5 -- plastic concrete beside a painted house at
+    23.2. A box filter destroys the same aliasing (it *is* the average) while
+    keeping the joint adjacency, and the joints are then rebuilt at a fixed
+    brightness by `mortar_lines`.
+    """
+    if factor <= 1 or rgb.shape[0] <= factor or rgb.shape[1] <= factor:
+        return rgb
+    height, width = rgb.shape[:2]
+    return np.asarray(
+        Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8), mode="RGB").resize(
+            (max(1, width // factor), max(1, height // factor)), Image.Resampling.BOX
+        ),
+        dtype=np.float64,
+    )
+
+def _resize_square(rgb: np.ndarray, size: int) -> np.ndarray:
+    return np.asarray(
+        Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8), mode="RGB").resize(
+            (size, size), Image.Resampling.BICUBIC
+        ),
+        dtype=np.float64,
+    )
+
 
 def load_stone(path: Path, crop: int) -> np.ndarray:
     rgba = load_rgba(path)
-    texture = center_crop(rgba[..., :3], crop).astype(np.float64)
+    texture = box_mip(center_crop(rgba[..., :3].astype(np.float64), crop * TEXTURE_MIP))
+    if texture.shape[0] != crop:
+        texture = _resize_square(texture, crop)
     return np.clip(texture * np.array(STONE_GAIN), 0.0, 255.0)
 
 
@@ -363,12 +546,19 @@ def build_wall(
     out_root: Path,
     cap_source: Path | None = None,
     rel: Path = WALL_REL,
+    parapet: bool = True,
 ) -> dict:
     """Draw the wall block.
 
     ``rel`` is the output path relative to ``out_root``, so a variant such as
     ``citadel/wall_v2.png`` can be built next to the shipped ``wall.png``
-    without editing the module constants.
+    without editing the module constants. ``parapet`` adds the merlon row on the
+    far half of the cap.
+
+    The block is a 1x1 tile with a fixed silhouette: two faces plus a cap lifted
+    `WALL_RISE` above the base, capped at `CAP_INSET`. A battlements row sits on
+    the cap rather than extending it, so `WALL_SIZE` (and therefore
+    `CitadelLayer`'s origin) is untouched.
     """
     texture = load_stone(source, WALL_TEXTURE_CROP)
     # The cap is a horizontal plane, so it uses the floor texture (a top-down
@@ -398,9 +588,26 @@ def build_wall(
         weight = layer_mask[..., None]
         canvas_rgb = canvas_rgb * (1.0 - weight) + shaded * weight
 
-    # Cap edge and the ground-contact line keep the block readable from above.
-    add_outline(canvas_rgb, WALL_CAP, 1.2)
-    add_outline(canvas_rgb, [(0, BASE_Y), (64, BASE_Y + 32), (128, BASE_Y)], 1.2, closed=False)
+    # Masonry courses at a fixed brightness. The texture arrives pre-blurred (it
+    # has to be, to survive the 5x downsample), so the joints are rebuilt here
+    # instead of being left to whatever survived the resize.
+    mortar_lines(canvas_rgb, (0, BASE_Y), (64, BASE_Y + 32), WALL_RISE)
+    mortar_lines(canvas_rgb, (64, BASE_Y + 32), (128, BASE_Y), WALL_RISE, fractions=(0.5,))
+
+    # AO instead of an outline. A 1.2 px near-black ring around every cap is what
+    # made a wall run look like a row of separate tombstones with gaps between
+    # them; multiplying the cap edge keeps the joint without the gap.
+    apply_ao(canvas_rgb, WALL_CAP)
+    add_outline(
+        canvas_rgb,
+        [(0, BASE_Y), (64, BASE_Y + 32), (128, BASE_Y)],
+        1.2,
+        closed=False,
+        colour=(0x5A, 0x51, 0x42),
+    )
+
+    if parapet:
+        body_mask = np.clip(body_mask + _add_parapet(canvas_rgb, cap_texture), 0.0, 1.0)
 
     canvas = np.zeros((WALL_SIZE[1], WALL_SIZE[0], 4), dtype=np.uint8)
     canvas[..., :3] = np.clip(np.rint(canvas_rgb), 0, 255).astype(np.uint8)
@@ -410,7 +617,66 @@ def build_wall(
     target = out_root / rel
     target.parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(canvas, mode="RGBA").save(target, "PNG", optimize=True)
-    return {"name": target.name, "size": WALL_SIZE, "meanLum": measure_mean_lum(canvas)}
+    return {
+        "name": target.name,
+        "size": WALL_SIZE,
+        "meanLum": measure_mean_lum(canvas),
+        "chroma": float(measure_chroma(canvas)),
+    }
+
+
+def _add_parapet(
+    canvas_rgb: np.ndarray, cap_texture: np.ndarray
+) -> np.ndarray:
+    """A low merlon row on the two far cap edges; returns the mask it covers.
+
+    Two blocks side by side have to read as one battlement line, so the merlons
+    sit at a fixed pitch along each edge: a wall run repeats the same block, so
+    the row is continuous by construction. Height is `MERLON_H` above the far
+    edge, whose highest vertex is `y 12`, so the topmost merlon pixel lands at
+    `y 3` — inside the 12 px headroom, never over the tile behind.
+
+    The caller ORs the returned mask into the block's alpha: the merlons stand
+    above the cap polygon, so without that they ate cut off.
+    """
+    size = (canvas_rgb.shape[1], canvas_rgb.shape[0])
+    far_left = (CAP_INSET, TOP_Y)
+    apex = (64.0, TOP_Y - 32 + CAP_INSET)
+    far_right = (128 - CAP_INSET, TOP_Y)
+    covered = np.zeros((size[1], size[0]), dtype=np.float64)
+    cap_depth = 3.0
+
+    for start, end in ((far_left, apex), (apex, far_right)):
+        edge_x, edge_y = end[0] - start[0], end[1] - start[1]
+        edge_length = float(np.hypot(edge_x, edge_y))
+        ux, uy = edge_x / edge_length, edge_y / edge_length
+        for t in MERLON_T:
+            cx = start[0] + t * edge_x
+            cy = start[1] + t * edge_y
+            p0 = (cx - ux * MERLON_HALF, cy - uy * MERLON_HALF)
+            p1 = (cx + ux * MERLON_HALF, cy + uy * MERLON_HALF)
+            up = (0.0, -MERLON_H)
+            top0 = (p0[0] + up[0], p0[1] + up[1])
+            top1 = (p1[0] + up[0], p1[1] + up[1])
+
+            front = map_parallelogram(cap_texture, size, p0, (p1[0] - p0[0], p1[1] - p0[1]), up)
+            face_mask = polygon_mask(size, [p0, p1, top1, top0])
+            shaded = shade_region(front, face_mask, WALL_CAP_LUM - 26.0)
+            canvas_rgb[:] = canvas_rgb * (1.0 - face_mask[..., None]) + shaded * face_mask[..., None]
+            covered = np.maximum(covered, face_mask)
+
+            top = [top0, top1, (top1[0], top1[1] + cap_depth), (top0[0], top0[1] + cap_depth)]
+            top_face = map_parallelogram(cap_texture, size, top0, (top1[0] - top0[0], top1[1] - top0[1]), (0.0, cap_depth))
+            top_mask = polygon_mask(size, top)
+            shaded_top = shade_region(top_face, top_mask, WALL_CAP_LUM + 6.0)
+            canvas_rgb[:] = canvas_rgb * (1.0 - top_mask[..., None]) + shaded_top * top_mask[..., None]
+            covered = np.maximum(covered, top_mask)
+            apply_ao(canvas_rgb, top, width_px=1.0, strength=0.22)
+    # The polygon rasteriser leaves a sub-percent ringing tail a few rows above
+    # the highest vertex, which would put opaque pixels on canvas row 0 and break
+    # the headroom contract. A hard cut at half coverage costs nothing visually
+    # (the tail is 2 px wide at most) and makes the contract hold by construction.
+    return np.where(covered >= 0.5, 1.0, 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -537,7 +803,14 @@ def build_gate(wall_source: Path, floor_source: Path, out_root: Path) -> list[di
     add_outline(rgb, [a_b, b_b, b_t], 1.1, closed=False)
     add_outline(rgb, [a_b, a_t], 1.1, closed=False)
 
-    # The arched opening: a dark stone passage painted into the front face, with
+    # AO along the base of the front face and the inner corner of the visible end
+    # face: without it the gatehouse sat on the floor with no contact shadow and
+    # read as a slab pasted onto the map.
+    apply_ao(rgb, [a_b, b_b, b_t, a_t], width_px=10.0, strength=0.18, closed=False)
+    apply_ao(rgb, [a_b, a_t], width_px=7.0, strength=0.16, closed=False)
+    apply_ao(rgb, [b_t, b_bt], width_px=6.0, strength=0.20, closed=False)
+
+    # The arched opening: a warm stone passage painted into the front face, with
     # the arch ring picked out in stone so it reads at a glance.
     hole = points["hole"]
     hole_mask = polygon_mask(size, hole)
@@ -547,8 +820,9 @@ def build_gate(wall_source: Path, floor_source: Path, out_root: Path) -> list[di
     span = max(1.0, bottom_y - top_y)
     vertical = np.clip((np.arange(size[1])[:, None] - top_y) / span, 0.0, 1.0)
     vertical = np.repeat(vertical, size[0], axis=1)
-    # Dark masonry inside the tunnel, not a flat black hole: the front face of
-    # the citadel keeps reading as stone when the portcullis is up.
+    # Stone, not a hole: the passage keeps the masonry texture and is tinted with
+    # a warm gradient. A near-black fill (#0b0d10 before this) is what made the
+    # gate read as a grey box with a hole in it.
     passage = map_parallelogram(
         texture,
         size,
@@ -556,12 +830,14 @@ def build_gate(wall_source: Path, floor_source: Path, out_root: Path) -> list[di
         (xs.max() - xs.min() + 1, 0),
         (0, span),
     )
-    passage = shade_region(passage, hole_mask, 46.0)
-    fog = 0.55 + 0.45 * vertical
-    passage *= fog[..., None]
+    warm_top = np.array(GATE_PASSAGE_TOP, dtype=np.float64)[None, None, :]
+    warm_bottom = np.array(GATE_PASSAGE_BOTTOM, dtype=np.float64)[None, None, :]
+    warm = warm_top * (1.0 - vertical[..., None]) + warm_bottom * vertical[..., None]
+    # 0.62 keeps a trace of the stone grain instead of a flat paint bucket.
+    passage = passage * 0.38 + warm * 0.62
     # Darker at the jambs, so the passage reads as recessed.
     horizontal = np.abs(np.linspace(-1.0, 1.0, size[0]))[None, :]
-    passage *= (1.0 - 0.3 * horizontal[..., None])
+    passage *= (1.0 - 0.16 * horizontal[..., None])
     rgb = rgb * (1.0 - hole_mask[..., None]) + passage * hole_mask[..., None]
 
     # Sill: the citadel floor showing through the bottom of the passage, so the
@@ -581,11 +857,21 @@ def build_gate(wall_source: Path, floor_source: Path, out_root: Path) -> list[di
     )
     _, alpha = blend_polygon(rgb, alpha, sill, sill_texture, 74.0)
 
-    # Voussoir band: a light stone ring around the opening with a dark joint, so
-    # the arch reads as built stone instead of a cut-out.
-    band = stroke_mask(size, hole, 8.0)
-    rgb = rgb * (1.0 - band[..., None]) + np.array((0x93, 0x97, 0xA0), dtype=np.float64) * band[..., None]
-    add_outline(rgb, hole, 1.0, colour=(0x3A, 0x3F, 0x47))
+    # Voussoir band: a light stone ring around the opening, a dark joint on its
+    # outer edge and a highlight inside it, so the arch reads as built stone
+    # instead of a cut-out. 13 px instead of 8: at 8 the ring was thinner than
+    # the joint drawn around it and disappeared at play zoom.
+    band = stroke_mask(size, hole, GATE_RING_WIDTH)
+    rgb = rgb * (1.0 - band[..., None]) + np.array(GATE_ARCH_RING, dtype=np.float64) * band[..., None]
+    add_outline(rgb, hole, 1.0, colour=GATE_RING_JOINT)
+    add_outline(rgb, hole, 2.2, closed=True, colour=GATE_RING_JOINT)
+    # Inner highlight just inside the intrados, then AO under the outer joint.
+    inner = stroke_mask(size, hole, 3.0)
+    rgb = rgb * (1.0 - inner[..., None] * 0.35) + np.array((0xE4, 0xD6, 0xBE), dtype=np.float64) * inner[..., None] * 0.35
+    outer = [
+        (x + 0.0, y + 0.0) for x, y in hole
+    ]
+    apply_ao(rgb, outer, width_px=GATE_RING_WIDTH + 4.0, strength=0.12)
 
     # Crenellations along the front top edge.
     for index in range(5):
@@ -631,9 +917,15 @@ def build_gate(wall_source: Path, floor_source: Path, out_root: Path) -> list[di
             "name": target.name,
             "size": size,
             "meanLum": measure_mean_lum(canvas),
+            "chroma": float(measure_chroma(canvas)),
             "doorBox": door_bbox(points),
         },
-        {"name": door_target.name, "size": (door.shape[1], door.shape[0]), "meanLum": measure_mean_lum(door)},
+        {
+            "name": door_target.name,
+            "size": (door.shape[1], door.shape[0]),
+            "meanLum": measure_mean_lum(door),
+            "chroma": float(measure_chroma(door)),
+        },
     ]
 
 
@@ -710,6 +1002,20 @@ def measure_mean_lum(rgba: np.ndarray) -> float:
     return float(luminance(rgba[..., :3].astype(np.float64))[opaque].mean())
 
 
+def measure_chroma(rgba: np.ndarray) -> float:
+    """Mean max-minus-min channel over the solid pixels.
+
+    The citadel shipped at chroma 3.5-11.5 while the house sat at 23.2, which is
+    why it read as concrete dropped into a painted map. Measured on `alpha > 16`
+    so the antialiased rim, grey by definition, does not drag the average down.
+    """
+    solid = rgba[..., 3] > 16
+    if not solid.any():
+        return 0.0
+    rgb = rgba[..., :3].astype(np.float64)[solid]
+    return float((rgb.max(axis=1) - rgb.min(axis=1)).mean())
+
+
 def measure(path: Path) -> dict:
     rgba = load_rgba(path)
     alpha = rgba[..., 3]
@@ -718,9 +1024,13 @@ def measure(path: Path) -> dict:
     return {
         "size": (rgba.shape[1], rgba.shape[0]),
         "meanLum": measure_mean_lum(rgba),
+        "chroma": measure_chroma(rgba),
         "bbox": box,
         "opaque": float((alpha > 0).mean()),
         "corners": [int(alpha[0, 0]), int(alpha[0, -1]), int(alpha[-1, 0]), int(alpha[-1, -1])],
+        # Top row of opaque art. The merlon row is the only thing above the cap,
+        # so this is what proves the parapet stayed inside `WALL_SIZE`.
+        "topRow": box[1] if box else None,
     }
 
 
@@ -737,6 +1047,12 @@ def wall_failures(measured: dict) -> list[str]:
         failures.append("wall base is not on the last row")
     if measured["opaque"] <= WALL_MIN_OPAQUE:
         failures.append(f"wall covers only {measured['opaque']:.2f} of the canvas")
+    wall_chroma = CHROMA_MIN["wall"]
+    if measured["chroma"] < wall_chroma:
+        failures.append(f"wall chroma {measured['chroma']:.1f} below {wall_chroma:.0f}")
+    top = measured.get("topRow")
+    if top is not None and top < MERLON_MIN_Y:
+        failures.append(f"wall art starts on row {top}, above the {MERLON_MIN_Y} px headroom")
     return failures
 
 
@@ -758,6 +1074,35 @@ def check(out_root: Path) -> int:
         expect(124.0 <= floor["meanLum"] <= 142.0, f"floor lum {floor['meanLum']:.1f} outside 124-142")
         expect(all(corner == 0 for corner in floor["corners"]), "floor diamond has an opaque corner")
         expect(floor["opaque"] > 0.45, f"floor covers only {floor['opaque']:.2f} of the canvas")
+        expect(
+            floor["chroma"] >= CHROMA_MIN["floor"],
+            f"floor chroma {floor['chroma']:.1f} below {CHROMA_MIN['floor']:.0f}",
+        )
+
+    # The two extra diamonds share the base contract: same canvas, same corners,
+    # same brightness band. Only the dressing differs, so a variant that breaks
+    # the diamond geometry would show up as a seam between tiles.
+    for variant_index, rel in enumerate(FLOOR_VARIANT_RELS[1:], start=1):
+        variant = measure_path(rel)
+        if not variant:
+            continue
+        expect(variant["size"] == FLOOR_SIZE, f"{rel.name} size {variant['size']} != {FLOOR_SIZE}")
+        expect(
+            118.0 <= variant["meanLum"] <= 148.0,
+            f"{rel.name} lum {variant['meanLum']:.1f} outside 118-148",
+        )
+        expect(
+            all(corner == 0 for corner in variant["corners"]),
+            f"{rel.name} diamond has an opaque corner",
+        )
+        expect(
+            variant["opaque"] > 0.45,
+            f"{rel.name} covers only {variant['opaque']:.2f} of the canvas",
+        )
+        expect(
+            variant["chroma"] >= CHROMA_MIN["floor"],
+            f"{rel.name} chroma {variant['chroma']:.1f} below {CHROMA_MIN['floor']:.0f}",
+        )
 
     wall = measure_path(WALL_REL)
     if wall:
@@ -772,6 +1117,10 @@ def check(out_root: Path) -> int:
             expect(x0 >= 0 and x1 <= GATE_CANVAS[0], "gate art spills out of the canvas")
             expect(y0 > 0, "gate art touches the canvas top")
             expect(GATE_CANVAS[1] - y1 <= 80, "gate art is floating above the canvas bottom")
+        expect(
+            gate["chroma"] >= CHROMA_MIN["gate"],
+            f"gate chroma {gate['chroma']:.1f} below {CHROMA_MIN['gate']:.0f}",
+        )
 
     door = measure_path(GATE_DOOR_REL)
     if door:
@@ -795,22 +1144,49 @@ def check(out_root: Path) -> int:
 # Preview
 # ---------------------------------------------------------------------------
 
+def floor_variant_at(grid_x: int, grid_y: int) -> int:
+    """Mirror of `citadelFloorVariants.floorVariantAt` for the proof sheet.
+
+    Same 32-bit integer hash `visualVariation.hash2` uses, so the sheet shows the
+    variant distribution the client actually draws. Kept in Python because the
+    proof sheet must run without a Node build; if the two ever disagree the test
+    in `citadelFloorVariants.test.ts` is the contract, and this function only
+    affects a dev image.
+    """
+    h = (grid_x * 374761393) ^ (grid_y * 668265263) ^ (FLOOR_VARIANT_SEED * 1442695041)
+    h &= 0xFFFFFFFF
+    h ^= h >> 13
+    h = (h * 1274126177) & 0xFFFFFFFF
+    h ^= h >> 16
+    return int((h & 0xFFFFFFFF) / 4294967296 * 3) % 3
+
+
 
 def preview(out_root: Path) -> int:
-    """Compose a 17x17 citadel on grass so the three pieces can be eyeballed."""
-    size = 17
-    gate_start = 7
+    """Compose a full citadel on grass so the pieces can be eyeballed together.
+
+    The compound is `CITADEL_WIDTH` x `CITADEL_HEIGHT` (26x26) with the gate in
+    the middle of the east wall, matching `packages/shared/src/utils/citadel.ts`.
+    The Town Center is composited in its real slot, because the whole point of
+    the rework is that the keep, the wall run and the courtyard floor read as one
+    building — a proof sheet with an empty courtyard cannot show that.
+    """
+    size = 26
+    gate_start = (size - CITADEL_GATE_WIDTH) // 2
     origin_x = origin_y = 0
 
-    floor = Image.open(out_root / FLOOR_REL).convert("RGBA")
+    floor_images = [
+        Image.open(out_root / rel).convert("RGBA") for rel in FLOOR_VARIANT_RELS
+    ]
     wall = Image.open(out_root / WALL_REL).convert("RGBA")
     gate = Image.open(out_root / GATE_REL).convert("RGBA")
     grass = Image.open(out_root / "terrain" / "grass.png").convert("RGBA")
+    town_center = Image.open(out_root / "buildings" / "town_center.png").convert("RGBA")
 
     def screen(gx: float, gy: float) -> tuple[float, float]:
         return ((gx - gy) * TILE_W / 2, (gx + gy) * TILE_H / 2)
 
-    margin = 620
+    margin = 700
     tiles = [(x, y) for x in range(size) for y in range(size)]
     xs = [screen(origin_x + x, origin_y + y)[0] for x, y in tiles]
     ys = [screen(origin_x + x, origin_y + y)[1] for x, y in tiles]
@@ -831,11 +1207,19 @@ def preview(out_root: Path) -> int:
     for y in range(1, size - 1):
         for x in range(1, size - 1):
             sx, sy = screen(origin_x + x, origin_y + y)
-            blit(floor, sx, sy)
+            blit(floor_images[floor_variant_at(origin_x + x, origin_y + y)], sx, sy)
 
-    gate_tiles = {(origin_x + size - 1, origin_y + gate_start + i) for i in range(3)}
+    # The keep first: it is taller than the wall and has to sit behind the run.
+    tc_x = origin_x + CITADEL_TC_OFFSET_X + 2
+    tc_y = origin_y + CITADEL_TC_OFFSET_Y + 3
+    tcx, tcy = screen(tc_x, tc_y)
+    blit(town_center, tcx, tcy, 1.0)
+
+    gate_tiles = {(origin_x + size - 1, origin_y + gate_start + i) for i in range(CITADEL_GATE_WIDTH)}
     # The gate sprite draws the six tiles of wall it covers.
-    covered = {(origin_x + size - 1, origin_y + gate_start + 1 + i) for i in range(-3, 4)}
+    covered = {
+        (origin_x + size - 1, origin_y + gate_start + 1 + i) for i in range(-3, 4)
+    }
 
     draws: list[tuple[float, Image.Image, float, float, float]] = []
     for x in range(size):
@@ -865,6 +1249,7 @@ def preview(out_root: Path) -> int:
     canvas.alpha_composite(door, (left, top))
 
     out = ROOT / "scripts" / "out" / "citadel" / "preview.png"
+    out.parent.mkdir(parents=True, exist_ok=True)
     canvas.save(out)
     print(f"preview written to {out} ({width}x{height})")
     return 0
@@ -886,13 +1271,18 @@ def main(argv: list[str] | None = None) -> int:
     if not args.floor or not args.wall:
         parser.error("--floor and --wall are required unless --check/--preview is used")
 
-    results = [
-        build_floor(args.floor, args.out),
-        build_wall(args.wall, args.out, cap_source=args.floor),
-        *build_gate(args.wall, args.floor, args.out),
-    ]
+    results = []
+    for variant in range(len(FLOOR_VARIANT_RELS)):
+        results.append(build_floor(args.floor, args.out, variant=variant))
+    results.append(build_wall(args.wall, args.out, cap_source=args.floor))
+    results.extend(build_gate(args.wall, args.floor, args.out))
     for result in results:
-        print(f"  {result['name']:<14} {result['size'][0]}x{result['size'][1]} lum {result['meanLum']:.1f}")
+        chroma = result.get("chroma")
+        chroma_text = f" chroma {chroma:.1f}" if chroma is not None else ""
+        print(
+            f"  {result['name']:<14} {result['size'][0]}x{result['size'][1]} "
+            f"lum {result['meanLum']:.1f}{chroma_text}"
+        )
     return 0
 
 
