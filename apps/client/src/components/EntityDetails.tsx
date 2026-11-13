@@ -538,7 +538,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
                     data-train-hotkey={trainHotkey}
                     className={`scroll-mt-36 px-2.5 py-1.5 rounded border text-[11px] font-semibold transition-all flex flex-col items-center gap-1 ${
                       canAffordUnit
-                        ? 'aoe-button text-slate-200 hover:border-amber-400'
+                        ? 'aoe-button text-slate-200'
                         : 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed opacity-50'
                     }`}
                   >

@@ -14,6 +14,8 @@ import { describe, expect, it } from 'vitest';
  */
 const COMPONENT_DIR = dirname(fileURLToPath(import.meta.url));
 const CSS = readFileSync(resolve(COMPONENT_DIR, '../index.css'), 'utf8');
+/** `CSS` without comments, for selector lookups. */
+const CSS_RULES = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
 const UI_DIR = resolve(COMPONENT_DIR, '../../public/assets/ui');
 const LOCK_PATH = resolve(COMPONENT_DIR, '../../../../scripts/assets/ui.lock.json');
 
@@ -48,11 +50,17 @@ interface Lock {
 const LOCK = JSON.parse(readFileSync(LOCK_PATH, 'utf8')) as Lock;
 
 function rule(selector: string): string {
-  const index = CSS.indexOf(selector);
+  // Comments are stripped first: a doc comment that mentions a class name must
+  // not be mistaken for that class's rule.
+  const index = CSS_RULES.indexOf(selector);
   expect(index, `missing CSS selector ${selector}`).toBeGreaterThan(-1);
-  const start = CSS.indexOf('{', index);
-  const end = CSS.indexOf('}', start);
-  return CSS.slice(start + 1, end);
+  // The match has to end at a selector boundary; otherwise `.aoe-frame` would
+  // silently resolve to the `.aoe-frame-sm` block once the real one is gone.
+  const boundary = CSS_RULES.slice(index + selector.length).trimStart()[0];
+  expect(['{', ','], `${selector} is a prefix of another selector`).toContain(boundary);
+  const start = CSS_RULES.indexOf('{', index);
+  const end = CSS_RULES.indexOf('}', start);
+  return CSS_RULES.slice(start + 1, end);
 }
 
 function source(name: string): string {
@@ -86,19 +94,28 @@ function hex(value: string): [number, number, number] {
   return [(parsed >> 16) & 0xff, (parsed >> 8) & 0xff, parsed & 0xff];
 }
 
+/**
+ * Every framed class, with the asset it slices and the fill it sits on. The
+ * slice and the inward width come from the lock, so re-cutting an asset and
+ * re-using it under a different ring cannot pass unnoticed.
+ */
+const FRAMED: Array<{ selector: string; asset: string; fill: string | null; border: number }> = [
+  { selector: '.aoe-panel', asset: 'panel_frame', fill: 'panel_fill', border: 2 },
+  { selector: '.aoe-frame', asset: 'panel_frame', fill: null, border: 2 },
+  { selector: '.aoe-modal', asset: 'modal_frame', fill: 'modal_fill', border: 2 },
+  { selector: '.aoe-frame-sm', asset: 'tooltip_frame', fill: null, border: 1 },
+  { selector: '.aoe-tooltip', asset: 'tooltip_frame', fill: 'inset_fill', border: 1 },
+  { selector: '.aoe-chip', asset: 'chip_frame', fill: 'inset_fill', border: 1 },
+  { selector: '.aoe-button', asset: 'button_idle', fill: 'button_fill', border: 1 },
+  { selector: '.aoe-slot', asset: 'slot_idle', fill: 'inset_fill', border: 1 }
+];
+
 describe('UI chrome CSS contract (UI-01)', () => {
   it('renders every frame with the 9-slice kit', () => {
-    expect(rule('.aoe-panel')).toContain("url('/assets/ui/panel_frame.png?v=1')");
-    expect(rule('.aoe-panel')).toContain("url('/assets/ui/panel_fill.png?v=1')");
-    expect(rule('.aoe-frame')).toContain("url('/assets/ui/panel_frame.png?v=1')");
-    expect(rule('.aoe-frame-sm')).toContain("url('/assets/ui/tooltip_frame.png?v=1')");
-    expect(rule('.aoe-modal')).toContain("url('/assets/ui/modal_frame.png?v=1')");
-    expect(rule('.aoe-modal')).toContain("url('/assets/ui/modal_fill.png?v=1')");
-    expect(rule('.aoe-tooltip')).toContain("url('/assets/ui/tooltip_frame.png?v=1')");
-    expect(rule('.aoe-chip')).toContain("url('/assets/ui/chip_frame.png?v=1')");
-    expect(rule('.aoe-button')).toContain("url('/assets/ui/button_idle.png?v=1')");
-    expect(rule('.aoe-button')).toContain("url('/assets/ui/button_fill.png?v=1')");
-    expect(rule('.aoe-slot')).toContain("url('/assets/ui/slot_idle.png?v=1')");
+    for (const { selector, asset, fill } of FRAMED) {
+      expect(rule(selector), selector).toContain(`url('/assets/ui/${asset}.png?v=1')`);
+      if (fill) expect(rule(selector), selector).toContain(`url('/assets/ui/${fill}.png?v=1')`);
+    }
     expect(rule('.aoe-backdrop')).toContain("url('/assets/ui/backdrop.png?v=1')");
   });
 
@@ -108,15 +125,19 @@ describe('UI chrome CSS contract (UI-01)', () => {
     expect(rule('.aoe-panel-inset')).not.toContain('linear-gradient');
   });
 
-  it('keeps border-width unchanged so the 156 px dock does not move', () => {
-    // The ring is painted inward by border-image-width, which is larger than
-    // border-width; `dockMetrics.ts` and `DockBar.test.tsx` depend on this.
-    expect(rule('.aoe-panel')).toMatch(/border:\s*2px solid/);
-    expect(rule('.aoe-panel')).toMatch(/border-image:.*\/\s*8px/);
-    expect(rule('.aoe-button')).toMatch(/border:\s*1px solid/);
-    expect(rule('.aoe-button')).toMatch(/border-image:.*\/\s*3px/);
-    expect(rule('.aoe-slot')).toMatch(/border:\s*1px solid/);
-    expect(rule('.aoe-slot')).toMatch(/border-image:.*\/\s*4px/);
+  it('paints the ring inward without moving the box', () => {
+    // `dockMetrics.ts` and `DockBar.test.tsx` depend on the border box staying
+    // put: `border-width` is unchanged and `border-image-width` draws the ring
+    // inside it, over the padding.
+    for (const { selector, asset, border } of FRAMED) {
+      const entry = LOCK.assets[asset] as FrameEntry;
+      expect(entry, `${selector} -> ${asset}`).toBeDefined();
+      expect(entry.borderWidthPx, `${asset} is drawn inward`).toBeGreaterThan(border);
+      expect(rule(selector), selector).toMatch(new RegExp(`border:\\s*${border}px solid`));
+      expect(rule(selector), selector).toMatch(
+        new RegExp(`border-image:.*${entry.slice}\\s*/\\s*${entry.borderWidthPx}px`)
+      );
+    }
   });
 
   it('swaps the button and slot state images', () => {

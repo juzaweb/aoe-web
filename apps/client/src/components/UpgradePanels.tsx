@@ -352,7 +352,7 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
             }
             className={`w-full px-2 py-1 rounded border text-[11px] font-semibold transition-all flex items-center justify-center gap-1 ${
               canUpgrade
-                ? 'aoe-button text-amber-200 hover:border-amber-400'
+                ? 'aoe-button text-amber-200'
                 : 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed opacity-50'
             }`}
           >
@@ -484,7 +484,7 @@ export const UnitResearchPanel: React.FC<UnitResearchPanelProps> = ({
                     className={`w-full px-1 py-0.5 rounded border text-[11px] font-semibold transition-all ${
                       busy || !affordable
                         ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed opacity-50'
-                        : 'aoe-button text-amber-200 hover:border-amber-400'
+                        : 'aoe-button text-amber-200'
                     }`}
                   >
                     {researchingThis ? t('upgrades.researching') : t('upgrades.upgradeLevel', { level: level + 1 })}

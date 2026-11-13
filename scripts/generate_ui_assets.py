@@ -27,18 +27,20 @@ import json
 import math
 import re
 import sys
-import tempfile
 from pathlib import Path
 from typing import Iterable
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from ui_preview import write_contact_sheet, write_preview  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "apps/client/public/assets/ui"
 LOCK = ROOT / "scripts/assets/ui.lock.json"
 CSS = ROOT / "apps/client/src/index.css"
-PREVIEW_DIR = ROOT / "scripts/out"
 
 # Supersampling factor. Every frame is drawn at 4x and downscaled with LANCZOS;
 # the 8 px panel ring is then sampled from a 32 px source ring, which is where
@@ -185,31 +187,31 @@ PRIMARY_STOPS = [
 # ---------------------------------------------------------------------------
 
 FRAME_SPECS = {
-    "panel_frame": {"size": 128, "ring": 32, "slice": 32, "borderWidthPx": 8, "stops": PANEL_STOPS, "corner": "bracket"},
-    "modal_frame": {"size": 192, "ring": 48, "slice": 48, "borderWidthPx": 12, "stops": MODAL_STOPS, "corner": "scroll"},
-    "tooltip_frame": {"size": 96, "ring": 24, "slice": 24, "borderWidthPx": 6, "stops": TOOLTIP_STOPS, "corner": "rivets"},
-    "chip_frame": {"size": 48, "ring": 12, "slice": 12, "borderWidthPx": 3, "stops": CHIP_STOPS, "corner": "rivets"},
+    "panel_frame": {"size": 128, "slice": 32, "borderWidthPx": 8, "stops": PANEL_STOPS, "corner": "bracket"},
+    "modal_frame": {"size": 192, "slice": 48, "borderWidthPx": 12, "stops": MODAL_STOPS, "corner": "scroll"},
+    "tooltip_frame": {"size": 96, "slice": 24, "borderWidthPx": 6, "stops": TOOLTIP_STOPS, "corner": "rivets"},
+    "chip_frame": {"size": 48, "slice": 12, "borderWidthPx": 3, "stops": CHIP_STOPS, "corner": "rivets"},
 }
 
 BUTTON_SPECS = {
-    "button_idle": {"size": 64, "ring": 16, "slice": 16, "borderWidthPx": 3, "stops": BUTTON_STOPS, "corner": "rivets", "tone": 1.00},
-    "button_hover": {"size": 64, "ring": 16, "slice": 16, "borderWidthPx": 3, "stops": BUTTON_STOPS, "corner": "rivets", "tone": 1.14},
-    "button_pressed": {"size": 64, "ring": 16, "slice": 16, "borderWidthPx": 3, "stops": BUTTON_PRESSED_STOPS, "corner": "rivets", "tone": 0.86},
-    "button_disabled": {"size": 64, "ring": 16, "slice": 16, "borderWidthPx": 3, "stops": BUTTON_STOPS, "corner": "rivets", "tone": 0.58, "desaturate": True},
-    "button_active": {"size": 64, "ring": 16, "slice": 16, "borderWidthPx": 3, "stops": BUTTON_STOPS, "corner": "rivets", "tone": 1.20, "goldLine": True},
-    "button_danger_idle": {"size": 64, "ring": 16, "slice": 16, "borderWidthPx": 3, "stops": DANGER_STOPS, "corner": "rivets", "tone": 1.00},
-    "button_danger_hover": {"size": 64, "ring": 16, "slice": 16, "borderWidthPx": 3, "stops": DANGER_STOPS, "corner": "rivets", "tone": 1.14},
-    "button_danger_pressed": {"size": 64, "ring": 16, "slice": 16, "borderWidthPx": 3, "stops": DANGER_STOPS, "corner": "rivets", "tone": 0.86},
-    "button_primary_idle": {"size": 64, "ring": 16, "slice": 16, "borderWidthPx": 3, "stops": PRIMARY_STOPS, "corner": "rivets", "tone": 1.00},
-    "button_primary_hover": {"size": 64, "ring": 16, "slice": 16, "borderWidthPx": 3, "stops": PRIMARY_STOPS, "corner": "rivets", "tone": 1.10},
-    "button_primary_pressed": {"size": 64, "ring": 16, "slice": 16, "borderWidthPx": 3, "stops": PRIMARY_STOPS, "corner": "rivets", "tone": 0.86},
+    "button_idle": {"size": 64, "slice": 16, "borderWidthPx": 3, "stops": BUTTON_STOPS, "corner": "rivets", "tone": 1.00},
+    "button_hover": {"size": 64, "slice": 16, "borderWidthPx": 3, "stops": BUTTON_STOPS, "corner": "rivets", "tone": 1.14},
+    "button_pressed": {"size": 64, "slice": 16, "borderWidthPx": 3, "stops": BUTTON_PRESSED_STOPS, "corner": "rivets", "tone": 0.86},
+    "button_disabled": {"size": 64, "slice": 16, "borderWidthPx": 3, "stops": BUTTON_STOPS, "corner": "rivets", "tone": 0.58, "desaturate": True},
+    "button_active": {"size": 64, "slice": 16, "borderWidthPx": 3, "stops": BUTTON_STOPS, "corner": "rivets", "tone": 1.20, "goldLine": True},
+    "button_danger_idle": {"size": 64, "slice": 16, "borderWidthPx": 3, "stops": DANGER_STOPS, "corner": "rivets", "tone": 1.00},
+    "button_danger_hover": {"size": 64, "slice": 16, "borderWidthPx": 3, "stops": DANGER_STOPS, "corner": "rivets", "tone": 1.14},
+    "button_danger_pressed": {"size": 64, "slice": 16, "borderWidthPx": 3, "stops": DANGER_STOPS, "corner": "rivets", "tone": 0.86},
+    "button_primary_idle": {"size": 64, "slice": 16, "borderWidthPx": 3, "stops": PRIMARY_STOPS, "corner": "rivets", "tone": 1.00},
+    "button_primary_hover": {"size": 64, "slice": 16, "borderWidthPx": 3, "stops": PRIMARY_STOPS, "corner": "rivets", "tone": 1.10},
+    "button_primary_pressed": {"size": 64, "slice": 16, "borderWidthPx": 3, "stops": PRIMARY_STOPS, "corner": "rivets", "tone": 0.86},
 }
 
 SLOT_SPECS = {
-    "slot_idle": {"size": 64, "ring": 16, "slice": 16, "borderWidthPx": 4, "stops": SLOT_STOPS, "corner": "screws", "tone": 1.00},
-    "slot_hover": {"size": 64, "ring": 16, "slice": 16, "borderWidthPx": 4, "stops": SLOT_STOPS, "corner": "screws", "tone": 1.12},
-    "slot_active": {"size": 64, "ring": 16, "slice": 16, "borderWidthPx": 4, "stops": SLOT_STOPS, "corner": "screws", "tone": 1.22, "goldLine": True},
-    "slot_disabled": {"size": 64, "ring": 16, "slice": 16, "borderWidthPx": 4, "stops": SLOT_STOPS, "corner": "screws", "tone": 0.58, "desaturate": True},
+    "slot_idle": {"size": 64, "slice": 16, "borderWidthPx": 4, "stops": SLOT_STOPS, "corner": "screws", "tone": 1.00},
+    "slot_hover": {"size": 64, "slice": 16, "borderWidthPx": 4, "stops": SLOT_STOPS, "corner": "screws", "tone": 1.12},
+    "slot_active": {"size": 64, "slice": 16, "borderWidthPx": 4, "stops": SLOT_STOPS, "corner": "screws", "tone": 1.22, "goldLine": True},
+    "slot_disabled": {"size": 64, "slice": 16, "borderWidthPx": 4, "stops": SLOT_STOPS, "corner": "screws", "tone": 0.58, "desaturate": True},
 }
 
 FILL_SPECS = {
@@ -300,6 +302,12 @@ def ramp(t: np.ndarray, stops: Iterable[tuple[float, tuple[int, int, int]]]) -> 
 
 
 def apply_tone(colors: np.ndarray, tone: float) -> np.ndarray:
+    """Brighten above 1.0 by mixing toward white, darken below 1.0 by scaling.
+
+    Two regimes rather than one multiplier: scaling past white clips the brass
+    highlights first, which flattened the `hover` and `active` looks into the
+    idle one. Mixing keeps the bevel readable while the face still lifts.
+    """
     if tone >= 1.0:
         return np.clip(colors + (255.0 - colors) * (tone - 1.0) * 0.55, 0.0, 255.0)
     return np.clip(colors * tone, 0.0, 255.0)
@@ -369,6 +377,14 @@ def gold_texture(size: int, seed: int) -> Image.Image:
 # ---------------------------------------------------------------------------
 
 
+# One 9-slice frame is drawn per entry; the ornament that fills its corners is
+# the only thing the four styles differ in, and `scroll`/`screws` are decorated
+# variants of `bracket`/`rivets` rather than separate shapes.
+BRACKET_CORNERS = {"bracket", "scroll"}
+RIVET_CORNERS = {"rivets", "screws"}
+RIVET_RADIUS = {"rivets": 0.18, "screws": 0.14}
+
+
 def _corner_overlay(
     width: int,
     ring: int,
@@ -391,7 +407,7 @@ def _corner_overlay(
     brass_dark = tint(BRASS_DARK, tone)
     iron = tint(IRON_LIGHT, tone)
 
-    if corner in ("bracket", "scroll"):
+    if corner in BRACKET_CORNERS:
         draw.rectangle(
             [margin, margin, margin + length, margin + thick],
             fill=brass,
@@ -451,8 +467,8 @@ def _corner_overlay(
                 fill=brass_hi,
             )
 
-    elif corner in ("rivets", "screws"):
-        radius = max(2, int(ring * (0.180 if corner == "rivets" else 0.140)))
+    elif corner in RIVET_CORNERS:
+        radius = max(2, int(ring * RIVET_RADIUS[corner]))
         positions = [
             (margin + radius, margin + radius),
             (ring - margin - radius, margin + radius),
@@ -477,16 +493,21 @@ def _corner_overlay(
 
 def render_frame(
     size: int,
-    ring: int,
+    slice_px: int,
     stops: list[tuple[float, tuple[int, int, int]]],
     corner: str,
     tone: float = 1.0,
     desaturate_colors: bool = False,
     gold_line: bool = False,
 ) -> Image.Image:
-    """Draw one 9-slice frame with a transparent centre."""
+    """Draw one 9-slice frame with a transparent centre.
+
+    `slice_px` is the `border-image-slice` this file ships with, which is also
+    the ring thickness: the ring has to fill the slice exactly, or the CSS
+    slice would cut into the transparent centre.
+    """
     width = size * S
-    ring_px = ring * S
+    ring_px = slice_px * S
 
     ys, xs = np.mgrid[0:width, 0:width]
     distance = np.minimum(
@@ -548,40 +569,19 @@ def render_frame(
 def build_assets() -> dict[str, Image.Image]:
     assets: dict[str, Image.Image] = {}
 
-    for name, spec in FRAME_SPECS.items():
-        assets[name] = render_frame(
-            size=spec["size"],
-            ring=spec["ring"],
-            stops=spec["stops"],
-            corner=spec["corner"],
-            tone=1.0,
-        )
-
-    for name, spec in BUTTON_SPECS.items():
-        assets[name] = render_frame(
-            size=spec["size"],
-            ring=spec["ring"],
-            stops=spec["stops"],
-            corner=spec["corner"],
-            tone=spec.get("tone", 1.0),
-            desaturate_colors=spec.get("desaturate", False),
-            gold_line=spec.get("goldLine", False),
-        )
-
-    for name, spec in SLOT_SPECS.items():
-        assets[name] = render_frame(
-            size=spec["size"],
-            ring=spec["ring"],
-            stops=spec["stops"],
-            corner=spec["corner"],
-            tone=spec.get("tone", 1.0),
-            desaturate_colors=spec.get("desaturate", False),
-            gold_line=spec.get("goldLine", False),
-        )
-
-    for name, spec in FILL_SPECS.items():
+    for name, spec in ASSET_SPECS.items():
         seed = seed_for(name)
-        if spec["kind"] == "wood":
+        if "slice" in spec:
+            assets[name] = render_frame(
+                size=spec["size"],
+                slice_px=spec["slice"],
+                stops=spec["stops"],
+                corner=spec["corner"],
+                tone=spec.get("tone", 1.0),
+                desaturate_colors=spec.get("desaturate", False),
+                gold_line=spec.get("goldLine", False),
+            )
+        elif spec["kind"] == "wood":
             assets[name] = wood_texture(
                 spec["size"],
                 seed,
@@ -623,7 +623,7 @@ def luminance(rgb: np.ndarray) -> np.ndarray:
 def frame_metrics(image: Image.Image, spec: dict) -> dict:
     arr = np.asarray(image.convert("RGBA"))
     height, width = arr.shape[:2]
-    ring = spec["ring"]
+    ring = spec["slice"]
     ring_mask = np.zeros((height, width), dtype=bool)
     ring_mask[:ring, :] = True
     ring_mask[-ring:, :] = True
@@ -642,26 +642,24 @@ def frame_metrics(image: Image.Image, spec: dict) -> dict:
     ring_min_alpha = int(arr[..., 3][core_mask].min())
 
     # Edge strips must be uniform along their length; otherwise `stretch`
-    # smears the ornament instead of just extending a bevel. The std is per
-    # channel and across positions, not across R/G/B.
+    # smears the ornament instead of just extending a bevel. Each strip is
+    # averaged across its width and the standard deviation is taken along its
+    # length, per channel - not across R/G/B, which would only measure hue.
     strips = [
-        arr[0:ring, ring:width - ring, :3],
-        arr[height - ring:height, ring:width - ring, :3],
-        arr[ring:height - ring, 0:ring, :3],
-        arr[ring:height - ring, width - ring:width, :3],
+        arr[0:ring, ring:width - ring, :3],  # top: average rows, vary x
+        arr[height - ring:height, ring:width - ring, :3],  # bottom
+        arr[ring:height - ring, 0:ring, :3],  # left: average columns, vary y
+        arr[ring:height - ring, width - ring:width, :3],  # right
     ]
     edge_std_max = 0.0
-    for strip in strips:
+    for index, strip in enumerate(strips):
         if strip.size == 0:
             continue
-        if strip.shape[0] == ring and strip.shape[1] != ring:
-            means = strip.mean(axis=0)
-        else:
-            means = strip.mean(axis=1)
+        across_rows = index < 2
+        means = strip.mean(axis=0 if across_rows else 1)
         edge_std_max = max(edge_std_max, float(means.std(axis=0).max()))
 
     return {
-        "file": f"{spec['name']}.png" if "name" in spec else None,
         "width": width,
         "height": height,
         "slice": spec["slice"],
@@ -689,7 +687,6 @@ def fill_metrics(image: Image.Image) -> dict:
         edge_diff = max(edge_diff, int(np.abs(first.astype(np.int16) - last.astype(np.int16)).max()))
 
     return {
-        "file": None,
         "width": width,
         "height": height,
         "tile": True,
@@ -703,10 +700,7 @@ def fill_metrics(image: Image.Image) -> dict:
 
 def entry_for(name: str, image: Image.Image) -> dict:
     spec = ASSET_SPECS[name]
-    if "slice" in spec:
-        entry = frame_metrics(image, spec)
-    else:
-        entry = fill_metrics(image)
+    entry = frame_metrics(image, spec) if "slice" in spec else fill_metrics(image)
     entry["file"] = f"{name}.png"
     return entry
 
@@ -720,41 +714,54 @@ def build_lock(entries: dict[str, dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def write_assets(names: set[str] | None = None) -> dict[str, dict]:
-    assets = build_assets()
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    entries: dict[str, dict] = {}
+def write_assets(assets: dict[str, Image.Image], names: set[str] | None = None) -> dict[str, dict]:
+    """Write the PNGs and the lock, optionally for a subset of the kit.
 
-    for name, image in assets.items():
-        if names is not None and name not in names:
-            continue
+    A partial run merges into the existing lock instead of replacing it: the
+    other entries still describe files this run did not touch, and dropping them
+    would make `--check` report the whole kit as unrecorded.
+    """
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    selected = {name: image for name, image in assets.items() if names is None or name in names}
+    entries = {name: entry_for(name, image) for name, image in selected.items()}
+
+    for name, image in selected.items():
         image.save(OUT_DIR / f"{name}.png", "PNG", optimize=True)
-        entries[name] = entry_for(name, image)
 
     if names is None:
         for path in OUT_DIR.glob("*.png"):
             if path.stem not in assets:
                 path.unlink()
+        merged = entries
+    else:
+        existing = json.loads(LOCK.read_text(encoding="utf-8")).get("assets", {}) if LOCK.exists() else {}
+        merged = {**existing, **entries}
 
     LOCK.parent.mkdir(parents=True, exist_ok=True)
     LOCK.write_text(
-        json.dumps(build_lock(entries), indent=2, sort_keys=True) + "\n",
+        json.dumps(build_lock(merged), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    total = sum((OUT_DIR / entry["file"]).stat().st_size for entry in entries.values())
-    print(f"wrote {len(entries)} assets ({total / 1024:.1f} KiB) to {OUT_DIR.relative_to(ROOT)}")
-    print(f"wrote {LOCK.relative_to(ROOT)}")
+    total = sum((OUT_DIR / f"{name}.png").stat().st_size for name in selected)
+    print(f"wrote {len(selected)} assets ({total / 1024:.1f} KiB) to {OUT_DIR.relative_to(ROOT)}")
+    print(f"wrote {LOCK.relative_to(ROOT)} ({len(merged)} entries)")
     return entries
 
 
 def _compare(expected: dict, actual: dict, name: str) -> list[str]:
-    problems: list[str] = []
-    for key, value in expected.items():
-        if key == "file":
-            continue
-        if actual.get(key) != value:
-            problems.append(f"{name}: {key} is {actual.get(key)!r}, lock has {value!r}")
-    return problems
+    if set(expected) != set(actual):
+        missing = sorted(set(actual) - set(expected))
+        stale = sorted(set(expected) - set(actual))
+        return [
+            f"{name}: lock is missing {', '.join(missing)}"
+            if missing
+            else f"{name}: lock has unknown fields {', '.join(stale)}"
+        ]
+    return [
+        f"{name}: {key} is {actual[key]!r}, lock has {value!r}"
+        for key, value in expected.items()
+        if actual[key] != value
+    ]
 
 
 def check_assets() -> None:
@@ -787,19 +794,19 @@ def check_assets() -> None:
         if extra:
             problems.append(f"shipped files not in the kit: {', '.join(extra)}")
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_path = Path(temp_dir)
-        for name, image in assets.items():
-            rendered_path = temp_path / f"{name}.png"
-            image.save(rendered_path, "PNG", optimize=True)
-            rendered_entry = entry_for(name, image)
-            problems.extend(_compare(lock["assets"].get(name, {}), rendered_entry, name))
+    # Compare metrics, not bytes: the lock pins decoded pixels, so a Pillow
+    # upgrade that re-encodes the same image keeps passing. Nothing is written
+    # to disk - the shipped file is decoded separately below, so a hand edit is
+    # caught even when it decodes to the same metrics as a fresh render.
+    for name, image in assets.items():
+        rendered_entry = entry_for(name, image)
+        problems.extend(_compare(lock["assets"].get(name, {}), rendered_entry, name))
 
-            shipped_path = OUT_DIR / f"{name}.png"
-            if shipped_path.exists():
-                with Image.open(shipped_path) as shipped:
-                    shipped_entry = entry_for(name, shipped.convert("RGBA"))
-                problems.extend(_compare(lock["assets"].get(name, {}), shipped_entry, f"shipped {name}"))
+        shipped_path = OUT_DIR / f"{name}.png"
+        if shipped_path.exists():
+            with Image.open(shipped_path) as shipped:
+                shipped_entry = entry_for(name, shipped.convert("RGBA"))
+            problems.extend(_compare(lock["assets"].get(name, {}), shipped_entry, f"shipped {name}"))
 
     css = CSS.read_text(encoding="utf-8")
     versions = {
@@ -833,194 +840,6 @@ def check_assets() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Preview
-# ---------------------------------------------------------------------------
-
-
-def _font(size: int = 14) -> ImageFont.ImageFont:
-    try:
-        return ImageFont.load_default(size=size)
-    except TypeError:  # Pillow < 10.1
-        return ImageFont.load_default()
-
-
-def write_contact_sheet(assets: dict[str, Image.Image]) -> Path:
-    PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
-    sheet = Image.new("RGBA", (1500, 1100), (12, 9, 7, 255))
-    draw = ImageDraw.Draw(sheet)
-    font = _font(16)
-    small = _font(12)
-
-    draw.text((24, 20), "Chien Quoc UI chrome - contact sheet", font=font, fill=(240, 208, 144, 255))
-    draw.text((24, 44), "frames are shown over their fill tile; button/slot states are separate files", font=small, fill=(180, 170, 150, 255))
-
-    cursor_x, cursor_y = 24, 80
-    max_height = 0
-
-    for name, image in assets.items():
-        if name.endswith("_fill") or name == "backdrop":
-            continue
-        if image.width > 220:
-            scale = 220 / image.width
-            preview = image.resize((220, max(1, int(image.height * scale))), Image.Resampling.NEAREST)
-        else:
-            preview = image.resize((image.width * 2, image.height * 2), Image.Resampling.NEAREST)
-
-        fill_name = "panel_fill"
-        if name.startswith("button_primary"):
-            fill_name = "primary_fill"
-        elif name.startswith("button_"):
-            fill_name = "button_fill"
-        elif name.startswith("slot_") or name in ("tooltip_frame", "chip_frame"):
-            fill_name = "inset_fill"
-
-        fill = assets[fill_name].resize(preview.size, Image.Resampling.NEAREST)
-        composited = Image.alpha_composite(fill, preview)
-
-        if cursor_x + preview.width + 24 > sheet.width:
-            cursor_x = 24
-            cursor_y += max_height + 42
-            max_height = 0
-
-        sheet.alpha_composite(composited, dest=(cursor_x, cursor_y))
-        draw.text((cursor_x, cursor_y + preview.height + 4), name, font=small, fill=(210, 200, 180, 255))
-        cursor_x += preview.width + 24
-        max_height = max(max_height, preview.height)
-
-    path = PREVIEW_DIR / "ui_contact_sheet.png"
-    sheet.convert("RGB").save(path, "PNG", optimize=True)
-    return path
-
-
-def write_preview(assets: dict[str, Image.Image]) -> Path:
-    PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
-    base = "../../apps/client/public/assets/ui"
-
-    def frame_div(name: str, width: int, height: int, fill: str, slice_: int, border: int) -> str:
-        return (
-            f'<div class="frame" style="width:{width}px;height:{height}px;'
-            f'border-image:url(\'{base}/{name}.png\') {slice_} / {border}px stretch;'
-            f'background-image:url(\'{base}/{fill}.png\');'
-            f'background-size:{"64" if fill in ("panel_fill",) else "32"}px;">'
-            f'<span>{name} {width}x{height}</span></div>'
-        )
-
-    frame_rows = []
-    for width, height in ((48, 48), (156, 156), (320, 180), (448, 260)):
-        frame_rows.append(frame_div("panel_frame", width, height, "panel_fill", 32, 8))
-    modal_rows = [
-        frame_div("modal_frame", 448, 260, "modal_fill", 48, 12),
-        frame_div("modal_frame", 320, 200, "modal_fill", 48, 12),
-    ]
-
-    button_states = ["idle", "hover", "pressed", "disabled", "active"]
-    button_rows = "".join(
-        f'<div class="key" style="border-image:url(\'{base}/button_{state}.png\') 16 / 3px stretch;'
-        f'background-image:url(\'{base}/button_fill.png\');background-size:32px;"><span>{state}</span></div>'
-        for state in button_states
-    )
-    danger_rows = "".join(
-        f'<div class="key danger" style="border-image:url(\'{base}/button_danger_{state}.png\') 16 / 3px stretch;'
-        f'background-image:url(\'{base}/button_fill.png\');background-size:32px;"><span>{state}</span></div>'
-        for state in ("idle", "hover", "pressed")
-    )
-    primary_rows = "".join(
-        f'<div class="key primary" style="border-image:url(\'{base}/button_primary_{state}.png\') 16 / 3px stretch;'
-        f'background-image:url(\'{base}/primary_fill.png\');background-size:32px;"><span>{state}</span></div>'
-        for state in ("idle", "hover", "pressed")
-    )
-    slot_rows = "".join(
-        f'<div class="key slot" style="border-image:url(\'{base}/slot_{state}.png\') 16 / 4px stretch;'
-        f'background-image:url(\'{base}/inset_fill.png\');background-size:32px;"><span>{state}</span></div>'
-        for state in ("idle", "hover", "active", "disabled")
-    )
-
-    html = f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Chien Quoc UI chrome preview</title>
-<style>
-  :root {{ color-scheme: dark; }}
-  body {{
-    margin: 0; padding: 24px; background: #050403; color: #e2e8f0;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    background-image: url('{base}/backdrop.png'); background-size: 256px;
-  }}
-  h1 {{ font-size: 18px; color: #f0d090; margin: 0 0 4px; }}
-  h2 {{ font-size: 13px; color: #d9a441; margin: 28px 0 10px; text-transform: uppercase; letter-spacing: .08em; }}
-  p {{ margin: 0 0 14px; color: #94a3b8; font-size: 12px; }}
-  .row {{ display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }}
-  .frame {{
-    position: relative; display: flex; align-items: center; justify-content: center;
-    box-sizing: border-box; border: 2px solid transparent;
-    color: #e2e8f0; font-size: 11px; text-align: center;
-  }}
-  .frame span, .key span {{ pointer-events: none; }}
-  .key {{
-    display: flex; align-items: center; justify-content: center;
-    width: 48px; height: 48px; box-sizing: border-box;
-    border: 1px solid transparent; color: #fef3c7; font-size: 10px;
-  }}
-  .key.danger {{ color: #fecaca; }}
-  .key.primary {{ color: #0f172a; }}
-  .key.slot {{ width: 38px; height: 38px; color: #fef3c7; }}
-  .chip {{
-    display: inline-flex; align-items: center; justify-content: center;
-    min-width: 64px; height: 24px; padding: 0 8px; box-sizing: border-box;
-    border: 1px solid transparent; color: #e2e8f0; font-size: 11px;
-    border-image: url('{base}/chip_frame.png') 12 / 3px stretch;
-    background-image: url('{base}/inset_fill.png'); background-size: 32px;
-  }}
-  .tooltip {{
-    width: 220px; padding: 8px; box-sizing: border-box;
-    border: 1px solid transparent; color: #e2e8f0; font-size: 11px;
-    border-image: url('{base}/tooltip_frame.png') 24 / 6px stretch;
-    background-image: url('{base}/inset_fill.png'); background-size: 32px;
-  }}
-  .backdrop {{
-    width: 100%; max-width: 520px; height: 180px; box-sizing: border-box;
-    border: 1px solid #3b2a16; color: #94a3b8; font-size: 11px;
-    display: flex; align-items: center; justify-content: center;
-    background-image: radial-gradient(ellipse at 50% 38%, rgba(120,80,30,.20), transparent 62%), url('{base}/backdrop.png');
-    background-size: 100% 100%, 256px 256px; background-repeat: no-repeat, repeat;
-  }}
-</style>
-</head>
-<body>
-  <h1>Chien Quoc UI chrome</h1>
-  <p>Procedural 9-slice kit, version {UI_VERSION}. Frames use border-image-width larger than border-width so the box model does not move.</p>
-
-  <h2>Panel frame (8 px inward)</h2>
-  <div class="row">{''.join(frame_rows)}</div>
-
-  <h2>Modal frame (12 px inward)</h2>
-  <div class="row">{''.join(modal_rows)}</div>
-
-  <h2>Buttons</h2>
-  <div class="row">{button_rows}</div>
-  <div class="row">{danger_rows}</div>
-  <div class="row">{primary_rows}</div>
-
-  <h2>Command slots</h2>
-  <div class="row">{slot_rows}</div>
-
-  <h2>Chip + tooltip</h2>
-  <div class="row"><span class="chip">wood 1234</span><span class="chip">food 999</span>
-    <div class="tooltip">A tooltip on the inset stone fill. 11 px text must stay readable.</div>
-  </div>
-
-  <h2>Backdrop</h2>
-  <div class="row"><div class="backdrop">modal / auth backdrop texture</div></div>
-</body>
-</html>
-"""
-    path = PREVIEW_DIR / "ui-preview.html"
-    path.write_text(html, encoding="utf-8")
-    return path
-
-
-# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1047,14 +866,16 @@ def main() -> None:
         if unknown:
             raise SystemExit(f"unknown assets: {', '.join(sorted(unknown))}")
 
-    write_assets(names)
+    assets = build_assets()
+    write_assets(assets, names)
 
     if args.preview:
-        assets = build_assets()
-        preview = write_preview(assets)
-        sheet = write_contact_sheet(assets)
+        preview = write_preview(assets, ASSET_SPECS, UI_VERSION)
+        sheet = write_contact_sheet(assets, ASSET_SPECS)
         print(f"preview: {preview.relative_to(ROOT)}")
         print(f"contact sheet: {sheet.relative_to(ROOT)}")
+        print("serve from the repo root and open /scripts/out/ui-preview.html")
+        print(f"  python3 -m http.server 8899 --bind 127.0.0.1")
 
 
 if __name__ == "__main__":

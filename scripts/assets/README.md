@@ -157,7 +157,7 @@ asset) so it has no upstream URL or license and stays out of `manifest.json`:
 python scripts/generate_ui_assets.py            # rewrite every PNG + ui.lock.json
 python scripts/generate_ui_assets.py --check    # CI gate: lock + CSS references
 python scripts/generate_ui_assets.py --preview  # contact sheet + HTML proof
-python scripts/generate_ui_assets.py --only button_primary   # one asset family
+python scripts/generate_ui_assets.py --only button_primary   # one family; keeps the rest of the lock
 ```
 
 `scripts/assets/ui.lock.json` records every output's canvas, 9-slice inset,
@@ -182,6 +182,11 @@ Two invariants keep the skin from changing layout:
 
 `border-radius: 0` on the framed classes is intentional - the corner ornaments
 are in the artwork, and a CSS radius would clip them.
+
+A `border-*` utility next to a framed class is dead code: `border-image` paints
+the whole border area and wins over `border-color`, so `hover:border-amber-400`
+on an `.aoe-button` can never show. Semantic rims belong to the class
+(`.aoe-button-danger`) or to a child element's own border.
 
 ## Not migrated
 

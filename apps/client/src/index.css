@@ -118,7 +118,12 @@ canvas {
 }
 
 /* Frame-only variants: they keep the element's own background (semantic red,
- * amber or a world-map painting) and only add the carved rim. */
+ * amber or a world-map painting) and only add the carved rim.
+ *
+ * A `border-*` utility next to any of the frame classes is dead: `border-image`
+ * paints the whole border area and wins over `border-color`, so a red error rim
+ * cannot be requested from a utility. Semantic borders live in the class
+ * (`.aoe-button-danger`) or in the child's own border, never in `border-red-*`. */
 .aoe-frame {
   border: 2px solid #9a5b13;
   border-radius: 0;
