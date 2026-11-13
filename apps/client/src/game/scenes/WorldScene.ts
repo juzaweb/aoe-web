@@ -53,6 +53,9 @@ import { unitActionTexture } from '../render/unitDirections.js';
 import { UNIT_ART, unitArt, unitSheets } from '../render/unitArt.js';
 import { RENDER_DELAY_MS, visualActionState } from '../render/unitMotion.js';
 import type { UnitMotion } from '../render/unitMotion.js';
+import { ARROW_ASSET_URL, ARROW_TEXTURE_KEY, ProjectileLayer } from '../render/projectiles.js';
+import { RangedFireSim } from '../render/rangedFire.js';
+import type { BuildingShotSource, UnitShotSource } from '../render/rangedFire.js';
 
 /**
  * How far the pointer may travel (in world pixels) before a left-button press
@@ -479,6 +482,25 @@ export class WorldScene extends Phaser.Scene {
   public terrainLayout: MapTerrain = TERRAIN_BATTLEFIELD;
   /** CMB-03: red marker on the enemy the selection is hitting. */
   public focus!: FocusIndicator;
+  /** FX-01: the arrows archers and watch towers loose, drawn above the world. */
+  public projectiles!: ProjectileLayer;
+  /**
+   * FX-01: decides when a shooter releases an arrow. It mirrors the server's
+   * ranged rules from replicated state, so the effect needs no new message and
+   * never disagrees with the damage the server applies.
+   */
+  private readonly rangedFire = new RangedFireSim();
+  /**
+   * Snapshot buffers handed to the fire simulation every frame. They are reused
+   * in place instead of rebuilt: a 300-unit brawl would otherwise allocate a
+   * few hundred throwaway objects per frame.
+   */
+  private readonly shotUnits: UnitShotSource[] = [];
+  private readonly shotBuildings: BuildingShotSource[] = [];
+  private readonly shotWorld: {
+    units: UnitShotSource[];
+    buildings: BuildingShotSource[];
+  } = { units: this.shotUnits, buildings: this.shotBuildings };
 
   constructor() {
     super('WorldScene');
@@ -591,6 +613,10 @@ export class WorldScene extends Phaser.Scene {
     // regenerated offline; bump the query string whenever the PNG changes.
     this.load.image('rally_flag', '/assets/markers/rally_flag.png?v=1');
 
+    // FX-01: the arrow sprite archers and towers loose. Cosmetic only — if the
+    // file is missing the load fails softly and `ProjectileLayer` draws its own.
+    this.load.image(ARROW_TEXTURE_KEY, ARROW_ASSET_URL);
+
     // Citadel stone: floor tile, wall block, gatehouse and its portcullis.
     // Built by `scripts/process_citadel_assets.py`; bump when a PNG changes.
     const cv = 'v=8';
@@ -648,6 +674,9 @@ export class WorldScene extends Phaser.Scene {
 
     // 4c. Focus-fire marker (CMB-03), under the drag box like every other overlay
     this.focus = new FocusIndicator(this);
+
+    // 4d. Arrows in flight (FX-01). Above every entity, below the overlays.
+    this.projectiles = new ProjectileLayer(this);
 
     // 5. Selection and cursor policy. Built after placement because the cursor
     // reads the placement validator.
@@ -946,6 +975,11 @@ export class WorldScene extends Phaser.Scene {
     this.pendingResources = [];
     this.pendingResourceKeys.clear();
     this.unitMotion.clear();
+
+    // FX-01: arrows in flight belong to the map being torn down, and their
+    // cooldowns must not carry over to the new room's units.
+    this.projectiles?.destroy();
+    this.rangedFire.reset();
 
     this.selection?.clear();
     this.selectedUnitIds.clear();
@@ -2262,6 +2296,7 @@ export class WorldScene extends Phaser.Scene {
     this.wallController?.render();
 
     this.updateUnitSprites(time, dtSeconds);
+    this.updateProjectiles(time);
     this.citadel?.update(delta);
 
     // CMB-03 after the lerp: the marker is drawn on the sprite's current screen
@@ -2335,6 +2370,57 @@ export class WorldScene extends Phaser.Scene {
         updateVisualState(effectiveState, step.facing, unit.speed);
       }
     });
+  }
+
+  /**
+   * FX-01: releases the arrows this frame's replicated state calls for.
+   *
+   * Skipped while the world is frozen (a travel swaps rooms and the last frame
+   * stays on screen). It allocates nothing per frame: the source objects are
+   * reused out of `shotUnits` / `shotBuildings`, only their count changes.
+   * `RangedFireSim` owns the range rules and the cooldowns; this method only
+   * translates Colyseus schema objects into the plain shapes it reads, then hands
+   * the shots to the layer that paints them.
+   */
+  private updateProjectiles(time: number) {
+    const room = this.room;
+    if (!this.projectiles || !room || this.worldFrozen) return;
+
+    let unitCount = 0;
+    room.state.units.forEach((unit: any) => {
+      const source = this.shotUnits[unitCount] ?? ({} as UnitShotSource);
+      this.shotUnits[unitCount] = source;
+      source.id = unit.id;
+      source.ownerId = unit.ownerId;
+      source.type = unit.type;
+      source.x = unit.x;
+      source.y = unit.y;
+      source.actionState = unit.actionState;
+      source.targetEntityId = unit.targetEntityId;
+      source.targetEntityType = unit.targetEntityType;
+      unitCount++;
+    });
+    this.shotUnits.length = unitCount;
+
+    let buildingCount = 0;
+    room.state.buildings.forEach((building: any) => {
+      const source = this.shotBuildings[buildingCount] ?? ({} as BuildingShotSource);
+      this.shotBuildings[buildingCount] = source;
+      source.id = building.id;
+      source.ownerId = building.ownerId;
+      source.type = building.type;
+      source.gridX = building.gridX;
+      source.gridY = building.gridY;
+      source.sizeX = building.sizeX;
+      source.sizeY = building.sizeY;
+      source.isConstructed = building.isConstructed;
+      buildingCount++;
+    });
+    this.shotBuildings.length = buildingCount;
+
+    const shots = this.rangedFire.update(time, this.shotWorld);
+    for (const shot of shots) this.projectiles.spawn(shot, time);
+    this.projectiles.update(time);
   }
 
   /**
