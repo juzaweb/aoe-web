@@ -765,9 +765,12 @@ export class EntityRenderer {
     // reads as the sprite alone; the panel still reports exact numbers.
     if (hp >= maxHp) return;
 
-    const width = isCavalry ? 50 : 38;
+    // The mounted art is taller than the legacy cavalry cell (the rider's helm
+    // reaches ~94 px above the tile), so its bar sits above that, not across the
+    // rider's shoulders.
+    const width = isCavalry ? 54 : 38;
     const height = 4;
-    const barY = isCavalry ? -84 : -68;
+    const barY = isCavalry ? -100 : -68;
 
     hpBar.fillStyle(0x0f172a, 0.8);
     hpBar.fillRect(-width / 2, barY, width, height);
