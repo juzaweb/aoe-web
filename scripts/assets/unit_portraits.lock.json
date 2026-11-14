@@ -1,0 +1,56 @@
+{
+  "portraits": {
+    "ARCHER": {
+      "out": "apps/client/public/assets/units/archer_idle.png",
+      "source": "apps/client/public/assets/units/actions/archer_idle.png",
+      "sourceSha256": "76f276c16a893fe51caed9e9e2e493b4d02599ecf669d52972fac290611dd002",
+      "poseRow": 2,
+      "frame": 0,
+      "cell": [
+        192,
+        168
+      ],
+      "size": 128,
+      "sha256": "ca9765ce579e9392b3642f4aa382fc73e22a9ddd92ea5eea09e89a2a5f67e73b"
+    },
+    "CAVALRY": {
+      "out": "apps/client/public/assets/units/cavalry_idle.png",
+      "source": "apps/client/public/assets/units/actions/cavalry_idle.png",
+      "sourceSha256": "dabdc813d7b8fd013656c3920f15d2c5fad458d8e1aad7f91666e81b18934354",
+      "poseRow": 1,
+      "frame": 0,
+      "cell": [
+        224,
+        224
+      ],
+      "size": 128,
+      "sha256": "69f1f603012eea471f245eadfa0a558b6b549aff4453b3e7a68767af4ab146ea"
+    },
+    "SPEARMAN": {
+      "out": "apps/client/public/assets/units/spearman_idle.png",
+      "source": "apps/client/public/assets/units/actions/spearman_idle.png",
+      "sourceSha256": "c2d1295b9ea526819751c1bb7ff272ddaf0fd795dd126dd865c320d3f3e9335f",
+      "poseRow": 2,
+      "frame": 0,
+      "cell": [
+        192,
+        168
+      ],
+      "size": 128,
+      "sha256": "befdb87a210658a42b1abe443afd4a63055c7a1784f6a51242877c311426e513"
+    },
+    "VILLAGER": {
+      "out": "apps/client/public/assets/units/villager_idle.png",
+      "source": "apps/client/public/assets/units/actions/villager_idle.png",
+      "sourceSha256": "c0d879cee24f13b80a50f32c6a0ca71b8701b5296f8ab543c9f95481907ea699",
+      "poseRow": 2,
+      "frame": 0,
+      "cell": [
+        148,
+        130
+      ],
+      "size": 128,
+      "sha256": "44bdba628527036e6a2eb39c0b23976dc830eeaa3ea4275df6981f99b371bdf9"
+    }
+  }
+}

@@ -15,7 +15,7 @@ import type { SelectedEntityData } from '../../game/scenes/WorldScene.js';
 import { buildingThumbnail } from '../buildingThumbnails.js';
 import { resourceThumbnail } from '../resourceThumbnails.js';
 import { resourceName, stanceName, unitName } from '../../i18n/labels.js';
-import { unitThumbnail } from './commandPages.js';
+import { unitThumbnail } from '../unitThumbnails.js';
 
 export interface SelectionStripProps {
   entity: SelectedEntityData;

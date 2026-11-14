@@ -23,6 +23,7 @@ import { BuildingUpgradePanel, UnitResearchPanel } from './UpgradePanels.js';
 import { UNIT_TRAINING_HOTKEY_BY_TYPE } from '../game/input/unitHotkeys.js';
 import { buildingThumbnail } from './buildingThumbnails.js';
 import { resourceThumbnail } from './resourceThumbnails.js';
+import { unitThumbnail } from './unitThumbnails.js';
 import { useTranslation } from 'react-i18next';
 import {
   buildingName,
@@ -177,7 +178,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
         <div className="flex items-center gap-2.5">
           {entity.type === 'unit' && entity.subType ? (
             <img
-              src={`/assets/units/${entity.subType.toLowerCase()}_idle.png?v=4`}
+              src={unitThumbnail(entity.subType)}
               alt={entity.name}
               className="w-10 h-10 object-contain rounded-md bg-slate-900/90 border border-amber-500/60 p-0.5 shadow-md"
               onError={(e) => {
@@ -543,7 +544,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
                     }`}
                   >
                     <img
-                      src={`/assets/units/${uType.toLowerCase()}_idle.png?v=4`}
+                      src={unitThumbnail(uType)}
                       alt={unitName(uType)}
                       className="w-7 h-7 object-contain rounded bg-slate-900/60 p-0.5 border border-amber-600/40"
                       onError={(e) => {

@@ -30,7 +30,13 @@ dock slot, the selection strip and the entity panel) is not painted separately:
 `scripts/build_unit_portrait.py` crops an idle pose out of that unit's action
 sheet (front-facing, except the cavalry, whose head-on horse reads as a blob at
 slot size) and fits it to the square the UI expects, so a portrait cannot drift
-away from the unit it labels.
+away from the unit it labels. The script records the pose it used and the hash of
+both files in `scripts/assets/unit_portraits.lock.json`;
+`scripts/build_unit_portrait.py --check` verifies the shipped files against it,
+and `unitPortraits.test.ts` fails when a sheet was redrawn without rebuilding the
+portrait. The portrait PNGs are still pinned as legacy sprites in
+`scripts/assets/assets.lock.json`, so a rebuild ends with
+`python scripts/assets/build.py --legacy`.
 
 Current layers, bottom to top:
 

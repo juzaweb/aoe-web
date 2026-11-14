@@ -450,18 +450,6 @@ def build_sheet(unit: str, action: str, scale: float) -> Path:
     return out_path
 
 
-def save_idle_thumbnail(unit: str) -> Path | None:
-    """Details panel art: the front-facing idle pose, at the legacy thumbnail size."""
-    source = ACTION_DIR / f"{unit}_idle.png"
-    if not source.exists():
-        return None
-    frame_size = UNITS[unit]["frame_size"]
-    with Image.open(source) as sheet:
-        pose = sheet.crop((0, 2 * frame_size, frame_size, 3 * frame_size))
-    out_path = ASSET_DIR / f"{unit}_idle.png"
-    pose.save(out_path, "PNG", optimize=True)
-    return out_path
-
 
 def run(args) -> None:
     units = args.units or list(UNITS)
@@ -499,10 +487,10 @@ def run(args) -> None:
             with Image.open(out_path) as sheet_image:
                 print(f"  {out_path.name}: {sheet_image.size[0]}x{sheet_image.size[1]} "
                       f"{out_path.stat().st_size // 1024} KB scale={scale:.3f}")
-            if action == "idle":
-                thumb = save_idle_thumbnail(unit)
-                if thumb:
-                    print(f"  {thumb.name}")
+            # No portrait is written here: `build_unit_portrait.py` owns
+            # `assets/units/<unit>_idle.png`, derives it from this sheet, and
+            # this module's cell sizes have not matched the shipped sheets since
+            # the units were redrawn (148x130, 192x168, 224x224).
 
 
 def main() -> None:
