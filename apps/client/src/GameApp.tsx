@@ -47,6 +47,7 @@ import { RESUME_ATTEMPTS, RESUME_RETRY_DELAY_MS, shouldAutoReconnect } from './d
 import {
   AuthUser,
   classifySessionJoinError,
+  connectFailedMessage,
   fetchCurrentUser,
   getServerUrl,
   isAuthRejection,
@@ -503,7 +504,7 @@ export const GameApp: React.FC = () => {
           showNotification(t('app.invalidSession'));
         }
       } else if (!opts.quiet) {
-        showNotification(t('app.connectFailed'));
+        showNotification(connectFailedMessage());
       }
       return false;
     } finally {

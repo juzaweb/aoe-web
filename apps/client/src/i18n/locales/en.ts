@@ -12,7 +12,7 @@ const en = {
     zoneRaid: 'RAID',
     sessionExpired: 'Your session has expired. Please sign in again.',
     invalidSession: 'Invalid session. Please sign in again.',
-    connectFailed: 'Could not connect to the game server. Check that it is running on port 2567!',
+    connectFailed: 'Could not connect to the game server. Check that it is running on port {{port}}!',
     sessionReplaced: 'This account was signed in on another device.',
     connectionLost: 'Lost connection to the server.',
     cannotSpectate: 'This kingdom cannot be watched right now.',

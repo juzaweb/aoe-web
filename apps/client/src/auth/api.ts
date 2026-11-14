@@ -41,6 +41,14 @@ function getServerPort(): number {
   return typeof __GAME_SERVER_PORT__ === 'number' ? __GAME_SERVER_PORT__ : DEFAULT_SERVER_PORT;
 }
 
+/**
+ * The connect-failure copy names the port the client actually tried, so the
+ * message stays correct when the server shifts away from the default one.
+ */
+export function connectFailedMessage(): string {
+  return i18n.t('app.connectFailed', { port: getServerPort() });
+}
+
 /** Server base URL resolved from the current page host and the server's port. */
 export function getServerUrl(): string {
   const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
@@ -55,7 +63,7 @@ async function readError(response: Response): Promise<string> {
   } catch {
     // Fall through to the generic message.
   }
-  return i18n.t('app.connectFailed');
+  return connectFailedMessage();
 }
 
 /** Standard content headers used by every API call, plus the active language. */
@@ -75,7 +83,7 @@ async function postAuth(path: string, body: Record<string, string>): Promise<Aut
       body: JSON.stringify(body)
     });
   } catch {
-    throw new Error(i18n.t('app.connectFailed'));
+    throw new Error(connectFailedMessage());
   }
 
   if (!response.ok) {

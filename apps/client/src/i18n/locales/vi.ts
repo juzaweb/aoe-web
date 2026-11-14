@@ -15,7 +15,7 @@ const vi = {
     zoneRaid: 'TẬP KÍCH',
     sessionExpired: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
     invalidSession: 'Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.',
-    connectFailed: 'Không thể kết nối đến máy chủ game. Hãy kiểm tra server đã chạy ở port 2567!',
+    connectFailed: 'Không thể kết nối đến máy chủ game. Hãy kiểm tra server đã chạy ở port {{port}}!',
     sessionReplaced: 'Phiên đã được đăng nhập ở thiết bị khác.',
     connectionLost: 'Mất kết nối với máy chủ.',
     cannotSpectate: 'Không thể quan sát vương quốc này.',
