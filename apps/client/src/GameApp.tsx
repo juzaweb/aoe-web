@@ -66,8 +66,9 @@ import {
   getStoredRaid,
   storeRaid
 } from './game/raid/session.js';
-import { LANGUAGE_CHANGED_EVENT } from './i18n/index.js';
-import { HOME_PATH, navigate } from './router.js';
+import { useNavigate } from 'react-router-dom';
+import { asLanguage, LANGUAGE_CHANGED_EVENT } from './i18n/index.js';
+import { homePath } from './routing.js';
 
 /**
  * The interactive game (the `/play` route). Router concerns live in `App.tsx`;
@@ -75,6 +76,7 @@ import { HOME_PATH, navigate } from './router.js';
  */
 export const GameApp: React.FC = () => {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const [room, setRoom] = useState<Room | null>(null);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -833,9 +835,9 @@ export const GameApp: React.FC = () => {
     setControlGroups([]);
     setSwitchError(null);
     setAuthUser(null);
-    // Signing out is a full exit now that `/` is the public homepage. Replace
-    // the history entry so Back cannot reopen the now signed-out game shell.
-    navigate(HOME_PATH, { replace: true });
+    // Signing out is a full exit now that `/{locale}` is the public homepage.
+    // Replace the history entry so Back cannot reopen the signed-out game shell.
+    navigate(homePath(asLanguage(i18n.language)), { replace: true });
   };
 
   // Keyboard hotkeys live in the Phaser input layer (see CommandController):

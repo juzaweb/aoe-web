@@ -4,7 +4,9 @@ import { AlertCircle, ArrowLeft, Eye, EyeOff, Loader2, Lock, LogIn, Swords, User
 import { AuthUser, login, register } from '../auth/api.js';
 import { useInputMode } from '../device/useInputMode.js';
 import { LanguageSwitcher } from '../i18n/LanguageSwitcher.js';
-import { HOME_PATH, RouteLink } from '../router.js';
+import { Link } from 'react-router-dom';
+import { useLocale } from '../i18n/useLocale.js';
+import { homePath } from '../routing.js';
 
 type AuthMode = 'login' | 'register';
 
@@ -15,6 +17,7 @@ interface AuthScreenProps {
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
   const { t } = useTranslation();
+  const { language } = useLocale();
   const [mode, setMode] = useState<AuthMode>('login');
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -54,13 +57,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
   return (
     <div className="aoe-backdrop absolute inset-0 z-50 flex items-center justify-center overflow-y-auto p-3">
       <div className="absolute left-3 top-3 z-10">
-        <RouteLink
-          to={HOME_PATH}
+        <Link
+          to={homePath(language)}
           className="inline-flex min-h-[36px] items-center gap-1 border border-slate-700 bg-slate-900/90 px-2 text-[11px] font-semibold text-slate-300 transition-colors hover:text-amber-300"
         >
           <ArrowLeft size={13} aria-hidden />
           {t('common.backHome')}
-        </RouteLink>
+        </Link>
       </div>
       <div className="absolute right-3 top-3 z-10">
         <LanguageSwitcher />

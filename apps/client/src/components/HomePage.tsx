@@ -13,9 +13,11 @@ import {
   Swords,
   Trees
 } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 import { LanguageSwitcher } from '../i18n/LanguageSwitcher.js';
 import { hasStoredToken } from '../auth/token.js';
-import { PLAY_PATH, RouteLink } from '../router.js';
+import { useLocale } from '../i18n/useLocale.js';
+import { homePath, playPath } from '../routing.js';
 
 /** Feature cards. The copy lives in the `landing.features` i18n branch. */
 const FEATURES = [
@@ -59,6 +61,9 @@ const CARD =
  */
 export const HomePage: React.FC = () => {
   const { t } = useTranslation();
+  const { language } = useLocale();
+  const { pathname } = useLocation();
+  const onHome = pathname === homePath(language);
   // A stored token is enough to offer the shorter "continue" label; `/play`
   // still verifies it with the server and falls back to the auth screen.
   const [hasSession] = useState<boolean>(hasStoredToken);
@@ -71,11 +76,14 @@ export const HomePage: React.FC = () => {
     >
       <header className="sticky top-0 z-30 border-b border-amber-900/40 bg-slate-950/85 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4">
-          <RouteLink
-            to="/"
-            // The logo is already the current route on this page, so navigate()
-            // is a no-op; scroll the landing container back to the hero instead.
-            onClick={() => scrollRef.current?.scrollTo({ top: 0 })}
+          <Link
+            to={homePath(language)}
+            // Already on the homepage: scroll back to the hero instead of
+            // pushing a duplicate history entry.
+            onClick={(event) => {
+              scrollRef.current?.scrollTo({ top: 0 });
+              if (onHome) event.preventDefault();
+            }}
             className="flex shrink-0 items-center gap-2 text-amber-300 transition-colors hover:text-amber-200"
             aria-label={t('landing.brandHome')}
           >
@@ -83,7 +91,7 @@ export const HomePage: React.FC = () => {
             <span className="font-medieval text-base font-bold tracking-[0.18em] sm:text-lg">
               CHIẾN QUỐC
             </span>
-          </RouteLink>
+          </Link>
 
           <nav className="hidden items-center gap-6 text-sm text-slate-300 md:flex" aria-label={t('landing.nav.label')}>
             <a href="#features" className="transition-colors hover:text-amber-300">
@@ -104,13 +112,13 @@ export const HomePage: React.FC = () => {
             <div className="sm:hidden">
               <LanguageSwitcher compact />
             </div>
-            <RouteLink
-              to={PLAY_PATH}
+            <Link
+              to={playPath(language)}
               className="aoe-button aoe-button-primary inline-flex min-h-[40px] items-center gap-1.5 px-3 text-xs font-bold uppercase tracking-wider text-slate-950"
             >
               <Play size={14} aria-hidden />
               {hasSession ? t('landing.hero.continueShort') : t('landing.hero.playNow')}
-            </RouteLink>
+            </Link>
           </div>
         </div>
       </header>
@@ -146,13 +154,13 @@ export const HomePage: React.FC = () => {
               </p>
 
               <div className="mt-8 flex flex-wrap items-center gap-3">
-                <RouteLink
-                  to={PLAY_PATH}
+                <Link
+                  to={playPath(language)}
                   className="aoe-button aoe-button-primary inline-flex min-h-[48px] items-center gap-2 px-6 text-sm font-bold uppercase tracking-wider text-slate-950"
                 >
                   <Play size={17} aria-hidden />
                   {hasSession ? t('landing.hero.continue') : t('landing.hero.playNow')}
-                </RouteLink>
+                </Link>
                 <a
                   href="#features"
                   className="aoe-button inline-flex min-h-[48px] items-center gap-2 px-5 text-sm font-semibold text-amber-100"
@@ -373,13 +381,13 @@ export const HomePage: React.FC = () => {
             </ol>
 
             <div className="mt-10 flex justify-center">
-              <RouteLink
-                to={PLAY_PATH}
+              <Link
+                to={playPath(language)}
                 className="aoe-button aoe-button-primary inline-flex min-h-[48px] items-center gap-2 px-7 text-sm font-bold uppercase tracking-wider text-slate-950"
               >
                 {hasSession ? t('landing.hero.continue') : t('landing.steps.cta')}
                 <ArrowRight size={16} aria-hidden />
-              </RouteLink>
+              </Link>
             </div>
           </div>
         </section>
@@ -405,13 +413,13 @@ export const HomePage: React.FC = () => {
             <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-slate-300 sm:text-base">
               {t('landing.final.subtitle')}
             </p>
-            <RouteLink
-              to={PLAY_PATH}
+            <Link
+              to={playPath(language)}
               className="aoe-button aoe-button-primary mt-8 inline-flex min-h-[52px] items-center gap-2 px-8 text-sm font-bold uppercase tracking-wider text-slate-950"
             >
               <Play size={17} aria-hidden />
               {hasSession ? t('landing.hero.continue') : t('landing.final.cta')}
-            </RouteLink>
+            </Link>
             <p className="mt-4 text-xs text-slate-500">{t('landing.final.note')}</p>
           </div>
         </section>

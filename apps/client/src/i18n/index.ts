@@ -22,11 +22,30 @@ export function isLanguage(value: unknown): value is Language {
   return typeof value === 'string' && (SUPPORTED_LANGUAGES as readonly string[]).includes(value);
 }
 
+/** Narrows an i18next language string to a supported locale. */
+export function asLanguage(value: string): Language {
+  return isLanguage(value) ? value : 'vi';
+}
+
 /**
- * Stored preference first, then the browser's ordered preferences. Vietnamese
- * remains the fallback for unsupported browsers, matching the game's default.
+ * Locale carried by the URL prefix (`/en/play` → `en`). Returns null for an
+ * unprefixed path such as `/` or `/play`.
+ */
+export function localeFromPath(pathname: string): Language | null {
+  const segment = pathname.split(/[?#]/)[0].split('/')[1]?.toLowerCase();
+  return isLanguage(segment) ? segment : null;
+}
+
+/**
+ * URL prefix first (so a shared `/en` link is honoured), then the stored
+ * preference, then the browser's ordered languages. Vietnamese remains the
+ * fallback for unsupported browsers, matching the game's default.
  */
 export function detectLanguage(): Language {
+  const fromPath =
+    typeof window === 'undefined' ? null : localeFromPath(window.location.pathname);
+  if (fromPath) return fromPath;
+
   try {
     const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
     if (isLanguage(stored)) return stored;
@@ -72,6 +91,12 @@ void i18n.use(initReactI18next).init({
 });
 
 applyDocumentLanguage(i18n.language);
+
+// Dev-only handle, like `__room` and `__worldScene`, so a browser check can
+// inspect the live i18next instance without importing a second module copy.
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  (window as unknown as { __i18n?: typeof i18n }).__i18n = i18n;
+}
 
 i18n.on('languageChanged', (language) => {
   if (isLanguage(language)) persistLanguage(language);

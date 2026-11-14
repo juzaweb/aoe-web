@@ -125,17 +125,28 @@ pnpm dev:client
 
 ### Routes
 
-The web client has two public routes:
+English is the default locale, so its homepage has no prefix. Every other
+address carries one:
 
 | Route | Screen |
 |---|---|
-| `/` | Landing page: game introduction and the Play button |
-| `/play` | The game itself (auth gate, kingdom, HUD) |
+| `/` | Landing page in English |
+| `/vi` | Landing page in Vietnamese |
+| `/en/play` | The game in English (auth gate, kingdom, HUD) |
+| `/vi/play` | The game in Vietnamese |
 
-Routing is client-side (History API). Any other path redirects to `/`. A static
-host must rewrite unknown paths to `index.html`; `apps/client/public/_redirects`
-does that for Netlify and Cloudflare Pages. Vite's dev server and `vite preview`
-already provide the fallback.
+A first visit to `/` keeps English visitors where they are and redirects a
+Vietnamese visitor to `/vi`. The locale comes from the URL first, then the
+stored preference (`localStorage.cq_language`), then the browser's languages,
+falling back to Vietnamese. Picking a language in the switcher rewrites the URL
+in place, so the address and the copy never disagree; a shared deep link such as
+`/vi` or `/en/play` always wins. `/en` is not a valid address and is replaced by
+`/`; unknown paths land on the homepage of the active locale.
+
+Routing uses `react-router-dom` (data router, History API). A static host must
+rewrite unknown paths to `index.html`; `apps/client/public/_redirects` does that
+for Netlify and Cloudflare Pages. Vite's dev server and `vite preview` already
+provide the fallback.
 
 ### Production Build
 
