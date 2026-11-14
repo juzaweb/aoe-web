@@ -25,6 +25,12 @@ of the per-direction offsets that were applied. `scripts/build_oga_soldier_varia
 holds the soldier outfit candidates, builds them for comparison, and rebuilds the
 chosen one into the client assets.
 
+The portrait a unit is listed with (`assets/units/<unit>_idle.png`, drawn by the
+dock slot, the selection strip and the entity panel) is not painted separately:
+`scripts/build_unit_portrait.py` crops the front idle pose out of that unit's
+action sheet and fits it to the square the UI expects, so a portrait cannot drift
+away from the unit it labels.
+
 Current layers, bottom to top:
 
 - villager: `BaseHumanMale` (body), `BrownPants`, `TunicBlue` (muted indigo,

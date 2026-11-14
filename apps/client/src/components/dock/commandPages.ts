@@ -110,9 +110,9 @@ export interface DockPageInput {
 
 const RESOURCE_ORDER: Array<keyof Resources> = ['wood', 'food', 'gold', 'stone'];
 
-/** Unit art the scene preloads for a type, e.g. `/assets/units/villager_idle.png?v=3`. */
+/** Unit art the scene preloads for a type, e.g. `/assets/units/villager_idle.png?v=4`. */
 export function unitThumbnail(type: string): string {
-  return `/assets/units/${type.toLowerCase()}_idle.png?v=3`;
+  return `/assets/units/${type.toLowerCase()}_idle.png?v=4`;
 }
 
 function canAfford(resources: Resources, cost: Resources): boolean {
