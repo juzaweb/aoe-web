@@ -94,7 +94,7 @@ describe('CommandController rally markers (CTL-06)', () => {
   });
 
   it('draws only the selected building, not every rally point on the map', () => {
-    const { scene, controller, images } = controllerFor([HOUSE, BARRACKS]);
+    const { scene, controller, images, graphics } = controllerFor([HOUSE, BARRACKS]);
     scene.selectedBuildingId = HOUSE.id;
 
     controller.updateRallyMarkers();
@@ -102,6 +102,8 @@ describe('CommandController rally markers (CTL-06)', () => {
     expect(images).toHaveLength(1);
     const expected = gridToScreen(HOUSE.rallyX, HOUSE.rallyY);
     expect(images[0]).toMatchObject({ x: expected.x, y: expected.y, key: 'rally_flag' });
+    // The line runs from the house itself, not from another building or the flag.
+    expect(graphics.lineBetween).toHaveBeenCalledWith(120, 240, expected.x, expected.y);
   });
 
   it('moves the flag when a different building is clicked', () => {
@@ -116,6 +118,23 @@ describe('CommandController rally markers (CTL-06)', () => {
     expect(images[0].destroyed).toBe(true);
     const expected = gridToScreen(BARRACKS.rallyX, BARRACKS.rallyY);
     expect(images[1]).toMatchObject({ x: expected.x, y: expected.y, destroyed: false });
+  });
+
+  it('moves the flag between two buildings that share a rally point', () => {
+    const secondHouse: FakeBuilding = { ...HOUSE, id: 'house-1b' };
+    const { scene, controller, images } = controllerFor([HOUSE, secondHouse]);
+    scene.selectedBuildingId = HOUSE.id;
+    controller.updateRallyMarkers();
+
+    scene.selectedBuildingId = secondHouse.id;
+    controller.updateRallyMarkers();
+
+    // The coordinates are identical, so only the building id can tell the two
+    // markers apart: a coordinate-only signature would leave the first flag on
+    // screen while the panel shows the second house.
+    expect(images).toHaveLength(2);
+    expect(images[0].destroyed).toBe(true);
+    expect(images[1].destroyed).toBe(false);
   });
 
   it('clears the flag when the selection is dropped', () => {
@@ -134,6 +153,16 @@ describe('CommandController rally markers (CTL-06)', () => {
     const idleHouse: FakeBuilding = { id: 'house-2', ownerId: 'me', rallyX: -1, rallyY: -1 };
     const { scene, controller, images } = controllerFor([idleHouse]);
     scene.selectedBuildingId = idleHouse.id;
+
+    controller.updateRallyMarkers();
+
+    expect(images).toHaveLength(0);
+  });
+
+  it('ignores a selected building that has no sprite on screen yet', () => {
+    const { scene, controller, images } = controllerFor([HOUSE]);
+    scene.selectedBuildingId = HOUSE.id;
+    scene.buildingSprites.delete(HOUSE.id);
 
     controller.updateRallyMarkers();
 

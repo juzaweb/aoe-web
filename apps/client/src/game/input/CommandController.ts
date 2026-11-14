@@ -107,7 +107,7 @@ export class CommandController {
   private waypointGraphics!: Phaser.GameObjects.Graphics;
   private rallyGraphics!: Phaser.GameObjects.Graphics;
   /** CTL-06: the banner sprite standing on the selected building's rally point. */
-  private rallyFlags: Phaser.GameObjects.Image[] = [];
+  private rallyFlag: Phaser.GameObjects.Image | null = null;
   /** Signature of the last drawn rally layer, so identical frames skip the redraw. */
   private rallySignature = '';
 
@@ -986,7 +986,6 @@ export class CommandController {
    * a signature beats tracking individual patches.
    */
   updateRallyMarkers() {
-    const scene = this.scene;
     const marker = this.selectedRallyMarker();
 
     const signature = marker ? `${marker.id}:${marker.rallyX},${marker.rallyY}` : '';
@@ -994,45 +993,53 @@ export class CommandController {
     this.rallySignature = signature;
 
     this.rallyGraphics.clear();
-    this.rallyFlags.forEach((banner) => banner.destroy());
-    this.rallyFlags = [];
+    this.rallyFlag?.destroy();
+    this.rallyFlag = null;
 
     if (!marker) return;
-    const container = scene.buildingSprites.get(marker.id);
-    if (!container) return;
 
     const flag = gridToScreen(marker.rallyX, marker.rallyY);
     const overlay = this.rallyGraphics;
 
     overlay.lineStyle(1, 0x38bdf8, 0.3);
-    overlay.lineBetween(container.x, container.y, flag.x, flag.y);
+    overlay.lineBetween(marker.container.x, marker.container.y, flag.x, flag.y);
 
     overlay.fillStyle(0x0f172a, 0.55);
     overlay.fillEllipse(flag.x, flag.y, 22, 11);
 
     // Banner artwork standing on the rally point, pole tip at ground level.
-    const banner = scene.add.image(flag.x, flag.y, 'rally_flag');
+    const banner = this.scene.add.image(flag.x, flag.y, 'rally_flag');
     banner.setOrigin(0.5, 1);
     banner.setScale(0.8);
     banner.setDepth(999990);
-    this.rallyFlags.push(banner);
+    this.rallyFlag = banner;
   }
 
   /**
-   * The rally point worth drawing: one own, spawned building, and only while it
-   * is the current selection.
+   * The rally point worth drawing: one own building, and only while it is the
+   * current selection. The container is resolved here so the draw path does not
+   * repeat the "is this building on screen?" check.
    */
-  private selectedRallyMarker(): { id: string; rallyX: number; rallyY: number } | null {
+  private selectedRallyMarker(): {
+    id: string;
+    container: Phaser.GameObjects.Container;
+    rallyX: number;
+    rallyY: number;
+  } | null {
     const scene = this.scene;
     const id = scene.selectedBuildingId;
     if (!id) return null;
 
-    const building = scene.room?.state?.buildings?.get(id) as any;
+    // `room.state` is untyped in the Colyseus SDK, so the building fields are
+    // only as safe as the server's `BuildingState` they mirror.
+    const building = scene.room?.state?.buildings?.get(id);
     if (!building || !scene.isOwnBuilding(building.ownerId)) return null;
     if (!(building.rallyX >= 0 && building.rallyY >= 0)) return null;
-    if (!scene.buildingSprites.get(id)) return null;
 
-    return { id, rallyX: building.rallyX, rallyY: building.rallyY };
+    const container = scene.buildingSprites.get(id);
+    if (!container) return null;
+
+    return { id, container, rallyX: building.rallyX, rallyY: building.rallyY };
   }
 
   // ---------------------------------------------------------------------------
