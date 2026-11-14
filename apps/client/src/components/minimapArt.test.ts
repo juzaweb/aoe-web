@@ -4,10 +4,12 @@ import {
   MINIMAP_COLORS,
   MINIMAP_SIZE,
   buildGroundPixels,
+  citadelGlyphRects,
   gridToMinimap,
   markerColor,
   minimapClusters,
   minimapToGrid,
+  paintCitadelGlyph,
   pointerToGrid,
   portalGlyphRects
 } from './minimapArt.js';
@@ -164,6 +166,154 @@ describe('markerColor', () => {
     expect(markerColor('STONE_MINE')).toBe(MINIMAP_COLORS.stone);
     expect(markerColor('BERRY_BUSH')).toBe(MINIMAP_COLORS.berry);
     expect(markerColor('TREE')).toBe(MINIMAP_COLORS.forest);
+  });
+});
+
+describe('citadelGlyphRects', () => {
+  // A 26-tile citadel on the 110-tile kingdom map: 26 * (280 / 110) = 66.2 px.
+  const box = { x: 100, y: 80, w: 66, h: 66 };
+
+  it('draws five wall segments and six towers', () => {
+    const glyph = citadelGlyphRects(box);
+    expect(glyph.walls).toHaveLength(5);
+    expect(glyph.towers).toHaveLength(6);
+  });
+
+  it('keeps every wall and tower inside the footprint plus one tower overhang', () => {
+    const glyph = citadelGlyphRects(box);
+    for (const rect of [...glyph.walls, ...glyph.towers]) {
+      expect(rect.w).toBeGreaterThan(0);
+      expect(rect.h).toBeGreaterThan(0);
+      expect(rect.x).toBeGreaterThanOrEqual(box.x - 4);
+      expect(rect.y).toBeGreaterThanOrEqual(box.y - 4);
+      expect(rect.x + rect.w).toBeLessThanOrEqual(box.x + box.w + 4);
+      expect(rect.y + rect.h).toBeLessThanOrEqual(box.y + box.h + 4);
+    }
+  });
+
+  it('leaves the courtyard open: no wall rect covers the centre', () => {
+    const glyph = citadelGlyphRects(box);
+    const cx = box.x + box.w / 2;
+    const cy = box.y + box.h / 2;
+    for (const rect of glyph.walls) {
+      const inside =
+        cx >= rect.x && cx <= rect.x + rect.w && cy >= rect.y && cy <= rect.y + rect.h;
+      expect(inside).toBe(false);
+    }
+  });
+
+  it('opens the east wall for the gate and centres that opening vertically', () => {
+    const glyph = citadelGlyphRects(box);
+    const [north, south, west, eastNorth, eastSouth] = glyph.walls;
+    expect(west.x).toBe(box.x);
+    expect(eastNorth.x + eastNorth.w).toBeCloseTo(box.x + box.w, 5);
+    expect(eastSouth.x).toBeCloseTo(eastNorth.x, 5);
+    // The gap between the two east segments is the doorway.
+    const gap = eastSouth.y - (eastNorth.y + eastNorth.h);
+    expect(gap).toBeGreaterThan(0);
+    // Centred: the doorway is the same distance from the top and bottom corners.
+    const gateMiddle = eastNorth.y + eastNorth.h + gap / 2;
+    expect(gateMiddle).toBeCloseTo(box.y + box.h / 2, 5);
+    // The north and south walls still cap the ring at the footprint edges.
+    expect(north.y).toBe(box.y);
+    expect(south.y).toBe(box.y + box.h - south.h);
+  });
+
+  it('takes the gate width from the world layout (3 of 26 tiles)', () => {
+    const [, , , eastNorth, eastSouth] = citadelGlyphRects(box).walls;
+    const gap = eastSouth.y - (eastNorth.y + eastNorth.h);
+    // 3/26 of a 66 px wall is ~7.6 px: the doorway is a real opening, not a hairline.
+    expect(gap).toBeGreaterThan(box.h * 0.08);
+    expect(gap).toBeLessThan(box.h * 0.2);
+  });
+
+  it('makes the corner keeps read larger than the wall band', () => {
+    const glyph = citadelGlyphRects(box);
+    const wall = glyph.walls[0].h;
+    for (const tower of glyph.towers) {
+      expect(tower.w).toBeGreaterThan(wall);
+      expect(tower.h).toBeGreaterThan(wall);
+    }
+  });
+
+  it('stays a ring on a zoomed-out compound', () => {
+    const glyph = citadelGlyphRects({ x: 0, y: 0, w: 33, h: 33 });
+    for (const rect of [...glyph.walls, ...glyph.towers]) {
+      expect(rect.w).toBeGreaterThan(0);
+      expect(rect.h).toBeGreaterThan(0);
+    }
+    const [, , , eastNorth, eastSouth] = glyph.walls;
+    expect(eastSouth.y).toBeGreaterThan(eastNorth.y + eastNorth.h);
+  });
+
+  it('never inverts on a degenerate footprint', () => {
+    const glyph = citadelGlyphRects({ x: 0, y: 0, w: 4, h: 4 });
+    for (const rect of [...glyph.walls, ...glyph.towers]) {
+      expect(rect.w).toBeGreaterThanOrEqual(0);
+      expect(rect.h).toBeGreaterThanOrEqual(0);
+    }
+    // The gate clamp keeps at least one pixel of opening, never a negative run.
+    const [, , , eastNorth, eastSouth] = glyph.walls;
+    expect(eastSouth.y - (eastNorth.y + eastNorth.h)).toBeGreaterThan(0);
+  });
+
+  it('is deterministic', () => {
+    expect(citadelGlyphRects(box)).toEqual(citadelGlyphRects(box));
+  });
+});
+
+describe('paintCitadelGlyph', () => {
+  const box = { x: 100, y: 80, w: 66, h: 66 };
+
+  /** A 2D context stand-in that records every fill, colour included. */
+  const recorder = () => {
+    const calls: Array<{ color: string; x: number; y: number; w: number; h: number }> = [];
+    const ctx: Pick<CanvasRenderingContext2D, 'fillStyle' | 'fillRect'> = {
+      fillStyle: '',
+      fillRect(x: number, y: number, w: number, h: number) {
+        calls.push({ color: String(this.fillStyle), x, y, w, h });
+      }
+    };
+    return { ctx, calls };
+  };
+
+  it('paints the dark halo under every wall and tower before the owner colour', () => {
+    const glyph = citadelGlyphRects(box);
+    const { ctx, calls } = recorder();
+    paintCitadelGlyph(ctx, glyph, '#3b82f6');
+
+    const parts = glyph.walls.length + glyph.towers.length;
+    expect(calls).toHaveLength(parts * 2);
+    expect(calls[0].color).toBe(MINIMAP_COLORS.outline);
+    expect(calls[parts - 1].color).toBe(MINIMAP_COLORS.outline);
+    expect(calls[parts].color).toBe('#3b82f6');
+    expect(calls[calls.length - 1].color).toBe('#3b82f6');
+  });
+
+  it('expands the halo past the rect it protects', () => {
+    const glyph = citadelGlyphRects(box);
+    const { ctx, calls } = recorder();
+    paintCitadelGlyph(ctx, glyph, '#3b82f6');
+    const parts = glyph.walls.length + glyph.towers.length;
+    for (let i = 0; i < parts; i++) {
+      expect(calls[i].x).toBeLessThan(calls[parts + i].x);
+      expect(calls[i].y).toBeLessThan(calls[parts + i].y);
+      expect(calls[i].w).toBeGreaterThan(calls[parts + i].w);
+      expect(calls[i].h).toBeGreaterThan(calls[parts + i].h);
+    }
+  });
+
+  it('leaves the courtyard unpainted', () => {
+    const glyph = citadelGlyphRects(box);
+    const { ctx, calls } = recorder();
+    paintCitadelGlyph(ctx, glyph, '#3b82f6');
+    const cx = box.x + box.w / 2;
+    const cy = box.y + box.h / 2;
+    for (const call of calls) {
+      const covers =
+        cx >= call.x && cx <= call.x + call.w && cy >= call.y && cy <= call.y + call.h;
+      expect(covers).toBe(false);
+    }
   });
 });
 

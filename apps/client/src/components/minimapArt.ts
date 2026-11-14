@@ -1,4 +1,4 @@
-import { MapTerrain } from '@chien-quoc/shared';
+import { CITADEL_GATE_WIDTH, CITADEL_HEIGHT, MapTerrain } from '@chien-quoc/shared';
 import { fbm } from '../game/render/visualVariation.js';
 
 /**
@@ -132,6 +132,14 @@ export function pointerToGrid(
   };
 }
 
+/** One rectangle of a minimap glyph, in backing-store pixels. */
+export interface MinimapRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /**
  * The portal marker, as a tiny gate silhouette rather than a diamond.
  *
@@ -141,11 +149,7 @@ export function pointerToGrid(
  * ground shows through - that gap is what makes it read as a gate and not as a
  * cyan blob.
  */
-export function portalGlyphRects(
-  x: number,
-  y: number,
-  unit = 2.2
-): Array<{ x: number; y: number; w: number; h: number }> {
+export function portalGlyphRects(x: number, y: number, unit = 2.2): MinimapRect[] {
   const pillarWidth = unit;
   const totalWidth = unit * 3.4;
   const pillarHeight = unit * 2.2;
@@ -160,6 +164,115 @@ export function portalGlyphRects(
       h: lintelHeight
     }
   ];
+}
+
+/**
+ * Share of the east wall that the gate opening eats, taken straight from the
+ * world layout (`CITADEL_GATE_WIDTH` of `CITADEL_HEIGHT` tiles) so the minimap
+ * door lines up with the real one instead of drifting when the compound size
+ * changes.
+ */
+const CITADEL_GATE_SHARE = CITADEL_GATE_WIDTH / CITADEL_HEIGHT;
+
+/** Dark halo around each wall and tower, in backing-store pixels. */
+const CITADEL_OUTLINE_PAD = 0.9;
+
+/** The walled-compound silhouette of a kingdom citadel, as drawable rects. */
+export interface CitadelGlyph {
+  /** North, south, west and the two east segments flanking the gate. */
+  walls: MinimapRect[];
+  /** Four corner keeps plus one gatehouse block on each side of the opening. */
+  towers: MinimapRect[];
+}
+
+/**
+ * Draws a citadel's footprint as a *walled compound* instead of a filled square.
+ *
+ * The 26x26 citadel is 66 backing px on a 110-tile kingdom map, and painting the
+ * whole footprint in the owner colour swallowed the Town Center, the barracks and
+ * every house inside the walls: the minimap's most important structure read as a
+ * featureless block with nothing living in it. A ring of walls with corner keeps
+ * reads as a place you can *enter*, and the open doorway on the east wall matches
+ * the gate the server actually spawns. The interior stays transparent so the
+ * buildings inside keep their own glyphs, and the two east wall segments leave
+ * that doorway unpainted rather than drawing a door on top of a solid wall.
+ *
+ * All sizes are derived from the footprint, so the same call works on the
+ * 110-tile kingdom map (66 px) and on a zoomed-out compound (33 px). A tiny box
+ * still yields a ring rather than negative rects: the gate is clamped so the two
+ * east segments never invert.
+ */
+export function citadelGlyphRects(box: {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}): CitadelGlyph {
+  const { x, y, w, h } = box;
+  const shortSide = Math.max(1, Math.min(w, h));
+  // Wall band: ~5.5% of the compound, but never thinner than 2 px or thicker
+  // than 4.5 px, which keeps the ring readable at both map sizes.
+  const wall = Math.min(4.5, Math.max(2, shortSide * 0.055));
+  // Corner keeps are visibly larger than the wall band, the way a bastion is.
+  const tower = Math.min(7, Math.max(3, shortSide * 0.09));
+  const gateLength = Math.min(
+    Math.max(4, h * CITADEL_GATE_SHARE),
+    Math.max(1, h - wall * 2 - 1)
+  );
+  const gateStart = y + (h - gateLength) / 2;
+  const gateEnd = gateStart + gateLength;
+  const eastX = x + w - wall;
+  const towerOffset = tower / 2;
+
+  return {
+    walls: [
+      { x, y, w, h: wall },
+      { x, y: y + h - wall, w, h: wall },
+      { x, y, w: wall, h },
+      // Split by the gate: this is what makes the doorway read as an opening
+      // rather than a notch painted on top of a solid wall.
+      { x: eastX, y, w: wall, h: Math.max(0, gateStart - y) },
+      { x: eastX, y: gateEnd, w: wall, h: Math.max(0, y + h - gateEnd) }
+    ],
+    towers: [
+      { x: x - towerOffset, y: y - towerOffset, w: tower, h: tower },
+      { x: x + w - towerOffset, y: y - towerOffset, w: tower, h: tower },
+      { x: x - towerOffset, y: y + h - towerOffset, w: tower, h: tower },
+      { x: x + w - towerOffset, y: y + h - towerOffset, w: tower, h: tower },
+      { x: eastX + wall / 2 - towerOffset, y: gateStart - towerOffset, w: tower, h: tower },
+      { x: eastX + wall / 2 - towerOffset, y: gateEnd - towerOffset, w: tower, h: tower }
+    ]
+  };
+}
+
+/**
+ * Paints a citadel glyph: a dark halo under every wall and tower, then the owner
+ * colour on top.
+ *
+ * The wall band is only 2-4.5 px wide, so the halo is what keeps a dark blue or
+ * emerald owner colour readable on grass and inside a forest clump. Keeping the
+ * two passes here rather than in the component's render loop gives them a test
+ * and leaves that loop with one call per citadel.
+ */
+export function paintCitadelGlyph(
+  ctx: Pick<CanvasRenderingContext2D, 'fillStyle' | 'fillRect'>,
+  glyph: CitadelGlyph,
+  color: string
+): void {
+  const parts = glyph.walls.concat(glyph.towers);
+  ctx.fillStyle = MINIMAP_COLORS.outline;
+  for (const rect of parts) {
+    ctx.fillRect(
+      rect.x - CITADEL_OUTLINE_PAD,
+      rect.y - CITADEL_OUTLINE_PAD,
+      rect.w + CITADEL_OUTLINE_PAD * 2,
+      rect.h + CITADEL_OUTLINE_PAD * 2
+    );
+  }
+  ctx.fillStyle = color;
+  for (const rect of parts) {
+    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  }
 }
 
 export interface MinimapCluster {
