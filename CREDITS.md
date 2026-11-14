@@ -194,6 +194,19 @@ masked by `team_accent.py`; the client multiplies the owner's colour into them.
 
 **Changes made.** N/A - rendered, not derived from an image pack.
 
+### Team-colour accent layers
+
+`apps/client/public/assets/units/actions/{archer,spearman,cavalry}_<action>_accent.png`
+are the team-colour masks: a white, shaded cloth layer on the body sheet's own
+grid, which the client multiplies by the owner's colour at runtime. The archer's
+masks are the same Blender frames rendered with the tunic isolated by
+`scripts/blender/team_accent.py`. The spearman's and cavalry's are derived from
+the shipped sheet pixels by `scripts/build_team_accent.py`, because those sheets
+are the art of record and a re-render would risk moving the bodies off the grid
+the game draws.
+
+**Changes made.** N/A - a mask of the units' own art, no new source imagery.
+
 ### UI chrome
 
 `apps/client/public/assets/ui/*.png` is the wood-and-brass interface skin:
