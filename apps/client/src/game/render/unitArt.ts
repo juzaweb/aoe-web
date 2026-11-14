@@ -124,18 +124,29 @@ export const UNIT_ART: Record<string, UnitArt> = {
     }
   },
   /**
-   * The archer's attack sheet is built from the pack's `3_Bow` draw-and-loose,
-   * not its melee `2_Attack` swing: only the client's action name is fixed, so
-   * the animation behind it is a build-time choice.
+   * Rendered in Blender from the local Mixamo soldier and the bow `.glb`, the
+   * same way the spearman and the cavalry are, see `scripts/blender/`. The pack
+   * has no archer holding a bow this size, so the unit is rebuilt rather than
+   * recoloured.
+   *
+   * 192x168 cells at the spearman's 0.0183 m/px, so the two infantrymen stand at
+   * the same height on the same tile (`soleY ~144`, the row `offsetY` is derived
+   * from). The cell is square to the spearman's because the drawn bow reaches
+   * above the helmet.
    */
   ARCHER: {
     ...PACK_FIGURE,
+    frameWidth: 192,
+    frameHeight: 168,
+    scale: 0.95,
+    offsetY: -58,
     actions: {
       idle: { frames: 4 },
       walk: { frames: 11, fps: 16 },
-      // Nine frames at 10 fps is 0.9 s, inside the archer's 1400 ms attack
-      // cooldown, so the next order never cuts the draw short.
-      attack: { frames: 9, fps: 10 },
+      // Ten frames at 10 fps, released on the eighth (0.7 s) to match
+      // `ARCHER_DRAW_MS`; the whole clip is 1.0 s, inside the 1400 ms cooldown,
+      // so the next order never cuts the loose short.
+      attack: { frames: 10, fps: 10 },
       death: { frames: 8, fps: 9 }
     }
   },

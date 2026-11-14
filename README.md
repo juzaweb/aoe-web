@@ -1,4 +1,4 @@
-# Age of Empires (AoE) - 2D MMO RTS Web Game
+# AoE web — 2D MMO RTS Web Game
 
 A 2D Isometric Real-Time Strategy (RTS) MMO web game inspired by *Age of Empires* (AoE). Built with **Node.js**, **React**, **Vite**, **Phaser 3**, and **Colyseus.js** in a high-performance TypeScript monorepo.
 
@@ -142,8 +142,9 @@ Third-party art is used under its own license.
   *Western-European Castle* by **feudalwars**, **CC0 1.0**.
 - Stable and archery range buildings: project-original art generated locally with
   ComfyUI (`scripts/generate_buildings_assets.py`); not third-party.
-- Cavalry unit: project-original art rendered locally in Blender from the two 3D
-  models in `scripts/raw_downloads/models/` (`scripts/blender/`); not third-party.
+- Cavalry and archer units: project-original art rendered locally in Blender from
+  the 3D models in `scripts/raw_downloads/models/` (`scripts/blender/`); not
+  third-party.
 - Siege workshop: project-original art generated locally with ComfyUI
   (`scripts/generate_siege_workshop_asset.py`); not third-party.
 

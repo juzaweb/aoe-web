@@ -5,8 +5,9 @@
 
 **Đã chốt với user (2026-11-13):**
 
-1. Style: **Tây Âu đá ấm**, cùng hướng palette với phase 31 (`31-citadel-style-rework.md`) — không
-   chuyển Đông Á, không dùng lại nhà tranh `m_house_mat.png`.
+1. Style: **châu Âu trung cổ, đá ấm**, cùng hướng palette với phase 31
+   (`31-citadel-style-rework.md`) — không đổi sang style khác, không dùng lại nhà tranh
+   `m_house_mat.png`.
 2. Phạm vi: **toàn bộ công trình còn lấy từ OpenGameArt** — `house`, `barracks`, `stable`,
    `archery_range`, `tower`.
 

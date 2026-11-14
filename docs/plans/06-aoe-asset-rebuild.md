@@ -4,7 +4,7 @@ Status: **IMPLEMENTED (một phần)** — code + test xanh, chờ verify tay tr
 Ngày ghi plan: 2026-11-03. Ngày implement: 2026-11-03.
 Phạm vi: client + `scripts/`. **Không** đổi server, `packages/shared`, schema, protocol hay DB.
 
-Quyết định đã chốt khi implement: **D1 = B** (dùng art Tây Âu của pack), **D2 = B** (chỉ
+Quyết định đã chốt khi implement: **D1 = A** (lấy thẳng art châu Âu của pack), **D2 = B** (chỉ
 CC-BY-SA cho file dẫn xuất — nhưng xem §16: terrain không dùng được vì lý do kỹ thuật),
 **D5 = A** (asset thiếu giữ art cũ + cờ `legacy`). Kết quả thực tế ở §16.
 
@@ -70,7 +70,8 @@ Hệ quả cần nhớ:
 | Không có hướng nhìn chuẩn | Building chỉ 1 ảnh, tree chỉ 1 ảnh, không có shadow layer |
 
 Bộ OGA thì ngược lại: file gốc có alpha, nhiều hướng, có shadow layer riêng, license CC0/CC-BY ghi
-ngay trên trang. Cái mất là **bản sắc Đông Á** (xem D1).
+ngay trên trang. Cái mất chỉ là art AI cũ — game đã chốt bối cảnh châu Âu trung cổ nên không lệch
+nhận diện (xem D1).
 
 ## 3. Hiện trạng asset trong client
 
@@ -144,13 +145,13 @@ Ghi chú license (đọc từ trang gốc, không suy diễn):
 | Cavalry | Không (pack SKYZ0R chỉ humanoid) | giữ procedural; không tự vẽ |
 | Icon HUD 64×64, cursor 32×32 | Không | giữ AI (D5) |
 
-Không có mục nào trong collection là art Đông Á. Xem D1.
+Collection toàn art châu Âu trung cổ, khớp bối cảnh game đã chốt (xem D1).
 
 ## 6. Quyết định cần chốt
 
 | Mã | Câu hỏi | Phương án | Đề xuất |
 | --- | --- | --- | --- |
-| **D1** | Bản sắc hình ảnh: giữ Chiến Quốc (Đông Á) hay chấp nhận Tây Âu trung cổ của pack? | A. giữ Đông Á → pack chỉ làm reference, phải re-skin thủ công (cần artist, ngoài scope). B. dùng nguyên bản Tây Âu, giữ unit pixel + terrain AoE. C. dùng CC0 Tây Âu làm khung rồi paint-over mái/vật liệu sang Đông Á ở phase sau. | **B** cho phase này, **C** là backlog. Lưu ý: đây là quyết định sản phẩm, không phải kỹ thuật — game tên "Chiến Quốc" mà TC thành lâu đài châu Âu là lệch nhận diện |
+| **D1** | Bản sắc hình ảnh: game lấy bối cảnh châu Âu trung cổ, nên lấy thẳng art châu Âu của pack hay giữ art AI cũ? | A. lấy thẳng art châu Âu của pack cho công trình/cây, giữ unit pixel + terrain AoE. B. giữ art AI cũ, pack chỉ làm reference rồi re-skin tay (cần artist, ngoài scope). | **A** cho phase này. Lưu ý: đây là quyết định sản phẩm, không phải kỹ thuật — bối cảnh châu Âu đã chốt cùng tên game *AoE web*, nên công trình châu Âu trung cổ không còn lệch nhận diện |
 | **D2** | Chấp nhận CC-BY-SA 3.0 cho terrain (và building của Unknown Horizons)? Phase 05 §4 đã chọn "chỉ CC0/CC-BY", nên phương án B ở đây là **nới ràng buộc đó** và cần user đồng ý rõ ràng | A. giữ nguyên CC0/CC-BY → bỏ ART-03, phase chỉ còn tree + building. B. nhận CC-BY-SA cho **file terrain dẫn xuất**, loại building UH. C. nhận cả hai. | **B** nếu muốn terrain khớp 128×64: grassland là nguồn duy nhất đúng tỷ lệ, và nghĩa vụ chỉ rơi trên 12 file PNG dẫn xuất. Nếu không được nới thì chọn **A** |
 | **D3** | "Tạo lại" = transplant (dùng file gốc, chuẩn hoá) hay redraw theo phong cách? | A. transplant. B. redraw. | **A**. Redraw cần artist và không kiểm chứng được trong repo |
 | **D4** | Có dùng nhiều hướng cho công trình/cây không? | A. công trình 1 hướng (chọn tay), cây 4 biến thể × `flipX`. B. công trình 1 hướng, cây 8 hướng thật. C. công trình cũng 8 hướng. | **A**: rẻ texture, đủ đa dạng thị giác; B chỉ khi thấy rừng quá lặp |
@@ -447,7 +448,7 @@ Thủ công (bắt buộc, vì đây là thay đổi thị giác):
 
 | Rủi ro | Mức | Giảm thiểu |
 | --- | --- | --- |
-| Lệch bản sắc Đông Á → Tây Âu | Cao | D1 là quyết định sản phẩm; nếu chọn B thì ghi rõ trong README/roadmap |
+| Art pack châu Âu lệch style với các sprite AI còn lại (farm, tower, mine, icon) | Cao | D1 đã chốt bối cảnh châu Âu; các sprite AI còn lại xếp backlog thay dần ở phase 31/32 |
 | Art pack không đúng 2:1, phải scale không đều | Trung bình | đo `impliedIsoRatio` trong report; lệch > 5% thì loại asset đó |
 | `castle.png` là ảnh đục 100%, có thể là scene render không key được | Trung bình | thử key trước; fail thì dùng Medieval Building 06 (CC-BY 3.0) |
 | CC-BY-SA lây sang file dẫn xuất | Trung bình | D2 giới hạn ở terrain; ghi license từng file |
@@ -462,8 +463,8 @@ theo đường dẫn. Không xoá art cũ trong cùng commit với art mới.
 
 ## 15. Câu hỏi mở
 
-1. **D1**: chấp nhận công trình Tây Âu trung cổ cho game Chiến Quốc, hay chỉ dùng làm reference rồi
-   re-skin (cần artist)?
+1. **D1**: bối cảnh châu Âu trung cổ đã chốt cho game *AoE web* — lấy thẳng art châu Âu của pack,
+   hay giữ art AI cũ rồi re-skin dần (cần artist)?
 2. **D2**: có đồng ý CC-BY-SA 3.0 cho terrain không? Nếu không, terrain tiếp tục là art AI và phase
    này chỉ đổi tree + building.
 3. **D5**: farm/tower/portal/gold/cavalry/icon/cursor giữ art AI — chấp nhận, hay có nguồn khác cần

@@ -9,7 +9,7 @@
 
 ## Executive summary
 
-The 2D MMO RTS web game *Chiến Quốc* delivers a responsive isometric RTS experience inspired by classic *Age of Empires*, complete with procedural rendering, touch command bars, placement banners, and minimap navigation.
+The 2D MMO RTS web game *AoE web* delivers a responsive isometric RTS experience inspired by classic *Age of Empires*, complete with procedural rendering, touch command bars, placement banners, and minimap navigation.
 
 While core feedback features (such as ground order decals, audio synthesis, placement banners, and font floors) have been implemented, a deep audit of recent additions reveals critical UI/UX and accessibility friction points:
 1. **Screen Reader Blindspots:** Critical gameplay status changes (command rejected notifications and under-attack alert banners) lack ARIA live region attributes (`role="status"` or `role="alert"`), preventing assistive technology users from receiving feedback.

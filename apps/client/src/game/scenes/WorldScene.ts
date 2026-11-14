@@ -504,7 +504,7 @@ export class WorldScene extends Phaser.Scene {
 
     // Preload generated unit assets with spritesheet & idle frame support (2x resolution)
     // Bumped whenever a sheet on disk changes: the URL is the cache key.
-    const uv = 'v=8';
+    const uv = 'v=9';
     // The legacy single-facing sheets stay loaded even for units that have been
     // redrawn: `EntityRenderer` falls back to them when a directional sheet is
     // missing, so an art regression still renders a unit instead of a green box.

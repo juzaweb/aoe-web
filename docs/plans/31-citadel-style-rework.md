@@ -9,8 +9,8 @@
 **Đã chốt với user:** (1) đối tượng là art Thành **trong game** (`town_center.png` + bộ
 `citadel/`), (2) kết quả **cả hai** — làm art trong Canva trước, duyệt bằng preview, rồi đưa PNG
 vào game, (3) "mỗi nước" **dùng chung một bộ art**, chỉ cần đẹp hơn — không tint theo
-`PlayerState.color`, không bake nhiều bộ, (4) style **giữ Tây Âu**, nâng chất lượng — không
-chuyển Đông Á ở phase này.
+`PlayerState.color`, không bake nhiều bộ, (4) style **giữ châu Âu trung cổ**, nâng chất lượng — không
+đổi sang style khác ở phase này.
 
 ---
 
@@ -184,7 +184,7 @@ generate-image (keep 4:3, 3 texture)
 
 **Ngoài phạm vi**
 - Nâng độ phân giải sprite (wall/floor 2× + `setScale(0.5)`) — ghi lại số đo ở zoom 2.2 làm backlog.
-- Chuyển style Đông Á, tint màu phe cho công trình, nhiều bộ art theo nước.
+- Đổi sang style ngoài châu Âu trung cổ, tint màu phe cho công trình, nhiều bộ art theo nước.
 - Art cho `stairs.png` và `gate_door.png` (giữ nguyên, trừ khi `CIT-05` buộc phải chỉnh contrast
   của portcullis để khớp passage mới).
 

@@ -163,6 +163,22 @@ sheets from the `.blend` files alone.
 
 **Changes made.** N/A - rendered, not derived from an image pack.
 
+### Archer
+
+`apps/client/public/assets/units/actions/archer_{idle,walk,attack,death}.png`
+are rendered in Blender from the same Mixamo-rigged soldier (`linh.blend`) and a
+checked-in recurve bow (`scripts/raw_downloads/models/cung.glb`). The soldier's
+sword is dropped, the bow is seated in his left hand with a new three-point
+string (the export's baked cord is a baked, unbendable braid) and a nocked arrow,
+the whole sheet is spun so the clip's sideways draw points along the row's
+facing, and the death drops the clip's two-metre launch. `scripts/blender/README.md`
+documents the camera, the 192x168 cell and the bow-open cheat;
+`render_archer.py` + `assemble_archer_sheets.py` rebuild the sheets from the two
+source files alone, and `save_archer_blend.py` writes the composed, animated
+scene back out as `scripts/raw_downloads/models/linh_cung.blend`.
+
+**Changes made.** N/A - rendered, not derived from an image pack.
+
 ### UI chrome
 
 `apps/client/public/assets/ui/*.png` is the wood-and-brass interface skin:

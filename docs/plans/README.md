@@ -61,8 +61,8 @@ lập plan; xem `05-map-realism.md` §2 và §4 để biết quyết định D1�
 Phase 06 (asset rebuild) thay **file PNG đang ship** bằng art lấy từ collection
 [AoE like Assets](https://opengameart.org/content/aoe-like-assets), thay vì đổi cách vẽ map như phase
 05. Hai phase không trùng file: 05 sửa `TerrainLayer`/`DecorLayer`/`Minimap`, 06 sửa
-`apps/client/public/assets` + `buildingArt.ts` + preload. Đã implement ngày 2026-11-03 với D1 = B
-(chấp nhận công trình Tây Âu), D5 = A (asset thiếu giữ art cũ): 8 sprite (4 cây + barracks, house,
+`apps/client/public/assets` + `buildingArt.ts` + preload. Đã implement ngày 2026-11-03 với D1 = A
+(lấy thẳng art châu Âu của pack), D5 = A (asset thiếu giữ art cũ): 8 sprite (4 cây + barracks, house,
 town centre, lumber camp) được dựng lại bằng `scripts/assets/build.py`, có lock hash và test. Tertiary
 `ART-03` (terrain) đã bị bỏ vì `grassland_tiles.png` là atlas đóng gói, không phải lưới 64×32, và
 được render unlit (tối hơn palette client ~2×) — D2 vì thế không áp dụng; lý do đo được ở

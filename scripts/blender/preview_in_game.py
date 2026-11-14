@@ -1,9 +1,9 @@
-"""Compose a scale check: the new cavalry beside the shipped unit art.
+"""Compose a scale check: the two Blender-rendered units beside the pack's art.
 
 Draws one frame of each unit at the exact `unitArt.ts` geometry (cell size,
 scale, offsetY) on a grass patch, in two rows: facing the viewer (S) and in
-profile (E). This is how the mounted knight is judged against the infantry it
-fights alongside, instead of in isolation.
+profile (E). This is how the mounted knight and the archer are judged against
+the infantry they fight alongside, instead of in isolation.
 
 Usage: python3 scripts/blender/preview_in_game.py
 """
@@ -27,7 +27,7 @@ COLUMN_SPACING = 250
 UNITS_TO_DRAW = [
     ("VILLAGER", "villager_walk.png", (148, 130), 0.92, -38),
     ("SPEARMAN", "spearman_walk.png", (192, 168), 0.95, -58),
-    ("ARCHER", "archer_walk.png", (148, 130), 0.92, -38),
+    ("ARCHER", "archer_walk.png", (192, 168), 0.95, -58),
     ("CAVALRY", "cavalry_walk.png", (224, 224), 0.9, -79),
 ]
 # Direction rows: 2 = S (toward the viewer), 0 = E (screen right).
