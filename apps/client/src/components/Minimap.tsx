@@ -12,9 +12,11 @@ import {
   MINIMAP_CSS_SIZE,
   MINIMAP_SIZE,
   buildGroundPixels,
+  citadelGlyphRects,
   gridToMinimap,
   markerColor,
   minimapClusters,
+  paintCitadelGlyph,
   pointerToGrid,
   portalGlyphRects,
   renderForestLayer,
@@ -268,6 +270,23 @@ export const Minimap: React.FC<MinimapProps> = ({
         scene?.ownerColorCss(ownerId) ?? colorToCss(UNKNOWN_OWNER_COLOR);
 
       room.state.buildings?.forEach((b: any) => {
+        if (b.type === 'CITADEL') {
+          // A 26-tile compound is 66 backing px on a kingdom map, so a filled
+          // footprint painted the Town Center and every house inside it out of
+          // existence. The glyph draws the walls, the corner keeps and the open
+          // east gate, leaving the courtyard transparent for those buildings.
+          paintCitadelGlyph(
+            ctx,
+            citadelGlyphRects({
+              x: b.gridX * scale,
+              y: b.gridY * scale,
+              w: Math.max(6, b.sizeX * scale),
+              h: Math.max(6, b.sizeY * scale)
+            }),
+            colorFor(b.ownerId)
+          );
+          return;
+        }
         if (b.type === 'PORTAL') {
           // An arch with an open doorway reads as a gate; a diamond read as a
           // generic point of interest. Fixed pixel size, so it survives the
