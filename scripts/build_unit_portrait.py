@@ -44,6 +44,14 @@ CELLS = {
 FRONT_ROW = 2
 FRONT_FRAME = 0
 
+# Exceptions to the front pose, per unit. A horse seen head-on is a shield, a
+# spear and two knees stacked into one silhouette: at the 28 px the train button
+# draws, nothing about it says "mounted". The three-quarter profile keeps the
+# mount's length legible, which is the whole reason the portrait exists.
+POSE_ROW = {
+    "cavalry": 1,  # south-east
+}
+
 # How much of the portrait the figure fills, and how far its feet sit above the
 # bottom edge. The portrait is shown at 28-40 px, so the margins exist to keep a
 # raised arm or a spear tip inside the frame rather than to frame the pose.
@@ -52,21 +60,22 @@ BOTTOM_MARGIN_PX = 4
 
 
 def front_pose(unit: str) -> Image.Image:
-    """The front-facing idle pose of `unit`, trimmed to its own silhouette."""
+    """The idle pose of `unit` the portrait should show, trimmed to its silhouette."""
     cell_width, cell_height = CELLS[unit]
+    row = POSE_ROW.get(unit, FRONT_ROW)
     sheet_path = ACTION_DIR / f"{unit}_idle.png"
     with Image.open(sheet_path) as sheet:
         frame = sheet.convert("RGBA").crop(
             (
                 FRONT_FRAME * cell_width,
-                FRONT_ROW * cell_height,
+                row * cell_height,
                 (FRONT_FRAME + 1) * cell_width,
-                (FRONT_ROW + 1) * cell_height,
+                (row + 1) * cell_height,
             )
         )
     box = frame.split()[-1].getbbox()
     if box is None:
-        raise SystemExit(f"{sheet_path} has an empty front idle cell; nothing to crop")
+        raise SystemExit(f"{sheet_path} has an empty idle cell in row {row}; nothing to crop")
     return frame.crop(box)
 
 
