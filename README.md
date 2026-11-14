@@ -144,7 +144,8 @@ Third-party art is used under its own license.
   ComfyUI (`scripts/generate_buildings_assets.py`); not third-party.
 - Cavalry and archer units: project-original art rendered locally in Blender from
   the 3D models in `scripts/raw_downloads/models/` (`scripts/blender/`); not
-  third-party.
+  third-party. The archer's team-colour layers are rendered from the same scene
+  with the tunic masked, and tinted at runtime with the owner's colour.
 - Siege workshop: project-original art generated locally with ComfyUI
   (`scripts/generate_siege_workshop_asset.py`); not third-party.
 

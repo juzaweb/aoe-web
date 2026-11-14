@@ -13,8 +13,15 @@ import {
   unitActionKey,
   unitActionTexture
 } from './unitDirections.js';
-import { UNIT_ART, hasDirectionalArt, unitArt, unitClips } from './unitArt.js';
+import { UNIT_ART, hasDirectionalArt, hasTeamAccent, unitArt, unitClips } from './unitArt.js';
 import type { UnitAction } from './unitDirections.js';
+import {
+  accentClipSpecs,
+  createAccentSprite,
+  paintAccent,
+  syncAccent
+} from './entityAccent.js';
+import type { AccentSprite } from './entityAccent.js';
 import { UnitMotion, walkTimeScale } from './unitMotion.js';
 import { treeVariant } from './treeVariants.js';
 import { resourceLook } from './visualVariation.js';
@@ -35,6 +42,15 @@ export class EntityRenderer {
    * whose owner colour actually changed.
    */
   private readonly ownershipSignatures = new Map<string, number>();
+
+  /**
+   * Last team colour each unit was drawn with.
+   *
+   * `CorpseState` carries no owner, so a corpse has to inherit the colour its
+   * unit had a frame earlier; keeping it here means no protocol change. Entries
+   * live until the corpse is removed.
+   */
+  private readonly unitTeamColors = new Map<string, number>();
 
   constructor(private readonly scene: WorldScene) {}
 
@@ -98,6 +114,15 @@ export class EntityRenderer {
         });
       }
     }
+
+    // Team-colour layers: the same clips again, read from the accent sheet and
+    // keyed with a suffix, so the renderer can mirror any body clip with one
+    // lookup instead of rebuilding frame counts.
+    for (const unitType of Object.keys(UNIT_ART)) {
+      for (const spec of accentClipSpecs(unitType, (key) => scene.textures.exists(key))) {
+        registerAnim(spec.key, spec.texture, spec.frames, spec.frameRate, spec.repeat);
+      }
+    }
   }
 
   /**
@@ -121,22 +146,53 @@ export class EntityRenderer {
 
     const art = unitArt(unitType);
     const screenPos = gridToScreen(corpse.x, corpse.y);
-    const sprite = scene.add.sprite(
-      screenPos.x,
-      screenPos.y + art.offsetY,
-      texture,
-      0
-    );
+    // A container, not a bare sprite: the team-colour layer has to die with the
+    // body, and the corpse is the only sprite the renderer does not own a
+    // container for. Both children sit on the same cell origin.
+    const container = scene.add.container(screenPos.x, screenPos.y + art.offsetY);
+    const sprite = scene.add.sprite(0, 0, texture, 0);
     sprite.setScale(art.scale);
-    // Same depth rule as a living unit, one step lower so a body lying under a
-    // unit that survived the fight is drawn beneath it.
-    sprite.setDepth(getIsoDepth(corpse.x, corpse.y, 24));
-
     const clip = unitActionKey(unitType, 'death', DEFAULT_DIRECTION_INDEX);
     if (scene.anims.exists(clip)) {
       sprite.play(clip);
     }
-    scene.corpseSprites.set(id, sprite);
+    container.add(sprite);
+
+    if (hasTeamAccent(unitType)) {
+      // The server's corpse state carries no owner, so the colour is the one the
+      // unit was last drawn with.
+      const accent = createAccentSprite(
+        scene,
+        unitType,
+        'death',
+        0,
+        art.scale,
+        this.unitTeamColors.get(id)
+      );
+      if (accent) container.add(accent);
+    }
+
+    // Same depth rule as a living unit, one step lower so a body lying under a
+    // unit that survived the fight is drawn beneath it.
+    container.setDepth(getIsoDepth(corpse.x, corpse.y, 24));
+    scene.corpseSprites.set(id, container);
+  }
+
+  /** Drops the remembered team colour of a unit whose corpse is gone. */
+  forgetTeamColor(id: string) {
+    this.unitTeamColors.delete(id);
+  }
+
+  /**
+   * Drops every remembered team colour.
+   *
+   * The map only exists so a corpse can inherit its unit's colour, and corpses
+   * outlive the units by design; a unit that dies without leaving one keeps its
+   * entry until the map is cleared, which a map change must do so colours from
+   * the previous world cannot tint the next one's corpses.
+   */
+  clearTeamColors() {
+    this.unitTeamColors.clear();
   }
 
   createResourceNodeSprite(id: string, node: any, cb?: any) {
@@ -456,6 +512,11 @@ export class EntityRenderer {
     const ring = container.getData('ownerRing') as Phaser.GameObjects.Graphics | undefined;
     if (!ring) return;
 
+    // Painted before the ring's change guard: the accent always shows the owner's
+    // colour, our own units included, while the ring is hidden for them, so the
+    // two cannot share a signature.
+    this.paintTeamAccent(container, entityId, ownerId);
+
     const visible = !!ownerId && ownerId !== this.scene.myOwnerId;
     const color = visible ? this.scene.ownerColorRegistry.colorOf(ownerId) : -1;
     if (this.ownershipSignatures.get(entityId) === color) return;
@@ -512,6 +573,26 @@ export class EntityRenderer {
     base.fillPath();
     base.strokePath();
     base.setVisible(true);
+  }
+
+  /**
+   * Paints the team-colour layer and remembers the colour for the unit's corpse.
+   *
+   * The colour is tracked separately from `ownershipSignatures`: a signature of
+   * `-1` means "hide the ring", which is our own units, and those still show
+   * their team colour on the tunic.
+   */
+  private paintTeamAccent(
+    container: Phaser.GameObjects.Container,
+    entityId: string,
+    ownerId: string
+  ) {
+    const accent = container.getData('unitAccent') as AccentSprite | null | undefined;
+    if (!accent || !ownerId) return;
+
+    const color = this.scene.ownerColorRegistry.colorOf(ownerId);
+    paintAccent(accent, color);
+    this.unitTeamColors.set(entityId, color);
   }
 
   /**
@@ -599,6 +680,23 @@ export class EntityRenderer {
 
     container.add(unitDisplay);
     container.setData('unitDisplay', unitDisplay);
+
+    // Team-colour layer: same cell, same frame, drawn immediately after the body
+    // so it lands on top of it but under the selection ring and the health bar.
+    // Insertion order inside a container is the draw order.
+    let accentSprite: Phaser.GameObjects.Sprite | null = null;
+    if (hasTeamAccent(unitType) && unitDisplay instanceof Phaser.GameObjects.Sprite) {
+      accentSprite = createAccentSprite(
+        scene,
+        unitType,
+        'idle',
+        visualOffsetY,
+        visualScale,
+        scene.ownerColorRegistry.colorOf(unit.ownerId)
+      );
+      if (accentSprite) container.add(accentSprite);
+    }
+    container.setData('unitAccent', accentSprite);
     // Body ellipse from the unit's art config, relative to the container origin
     // which sits at the unit's feet (the pack figures span y 10..112 of a 130 px
     // cell at scale 0.92, cavalry y 29..155 of 160 at 0.75).
@@ -728,6 +826,10 @@ export class EntityRenderer {
       if (unitDisplay.anims.timeScale !== timeScale) {
         unitDisplay.anims.timeScale = timeScale;
       }
+
+      // The accent mirrors the body clip frame for frame, at the body's rate.
+      const accent = container.getData('unitAccent') as AccentSprite | null;
+      if (accent) syncAccent(scene, accent, desired, unitDisplay.anims.timeScale);
     };
 
     // Expose the state-driven animation helper so update() never has to guess

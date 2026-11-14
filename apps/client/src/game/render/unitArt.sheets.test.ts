@@ -2,7 +2,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DIRECTION_NAMES } from './unitDirections.js';
-import { UNIT_ART, unitArt, unitSheets } from './unitArt.js';
+import { UNIT_ART, hasTeamAccent, unitArt, unitSheets } from './unitArt.js';
 
 /**
  * Guards the one mistake the type system cannot catch: a sheet on disk whose
@@ -49,6 +49,27 @@ describe('unit sheets on disk', () => {
           );
         });
       }
+
+      // The accent is drawn over the body clip frame for frame, so a grid that
+      // drifts by a column would tint the neighbouring pose's tunic.
+      describe.runIf(hasTeamAccent(unitType))('team-colour layer', () => {
+        for (const sheet of unitSheets(unitType)) {
+          it(`${sheet.sheetAction} matches the body grid`, () => {
+            const path = join(
+              ACTIONS_DIR,
+              `${unitType.toLowerCase()}_${sheet.sheetAction}_accent.png`
+            );
+            const size = pngSize(path);
+            expect(size, `missing accent sheet ${path}`).not.toBeNull();
+            expect(size!.width, 'accent columns equal the body columns').toBe(
+              sheet.frames * art.frameWidth
+            );
+            expect(size!.height, 'accent rows equal the body rows').toBe(
+              art.frameHeight * DIRECTION_NAMES.length
+            );
+          });
+        }
+      });
     });
   }
 });

@@ -27,12 +27,17 @@ blender -b scripts/raw_downloads/models/linh.blend \
 blender -b scripts/raw_downloads/models/linh.blend \
     --python scripts/blender/render_archer.py -- --only attack --dirs S,E --px 384
 
+# Team-colour layer: same camera and clips, only the tunic lit
+blender -b scripts/raw_downloads/models/linh.blend \
+    --python scripts/blender/render_archer.py -- --px 384 --accent
+
 # Pack frames into the client's sheets, then publish them
 python3 scripts/blender/assemble_cavalry_sheets.py            # dry run + previews
 python3 scripts/blender/assemble_cavalry_sheets.py --write    # write into public/assets/units/actions
 
 python3 scripts/blender/assemble_archer_sheets.py            # dry run + previews
 python3 scripts/blender/assemble_archer_sheets.py --write    # write into public/assets/units/actions
+python3 scripts/blender/assemble_archer_sheets.py --accent --write   # the team-colour layer
 
 # Archer as a stand-alone, editable scene (45 MB, textures packed)
 blender -b scripts/raw_downloads/models/linh.blend \
@@ -84,6 +89,37 @@ Frames are baked at 24 fps, so the scene plays at the source clips' own speed
 rather than at the sheets' 4/11/10/8 sampling. The file is a rendering aid — the
 sheets stay the shipped deliverable, and re-running `render_archer.py` never
 reads it.
+
+## Team colour
+
+The archer ships a second sheet per action, `<unit>_<action>_accent.png`: the
+tunic alone, rendered white, with the rest of the figure cut out. The client
+draws it over the body sprite, tinted with the owner's colour, which is the
+multiply-based team colour AoE uses.
+
+- **The mask comes from the atlas, not from a painted selection.**
+  `team_accent.py` samples the base-colour texture at each face's UVs and keeps
+  the faces inside the cloth band (hue 185-205, saturation >= 0.13, z 0.38-1.36):
+  7,096 of 19,489 faces. Everything smaller than 40 connected faces is dropped,
+  because a handful of armoured-wear texels happen to sit in the same band and
+  would tint a grey sleeve. Selected faces move to a second material slot so the
+  accent pass can address them by index.
+- **The accent pass is a holdout render.** Every other material (and the bow,
+  the string and the arrow) is replaced with a Cycles holdout, the accent slot
+  becomes a plain white BSDF, and the result carries the tunic's own shading
+  into the alpha. That shading is what survives the multiply: a flat white mask
+  would erase the folds.
+- **No luminance match on this layer.** The assembler lifts the body sheets onto
+  the spearman's median luma, which would darken every team colour if it were
+  applied to the mask. `--accent` packs as rendered.
+- **Checks.** The assembler refuses an accent sheet covering less than 0.8% or
+  more than 16% of the cell (a broken band either tints the whole figure or
+  leaves bare patches), and `unitArt.sheets.test.ts` fails when the accent grid
+  drifts a column from the body grid, which would tint the neighbouring pose.
+
+Cavalry and spearman have no mask yet: their sheets come from the pack and from
+the same soldier file un-masked, so `UNIT_ART` only sets `accent: true` on the
+archer.
 
 ## Cavalry notes
 

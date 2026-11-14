@@ -49,6 +49,12 @@ export interface UnitArt {
    * back to the legacy single-facing sheet (`<unit>_sheet.png`) clips.
    */
   actions: Partial<Record<UnitAction, UnitActionArt>>;
+  /**
+   * Whether every action also ships a `<unit>_<action>_accent.png` layer: the
+   * team-colour mask, rendered white so the client can multiply the owner's
+   * colour over it. Absent means the unit has no team colour.
+   */
+  accent?: boolean;
 }
 
 /**
@@ -140,6 +146,9 @@ export const UNIT_ART: Record<string, UnitArt> = {
     frameHeight: 168,
     scale: 0.95,
     offsetY: -58,
+    // The tunic is masked by `scripts/blender/team_accent.py` and rendered as a
+    // second, white-only layer; `EntityRenderer` tints it with the owner colour.
+    accent: true,
     actions: {
       idle: { frames: 4 },
       walk: { frames: 11, fps: 16 },
@@ -261,4 +270,15 @@ export function unitClips(unitType: string): UnitClip[] {
 /** Whether the unit ships a directional walk sheet, i.e. draws 8 rotations. */
 export function hasDirectionalArt(unitType: string): boolean {
   return unitArt(unitType).actions.walk !== undefined;
+}
+
+/**
+ * Whether the unit ships the team-colour layer alongside its body sheets.
+ *
+ * Deliberately just the flag: the accent is never loaded or drawn on its own, so
+ * a unit that sets it without directional art simply never draws one, and a
+ * second condition here would be an untested way to say the same thing.
+ */
+export function hasTeamAccent(unitType: string): boolean {
+  return unitArt(unitType).accent === true;
 }

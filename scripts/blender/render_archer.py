@@ -17,6 +17,10 @@ row's own facing instead of 90 degrees off it.
 Usage:
     blender -b scripts/raw_downloads/models/linh.blend \
         --python scripts/blender/render_archer.py -- [--only attack] [--dirs S,E] [--px 384]
+
+    # team-colour mask: the tunic alone, white, on the same camera and clips
+    blender -b scripts/raw_downloads/models/linh.blend \
+        --python scripts/blender/render_archer.py -- --accent
 """
 
 from __future__ import annotations
@@ -32,8 +36,10 @@ from mathutils import Vector
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import archer_scene as asc  # noqa: E402
+import team_accent  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "out" / "archer_frames"
+ACCENT_OUT = Path(__file__).resolve().parent / "out" / "archer_accent_frames"
 
 # Row order is compass-from-east, the order ``unitDirections.ts`` indexes with.
 # The model faces -Y at yaw 0, which is "toward the viewer", i.e. row 2 (S).
@@ -226,9 +232,19 @@ def pose_for(
         asc.set_visible(arrow, False)
 
 
-def render_frames(only: list[str] | None, directions: list[str] | None) -> None:
+def render_frames(
+    only: list[str] | None, directions: list[str] | None, render_pass: str = "body"
+) -> None:
     root, soldier, bow, string, arrow = asc.build_scene()
     asc.setup_render(CELL_WIDTH, CELL_HEIGHT, ortho_scale=ORTHO_SCALE, ground_margin=GROUND_MARGIN)
+
+    out_dir = OUT
+    if render_pass == "accent":
+        # Only the cloth is lit; the bow, the arrow and the rest of the soldier
+        # hold out, so the alpha channel is the team-colour mask.
+        body = bpy.data.objects[team_accent.BODY_OBJECT]
+        team_accent.setup_accent_pass(body, [bow, string, arrow])
+        out_dir = ACCENT_OUT
 
     for action, count in FRAMES.items():
         if only and action not in only:
@@ -236,7 +252,7 @@ def render_frames(only: list[str] | None, directions: list[str] | None) -> None:
         for direction in DIRECTIONS:
             if directions and direction not in directions:
                 continue
-            folder = OUT / action / direction
+            folder = out_dir / action / direction
             folder.mkdir(parents=True, exist_ok=True)
             for index in range(count):
                 pose_for(action, index / count, direction, root, soldier, bow, string, arrow)
@@ -256,6 +272,11 @@ def main() -> None:
     parser.add_argument("--dirs", nargs="*", default=None)
     parser.add_argument("--px", type=int, default=CELL_WIDTH)
     parser.add_argument("--open", type=float, default=BOW_OPEN)
+    parser.add_argument(
+        "--accent",
+        action="store_true",
+        help="render the team-colour mask pass instead of the body",
+    )
     args = parser.parse_args(argv)
     BOW_OPEN = args.open
 
@@ -263,7 +284,7 @@ def main() -> None:
     CELL_HEIGHT = round(args.px * 168 / 192)
 
     bpy.context.scene.cycles.samples = 24
-    render_frames(args.only, args.dirs)
+    render_frames(args.only, args.dirs, "accent" if args.accent else "body")
     print("RENDER DONE")
 
 

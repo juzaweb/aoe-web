@@ -4,6 +4,7 @@ import {
   UNIT_ART,
   actionFrameCount,
   hasDirectionalArt,
+  hasTeamAccent,
   resolveActionFrames,
   unitArt,
   unitClips,
@@ -144,5 +145,17 @@ describe('hasDirectionalArt', () => {
     // shipped as the same eight-row grid, so it draws rotations like the rest.
     expect(hasDirectionalArt('CAVALRY')).toBe(true);
     expect(hasDirectionalArt('NOT_A_UNIT')).toBe(false);
+  });
+});
+
+describe('hasTeamAccent', () => {
+  it('is true only for the unit whose sheet ships a mask layer', () => {
+    // The archer's tunic is masked by `scripts/blender/team_accent.py`.
+    expect(hasTeamAccent('ARCHER')).toBe(true);
+    // The pack's own art has its colours baked into the sheet with no mask.
+    expect(hasTeamAccent('VILLAGER')).toBe(false);
+    expect(hasTeamAccent('SPEARMAN')).toBe(false);
+    expect(hasTeamAccent('CAVALRY')).toBe(false);
+    expect(hasTeamAccent('NOT_A_UNIT')).toBe(false);
   });
 });

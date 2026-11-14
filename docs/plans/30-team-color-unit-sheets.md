@@ -5,8 +5,14 @@ người chơi phủ lên đúng vùng khăn/viền** của lính mà không ph�
 Cách làm: bake **hai lớp sheet** (body + accent) từ Blender, lớp accent render grayscale rồi
 `setTint(ownerColor)` lúc runtime — đúng cách AoE2 DE / Diablo 2 làm team color.
 
-> **Status: `APPROVED`** (2026-11-13) — các quyết định D1–D10 đã chốt với user. Chưa có dòng
-> code nào; chưa có mask, chưa có script bake, `UNIT_ART.SPEARMAN` vẫn trỏ sheet OpenGameArt cũ.
+> **Status: `PARTIAL`** (2026-11-14) — **ARCHER đã xong** end-to-end: mask bake từ atlas
+> (`scripts/blender/team_accent.py`), lớp accent 264 frame, sheet `<unit>_<action>_accent.png`,
+> `UNIT_ART.ARCHER.accent`, `EntityRenderer` vẽ sprite accent + `setTint(ownerColor)` cho cả
+> unit sống và xác, test grid + coverage. **SPEARMAN chưa làm**: D4 (camera 30°, thay sheet
+> OpenGameArt) và D7 (mapping clip) đã lệch thực tế vì spearman/archer/cavalry giờ đều render
+> 8 hướng bằng pipeline `scripts/blender/`; nếu làm tiếp thì dùng lại `team_accent.py` +
+> `render_*_sheets.py --accent` thay vì hai script `blender_make_mask.py` / `blender_bake_sheet.py`
+> ở §3. Phần còn lại của plan (cavalry accent, ảnh hưởng hiệu năng 300 unit) chưa đo.
 
 **Phạm vi:** `apps/client` + `scripts/` + `docs/plans` + `CREDITS.md`. **Không** đổi
 `packages/shared`, `apps/server`, schema, protocol hay DB: màu phe đã có sẵn trong
@@ -164,7 +170,7 @@ linh.blend
 | `scripts/blender_bake_sheet.py` | headless `bpy`: camera ortho 2:1, 8 hướng × frames × 2 pass, render 2× rồi downsample LANCZOS |
 | `scripts/pack_team_sheets.py` | PIL: crop alpha, neo sole hàng 145, pad 192×168, ghép 8 hàng E→NE, `--check` kích thước từng sheet |
 | `apps/client/src/game/render/unitArt.ts` | thêm `accentSheet?: boolean` vào `UnitArt`; `SPEARMAN` bật cờ |
-| `apps/client/src/game/render/entityAccent.ts` | hàm thuần: quyết định accent có bật cho unit/corpse, tính depth, chọn tint từ registry (test được, không Phaser) |
+| `apps/client/src/game/render/entityAccent.ts` | **đã có** (2026-11-14): `accentClipKey`, `accentTint` (rơi về `UNKNOWN_OWNER_COLOR`, không để mask trắng), `createAccentSprite`, `paintAccent`, `syncAccent` (play/hide theo clip body + copy `timeScale`), `accentClipSpecs` (đăng ký clip). Toàn bộ viết trên interface `AccentHost`/`AccentSprite` hẹp nên test bằng object thường, không cần Phaser — 16 test |
 | `apps/client/src/game/render/EntityRenderer.ts` | tạo/huỷ sprite accent cho unit sống + xác, đồng bộ frame khi `play`, `setTint` |
 | `apps/client/src/game/scenes/WorldScene.ts` | preload sheet accent, đăng ký animation key `<unit>_<action>_accent_<dir>` |
 | `apps/client/public/assets/units/actions/spearman_*.png` | 4 file body + 4 file accent (4 action × 2 lớp) |

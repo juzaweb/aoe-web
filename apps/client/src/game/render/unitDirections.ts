@@ -127,9 +127,25 @@ export function unitActionTexture(unitType: string, action: UnitAction): string 
   return `unit_${unitType}_act_${action}`;
 }
 
+/**
+ * Texture key of the team-colour layer drawn over an action sheet.
+ *
+ * The accent sheet is the same grid as the body sheet and is only ever drawn on
+ * top of it, tinted with the owner's colour, so it needs the body's texture key
+ * plus a suffix rather than a second naming scheme.
+ */
+export function unitActionAccentTexture(unitType: string, action: UnitAction): string {
+  return `${unitActionTexture(unitType, action)}_accent`;
+}
+
 /** Animation key of one action in one facing, e.g. `spearman_walk_SE`. */
 export function unitActionKey(unitType: string, action: UnitAction, direction: number): string {
   return `${unitType.toLowerCase()}_${action}_${DIRECTION_NAMES[direction]}`;
+}
+
+/** Animation key of the team-colour layer, e.g. `archer_walk_SE_accent`. */
+export function unitActionAccentKey(unitType: string, action: UnitAction, direction: number): string {
+  return `${unitActionKey(unitType, action, direction)}_accent`;
 }
 
 /** Frame indices of one row of an action sheet. */

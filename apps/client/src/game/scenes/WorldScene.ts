@@ -49,8 +49,8 @@ import { OwnerColorRegistry, colorToCss } from '../render/ownerColor.js';
 import { UnderAttackTracker } from '../alerts/underAttack.js';
 import { shouldAlertOnBuildingRemoval } from '../alerts/foundationRemoval.js';
 import type { AttackPing, DamageResult } from '../alerts/underAttack.js';
-import { unitActionTexture } from '../render/unitDirections.js';
-import { UNIT_ART, unitArt, unitSheets } from '../render/unitArt.js';
+import { unitActionAccentTexture, unitActionTexture } from '../render/unitDirections.js';
+import { UNIT_ART, hasTeamAccent, unitArt, unitSheets } from '../render/unitArt.js';
 import { RENDER_DELAY_MS, visualActionState } from '../render/unitMotion.js';
 import type { UnitMotion } from '../render/unitMotion.js';
 import { ARROW_ASSET_URL, ARROW_TEXTURE_KEY, ProjectileLayer } from '../render/projectiles.js';
@@ -297,7 +297,7 @@ export class WorldScene extends Phaser.Scene {
    * because a corpse is not a unit: it must not enter selection, drag-box,
    * minimap or command targeting, and the server deletes it on its own timer.
    */
-  public corpseSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
+  public corpseSprites: Map<string, Phaser.GameObjects.Container> = new Map();
   public resourceSprites: Map<string, Phaser.GameObjects.Container> = new Map();
 
   /**
@@ -504,7 +504,7 @@ export class WorldScene extends Phaser.Scene {
 
     // Preload generated unit assets with spritesheet & idle frame support (2x resolution)
     // Bumped whenever a sheet on disk changes: the URL is the cache key.
-    const uv = 'v=9';
+    const uv = 'v=10';
     // The legacy single-facing sheets stay loaded even for units that have been
     // redrawn: `EntityRenderer` falls back to them when a directional sheet is
     // missing, so an art regression still renders a unit instead of a green box.
@@ -543,6 +543,21 @@ export class WorldScene extends Phaser.Scene {
         this.load.spritesheet(
           unitActionTexture(unitType, sheet.sheetAction),
           `/assets/units/actions/${unitType.toLowerCase()}_${sheet.sheetAction}.png?${uv}`,
+          { frameWidth: art.frameWidth, frameHeight: art.frameHeight }
+        );
+      }
+    }
+
+    // Team-colour layers: one more sheet per action for units that ship one, on
+    // the same grid and cell size as the body so the renderer can play the two
+    // in lockstep and tint the top one with the owner's colour.
+    for (const unitType of Object.keys(UNIT_ART)) {
+      if (!hasTeamAccent(unitType)) continue;
+      const art = unitArt(unitType);
+      for (const sheet of unitSheets(unitType)) {
+        this.load.spritesheet(
+          unitActionAccentTexture(unitType, sheet.sheetAction),
+          `/assets/units/actions/${unitType.toLowerCase()}_${sheet.sheetAction}_accent.png?${uv}`,
           { frameWidth: art.frameWidth, frameHeight: art.frameHeight }
         );
       }
@@ -969,6 +984,7 @@ export class WorldScene extends Phaser.Scene {
     this.unitSprites.clear();
     this.corpseSprites.forEach((sprite) => sprite.destroy());
     this.corpseSprites.clear();
+    this.entityRenderer.clearTeamColors();
     this.resourceSprites.forEach((container) => container.destroy());
     this.resourceSprites.clear();
     this.pendingResources = [];
@@ -1353,6 +1369,7 @@ export class WorldScene extends Phaser.Scene {
         sprite.destroy();
         this.corpseSprites.delete(key);
       }
+      this.entityRenderer.forgetTeamColor(key);
     });
 
     // 4. Ownership colours (OWN-05). Entities can enter the scene before their

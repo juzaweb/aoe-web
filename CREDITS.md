@@ -175,7 +175,9 @@ facing, and the death drops the clip's two-metre launch. `scripts/blender/README
 documents the camera, the 192x168 cell and the bow-open cheat;
 `render_archer.py` + `assemble_archer_sheets.py` rebuild the sheets from the two
 source files alone, and `save_archer_blend.py` writes the composed, animated
-scene back out as `scripts/raw_downloads/models/linh_cung.blend`.
+scene back out as `scripts/raw_downloads/models/linh_cung.blend`. The
+`archer_<action>_accent.png` layers are the same frames rendered with the tunic
+masked by `team_accent.py`; the client multiplies the owner's colour into them.
 
 **Changes made.** N/A - rendered, not derived from an image pack.
 
