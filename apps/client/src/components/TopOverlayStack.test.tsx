@@ -43,13 +43,13 @@ describe('TopOverlayStack', () => {
 });
 
 /**
- * `App` owns the three banners but has no render harness in this suite (it
+ * `GameApp` owns the three banners but has no render harness in this suite (it
  * mounts a Phaser game and a Colyseus room), so the wiring is guarded by a
  * source scan — the same thing a reviewer would check, run on every commit.
  */
-describe('App top-centre wiring (UIX-08 / UIX-10)', () => {
+describe('GameApp top-centre wiring (UIX-08 / UIX-10)', () => {
   const appSource = readFileSync(
-    resolve(dirname(fileURLToPath(import.meta.url)), '..', 'App.tsx'),
+    resolve(dirname(fileURLToPath(import.meta.url)), '..', 'GameApp.tsx'),
     'utf8'
   );
 

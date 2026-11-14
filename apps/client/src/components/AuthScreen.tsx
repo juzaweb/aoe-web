@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, Eye, EyeOff, Loader2, Lock, LogIn, Swords, UserPlus } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Eye, EyeOff, Loader2, Lock, LogIn, Swords, UserPlus } from 'lucide-react';
 import { AuthUser, login, register } from '../auth/api.js';
 import { useInputMode } from '../device/useInputMode.js';
 import { LanguageSwitcher } from '../i18n/LanguageSwitcher.js';
+import { HOME_PATH, RouteLink } from '../router.js';
 
 type AuthMode = 'login' | 'register';
 
@@ -52,6 +53,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
 
   return (
     <div className="aoe-backdrop absolute inset-0 z-50 flex items-center justify-center overflow-y-auto p-3">
+      <div className="absolute left-3 top-3 z-10">
+        <RouteLink
+          to={HOME_PATH}
+          className="inline-flex min-h-[36px] items-center gap-1 border border-slate-700 bg-slate-900/90 px-2 text-[11px] font-semibold text-slate-300 transition-colors hover:text-amber-300"
+        >
+          <ArrowLeft size={13} aria-hidden />
+          {t('common.backHome')}
+        </RouteLink>
+      </div>
       <div className="absolute right-3 top-3 z-10">
         <LanguageSwitcher />
       </div>

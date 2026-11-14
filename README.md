@@ -123,6 +123,20 @@ pnpm dev:server
 pnpm dev:client
 ```
 
+### Routes
+
+The web client has two public routes:
+
+| Route | Screen |
+|---|---|
+| `/` | Landing page: game introduction and the Play button |
+| `/play` | The game itself (auth gate, kingdom, HUD) |
+
+Routing is client-side (History API). Any other path redirects to `/`. A static
+host must rewrite unknown paths to `index.html`; `apps/client/public/_redirects`
+does that for Netlify and Cloudflare Pages. Vite's dev server and `vite preview`
+already provide the fallback.
+
 ### Production Build
 
 ```bash

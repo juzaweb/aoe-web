@@ -1,0 +1,4 @@
+# SPA fallback: /play is a client-side route, so every unknown path must serve
+# the shell instead of a 404. Read by Netlify/Cloudflare Pages; Vite's dev server
+# already does this for `pnpm dev`.
+/* /index.html 200

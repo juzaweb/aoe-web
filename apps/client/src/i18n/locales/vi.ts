@@ -4,9 +4,13 @@
  */
 const vi = {
   common: {
+    backHome: 'Về trang chủ',
     language: 'Ngôn ngữ'
   },
   app: {
+    metaDescription: 'Vương quốc của bạn đang chờ: xây dựng, phòng thủ và tập kích trong Chiến Quốc.',
+    documentTitle: 'Chiến Quốc — Vương quốc của bạn',
+    loadingGame: 'Đang tải vương quốc...',
     zoneKingdom: 'VƯƠNG QUỐC',
     zoneRaid: 'TẬP KÍCH',
     sessionExpired: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
@@ -32,6 +36,131 @@ const vi = {
     raidWinLoot: 'Thắng trận! Cướp được {{wood}} gỗ, {{food}} lương, {{gold}} vàng, {{stone}} đá.',
     raidDefeat: 'Quân tập kích đã bị đánh bại.',
     raidRetreated: 'Đã rút quân về vương quốc.'
+  },
+  landing: {
+    meta: {
+      title: 'Chiến Quốc — 2D MMO RTS trên trình duyệt',
+      description:
+        'Xây dựng đế chế, khai thác tài nguyên và tập kích thế giới trong game RTS isometric trên trình duyệt.'
+    },
+    brandHome: 'Chiến Quốc — về trang chủ',
+    nav: {
+      label: 'Điều hướng trang chủ',
+      features: 'Tính năng',
+      world: 'Thế giới',
+      howToPlay: 'Cách chơi'
+    },
+    hero: {
+      badge: '2D ISOMETRIC · MMO RTS',
+      titleLine1: 'Xây đế chế.',
+      titleLine2: 'Chinh phạt thiên hạ.',
+      subtitle:
+        'Một vương quốc riêng, bốn nguồn tài nguyên và những cuộc tập kích bất tận. Xây dựng, phòng thủ và mở rộng lãnh thổ ngay trên trình duyệt.',
+      playNow: 'Chơi ngay',
+      continue: 'Tiếp tục vương quốc',
+      continueShort: 'Tiếp tục',
+      explore: 'Khám phá tính năng',
+      artAlt: 'Nhà chính trong vương quốc của bạn',
+      artCaption: 'Vương quốc đang chờ bạn',
+      bullets: {
+        free: 'Miễn phí',
+        browser: 'Chơi trên trình duyệt',
+        persistent: 'Tiến trình được lưu'
+      }
+    },
+    features: {
+      eyebrow: 'VÌ SAO LÀ CHIẾN QUỐC',
+      title: 'Một đế chế, nhiều cách chơi',
+      subtitle:
+        'Từ nông dân đầu tiên đến đội quân công thành — mọi quyết định đều nằm trong tay bạn.',
+      kingdom: {
+        title: 'Vương quốc của riêng bạn',
+        body:
+          'Mỗi tài khoản sở hữu một vương quốc 110×110 với rừng, mỏ và đồng cỏ. Mọi thứ được lưu lại, kể cả khi bạn rời đi.'
+      },
+      economy: {
+        title: 'Kinh tế bốn tài nguyên',
+        body:
+          'Gỗ, lương, vàng và đá. Điều nông dân, dựng trại khai thác và giữ dòng tài nguyên luôn chảy.'
+      },
+      army: {
+        title: 'Quân đội đa binh chủng',
+        body:
+          'Giáo binh, cung thủ, kỵ binh và máy bắn đá. Nâng cấp công trình để mở khoá sức mạnh mới.'
+      },
+      raids: {
+        title: 'Tập kích thế giới',
+        body:
+          'Mở bản đồ, chọn mục tiêu ngang tầm và mang quân đi cướp tài nguyên. Thắng lợi mở ra con đường bá chủ.'
+      },
+      defense: {
+        title: 'Phòng thủ thành trì',
+        body:
+          'Tường thành, tháp canh và thành trì kiên cố. Kẻ địch có thể đến bất cứ lúc nào — hãy chuẩn bị.'
+      },
+      mobile: {
+        title: 'Chơi mọi lúc, mọi nơi',
+        body:
+          'Điều khiển bằng chuột hay cảm ứng. Vương quốc của bạn luôn ở đó, trên máy tính lẫn điện thoại.'
+      }
+    },
+    world: {
+      eyebrow: 'BẢN ĐỒ THẾ GIỚI',
+      title: 'Thiên hạ rộng lớn, nhưng không có chỗ cho kẻ yếu.',
+      subtitle: 'Mỗi vương quốc là một thế giới thu nhỏ. Khi đủ mạnh, hãy bước ra ngoài.',
+      mapAlt: 'Bản đồ thế giới Chiến Quốc',
+      mapCaption: 'BẢN ĐỒ THẾ GIỚI',
+      mapFooter: 'Chiến tranh',
+      points: {
+        target: {
+          title: 'Chọn mục tiêu',
+          body: 'Lọc các đế chế trong ±5 cấp Nhà chính và chọn kẻ yếu hơn.'
+        },
+        loot: {
+          title: 'Cướp tài nguyên',
+          body: 'Thắng trận, bạn lấy 20% mỗi loại tài nguyên của đối thủ (có giới hạn).'
+        },
+        shield: {
+          title: 'Phòng thủ 72 giờ',
+          body: 'Sau mỗi trận thua, người chơi được khiên bảo vệ để xây dựng lại.'
+        }
+      }
+    },
+    showcase: {
+      eyebrow: 'CÔNG TRÌNH & BINH CHỦNG',
+      title: 'Mỗi công trình mở ra một nhánh sức mạnh mới',
+      subtitle:
+        'Dựng Nhà chính, huấn luyện quân đội và biến một ngôi làng nhỏ thành đế chế hùng mạnh.'
+    },
+    steps: {
+      eyebrow: 'BẮT ĐẦU',
+      title: 'Khởi đầu trong ba bước',
+      subtitle: 'Không cần tải, không cần cày hướng dẫn. Đế chế đầu tiên chỉ cách một cú nhấp.',
+      cta: 'Bắt đầu miễn phí',
+      one: {
+        title: 'Tạo đế chế',
+        body: 'Đăng ký miễn phí, đặt tên lãnh chúa và nhận vương quốc đầu tiên.'
+      },
+      two: {
+        title: 'Xây dựng & huấn luyện',
+        body: 'Dùng tài nguyên để dựng Nhà chính, doanh trại và chiêu mộ quân.'
+      },
+      three: {
+        title: 'Ra trận',
+        body: 'Mở bản đồ thế giới, chọn mục tiêu và dẫn quân đi tập kích.'
+      }
+    },
+    final: {
+      title: 'Thiên hạ đang chờ.',
+      subtitle: 'Vương quốc của bạn đã sẵn sàng. Chỉ còn thiếu một vị vua.',
+      cta: 'Bắt đầu miễn phí',
+      note: 'Không cần thẻ tín dụng. Chơi trực tiếp trên trình duyệt.'
+    },
+    footer: {
+      tagline: '2D ISOMETRIC MMO RTS',
+      credits: 'Đồ hoạ: SKYZ0R, Bleed, feudalwars (CC-BY). Chi tiết trong CREDITS.md.',
+      rights: '© 2026 Chiến Quốc. Bảo lưu mọi quyền.'
+    }
   },
   auth: {
     title: 'CHIẾN QUỐC MMO RTS',

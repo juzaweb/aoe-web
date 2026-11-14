@@ -1,9 +1,13 @@
 /** English catalog, key-aligned with the Vietnamese one. */
 const en = {
   common: {
+    backHome: 'Back to homepage',
     language: 'Language'
   },
   app: {
+    metaDescription: 'Your kingdom awaits: build, defend and raid in Chien Quoc.',
+    documentTitle: 'Chien Quoc — Your Kingdom',
+    loadingGame: 'Loading your kingdom...',
     zoneKingdom: 'KINGDOM',
     zoneRaid: 'RAID',
     sessionExpired: 'Your session has expired. Please sign in again.',
@@ -29,6 +33,130 @@ const en = {
     raidWinLoot: 'Victory! Looted {{wood}} wood, {{food}} food, {{gold}} gold and {{stone}} stone.',
     raidDefeat: 'The raiding army was defeated.',
     raidRetreated: 'The army has returned to the kingdom.'
+  },
+  landing: {
+    meta: {
+      title: 'Chien Quoc — 2D MMO RTS in your browser',
+      description:
+        'Build an empire, gather resources and raid the world in a browser-based isometric RTS.'
+    },
+    brandHome: 'Chien Quoc — back to homepage',
+    nav: {
+      label: 'Homepage navigation',
+      features: 'Features',
+      world: 'World',
+      howToPlay: 'How to play'
+    },
+    hero: {
+      badge: '2D ISOMETRIC · MMO RTS',
+      titleLine1: 'Build an empire.',
+      titleLine2: 'Conquer the world.',
+      subtitle:
+        'Your own kingdom, four resources and endless raids. Build, defend and expand your territory right in the browser.',
+      playNow: 'Play now',
+      continue: 'Continue empire',
+      continueShort: 'Continue',
+      explore: 'Explore features',
+      artAlt: "Your kingdom's town centre",
+      artCaption: 'Your kingdom awaits',
+      bullets: {
+        free: 'Free to play',
+        browser: 'Runs in your browser',
+        persistent: 'Progress is saved'
+      }
+    },
+    features: {
+      eyebrow: 'WHY CHIEN QUOC',
+      title: 'One empire, many ways to play',
+      subtitle: 'From your first villager to a siege army — every decision is yours.',
+      kingdom: {
+        title: 'A kingdom of your own',
+        body:
+          'Every account owns a 110×110 kingdom with forests, mines and pastures. Everything persists, even while you are away.'
+      },
+      economy: {
+        title: 'A four-resource economy',
+        body:
+          'Wood, food, gold and stone. Command villagers, build camps and keep the resources flowing.'
+      },
+      army: {
+        title: 'A combined-arms army',
+        body:
+          'Spearmen, archers, cavalry and catapults. Upgrade buildings to unlock new power.'
+      },
+      raids: {
+        title: 'Raid the world',
+        body:
+          'Open the world map, pick a neighbour at your level and march for loot. Victory is the road to dominance.'
+      },
+      defense: {
+        title: 'Defend the citadel',
+        body:
+          'Stone walls, watch towers and a fortified citadel. Attackers can arrive at any time — be ready.'
+      },
+      mobile: {
+        title: 'Play anywhere',
+        body:
+          'Mouse or touch controls. Your kingdom is there on desktop and phone alike.'
+      }
+    },
+    world: {
+      eyebrow: 'THE WORLD MAP',
+      title: 'The world is vast, and there is no room for the weak.',
+      subtitle: 'Every kingdom is a small world. When you are strong enough, step outside.',
+      mapAlt: 'Chien Quoc world map',
+      mapCaption: 'WORLD MAP',
+      mapFooter: 'War',
+      points: {
+        target: {
+          title: 'Choose a target',
+          body: 'Filter empires within ±5 Town Center levels and pick a weaker neighbour.'
+        },
+        loot: {
+          title: 'Take the loot',
+          body: 'Win the raid and claim 20% of each of their resources, capped.'
+        },
+        shield: {
+          title: 'Regroup under a shield',
+          body: 'After a defeat every defender gets a 72-hour shield to rebuild.'
+        }
+      }
+    },
+    showcase: {
+      eyebrow: 'BUILDINGS & UNITS',
+      title: 'Every building opens a new branch of power',
+      subtitle:
+        'Raise your town centre, train an army and turn a small village into a mighty empire.'
+    },
+    steps: {
+      eyebrow: 'GETTING STARTED',
+      title: 'Start in three steps',
+      subtitle: 'No download, no tutorial grind. Your first empire is one click away.',
+      cta: 'Start for free',
+      one: {
+        title: 'Create an empire',
+        body: 'Register for free, name your lord and claim your first kingdom.'
+      },
+      two: {
+        title: 'Build & train',
+        body: 'Spend resources on a town centre, barracks and your first soldiers.'
+      },
+      three: {
+        title: 'March to war',
+        body: 'Open the world map, choose a target and lead your army on a raid.'
+      }
+    },
+    final: {
+      title: 'The world is waiting.',
+      subtitle: 'Your kingdom is ready. All it needs is a ruler.',
+      cta: 'Start for free',
+      note: 'No credit card. Play directly in your browser.'
+    },
+    footer: {
+      tagline: '2D ISOMETRIC MMO RTS',
+      credits: 'Art: SKYZ0R, Bleed, feudalwars (CC-BY). Details in CREDITS.md.',
+      rights: '© 2026 Chien Quoc. All rights reserved.'
+    }
   },
   auth: {
     title: 'CHIEN QUOC MMO RTS',

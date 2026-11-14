@@ -14,6 +14,7 @@ import {
   WorldMapPayload
 } from '@chien-quoc/shared';
 import i18n from '../i18n/index.js';
+import { clearStoredToken, getStoredToken, storeToken } from './token.js';
 
 export interface AuthUser {
   id: string;
@@ -25,8 +26,6 @@ export interface AuthResponse {
   user: AuthUser;
   token: string;
 }
-
-const TOKEN_STORAGE_KEY = 'cq_auth_token';
 
 const DEFAULT_SERVER_PORT = 2567;
 
@@ -46,30 +45,6 @@ function getServerPort(): number {
 export function getServerUrl(): string {
   const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
   return `${protocol}//${window.location.hostname}:${getServerPort()}`;
-}
-
-export function getStoredToken(): string | null {
-  try {
-    return localStorage.getItem(TOKEN_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function storeToken(token: string): void {
-  try {
-    localStorage.setItem(TOKEN_STORAGE_KEY, token);
-  } catch {
-    // Private-mode storage failures are non-fatal: the session just won't persist.
-  }
-}
-
-export function clearStoredToken(): void {
-  try {
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
-  } catch {
-    // Ignore.
-  }
 }
 
 /** Extracts a human-readable message from a non-2xx response. */
