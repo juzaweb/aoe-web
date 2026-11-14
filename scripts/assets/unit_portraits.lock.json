@@ -13,6 +13,19 @@
       "size": 128,
       "sha256": "ca9765ce579e9392b3642f4aa382fc73e22a9ddd92ea5eea09e89a2a5f67e73b"
     },
+    "CATAPULT": {
+      "out": "apps/client/public/assets/units/catapult_idle.png",
+      "source": "apps/client/public/assets/units/actions/catapult_idle.png",
+      "sourceSha256": "75fef19af44557834a756bd577ae1f49fd54df679f2dbc3cc28b5216b9c0d85f",
+      "poseRow": 0,
+      "frame": 0,
+      "cell": [
+        224,
+        208
+      ],
+      "size": 128,
+      "sha256": "47ee456b77ab067944954a3314ee7c5a36aff58e923fa213260a5bf1d36f7a38"
+    },
     "CAVALRY": {
       "out": "apps/client/public/assets/units/cavalry_idle.png",
       "source": "apps/client/public/assets/units/actions/cavalry_idle.png",

@@ -6,7 +6,7 @@ import {
   Resources,
   UNIT_BLUEPRINTS,
   UnitType,
-  canTrainUnitsAt,
+  isTrainerBuilding,
   getBuildingMaxLevel,
   getBuildingUpgradeCost,
   getBuildingUpgradeTimeMs,
@@ -140,7 +140,7 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
   // a drop-off camp, so a long upgrade is not bought blind.
   // The Town Center is excluded: its own aura section already explains the
   // capital's bonuses, so the trainer preview only covers the unit buildings.
-  const isTrainerBuilding = type !== 'TOWN_CENTER' && canTrainUnitsAt(type);
+  const trainerBuilding = isTrainerBuilding(type);
   const isDropOffCamp =
     type !== 'TOWN_CENTER' && (BUILDING_BLUEPRINTS[type]?.dropOffs.length ?? 0) > 0;
   const trainerSpeedNow = Math.round((1 - trainerSpeedMultiplier(level)) * 100);
@@ -255,7 +255,7 @@ export const BuildingUpgradePanel: React.FC<BuildingUpgradePanelProps> = ({
         </div>
       )}
 
-      {isTrainerBuilding && (
+      {trainerBuilding && (
         <div
           className="rounded border border-emerald-900/60 bg-emerald-950/20 p-1.5 space-y-0.5"
           data-trainer-buff

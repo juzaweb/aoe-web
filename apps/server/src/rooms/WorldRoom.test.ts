@@ -11,6 +11,7 @@ import {
   RESOURCE_REGROW_MS,
   TERRAIN_KINGDOM,
   UNIT_BLUEPRINTS,
+  UNIT_SPLASH_DAMAGE_FRACTION,
   INITIAL_POPULATION_CAP,
   citadelTownCenterFor,
   citadelLayoutFor,
@@ -335,6 +336,23 @@ describe('handleTrainUnit', () => {
     });
     expect(player.food).toBe(10);
     expect(room.state.buildings.get('b_1')!.trainingQueue.length).toBe(0);
+  });
+
+  it('trains a catapult at the siege workshop and charges its stone price', () => {
+    const room = createRoom();
+    const player = addPlayer(room, 'player-a', { wood: 500, gold: 500, stone: 500 });
+    addBuilding(room, { id: 'b_siege', ownerId: 'player-a', type: 'SIEGE_WORKSHOP' });
+
+    internals(room).commands.handleTrainUnit(createClient('player-a'), {
+      buildingId: 'b_siege',
+      unitType: 'CATAPULT'
+    });
+
+    const cost = UNIT_BLUEPRINTS.CATAPULT.cost;
+    expect(player.wood).toBe(500 - cost.wood);
+    expect(player.gold).toBe(500 - cost.gold);
+    expect(player.stone).toBe(500 - cost.stone);
+    expect(room.state.buildings.get('b_siege')!.trainingQueue[0]).toBe('CATAPULT');
   });
 
   // MIL-01: each military branch trains exactly one unit line.
@@ -1467,6 +1485,165 @@ describe('combat cooldown bookkeeping', () => {
   });
 });
 
+describe('catapult splash damage', () => {
+  it('damages every enemy unit around the impact, never the primary twice or an ally', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const catapult = addUnit(room, {
+      id: 'u_catapult',
+      ownerId: 'player-a',
+      type: 'CATAPULT',
+      x: 10,
+      y: 10,
+      actionState: 'ATTACKING'
+    });
+    catapult.stance = 'NO_ATTACK';
+    const primary = addUnit(room, { id: 'u_primary', ownerId: 'player-b', x: 15, y: 10 });
+    primary.stance = 'NO_ATTACK';
+    const clustered = addUnit(room, { id: 'u_cluster', ownerId: 'player-b', x: 16, y: 10 });
+    clustered.stance = 'NO_ATTACK';
+    const far = addUnit(room, { id: 'u_far', ownerId: 'player-b', x: 20, y: 10 });
+    far.stance = 'NO_ATTACK';
+    const ally = addUnit(room, { id: 'u_ally', ownerId: 'player-a', type: 'SPEARMAN', x: 15.5, y: 10 });
+    ally.stance = 'NO_ATTACK';
+    catapult.targetEntityId = primary.id;
+    catapult.targetEntityType = 'unit';
+
+    internals(room).update(100);
+
+    const full = UNIT_BLUEPRINTS.CATAPULT.attackPower;
+    const splash = Math.round(full * UNIT_SPLASH_DAMAGE_FRACTION);
+    expect(primary.hp).toBe(UNIT_BLUEPRINTS.VILLAGER.maxHp - full);
+    expect(clustered.hp).toBe(UNIT_BLUEPRINTS.VILLAGER.maxHp - splash);
+    expect(far.hp).toBe(UNIT_BLUEPRINTS.VILLAGER.maxHp);
+    expect(ally.hp).toBe(UNIT_BLUEPRINTS.SPEARMAN.maxHp);
+  });
+
+  it('kills a splash victim and removes it from the world', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const catapult = addUnit(room, {
+      id: 'u_catapult',
+      ownerId: 'player-a',
+      type: 'CATAPULT',
+      x: 10,
+      y: 10,
+      actionState: 'ATTACKING'
+    });
+    catapult.stance = 'NO_ATTACK';
+    const primary = addUnit(room, { id: 'u_primary', ownerId: 'player-b', x: 15, y: 10 });
+    primary.stance = 'NO_ATTACK';
+    const doomed = addUnit(room, { id: 'u_doomed', ownerId: 'player-b', x: 16, y: 10 });
+    doomed.stance = 'NO_ATTACK';
+    doomed.hp = 1;
+    catapult.targetEntityId = primary.id;
+    catapult.targetEntityType = 'unit';
+
+    internals(room).update(100);
+
+    expect(room.state.units.has(doomed.id)).toBe(false);
+    expect(room.state.units.has(primary.id)).toBe(true);
+    expect(room.state.corpses.has(doomed.id)).toBe(true);
+  });
+
+  it('leaves splash off for a ranged unit without a splash radius', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const archer = addUnit(room, {
+      id: 'u_archer',
+      ownerId: 'player-a',
+      type: 'ARCHER',
+      x: 10,
+      y: 10,
+      actionState: 'ATTACKING'
+    });
+    archer.stance = 'NO_ATTACK';
+    const primary = addUnit(room, { id: 'u_primary', ownerId: 'player-b', x: 14, y: 10 });
+    primary.stance = 'NO_ATTACK';
+    // Exactly on the primary's tile: if the opt-in guard disappeared, a
+    // zero-radius "splash" would still hit this neighbour.
+    const bystander = addUnit(room, { id: 'u_bystander', ownerId: 'player-b', x: 14, y: 10 });
+    bystander.stance = 'NO_ATTACK';
+    archer.targetEntityId = primary.id;
+    archer.targetEntityType = 'unit';
+
+    internals(room).update(100);
+
+    expect(primary.hp).toBe(UNIT_BLUEPRINTS.VILLAGER.maxHp - UNIT_BLUEPRINTS.ARCHER.attackPower);
+    expect(bystander.hp).toBe(UNIT_BLUEPRINTS.VILLAGER.maxHp);
+  });
+
+  it('never splashes onto a second building', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const catapult = addUnit(room, {
+      id: 'u_catapult',
+      ownerId: 'player-a',
+      type: 'CATAPULT',
+      x: 10,
+      y: 10,
+      actionState: 'ATTACKING'
+    });
+    catapult.stance = 'NO_ATTACK';
+    const primary = addUnit(room, { id: 'u_primary', ownerId: 'player-b', x: 15, y: 10 });
+    primary.stance = 'NO_ATTACK';
+    const nearbyTower = addBuilding(room, {
+      id: 'b_nearby',
+      ownerId: 'player-b',
+      type: 'TOWER',
+      gridX: 16,
+      gridY: 9
+    });
+    catapult.targetEntityId = primary.id;
+    catapult.targetEntityType = 'unit';
+
+    internals(room).update(100);
+
+    expect(primary.hp).toBe(
+      UNIT_BLUEPRINTS.VILLAGER.maxHp - UNIT_BLUEPRINTS.CATAPULT.attackPower
+    );
+    expect(nearbyTower.hp).toBe(BUILDING_BLUEPRINTS.TOWER.maxHp);
+  });
+
+  it('splashes around a building target at the footprint centre', () => {
+    const room = createRoom();
+    addPlayer(room, 'player-a');
+    addPlayer(room, 'player-b');
+    const catapult = addUnit(room, {
+      id: 'u_catapult',
+      ownerId: 'player-a',
+      type: 'CATAPULT',
+      x: 10,
+      y: 10,
+      actionState: 'ATTACKING'
+    });
+    catapult.stance = 'NO_ATTACK';
+    const tower = addBuilding(room, {
+      id: 'b_tower',
+      ownerId: 'player-b',
+      type: 'TOWER',
+      gridX: 15,
+      gridY: 10
+    });
+    const defender = addUnit(room, { id: 'u_defender', ownerId: 'player-b', x: 15.5, y: 10 });
+    defender.stance = 'NO_ATTACK';
+    catapult.targetEntityId = tower.id;
+    catapult.targetEntityType = 'building';
+
+    internals(room).update(100);
+
+    expect(tower.hp).toBe(BUILDING_BLUEPRINTS.TOWER.maxHp - UNIT_BLUEPRINTS.CATAPULT.attackPower);
+    expect(defender.hp).toBe(
+      UNIT_BLUEPRINTS.VILLAGER.maxHp -
+        Math.round(UNIT_BLUEPRINTS.CATAPULT.attackPower * UNIT_SPLASH_DAMAGE_FRACTION)
+    );
+  });
+});
+
 describe('unit stance (CMB-01)', () => {
   it('sets the stance on owned units and leaves a foreign unit alone', () => {
     const room = createRoom();
@@ -2530,6 +2707,31 @@ describe('unit research (LVL)', () => {
 
     internals(room).commands.handleUpgradeUnitType(client, { unitType: 'ARCHER' });
     expect(player.researchUnitType).toBe('ARCHER');
+  });
+
+  it('researches the catapult at the siege workshop and levels living engines', () => {
+    const room = createRoom();
+    const player = addPlayer(room, 'player-a', {
+      wood: 5000,
+      food: 5000,
+      gold: 5000,
+      stone: 5000
+    });
+    addBuilding(room, { id: 'b_siege', ownerId: 'player-a', type: 'SIEGE_WORKSHOP' });
+    const catapult = addUnit(room, { id: 'u_cat', ownerId: 'player-a', type: 'CATAPULT' });
+    const hpBefore = catapult.maxHp;
+    const client = createClient('player-a');
+
+    internals(room).commands.handleUpgradeUnitType(client, { unitType: 'CATAPULT' });
+    expect(player.researchUnitType).toBe('CATAPULT');
+
+    const duration = player.researchTimeMs;
+    simulate(room, duration + 100);
+
+    expect(getPlayerUnitLevel(player.unitLevels, 'CATAPULT')).toBe(2);
+    expect(catapult.level).toBe(2);
+    expect(catapult.maxHp).toBeGreaterThan(hpBefore);
+    expect(player.researchUnitType).toBe('');
   });
 
   it('charges once, ticks, and upgrades every existing unit of that type', () => {

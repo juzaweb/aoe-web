@@ -80,6 +80,19 @@ describe('unitClips', () => {
     expect(clips.get('walk')?.sheetAction).toBe('walk');
   });
 
+  it('carries the reload pause that keeps the catapult clip on its cooldown', () => {
+    const attack = unitClips('CATAPULT').find((clip) => clip.action === 'attack');
+    expect(attack?.frames).toBe(10);
+    expect(attack?.frameRate).toBe(10);
+    expect(attack?.repeatDelay).toBe(2000);
+    // One clip (1 s) plus the pause must equal the server's reload, or the arm
+    // releases on a different beat from the boulder.
+    const clipMs = (attack?.frames ?? 0) * (1000 / (attack?.frameRate ?? 1));
+    expect(clipMs + (attack?.repeatDelay ?? 0)).toBe(3000);
+    expect(unitArt('CATAPULT').projectile).toBe('boulder');
+    expect(unitArt('CATAPULT').releaseMs).toBe(700);
+  });
+
   it('takes the frame rate override when a unit sets one', () => {
     const clips = new Map(unitClips('VILLAGER').map((clip) => [clip.action, clip]));
     expect(clips.get('walk')?.frameRate).toBe(16);
@@ -144,6 +157,9 @@ describe('hasDirectionalArt', () => {
     // Rendered from the local .blend models rather than an upstream pack, but
     // shipped as the same eight-row grid, so it draws rotations like the rest.
     expect(hasDirectionalArt('CAVALRY')).toBe(true);
+    // Siege engine, rendered from maybanda.glb and trained by the siege
+    // workshop; its attack clip is on the same 3 s beat as the boulder.
+    expect(hasDirectionalArt('CATAPULT')).toBe(true);
     expect(hasDirectionalArt('NOT_A_UNIT')).toBe(false);
   });
 });
@@ -156,6 +172,8 @@ describe('hasTeamAccent', () => {
     expect(hasTeamAccent('ARCHER')).toBe(true);
     expect(hasTeamAccent('SPEARMAN')).toBe(true);
     expect(hasTeamAccent('CAVALRY')).toBe(true);
+    // The catapult's counterweight box is the masked surface.
+    expect(hasTeamAccent('CATAPULT')).toBe(true);
     // The villager's pack art has its colours baked in and no cloth mask.
     expect(hasTeamAccent('VILLAGER')).toBe(false);
     expect(hasTeamAccent('NOT_A_UNIT')).toBe(false);

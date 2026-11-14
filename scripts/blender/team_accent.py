@@ -1,4 +1,4 @@
-"""Team-colour mask for the Mixamo soldier: which faces are the tunic.
+"""Team-colour mask for a unit: which faces take the owner's colour.
 
 The soldier ships as one mesh with one material whose colours are baked into a
 2048 square atlas, so there is no material or object to recolour at runtime.
@@ -6,12 +6,14 @@ Team colour therefore needs a mask, and the mask is made here once, from the
 atlas itself: every face samples the base-colour texture at its own UVs, and the
 faces whose texel colour falls in the cloth's teal band become the accent.
 
-Selected faces are moved to a second material slot (``TeamAccent``) so the rest
-of the pipeline can address them by index. In the accent pass every other
-material is replaced with a Cycles holdout, and the accent slot is a plain white
-Principled BSDF: the render then carries the tunic's shading into the alpha
-sheet, which is what keeps the folds when the client multiplies a team colour
-over it.
+The default mask is the Mixamo soldier's tunic, sampled from the atlas. A unit
+whose accent is not cloth supplies its own per-polygon mask instead (the
+catapult's counterweight box); both paths end up as faces on a second material
+slot (``TeamAccent``) so the rest of the pipeline can address them by index. In
+the accent pass every other material is replaced with a Cycles holdout, and the
+accent slot is a plain white Principled BSDF: the render then carries the
+surface's own shading into the alpha sheet, which is what keeps folds and
+bevels when the client multiplies a team colour over it.
 
 Usage (inside Blender, soldier file already open):
     blender -b .../linh.blend --python scripts/blender/team_accent.py -- --probe
@@ -200,9 +202,15 @@ def accent_material() -> bpy.types.Material:
     return material
 
 
-def assign_accent_slot(body: bpy.types.Object) -> int:
-    """Move the cloth faces onto a second slot; returns how many were moved."""
-    selected = select_accent_faces(body)
+def assign_accent_slot(body: bpy.types.Object, selected: np.ndarray | None = None) -> int:
+    """Move the accent faces onto a second slot; returns how many were moved.
+
+    ``selected`` lets a unit with a non-cloth accent (the catapult's painted
+    counterweight box) supply its own face mask; it must be one boolean per
+    polygon. Left out, the soldier's cloth band is used.
+    """
+    if selected is None:
+        selected = select_accent_faces(body)
     material = accent_material()
     if ACCENT_SLOT_NAME not in [slot.material.name if slot.material else "" for slot in body.material_slots]:
         body.data.materials.append(material)
@@ -230,13 +238,15 @@ def _holdout_material() -> bpy.types.Material:
     return material
 
 
-def setup_accent_pass(body: bpy.types.Object, others) -> None:
-    """Render only the cloth of ``body``: everything else holds out (transparent).
+def setup_accent_pass(body: bpy.types.Object, others, selected: np.ndarray | None = None) -> None:
+    """Render only the accent faces of ``body``: everything else holds out.
 
     ``others`` is every other object in the frame -- the bow, the string, the
-    arrow -- so the mask cannot leak a prop into the team colour.
+    arrow -- so the mask cannot leak a prop into the team colour. ``selected`` is
+    an optional per-polygon mask for a unit whose accent is not the soldier's
+    cloth band (see ``assign_accent_slot``).
     """
-    assign_accent_slot(body)
+    assign_accent_slot(body, selected)
     holdout = _holdout_material()
     accent = accent_material()
     for obj in others:

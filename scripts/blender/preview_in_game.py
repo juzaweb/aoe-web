@@ -21,7 +21,7 @@ OUT = Path(__file__).resolve().parent / "out" / "scale_check.png"
 
 TILE_W, TILE_H = 128, 64
 ZOOM = 2
-COLUMN_SPACING = 250
+COLUMN_SPACING = 260
 
 # label, sheet, cell, scale, offsetY
 UNITS_TO_DRAW = [
@@ -29,6 +29,7 @@ UNITS_TO_DRAW = [
     ("SPEARMAN", "spearman_walk.png", (192, 168), 0.95, -58),
     ("ARCHER", "archer_walk.png", (192, 168), 0.95, -58),
     ("CAVALRY", "cavalry_walk.png", (224, 224), 0.9, -79),
+    ("CATAPULT", "catapult_walk.png", (224, 208), 0.95, -78),
 ]
 # Direction rows: 2 = S (toward the viewer), 0 = E (screen right).
 ROWS = [("S", 2, 250), ("E", 0, 520)]
@@ -46,7 +47,7 @@ def grass_patch(width: int, height: int) -> Image.Image:
 
 
 def main() -> None:
-    canvas = grass_patch(1200, 640)
+    canvas = grass_patch(1400, 640)
     for _, direction_row, ground in ROWS:
         for index, (_, name, cell, scale, offset_y) in enumerate(UNITS_TO_DRAW):
             sheet = Image.open(UNITS / "actions" / name).convert("RGBA")

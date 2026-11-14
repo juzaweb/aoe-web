@@ -1,12 +1,14 @@
 # 3D unit art pipeline (Blender)
 
-Two units are rendered from local 3D sources under
+Three units are rendered from local 3D sources under
 `scripts/raw_downloads/models/` instead of coming out of the OpenGameArt pack:
 
 - **Cavalry** — a Mixamo-rigged knight (`linh.blend`, sword bone-parented to the
   right hand) seated on an armoured warhorse (`ngua.blend`, SmartRig armature).
 - **Archer** — the same soldier on foot with a recurve bow (`cung.glb`), the
   sword dropped and a drawn string added.
+- **Catapult** — a stone-throwing engine (`maybanda.glb`) with an auto-rig that
+  is discarded and replaced by a rigid Frame/Arm/Axle rig.
 
 Blender 4.5 headless renders Cycles. Everything here is reproducible from the
 checked-in source files: no image API, no manual retouching.
@@ -31,6 +33,12 @@ blender -b scripts/raw_downloads/models/linh.blend \
 blender -b scripts/raw_downloads/models/linh.blend \
     --python scripts/blender/render_archer.py -- --px 384 --accent
 
+# Catapult: frames land in scripts/blender/out/catapult_frames
+blender -b --python scripts/blender/render_catapult.py -- --px 448
+
+# Catapult team-colour mask: the counterweight box alone, same frames
+blender -b --python scripts/blender/render_catapult.py -- --px 448 --accent
+
 # Pack frames into the client's sheets, then publish them
 python3 scripts/blender/assemble_cavalry_sheets.py            # dry run + previews
 python3 scripts/blender/assemble_cavalry_sheets.py --write    # write into public/assets/units/actions
@@ -38,6 +46,10 @@ python3 scripts/blender/assemble_cavalry_sheets.py --write    # write into publi
 python3 scripts/blender/assemble_archer_sheets.py            # dry run + previews
 python3 scripts/blender/assemble_archer_sheets.py --write    # write into public/assets/units/actions
 python3 scripts/blender/assemble_archer_sheets.py --accent --write   # the team-colour layer
+
+python3 scripts/blender/assemble_catapult_sheets.py            # dry run + previews
+python3 scripts/blender/assemble_catapult_sheets.py --write    # write into public/assets/units/actions
+python3 scripts/blender/assemble_catapult_sheets.py --accent --write
 
 # Archer as a stand-alone, editable scene (45 MB, textures packed)
 blender -b scripts/raw_downloads/models/linh.blend \
@@ -56,15 +68,20 @@ ground margin are both chosen from those numbers — the death fall sets the wid
   row is `90, 45, 0, -45, -90, -135, 180, 135`.
 - **The camera and key light never move**; the unit is spun on its root. Each
   facing therefore carries its own shading instead of a relit, mirrored copy.
-- **World-to-pixel scale is shared.** Both units render at 0.0183 m/px, so a
-  1.5 m figure is the same height in either sheet and both stand on the same
-  ground line: the world origin — the point the game anchors the sprite to — sits
-  0.45 m above the cell bottom, which is the agent's sole row. `unitArt.ts`
-  mirrors these numbers in `frameWidth`/`frameHeight`/`offsetY`.
+- **World-to-pixel scale is shared** by the infantry and cavalry: they render at
+  0.0183 m/px, so a 1.5 m figure is the same height in either sheet and both
+  stand on the same ground line: the world origin — the point the game anchors
+  the sprite to — sits 0.45 m above the cell bottom, which is the agent's sole
+  row. `unitArt.ts` mirrors these numbers in `frameWidth`/`frameHeight`/`offsetY`.
 - **Cells.** Cavalry 224x224 (4.1 m camera square). Archer 192x168 at the
   spearman's scale: 3.52 m across and 3.08 m down, sole row 144 of 168 — the
   drawn bow reaches above the helmet, so the cell is one row taller than the
-  pack's 148x130.
+  pack's 148x130. Catapult 224x208 at 0.0125 m/px (2.8 m across, 2.6 m down):
+  the source engine is only 1.7 m tall, so at the pack's 0.0183 m/px it reads as
+  a handcart; the tighter scale draws it ~1.5x a soldier, sole row ~186 of 208.
+- **Facing.** The catapult is modelled facing -X, so `render_catapult.py` adds
+  `FACING_YAW_DEG = 90` to every row's yaw before posing. All other sources face
+  -Y and use the yaw table as-is.
 - **Lighting** is deliberately dimmer than the OpenGameArt pack. Both assemblers
   lift each sheet by the gamma that moves its median luma onto
   `spearman_walk.png`, keeping hue instead of applying a per-channel gain.
@@ -117,6 +134,15 @@ multiply-based team colour AoE uses.
   leaves bare patches), and `unitArt.sheets.test.ts` fails when the accent grid
   drifts a column from the body grid, which would tint the neighbouring pose.
 
+### Catapult
+
+The engine's accent is not cloth, and it is not sampled from the atlas either:
+`catapult_scene.ACCENT_BOX` names the counterweight box and the two posts that
+mount it, and the accent pass renders those faces white on the same camera and
+clips. The box is the only large machined surface that reads from all eight
+facings, so the owner's colour is legible without painting the frame. The
+generic coverage guard (0.8-16% of the cell) still applies.
+
 ### Spearman and cavalry
 
 Those two masks are not rendered. Their shipped sheets are the art of record, so
@@ -164,6 +190,36 @@ only the PNG header, so nothing in CI rebuilds the masks.
 The horse is deliberately outside the mask: its armour is steel and its small
 maroon saddle cloth is trim, so only the rider's tabard takes the owner's colour
 and the mount keeps the palette it was rendered with.
+
+## Catapult notes
+
+- **The source rig is thrown away.** `maybanda.glb` carries a `SmartRig` with 21
+  bones and no actions; the bones are surface heuristics, not the machine's
+  joints (the arm bone starts at the axle bracket's bottom edge). Rotating them
+  skins the counterweight into a bent box and drags a side rail, so
+  `catapult_scene.py` replaces the rig with four rigid bones: `Frame`, `Arm`,
+  `FrontAxle`, `RearAxle`. Every face is weighted 1.0 to exactly one bone, and
+  because the export's vertices are unwelded (one set per face) that assignment
+  is exact.
+- **The arm pivot is measured, not guessed.** The bracket spans x 0.05-0.42 and
+  z 0.72-1.17; its centroid is `(0.282, 1.03)` and the arm spins about that in
+  the mesh's Y axis. The bucket stays above the frame through the full winch.
+- **Wheels vs. rails.** The wheels' y band is shared by the long outer side
+  beams. A face counts as a wheel only when its centre is within 0.20 m of an
+  axle centre in XZ *and* it is under 0.12 m long in X; beam faces are long
+  strips. This is what lets the axles spin without dragging a rail segment.
+- **Actions.** Idle breathes the arm under a degree. Walk turns both axles one
+  revolution per cycle (negative about local +Y rolls toward the model's -X) with
+  a two-beat frame bob. Attack winches the arm to -40 degrees over six frames,
+  releases to +14 by frame 8 and settles; the frame pitches back on the release.
+  Death shudders and topples 78 degrees about the machine's own X axis, pivoting
+  on the near ground edge so it lands on its side instead of sinking through the
+  floor, and every toppled frame is recentred horizontally (the machine is wider
+  than its upright footprint).
+- **Death row spread.** The near wheels of this wide cart project lower than the
+  world origin on a 20 degree camera, so the idle rows' sole rows legitimately
+  span 15 px (180-195). The assembler allows 16 px, and `offsetY` is measured
+  from the median row (186), not the front wheels of one facing.
 
 ## Cavalry notes
 

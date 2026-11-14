@@ -328,7 +328,8 @@ const vi = {
     VILLAGER: 'Dân',
     SPEARMAN: 'Giáo',
     ARCHER: 'Cung',
-    CAVALRY: 'Kỵ'
+    CAVALRY: 'Kỵ',
+    CATAPULT: 'Đá'
   },
   mobile: {
     cancelOrder: 'Huỷ lệnh',
@@ -375,7 +376,7 @@ const vi = {
     },
     SIEGE_WORKSHOP: {
       name: 'Xưởng Công Thành',
-      description: 'Xưởng công thành. Khu sân kiên cố được chuẩn bị để chế tạo máy công thành.'
+      description: 'Xưởng công thành. Chế tạo máy bắn đá để nghiền nát đội hình địch.'
     },
     HOUSE: {
       name: 'Nhà ở',
@@ -426,6 +427,10 @@ const vi = {
     CAVALRY: {
       name: 'Kỵ binh',
       description: 'Kỵ binh nhanh và mạnh, phù hợp với chiến thuật đánh nhanh rút gọn.'
+    },
+    CATAPULT: {
+      name: 'Máy bắn đá',
+      description: 'Máy công thành bắn đá, gây sát thương cho cả cụm quân địch quanh điểm rơi.'
     }
   }
 };

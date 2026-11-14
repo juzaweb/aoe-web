@@ -143,6 +143,7 @@ export interface AccentClipSpec {
   frames: number[];
   frameRate: number;
   repeat: number;
+  repeatDelay: number;
 }
 
 /**
@@ -169,7 +170,8 @@ export function accentClipSpecs(
         texture,
         frames: actionRowFrames(direction, clip.frames),
         frameRate: clip.frameRate,
-        repeat: clip.repeat
+        repeat: clip.repeat,
+        repeatDelay: clip.repeatDelay
       });
     });
   }

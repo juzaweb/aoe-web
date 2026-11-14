@@ -21,7 +21,8 @@ import {
   getRequiredCoreLevel,
   getUnitLevelStats,
   getUnitUpgradeCost,
-  getUnitUpgradeTimeMs
+  getUnitUpgradeTimeMs,
+  isTrainerBuilding
 } from '@chien-quoc/shared';
 import { parseUnitLevels, serializeUnitLevels } from '../services/playerLevels.js';
 import { PlayerState } from '../schema/PlayerState.js';
@@ -29,7 +30,7 @@ import { PlayerState } from '../schema/PlayerState.js';
 describe('player level defaults', () => {
   it('starts every unit type at level 1', () => {
     const player = new PlayerState();
-    expect(Array.from(player.unitLevels)).toEqual([1, 1, 1, 1]);
+    expect(Array.from(player.unitLevels)).toEqual([1, 1, 1, 1, 1]);
     expect(player.researchUnitType).toBe('');
   });
 });
@@ -40,6 +41,7 @@ describe('military buildings (MIL-01)', () => {
     expect(buildingTypeForUnit('SPEARMAN')).toBe('BARRACKS');
     expect(buildingTypeForUnit('ARCHER')).toBe('ARCHERY_RANGE');
     expect(buildingTypeForUnit('CAVALRY')).toBe('STABLE');
+    expect(buildingTypeForUnit('CATAPULT')).toBe('SIEGE_WORKSHOP');
     expect(buildingTypeForUnit('DRAGON')).toBeNull();
   });
 
@@ -47,10 +49,21 @@ describe('military buildings (MIL-01)', () => {
     expect(BUILDING_BLUEPRINTS.BARRACKS.trainableUnits).toEqual(['SPEARMAN']);
     expect(BUILDING_BLUEPRINTS.STABLE.trainableUnits).toEqual(['CAVALRY']);
     expect(BUILDING_BLUEPRINTS.ARCHERY_RANGE.trainableUnits).toEqual(['ARCHER']);
+    expect(BUILDING_BLUEPRINTS.SIEGE_WORKSHOP.trainableUnits).toEqual(['CATAPULT']);
   });
 
-  it('ships the siege workshop as a gated, empty production building', () => {
-    expect(BUILDING_BLUEPRINTS.SIEGE_WORKSHOP.trainableUnits).toEqual([]);
+  it('derives military trainers from the roster, excluding the Town Center', () => {
+    expect(isTrainerBuilding('BARRACKS')).toBe(true);
+    expect(isTrainerBuilding('STABLE')).toBe(true);
+    expect(isTrainerBuilding('ARCHERY_RANGE')).toBe(true);
+    expect(isTrainerBuilding('SIEGE_WORKSHOP')).toBe(true);
+    // The Town Center trains villagers, but its own aura covers them.
+    expect(isTrainerBuilding('TOWN_CENTER')).toBe(false);
+    expect(isTrainerBuilding('HOUSE')).toBe(false);
+  });
+
+  it('keeps the siege workshop gated behind the Town Center and out of the pillar gate', () => {
+    expect(BUILDING_BLUEPRINTS.SIEGE_WORKSHOP.trainableUnits).toEqual(['CATAPULT']);
     expect(getBuildingUnlockLevel('SIEGE_WORKSHOP')).toBe(3);
     expect(CORE_BUILDING_TYPES).not.toContain('SIEGE_WORKSHOP');
   });
@@ -288,21 +301,29 @@ describe('visual tiers', () => {
 
 describe('persisted unit levels', () => {
   it('round-trips one level per type in UNIT_UPGRADE_ORDER', () => {
-    const levels = [1, 4, 2, 3];
+    const levels = [1, 4, 2, 3, 5];
     expect(parseUnitLevels(serializeUnitLevels(levels))).toEqual(levels);
-    expect(serializeUnitLevels(levels)).toBe('1,4,2,3');
+    expect(serializeUnitLevels(levels)).toBe('1,4,2,3,5');
   });
 
   it('defaults and clamps malformed rows', () => {
-    expect(parseUnitLevels('')).toEqual([1, 1, 1, 1]);
-    expect(parseUnitLevels(null)).toEqual([1, 1, 1, 1]);
-    expect(parseUnitLevels('0,99,bad')).toEqual([1, MAX_UNIT_LEVEL, 1, 1]);
-    expect(serializeUnitLevels([0, 99, 2, 3])).toBe('1,10,2,3');
+    expect(parseUnitLevels('')).toEqual([1, 1, 1, 1, 1]);
+    expect(parseUnitLevels(null)).toEqual([1, 1, 1, 1, 1]);
+    expect(parseUnitLevels('0,99,bad')).toEqual([1, MAX_UNIT_LEVEL, 1, 1, 1]);
+    expect(serializeUnitLevels([0, 99, 2, 3])).toBe('1,10,2,3,1');
+  });
+
+  it('reads a saved four-type row with the catapult at level 1', () => {
+    // Old saves predate CATAPULT; the positional CSV must not shift its level.
+    expect(parseUnitLevels('2,5,3,4')).toEqual([2, 5, 3, 4, 1]);
+    expect(getPlayerUnitLevel(parseUnitLevels('2,5,3,4'), 'CAVALRY')).toBe(4);
+    expect(getPlayerUnitLevel(parseUnitLevels('2,5,3,4'), 'CATAPULT')).toBe(1);
   });
 
   it('reads a type level by its upgrade index', () => {
-    expect(getPlayerUnitLevel([1, 4, 2, 3], 'SPEARMAN')).toBe(4);
-    expect(getPlayerUnitLevel([1, 4, 2, 3], 'CAVALRY')).toBe(3);
+    expect(getPlayerUnitLevel([1, 4, 2, 3, 5], 'SPEARMAN')).toBe(4);
+    expect(getPlayerUnitLevel([1, 4, 2, 3, 5], 'CAVALRY')).toBe(3);
+    expect(getPlayerUnitLevel([1, 4, 2, 3, 5], 'CATAPULT')).toBe(5);
     expect(getPlayerUnitLevel(undefined, 'ARCHER')).toBe(1);
   });
 });

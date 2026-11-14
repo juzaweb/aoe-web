@@ -5,8 +5,12 @@ import {
   ARROW_MAX_TRAVEL_MS,
   ARROW_MIN_TRAVEL_MS,
   ARROW_MS_PER_TILE,
+  BOULDER_MAX_TRAVEL_MS,
+  BOULDER_MIN_TRAVEL_MS,
+  BOULDER_MS_PER_TILE,
   arrowAngle,
   arrowPositionAt,
+  boulderFlightDurationMs,
   flightDurationMs,
   gridToScreenPoint
 } from './arrowFlight.js';
@@ -42,6 +46,18 @@ describe('flightDurationMs (FX-01)', () => {
 
   it('caps a long shot so a stray arrow does not hang in the air', () => {
     expect(flightDurationMs(40)).toBe(ARROW_MAX_TRAVEL_MS);
+  });
+});
+
+describe('boulderFlightDurationMs', () => {
+  it('is slower than an arrow at the same range', () => {
+    expect(boulderFlightDurationMs(6)).toBe(6 * BOULDER_MS_PER_TILE);
+    expect(boulderFlightDurationMs(6)).toBeGreaterThan(flightDurationMs(6));
+  });
+
+  it('keeps the floor and the ceiling', () => {
+    expect(boulderFlightDurationMs(0)).toBe(BOULDER_MIN_TRAVEL_MS);
+    expect(boulderFlightDurationMs(100)).toBe(BOULDER_MAX_TRAVEL_MS);
   });
 });
 

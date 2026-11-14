@@ -104,6 +104,22 @@ describe('createAccentSprite', () => {
     expect(sprite.scale).toBe(0.95);
   });
 
+  it('tints the catapult counterweight with the owner colour too', () => {
+    const catapultTexture = unitActionAccentTexture('CATAPULT', 'idle');
+    const catapultClip = unitActionAccentKey('CATAPULT', 'idle', 2);
+    const sprite = createAccentSprite(
+      fakeHost([catapultTexture], [catapultClip]),
+      'CATAPULT',
+      'idle',
+      -78,
+      0.95,
+      0xef4444
+    )!;
+    expect(sprite.plays).toEqual([catapultClip]);
+    expect(sprite.tintTopLeft).toBe(0xef4444);
+    expect(sprite.scale).toBe(0.95);
+  });
+
   it('returns null when the unit ships no mask for that action', () => {
     expect(createAccentSprite(fakeHost([], []), 'ARCHER', 'idle', 0, 1, 0x3b82f6)).toBeNull();
   });

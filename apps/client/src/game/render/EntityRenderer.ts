@@ -62,14 +62,16 @@ export class EntityRenderer {
       texture: string,
       frames: number[],
       frameRate: number,
-      repeat: number = -1
+      repeat: number = -1,
+      repeatDelay: number = 0
     ) => {
       if (scene.textures.exists(texture) && !scene.anims.exists(key)) {
         scene.anims.create({
           key,
           frames: scene.anims.generateFrameNumbers(texture, { frames }),
           frameRate,
-          repeat
+          repeat,
+          repeatDelay
         });
       }
     };
@@ -109,7 +111,8 @@ export class EntityRenderer {
             texture,
             actionRowFrames(direction, clip.frames),
             clip.frameRate,
-            clip.repeat
+            clip.repeat,
+            clip.repeatDelay
           );
         });
       }
@@ -120,7 +123,14 @@ export class EntityRenderer {
     // lookup instead of rebuilding frame counts.
     for (const unitType of Object.keys(UNIT_ART)) {
       for (const spec of accentClipSpecs(unitType, (key) => scene.textures.exists(key))) {
-        registerAnim(spec.key, spec.texture, spec.frames, spec.frameRate, spec.repeat);
+        registerAnim(
+          spec.key,
+          spec.texture,
+          spec.frames,
+          spec.frameRate,
+          spec.repeat,
+          spec.repeatDelay
+        );
       }
     }
   }
@@ -637,7 +647,6 @@ export class EntityRenderer {
     const blueprint = UNIT_BLUEPRINTS[unitType as keyof typeof UNIT_BLUEPRINTS];
 
     let unitDisplay: Phaser.GameObjects.Sprite | Phaser.GameObjects.Image;
-    const isCavalry = unitType === 'CAVALRY';
     // Geometry lives in `unitArt.ts`: sheets differ in cell size and the figure
     // sits at a different height inside each of them.
     const visualOffsetY = art.offsetY;
@@ -853,7 +862,7 @@ export class EntityRenderer {
         // patch cannot produce a sample that pairs a new x with a stale y.
         // ATK-03: detect hp loss before repainting the bar.
         scene.recordEntityHp(id, unit.ownerId, unit.hp, unit.x, unit.y);
-        this.updateUnitBar(container, unit.hp, unit.maxHp, isCavalry);
+        this.updateUnitBar(container, unit.hp, unit.maxHp, unitType);
         // Animation is deliberately not touched here: this callback fires on
         // every replicated field change, including x/y each tick, and the
         // server keeps a villager on HARVESTING while it is still walking to
@@ -863,7 +872,7 @@ export class EntityRenderer {
     }
   }
 
-  updateUnitBar(container: any, hp: number, maxHp: number, isCavalry: boolean = false) {
+  updateUnitBar(container: any, hp: number, maxHp: number, unitType: string = '') {
     const hpBar = container.getData('hpBar') as any;
     if (!hpBar) return;
 
@@ -873,12 +882,12 @@ export class EntityRenderer {
     // reads as the sprite alone; the panel still reports exact numbers.
     if (hp >= maxHp) return;
 
-    // The mounted art is taller than the legacy cavalry cell (the rider's helm
-    // reaches ~94 px above the tile), so its bar sits above that, not across the
-    // rider's shoulders.
-    const width = isCavalry ? 54 : 38;
+    // Each sheet puts its tallest silhouette at a different height: the mounted
+    // rider's helm reaches ~94 px above the tile and the catapult's raised arm
+    // ~130 px, so their bars sit above that instead of across the body.
+    const width = unitType === 'CAVALRY' ? 54 : unitType === 'CATAPULT' ? 56 : 38;
     const height = 4;
-    const barY = isCavalry ? -100 : -68;
+    const barY = unitType === 'CAVALRY' ? -100 : unitType === 'CATAPULT' ? -132 : -68;
 
     hpBar.fillStyle(0x0f172a, 0.8);
     hpBar.fillRect(-width / 2, barY, width, height);

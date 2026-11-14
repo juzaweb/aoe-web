@@ -176,6 +176,22 @@ sheets from the `.blend` files alone.
 
 **Changes made.** N/A - rendered, not derived from an image pack.
 
+### Catapult
+
+`apps/client/public/assets/units/actions/catapult_{idle,walk,attack,death}.png`
+are rendered in Blender from the 3D engine checked into this repository
+(`scripts/raw_downloads/models/maybanda.glb`), a generated stone-throwing
+machine with a wooden frame, four wheels and a counterweight box. The export's
+auto-rig is discarded and replaced by a rigid four-bone rig built around the
+measured arm axle and wheel centres, so the arm swings and the wheels roll
+without deforming the frame. The source faces -X, so the render adds a 90 degree
+turn to every direction row. `scripts/blender/README.md` documents the 224x208
+cell; `render_catapult.py` + `assemble_catapult_sheets.py` rebuild the sheets
+from the `.glb` alone. `catapult_<action>_accent.png` layers are the same frames
+rendered with the counterweight box masked white, for the owner's team colour.
+
+**Changes made.** N/A - rendered, not derived from an image pack.
+
 ### Archer
 
 `apps/client/public/assets/units/actions/archer_{idle,walk,attack,death}.png`
@@ -196,11 +212,12 @@ masked by `team_accent.py`; the client multiplies the owner's colour into them.
 
 ### Team-colour accent layers
 
-`apps/client/public/assets/units/actions/{archer,spearman,cavalry}_<action>_accent.png`
-are the team-colour masks: a white, shaded cloth layer on the body sheet's own
-grid, which the client multiplies by the owner's colour at runtime. The archer's
-masks are the same Blender frames rendered with the tunic isolated by
-`scripts/blender/team_accent.py`. The spearman's and cavalry's are derived from
+`apps/client/public/assets/units/actions/{archer,spearman,cavalry,catapult}_<action>_accent.png`
+are the team-colour masks: a white, shaded layer on the body sheet's own grid,
+which the client multiplies by the owner's colour at runtime. The archer's masks
+are the same Blender frames rendered with the tunic isolated by
+`scripts/blender/team_accent.py`; the catapult's isolate its counterweight box
+the same way. The spearman's and cavalry's are derived from
 the shipped sheet pixels by `scripts/build_team_accent.py`, because those sheets
 are the art of record and a re-render would risk moving the bodies off the grid
 the game draws.

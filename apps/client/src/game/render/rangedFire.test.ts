@@ -117,7 +117,8 @@ describe('RangedFireSim archers', () => {
         targetId: 'enemy-1',
         targetKind: 'unit',
         toX: 12,
-        toY: 10
+        toY: 10,
+        projectile: 'arrow'
       }
     ]);
 
@@ -207,7 +208,8 @@ describe('RangedFireSim archers', () => {
         targetId: 'house-1',
         targetKind: 'building',
         toX: 15,
-        toY: 9
+        toY: 9,
+        projectile: 'arrow'
       }
     ]);
 
@@ -257,6 +259,57 @@ describe('RangedFireSim archers', () => {
   });
 });
 
+describe('RangedFireSim catapult', () => {
+  const CATAPULT_COOLDOWN_MS = UNIT_BLUEPRINTS.CATAPULT.attackCooldownMs;
+  const CATAPULT_DRAW_MS = 700;
+
+  function catapult(overrides: Partial<UnitShotSource> = {}): UnitShotSource {
+    return {
+      id: 'catapult-1',
+      ownerId: 'player-1',
+      type: 'CATAPULT',
+      x: 10,
+      y: 10,
+      actionState: 'ATTACKING',
+      targetEntityId: 'enemy-1',
+      targetEntityType: 'unit',
+      ...overrides
+    };
+  }
+
+  it('releases a boulder on the eighth attack frame, then on its 3 s cooldown', () => {
+    const sim = new RangedFireSim();
+    const units = [catapult(), enemy({ x: 16, y: 10 })];
+
+    expect(sim.update(0, world(units))).toEqual([]);
+    expect(sim.update(CATAPULT_DRAW_MS - 1, world(units))).toEqual([]);
+    expect(sim.update(CATAPULT_DRAW_MS, world(units))).toEqual([
+      {
+        shooterId: 'catapult-1',
+        shooterKind: 'unit',
+        fromX: 10,
+        fromY: 10,
+        targetId: 'enemy-1',
+        targetKind: 'unit',
+        toX: 16,
+        toY: 10,
+        projectile: 'boulder'
+      }
+    ]);
+
+    // The boulder is slow to reload; a frame in between draws nothing.
+    expect(sim.update(CATAPULT_DRAW_MS + CATAPULT_COOLDOWN_MS - 1, world(units))).toEqual([]);
+    expect(sim.update(CATAPULT_DRAW_MS + CATAPULT_COOLDOWN_MS, world(units))).toHaveLength(1);
+  });
+
+  it('draws nothing beyond its own range', () => {
+    const sim = new RangedFireSim();
+    const far = enemy({ x: 24, y: 10 });
+    expect(sim.update(0, world([catapult(), far]))).toEqual([]);
+    expect(sim.update(CATAPULT_DRAW_MS, world([catapult(), far]))).toEqual([]);
+  });
+});
+
 describe('RangedFireSim towers', () => {
   it('fires the moment an enemy is in range, then on the blueprint cadence', () => {
     const sim = new RangedFireSim();
@@ -274,7 +327,8 @@ describe('RangedFireSim towers', () => {
         targetId: 'enemy-1',
         targetKind: 'unit',
         toX: 3,
-        toY: 3
+        toY: 3,
+        projectile: 'arrow'
       }
     ]);
 

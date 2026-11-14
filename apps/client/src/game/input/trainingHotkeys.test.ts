@@ -133,6 +133,16 @@ describe('training hotkeys (UIX-04)', () => {
     });
   });
 
+  it('trains a catapult from a Siege Workshop on M', () => {
+    scene = fakeScene({ buildingType: 'SIEGE_WORKSHOP' });
+    const { keyboard } = bindTraining(scene);
+    keyboard.press('keydown-M');
+    expect(scene.room.send).toHaveBeenCalledWith(NetworkMessage.TRAIN_UNIT, {
+      buildingId: 'b1',
+      unitType: 'CATAPULT'
+    });
+  });
+
   it('refuses a unit the building cannot train', () => {
     scene = fakeScene({ buildingType: 'BARRACKS' });
     const { keyboard } = bindTraining(scene);

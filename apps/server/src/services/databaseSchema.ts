@@ -32,7 +32,7 @@ export const DATABASE_TABLE_STATEMENTS: readonly string[] = [
     "stone" REAL NOT NULL DEFAULT 100,
     "population" INTEGER NOT NULL DEFAULT 0,
     "population_cap" INTEGER NOT NULL DEFAULT 10,
-    "unit_levels" TEXT NOT NULL DEFAULT '1,1,1,1',
+    "unit_levels" TEXT NOT NULL DEFAULT '1,1,1,1,1',
     "research_unit_type" TEXT NOT NULL DEFAULT '',
     "research_progress_ms" REAL NOT NULL DEFAULT 0,
     "research_time_ms" REAL NOT NULL DEFAULT 0,

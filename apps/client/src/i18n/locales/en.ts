@@ -325,7 +325,8 @@ const en = {
     VILLAGER: 'Vill',
     SPEARMAN: 'Spear',
     ARCHER: 'Arch',
-    CAVALRY: 'Cav'
+    CAVALRY: 'Cav',
+    CATAPULT: 'Cata'
   },
   mobile: {
     cancelOrder: 'Cancel',
@@ -372,7 +373,7 @@ const en = {
     },
     SIEGE_WORKSHOP: {
       name: 'Siege Workshop',
-      description: 'Siege workshop. A fortified yard prepared for siege-engine production.'
+      description: 'Siege workshop. Builds catapults that hurl boulders into massed enemies.'
     },
     HOUSE: {
       name: 'House',
@@ -423,6 +424,11 @@ const en = {
     CAVALRY: {
       name: 'Cavalry',
       description: 'Fast and powerful mounted warrior suited for hit-and-run tactics.'
+    },
+    CATAPULT: {
+      name: 'Catapult',
+      description:
+        'Siege engine that hurls boulders, damaging clustered enemies around the impact.'
     }
   }
 };

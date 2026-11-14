@@ -2,8 +2,10 @@ import * as Phaser from 'phaser';
 import type { WorldScene } from '../scenes/WorldScene.js';
 import {
   ARROW_ARC_PX,
+  BOULDER_ARC_PX,
   arrowAngle,
   arrowPositionAt,
+  boulderFlightDurationMs,
   flightDurationMs,
   gridToScreenPoint
 } from './arrowFlight.js';
@@ -12,7 +14,8 @@ import { prefersReducedMotion } from './prefersReducedMotion.js';
 import type { RangedShot } from './rangedFire.js';
 
 /**
- * FX-01: the arrows archers and watch towers loose, drawn over the battlefield.
+ * FX-01: the projectiles ranged units and watch towers loose, drawn over the
+ * battlefield.
  *
  * The simulation already owns the damage — this layer is decoration and never
  * writes to the room state. It exists because the server replicates *what*
@@ -23,12 +26,12 @@ import type { RangedShot } from './rangedFire.js';
  * Two properties matter more than the art:
  *
  * 1. Nothing leaks. Every sprite is created by this layer, tracked in
- *    {@link arrows}, and destroyed when it lands or when the scene shuts down.
+ *    `projectiles`, and destroyed when it lands or when the scene shuts down.
  *    A Phaser tween that outlives its target is the usual way an RTS client
  *    grows a frame-rate cliff after an hour of play.
- * 2. The effect is bounded. {@link MAX_LIVE_ARROWS} caps the work a huge fight
- *    can create, and reduced motion (UIX-13) collapses the flight into a short
- *    tracer with no arc and no impact burst.
+ * 2. The effect is bounded. {@link MAX_LIVE_PROJECTILES} caps the work a huge
+ *    fight can create, and reduced motion (UIX-13) collapses the flight into a
+ *    short tracer with no arc and no impact burst.
  */
 
 /** Texture key the scene preloads in `WorldScene.preload`. */
@@ -55,20 +58,32 @@ export const ARROW_STICK_MS = 420;
 export const IMPACT_MS = 260;
 
 /**
- * Ceiling on simultaneously visible arrows.
+ * Ceiling on simultaneously visible projectiles.
  *
- * A 300-unit brawl can legitimately produce a few dozen arrows per second. The
+ * A 300-unit brawl can legitimately produce a few dozen shots per second. The
  * cap keeps the display list and the tween manager bounded; shots beyond it are
  * simply not drawn, which reads as a stray arrow going unseen rather than as a
  * frame-rate drop.
  */
-export const MAX_LIVE_ARROWS = 160;
+export const MAX_LIVE_PROJECTILES = 160;
 
 /** Length the arrow sprite is drawn at, in pixels. */
 export const ARROW_LENGTH_PX = 46;
 
+/** Diameter the boulder sprite is drawn at, in pixels. */
+export const BOULDER_DIAMETER_PX = 30;
+
 /** Where an arrow leaves a unit, relative to the unit's feet anchor. */
 export const ARCHER_MUZZLE_Y = -34;
+
+/** Where a boulder leaves the catapult's cup, relative to its feet anchor. */
+export const CATAPULT_MUZZLE_Y = -112;
+
+/** Radians the boulder spins per ms in flight. */
+const BOULDER_SPIN_PER_MS = 0.009;
+
+/** Texture key of the runtime-drawn boulder. */
+const BOULDER_TEXTURE_KEY = 'fx_boulder';
 
 /** Where an arrow leaves a watch tower, relative to its footprint centre. */
 export const TOWER_MUZZLE_Y = -96;
@@ -88,9 +103,11 @@ const BUILDING_AIM_Y = -18;
  */
 const PROJECTILE_DEPTH = 900_000;
 
-/** One arrow currently in the air, or stuck in its target. */
-interface LiveArrow {
+/** One projectile currently in the air, or stuck in its target. */
+interface LiveProjectile {
   sprite: Phaser.GameObjects.Image;
+  /** Arrow art noses along the flight; the boulder spins freely. */
+  kind: RangedShot['projectile'];
   /** Scene-clock time the arrow was released, in ms. */
   startedAt: number;
   /** Total time in the air, in ms. */
@@ -111,7 +128,7 @@ interface LiveArrow {
 }
 
 export class ProjectileLayer {
-  private readonly arrows: LiveArrow[] = [];
+  private readonly projectiles: LiveProjectile[] = [];
   /** Reused by the projection helpers: this runs per arrow per frame. */
   private readonly point: ScreenPoint = { x: 0, y: 0 };
   private readonly from: ScreenPoint = { x: 0, y: 0 };
@@ -125,12 +142,13 @@ export class ProjectileLayer {
    * Positions are read from the live sprite containers rather than from the
    * shot's grid coordinates: a unit that started walking during the last
    * snapshot is already drawn a little ahead of the position the simulation saw,
-   * and an arrow that leaves from the drawn bow reads correctly.
+   * and a projectile that leaves from the drawn weapon reads correctly.
    */
   spawn(shot: RangedShot, now: number) {
-    if (this.arrows.length >= MAX_LIVE_ARROWS) return;
+    if (this.projectiles.length >= MAX_LIVE_PROJECTILES) return;
 
-    const textureKey = this.ensureArrowTexture();
+    const boulder = shot.projectile === 'boulder';
+    const textureKey = boulder ? this.ensureBoulderTexture() : this.ensureArrowTexture();
     if (!textureKey) return;
 
     const reduced = prefersReducedMotion();
@@ -139,27 +157,30 @@ export class ProjectileLayer {
 
     // Measured on the ground, not on screen: the isometric projection squashes
     // the vertical axis, so a screen-space length would make north-south shots
-    // slower than east-west ones at the same range.
+    // slower than east-west ones at the same range. A boulder is heavier, so it
+    // takes a slower, higher arc than an arrow over the same ground.
     const gridDistance = Math.hypot(shot.toX - shot.fromX, shot.toY - shot.fromY);
-    const duration = reduced
-      ? Math.max(80, flightDurationMs(gridDistance) * 0.35)
+    const flightMs = boulder
+      ? boulderFlightDurationMs(gridDistance)
       : flightDurationMs(gridDistance);
+    const duration = reduced ? Math.max(80, flightMs * 0.35) : flightMs;
 
     const sprite = this.scene.add
       .image(from.x, from.y, textureKey)
       .setDepth(PROJECTILE_DEPTH)
       .setOrigin(0.5, 0.5);
-    this.fitArrowSprite(sprite);
+    this.fitProjectileSprite(sprite, shot.projectile);
     // Point at the target before the first frame moves it: at t = 0 the arrow has
     // no step behind it, so an angle taken from the previous position would draw
     // it facing east whatever direction the shot really goes.
-    sprite.setRotation(arrowAngle(from, fallbackTarget));
+    if (!boulder) sprite.setRotation(arrowAngle(from, fallbackTarget));
 
-    const arrow: LiveArrow = {
+    const projectile: LiveProjectile = {
       sprite,
+      kind: shot.projectile,
       startedAt: now,
       duration,
-      arc: reduced ? 0 : ARROW_ARC_PX,
+      arc: reduced ? 0 : boulder ? BOULDER_ARC_PX : ARROW_ARC_PX,
       from: { x: from.x, y: from.y },
       last: { x: from.x, y: from.y },
       targetId: shot.targetId,
@@ -168,62 +189,88 @@ export class ProjectileLayer {
       landed: false
     };
 
-    this.arrows.push(arrow);
+    this.projectiles.push(projectile);
   }
 
   /**
-   * Advances every live arrow.
+   * Advances every live projectile.
    *
    * Called once per frame from the scene's update with the scene clock, so the
    * flight is a pure function of elapsed time and stays correct regardless of
    * the frame rate.
    */
   update(now: number) {
-    if (this.arrows.length === 0) return;
+    if (this.projectiles.length === 0) return;
 
-    for (let index = this.arrows.length - 1; index >= 0; index--) {
-      const arrow = this.arrows[index];
-      if (arrow.landed) continue;
+    for (let index = this.projectiles.length - 1; index >= 0; index--) {
+      const projectile = this.projectiles[index];
+      if (projectile.landed) continue;
 
-      const elapsed = now - arrow.startedAt;
-      const t = arrow.duration <= 0 ? 1 : elapsed / arrow.duration;
-      const target = this.liveTargetScreenPoint(arrow, this.to);
-      const position = arrowPositionAt(arrow.from, target, t, arrow.arc, this.point);
+      const elapsed = now - projectile.startedAt;
+      const t = projectile.duration <= 0 ? 1 : elapsed / projectile.duration;
+      const target = this.liveTargetScreenPoint(projectile, this.to);
+      const position = arrowPositionAt(projectile.from, target, t, projectile.arc, this.point);
 
-      arrow.sprite.setPosition(position.x, position.y);
-      arrow.sprite.setRotation(arrowAngle(arrow.last, position));
-      arrow.last.x = position.x;
-      arrow.last.y = position.y;
+      projectile.sprite.setPosition(position.x, position.y);
+      if (projectile.kind === 'boulder') {
+        // A tumbling rock, not a nosed arrow: the art has cracks and highlights,
+        // so a steady spin reads as rotation without ever pointing at the target.
+        projectile.sprite.setRotation(elapsed * BOULDER_SPIN_PER_MS + 0.6);
+      } else {
+        projectile.sprite.setRotation(arrowAngle(projectile.last, position));
+      }
+      projectile.last.x = position.x;
+      projectile.last.y = position.y;
 
-      if (t >= 1) this.land(arrow, position.x, position.y);
+      if (t >= 1) this.land(projectile, position.x, position.y);
     }
   }
 
-  /** Destroys every arrow this layer owns. Called when the map is torn down. */
+  /** Destroys every projectile this layer owns. Called when the map is torn down. */
   destroy() {
-    this.arrows.forEach((arrow) => {
-      // A landed arrow is fading under a tween that would keep writing to a
-      // destroyed sprite; kill it before the target goes away.
-      this.scene.tweens.killTweensOf(arrow.sprite);
-      arrow.sprite.destroy();
+    this.projectiles.forEach((projectile) => {
+      // A landed projectile is fading under a tween that would keep writing to
+      // a destroyed sprite; kill it before the target goes away.
+      this.scene.tweens.killTweensOf(projectile.sprite);
+      projectile.sprite.destroy();
     });
-    this.arrows.length = 0;
+    this.projectiles.length = 0;
   }
 
   /**
-   * Starts the landing sequence: the arrow sticks where it hit, a puff of dust
-   * goes up, and the sprite fades out.
+   * Starts the landing sequence: an arrow sticks where it hit, a boulder
+   * shatters; either way a puff of dust goes up and the sprite fades out.
    */
-  private land(arrow: LiveArrow, x: number, y: number) {
-    arrow.landed = true;
-    arrow.sprite.setPosition(x, y);
+  private land(projectile: LiveProjectile, x: number, y: number) {
+    projectile.landed = true;
+    projectile.sprite.setPosition(x, y);
 
     const reduced = prefersReducedMotion();
-    if (!reduced) this.spawnImpact(x, y);
+    const boulder = projectile.kind === 'boulder';
+    if (!reduced) this.spawnImpact(x, y, boulder ? 2.2 : 1.0);
+
+    if (boulder) {
+      // A boulder shatters instead of sticking: a short flash of the rock, a
+      // bigger dust cloud, then nothing. It never becomes decor on the ground.
+      this.scene.tweens.add({
+        targets: projectile.sprite,
+        alpha: 0,
+        scale: projectile.sprite.scaleX * 0.7,
+        y: y + 3,
+        duration: reduced ? 80 : 150,
+        ease: 'Quad.easeIn',
+        onComplete: () => {
+          projectile.sprite.destroy();
+          const live = this.projectiles.indexOf(projectile);
+          if (live >= 0) this.projectiles.splice(live, 1);
+        }
+      });
+      return;
+    }
 
     const stickMs = reduced ? 90 : ARROW_STICK_MS;
     this.scene.tweens.add({
-      targets: arrow.sprite,
+      targets: projectile.sprite,
       alpha: 0,
       // A landed arrow sits a couple of pixels lower than its flight path, which
       // is what makes it read as embedded rather than hovering.
@@ -231,15 +278,15 @@ export class ProjectileLayer {
       duration: stickMs,
       ease: 'Quad.easeIn',
       onComplete: () => {
-        arrow.sprite.destroy();
-        const live = this.arrows.indexOf(arrow);
-        if (live >= 0) this.arrows.splice(live, 1);
+        projectile.sprite.destroy();
+        const live = this.projectiles.indexOf(projectile);
+        if (live >= 0) this.projectiles.splice(live, 1);
       }
     });
   }
 
   /** The dust puff that marks the hit point. */
-  private spawnImpact(x: number, y: number) {
+  private spawnImpact(x: number, y: number, scale: number = 1) {
     const textureKey = this.ensureImpactTexture();
     if (!textureKey) return;
 
@@ -247,13 +294,13 @@ export class ProjectileLayer {
       .image(x, y, textureKey)
       .setDepth(PROJECTILE_DEPTH - 1)
       .setAlpha(0.85);
-    puff.setScale(0.45);
+    puff.setScale(0.45 * scale);
 
     this.scene.tweens.add({
       targets: puff,
-      scale: 1.15,
+      scale: 1.15 * scale,
       alpha: 0,
-      duration: IMPACT_MS,
+      duration: IMPACT_MS * (scale > 1 ? 1.35 : 1),
       ease: 'Quad.easeOut',
       onComplete: () => puff.destroy()
     });
@@ -265,7 +312,9 @@ export class ProjectileLayer {
       const container = this.scene.unitSprites.get(shot.shooterId);
       if (container) {
         out.x = container.x;
-        out.y = container.y + ARCHER_MUZZLE_Y;
+        out.y =
+          container.y +
+          (shot.projectile === 'boulder' ? CATAPULT_MUZZLE_Y : ARCHER_MUZZLE_Y);
         return out;
       }
     } else {
@@ -278,7 +327,12 @@ export class ProjectileLayer {
     }
 
     gridToScreenPoint(shot.fromX, shot.fromY, out);
-    out.y += shot.shooterKind === 'building' ? TOWER_MUZZLE_Y : ARCHER_MUZZLE_Y;
+    out.y +=
+      shot.shooterKind === 'building'
+        ? TOWER_MUZZLE_Y
+        : shot.projectile === 'boulder'
+          ? CATAPULT_MUZZLE_Y
+          : ARCHER_MUZZLE_Y;
     return out;
   }
 
@@ -304,33 +358,34 @@ export class ProjectileLayer {
   }
 
   /**
-   * Screen point of the target *now*, so an arrow follows a unit that walks
-   * during the ~0.4 s flight instead of landing where it used to be.
+   * Screen point of the target *now*, so a projectile follows a unit that walks
+   * during the flight instead of landing where it used to be.
    */
-  private liveTargetScreenPoint(arrow: LiveArrow, out: ScreenPoint): ScreenPoint {
+  private liveTargetScreenPoint(projectile: LiveProjectile, out: ScreenPoint): ScreenPoint {
     const container =
-      arrow.targetKind === 'unit'
-        ? this.scene.unitSprites.get(arrow.targetId)
-        : this.scene.buildingSprites.get(arrow.targetId);
+      projectile.targetKind === 'unit'
+        ? this.scene.unitSprites.get(projectile.targetId)
+        : this.scene.buildingSprites.get(projectile.targetId);
 
     if (!container) {
-      // The target died or left the room: the arrow finishes its flight to the
-      // last known spot rather than snapping to the origin.
-      out.x = arrow.fallbackTarget.x;
-      out.y = arrow.fallbackTarget.y;
+      // The target died or left the room: the projectile finishes its flight to
+      // the last known spot rather than snapping to the origin.
+      out.x = projectile.fallbackTarget.x;
+      out.y = projectile.fallbackTarget.y;
       return out;
     }
 
     out.x = container.x;
-    out.y = container.y + (arrow.targetKind === 'unit' ? UNIT_AIM_Y : BUILDING_AIM_Y);
+    out.y =
+      container.y + (projectile.targetKind === 'unit' ? UNIT_AIM_Y : BUILDING_AIM_Y);
     return out;
   }
 
-  /** Keeps every arrow the same on-screen length, whatever the source PNG. */
-  private fitArrowSprite(sprite: Phaser.GameObjects.Image) {
-    const width = sprite.width || ARROW_LENGTH_PX;
-    const scale = ARROW_LENGTH_PX / width;
-    sprite.setScale(scale);
+  /** Keeps every projectile the same on-screen size, whatever its texture. */
+  private fitProjectileSprite(sprite: Phaser.GameObjects.Image, kind: RangedShot['projectile']) {
+    const target = kind === 'boulder' ? BOULDER_DIAMETER_PX : ARROW_LENGTH_PX;
+    const width = sprite.width || target;
+    sprite.setScale(target / width);
   }
 
   /**
@@ -387,6 +442,66 @@ export class ProjectileLayer {
 
     this.scene.textures.addCanvas(ARROW_FALLBACK_TEXTURE_KEY, canvas);
     return ARROW_FALLBACK_TEXTURE_KEY;
+  }
+
+  /**
+   * The boulder, drawn once per scene.
+   *
+   * Deliberately procedural: the boulder is a 30 px projectile that lives for
+   * half a second, so a shipped PNG would add a download and a lock entry for
+   * an effect this shape can carry. Fixed vertices and a fixed gradient keep it
+   * deterministic across sessions.
+   */
+  private ensureBoulderTexture(): string | null {
+    if (this.scene.textures.exists(BOULDER_TEXTURE_KEY)) return BOULDER_TEXTURE_KEY;
+    if (typeof document === 'undefined') return null;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // An irregular decagon, so the spin is visible and it never reads as a ball.
+    const radii = [28, 26, 30, 27, 29, 25, 28, 30, 26, 29];
+    ctx.beginPath();
+    for (let index = 0; index < radii.length; index++) {
+      const angle = (index / radii.length) * Math.PI * 2;
+      const x = 32 + Math.cos(angle) * radii[index];
+      const y = 32 + Math.sin(angle) * radii[index] * 0.92;
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+
+    const stone = ctx.createRadialGradient(24, 22, 4, 32, 32, 32);
+    stone.addColorStop(0, '#b6a68c');
+    stone.addColorStop(0.45, '#7f7361');
+    stone.addColorStop(1, '#4a4339');
+    ctx.fillStyle = stone;
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(40, 35, 29, 0.85)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Cracks and chips, offset so one face looks struck.
+    ctx.strokeStyle = 'rgba(48, 42, 35, 0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(24, 20);
+    ctx.lineTo(30, 28);
+    ctx.lineTo(25, 36);
+    ctx.moveTo(39, 24);
+    ctx.lineTo(44, 33);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(196, 182, 158, 0.5)';
+    ctx.beginPath();
+    ctx.ellipse(25, 20, 5, 3, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    this.scene.textures.addCanvas(BOULDER_TEXTURE_KEY, canvas);
+    return BOULDER_TEXTURE_KEY;
   }
 
   /** Soft dust puff, drawn once per scene. */

@@ -52,6 +52,7 @@ CELLS = {
     "spearman": (192, 168),
     "archer": (192, 168),
     "cavalry": (224, 224),
+    "catapult": (224, 208),
 }
 
 # Row 2 is south (towards the viewer) in the east-first, clockwise sheet order -
@@ -67,6 +68,10 @@ POSE_FRAME = 0
 # mount's length legible, which is the whole reason the portrait exists.
 POSE_ROW = {
     "cavalry": 1,  # south-east
+    # The catapult is a long machine, not a person: front-on it collapses to a
+    # narrow box with the arm edge-on, while the east profile shows the frame,
+    # wheels and raised arm in one silhouette.
+    "catapult": 0,  # east
 }
 
 # How much of the portrait the figure fills, and how far its feet sit above the

@@ -12,6 +12,7 @@ import type { UnitType } from '@chien-quoc/shared';
  *   requires a building selection, and this game never mixes the two.
  * - `A` arms attack-move for a unit selection; training is building-only.
  * - `C` starts a Stable placement, which requires a selected villager.
+ * - `M` is free; it stands for the siege machine (a catapult).
  *
  * `CommandController` binds these keys and `EntityDetails` prints the same
  * letters on its buttons, so the badge can never claim a key that does nothing.
@@ -20,7 +21,8 @@ export const UNIT_TRAINING_HOTKEYS: ReadonlyArray<{ key: string; unitType: UnitT
   { key: 'V', unitType: 'VILLAGER' },
   { key: 'S', unitType: 'SPEARMAN' },
   { key: 'A', unitType: 'ARCHER' },
-  { key: 'C', unitType: 'CAVALRY' }
+  { key: 'C', unitType: 'CAVALRY' },
+  { key: 'M', unitType: 'CATAPULT' }
 ];
 
 /** Reverse lookup for the production panel, which renders one button per unit. */

@@ -8,6 +8,7 @@ import {
   type UnitBlueprint,
   type UnitType
 } from '@chien-quoc/shared';
+import { unitArt } from './unitArt.js';
 
 /**
  * SIM-03 client half: decides when a ranged shooter releases an arrow.
@@ -34,8 +35,14 @@ import {
  * animation has played, so the first arrow of an engagement waits for the end of
  * that draw. Only the first one: the cadence after it is the blueprint cooldown,
  * counted from the arrow that just left, exactly as the server counts it.
+ *
+ * Units may override this through `UnitArt.releaseMs`; the catapult uses the
+ * same 700 ms because its attack clip releases its arm on the eighth frame.
  */
 export const ARCHER_DRAW_MS = 700;
+
+/** Which projectile art this shot draws. */
+export type ProjectileKind = 'arrow' | 'boulder';
 
 /**
  * The action state a unit is replicated with while it trades blows.
@@ -116,6 +123,8 @@ export interface RangedShot {
   /** Grid position the arrow is aimed at, in tiles. */
   toX: number;
   toY: number;
+  /** What leaves the shooter: an archer/tower arrow or a catapult boulder. */
+  projectile: ProjectileKind;
 }
 
 /**
@@ -320,7 +329,7 @@ export class RangedFireSim {
   }
 
   /**
-   * One archer's clock. Returns the arrow it releases this frame, or null.
+   * One ranged unit's clock. Returns the projectile it releases this frame, or null.
    */
   private updateArcher(nowMs: number, unit: UnitShotSource): RangedShot | null {
     const blueprint = UNIT_BLUEPRINTS[unit.type as UnitType];
@@ -338,11 +347,15 @@ export class RangedFireSim {
       return null;
     }
 
+    const art = unitArt(unit.type);
     let timer = this.unitTimers.get(unit.id);
     if (timer) {
       timer.stamp = this.frame;
     } else {
-      timer = { readyAt: nowMs + ARCHER_DRAW_MS, stamp: this.frame };
+      timer = {
+        readyAt: nowMs + (art.releaseMs ?? ARCHER_DRAW_MS),
+        stamp: this.frame
+      };
       this.unitTimers.set(unit.id, timer);
     }
 
@@ -360,7 +373,8 @@ export class RangedFireSim {
       targetId: this.target.id,
       targetKind: this.target.footprint ? 'building' : 'unit',
       toX: this.target.x,
-      toY: this.target.y
+      toY: this.target.y,
+      projectile: art.projectile ?? 'arrow'
     };
   }
 
@@ -464,7 +478,8 @@ export class RangedFireSim {
       targetId: target.id,
       targetKind: 'unit',
       toX: target.x,
-      toY: target.y
+      toY: target.y,
+      projectile: 'arrow'
     };
   }
 

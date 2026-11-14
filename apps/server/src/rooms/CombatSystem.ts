@@ -4,6 +4,7 @@ import {
   BuildingType,
   CitadelLayout,
   UNIT_BLUEPRINTS,
+  UNIT_SPLASH_DAMAGE_FRACTION,
   UnitBlueprint,
   UnitType,
   attackReach,
@@ -465,6 +466,7 @@ export class CombatSystem {
 
       targetUnit.hp -= attackPower;
       this.attackTimers.set(unit.id, blueprint.attackCooldownMs);
+      this.applySplashDamage(unit, blueprint, targetUnit.x, targetUnit.y, targetUnit.id, attackPower);
 
       if (targetUnit.hp <= 0) {
         this.killUnit(targetUnit);
@@ -493,7 +495,16 @@ export class CombatSystem {
 
       if (!this.isTargetInWeaponRange(unit, blueprint)) return;
 
+      // Aim point for splash: the citadel compound is measured at its nearest
+      // wall/gate, every other building at its footprint centre -- the same
+      // point `targetPoint` and the client's boulder impact use.
+      const impact = this.targetPoint(unit);
+
       targetBuilding.hp -= attackPower;
+      this.attackTimers.set(unit.id, blueprint.attackCooldownMs);
+      if (impact) {
+        this.applySplashDamage(unit, blueprint, impact.x, impact.y, null, attackPower);
+      }
 
       // Phase 23 & Citadel update: Town Center and Citadel buildings never disappear.
       // They can take full damage down to 0 HP (100% loss causes defeat), but are not deleted.
@@ -506,14 +517,51 @@ export class CombatSystem {
         if (targetBuilding.hp < 0) targetBuilding.hp = 0;
       }
 
-      this.attackTimers.set(unit.id, blueprint.attackCooldownMs);
-
       if (targetBuilding.hp <= 0) {
         if (!isCitadelOrTC) {
           this.destroyBuilding(targetBuilding);
         }
         this.endAttackOrder(unit);
       }
+    }
+  }
+
+  /**
+   * Splash damage around a boulder's impact point (`UnitBlueprint.splashRadius`).
+   *
+   * The primary target already took the full hit, so it is excluded. Only enemy
+   * units are considered -- no friendly fire and no second building -- and the
+   * same citadel wall rule as a direct shot applies, so a boulder cannot reach a
+   * unit sealed inside a courtyard that the attacker could not otherwise hit.
+   * Victims are collected before the damage loop: `killUnit` deletes from
+   * `state.units`, and mutating the map during `forEach` would skip neighbours.
+   */
+  private applySplashDamage(
+    attacker: UnitState,
+    blueprint: UnitBlueprint,
+    impactX: number,
+    impactY: number,
+    primaryUnitId: string | null,
+    attackPower: number
+  ): void {
+    const radius = blueprint.splashRadius ?? 0;
+    if (radius <= 0) return;
+
+    const amount = Math.max(1, Math.round(attackPower * UNIT_SPLASH_DAMAGE_FRACTION));
+    const victims: UnitState[] = [];
+
+    this.state.units.forEach((other: UnitState) => {
+      if (other.ownerId === attacker.ownerId) return;
+      if (other.id === primaryUnitId) return;
+      if (other.hp <= 0) return;
+      if (!this.canEngagePosition(attacker, blueprint, other.x, other.y)) return;
+      if (Math.hypot(other.x - impactX, other.y - impactY) > radius) return;
+      victims.push(other);
+    });
+
+    for (const victim of victims) {
+      victim.hp -= amount;
+      if (victim.hp <= 0) this.killUnit(victim);
     }
   }
 

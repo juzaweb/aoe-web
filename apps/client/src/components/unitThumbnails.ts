@@ -11,9 +11,9 @@
  * rebuilt together by `scripts/build_unit_portrait.py`, never one at a time, so
  * bump it here when that script rewrites them and every surface follows.
  */
-const PORTRAIT_VERSION = 4;
+const PORTRAIT_VERSION = 5;
 
-/** Portrait URL for a unit type, e.g. `/assets/units/villager_idle.png?v=4`. */
+/** Portrait URL for a unit type, e.g. `/assets/units/villager_idle.png?v=5`. */
 export function unitThumbnail(type: string): string {
   return `/assets/units/${type.toLowerCase()}_idle.png?v=${PORTRAIT_VERSION}`;
 }

@@ -71,6 +71,7 @@ describe('building level formulas (LVL4)', () => {
     expect(getUnitTrainerBuilding('SPEARMAN')).toBe('BARRACKS');
     expect(getUnitTrainerBuilding('CAVALRY')).toBe('STABLE');
     expect(getUnitTrainerBuilding('ARCHER')).toBe('ARCHERY_RANGE');
+    expect(getUnitTrainerBuilding('CATAPULT')).toBe('SIEGE_WORKSHOP');
     expect(getUnitTrainerBuilding('UNKNOWN')).toBeNull();
 
     expect(getGatherBuildingType('wood')).toBe('LUMBER_CAMP');
@@ -148,8 +149,9 @@ describe('owner building levels (LVL4)', () => {
   });
 
   it('turns owner levels into trainer and gather rules with level-1 fallbacks', () => {
-    const levels = { BARRACKS: 10, LUMBER_CAMP: 10 };
+    const levels = { BARRACKS: 10, LUMBER_CAMP: 10, SIEGE_WORKSHOP: 7 };
     expect(trainerLevelFor(levels, 'SPEARMAN')).toBe(10);
+    expect(trainerLevelFor(levels, 'CATAPULT')).toBe(7);
     expect(trainerLevelFor(levels, 'ARCHER')).toBe(1);
     expect(trainerLevelFor(levels, 'VILLAGER')).toBe(1);
     expect(gatherMultiplierFor(levels, 'wood')).toBeCloseTo(1.45, 5);

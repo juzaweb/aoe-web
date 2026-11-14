@@ -42,6 +42,15 @@ export const ARROW_MAX_TRAVEL_MS = 520;
  */
 export const ARROW_ARC_PX = 46;
 
+/**
+ * A boulder is heavier and slower than an arrow: 90 ms per tile, with a higher
+ * arc so the shot is visibly lobbed over the front line instead of skimming it.
+ */
+export const BOULDER_MS_PER_TILE = 90;
+export const BOULDER_MIN_TRAVEL_MS = 260;
+export const BOULDER_MAX_TRAVEL_MS = 900;
+export const BOULDER_ARC_PX = 96;
+
 /** A point in world screen space (the scene's untransformed coordinates). */
 export interface ScreenPoint {
   x: number;
@@ -72,9 +81,28 @@ export function gridToScreenPoint(
  * squashes the vertical axis, and deriving the duration from the projected
  * length would make north-south shots visibly faster than east-west ones.
  */
+/** Clamp a per-tile travel time to the projectile's floor and ceiling. */
+function travelDurationMs(
+  gridDistance: number,
+  msPerTile: number,
+  minMs: number,
+  maxMs: number
+): number {
+  return Math.min(maxMs, Math.max(minMs, gridDistance * msPerTile));
+}
+
 export function flightDurationMs(gridDistance: number): number {
-  const ms = gridDistance * ARROW_MS_PER_TILE;
-  return Math.min(ARROW_MAX_TRAVEL_MS, Math.max(ARROW_MIN_TRAVEL_MS, ms));
+  return travelDurationMs(gridDistance, ARROW_MS_PER_TILE, ARROW_MIN_TRAVEL_MS, ARROW_MAX_TRAVEL_MS);
+}
+
+/** Time in the air for a boulder crossing `gridDistance` tiles. */
+export function boulderFlightDurationMs(gridDistance: number): number {
+  return travelDurationMs(
+    gridDistance,
+    BOULDER_MS_PER_TILE,
+    BOULDER_MIN_TRAVEL_MS,
+    BOULDER_MAX_TRAVEL_MS
+  );
 }
 
 /**

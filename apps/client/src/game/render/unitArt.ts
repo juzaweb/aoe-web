@@ -14,6 +14,12 @@ interface UnitActionTiming {
   fps?: number;
   /** Repeat override; `ACTION_REPEAT[action]` when omitted. */
   repeat?: number;
+  /**
+   * Pause between loops, in ms. Lets a one-second attack clip match a slower
+   * blueprint cooldown without redrawing it: the unit holds its rest frame
+   * during the reload instead of dry-firing every second.
+   */
+  repeatDelay?: number;
 }
 
 /**
@@ -55,6 +61,16 @@ export interface UnitArt {
    * colour over it. Absent means the unit has no team colour.
    */
   accent?: boolean;
+  /**
+   * Projectile art a ranged unit looses. Defaults to `arrow`, which is what
+   * archers and towers draw; the catapult throws a boulder.
+   */
+  projectile?: 'arrow' | 'boulder';
+  /**
+   * Delay between the attack clip starting and its projectile leaving, in ms.
+   * Defaults to the archer's 700 ms draw when omitted.
+   */
+  releaseMs?: number;
 }
 
 /**
@@ -164,6 +180,43 @@ export const UNIT_ART: Record<string, UnitArt> = {
     }
   },
   /**
+   * The stone-throwing engine, rendered in Blender from the local
+   * `maybanda.glb` (see `scripts/blender/`). The Siege Workshop trains it.
+   *
+   * 224x208 cells at 0.0125 m/px -- almost 1.5x the infantry's pixel density so
+   * the source's 1.7 m engine draws at siege-engine size instead of like a
+   * handcart. `offsetY` is measured from the near wheels' sole row (~row 186):
+   * a wide cart on a 20 degree camera projects its near pair lower than the
+   * world origin, so the rows legitimately spread 15 px.
+   */
+  CATAPULT: {
+    frameWidth: 224,
+    frameHeight: 208,
+    scale: 0.95,
+    offsetY: -78,
+    // The hit ellipse covers the frame and counterweight, not the raised arm.
+    bodyOffsetY: -58,
+    bodyRadiusX: 60,
+    bodyRadiusY: 42,
+    ringRadiusX: 52,
+    ringRadiusY: 24,
+    // The counterweight box is painted in the owner's colour; the mask is
+    // rendered by `catapult_scene.select_accent_faces`.
+    accent: true,
+    projectile: 'boulder',
+    releaseMs: 700,
+    actions: {
+      idle: { frames: 4 },
+      walk: { frames: 11, fps: 16 },
+      // Ten frames at 10 fps: the arm winches down for 0.6 s, releases on the
+      // eighth (0.7 s) and settles for the rest of the second. The reload is a
+      // 2 s pause after that second, so the clip loops exactly on the server's
+      // 3000 ms cooldown and the boulder leaves on the arm's release every time.
+      attack: { frames: 10, fps: 10, repeatDelay: 2000 },
+      death: { frames: 8, fps: 9 }
+    }
+  },
+  /**
    * Rendered in Blender from the two local .blend sources (an armoured warhorse
    * and a Mixamo-rigged knight seated on it), see `scripts/blender/`. The pack is
    * humanoid only and ships no mounted base, so this is the one unit whose art
@@ -260,6 +313,7 @@ export interface UnitClip {
   frames: number;
   frameRate: number;
   repeat: number;
+  repeatDelay: number;
 }
 
 /** Every (action, facing) clip a unit ships, in registration order. */
@@ -270,7 +324,8 @@ export function unitClips(unitType: string): UnitClip[] {
     sheetAction: spec.alias ?? action,
     frames: resolveActionFrames(art.actions, spec.alias ?? action),
     frameRate: spec.fps ?? ACTION_FRAME_RATE[action],
-    repeat: spec.repeat ?? ACTION_REPEAT[action]
+    repeat: spec.repeat ?? ACTION_REPEAT[action],
+    repeatDelay: spec.repeatDelay ?? 0
   }));
 }
 

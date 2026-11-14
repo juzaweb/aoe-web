@@ -45,7 +45,7 @@ export type BuildingType =
    */
   | 'PORTAL';
 
-export type UnitType = 'VILLAGER' | 'SPEARMAN' | 'ARCHER' | 'CAVALRY';
+export type UnitType = 'VILLAGER' | 'SPEARMAN' | 'ARCHER' | 'CAVALRY' | 'CATAPULT';
 
 export type ResourceNodeType = 'TREE' | 'GOLD_MINE' | 'STONE_MINE' | 'BERRY_BUSH';
 
@@ -153,6 +153,15 @@ export interface UnitBlueprint {
    * back to a drop-off. `0` for units that cannot gather.
    */
   carryCapacity: number;
+  /**
+   * Radius in tiles around a hit that also takes damage, for siege engines.
+   *
+   * Unset means single-target. The primary target always takes the full
+   * `attackPower`; every other *enemy* unit in the radius takes
+   * `UNIT_SPLASH_DAMAGE_FRACTION` of it. Friendly units are never hit, and
+   * buildings are never splash targets (only the primary building hit).
+   */
+  splashRadius?: number;
   description: string;
 }
 

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Crosshair, Gauge, Pickaxe, Shield, Swords, Timer } from 'lucide-react';
 import {
   BUILDING_BLUEPRINTS,
+  isTrainerBuilding,
   type BuildingType,
   type UnitType,
   dropOffGatherMultiplier,
@@ -66,7 +67,7 @@ function summarizeBuildingStats(
         text: `+${hpBuff}% HP · +${atkBuff}% ${t('details.attackPower')}`
       };
     }
-  } else if (bType === 'BARRACKS' || bType === 'STABLE' || bType === 'ARCHERY_RANGE') {
+  } else if (isTrainerBuilding(bType)) {
     const speedPct = Math.round((1 - trainerSpeedMultiplier(level)) * 100);
     const buffPct = Math.round((trainerUnitBuffMultiplier(level) - 1) * 100);
     if (speedPct > 0 || buffPct > 0) {

@@ -89,7 +89,7 @@ function building(
     hp: 600,
     maxHp: 600,
     // The player-wide research ladder, published with any owned building.
-    unitLevels: [1, 1, 1, 1],
+    unitLevels: [1, 1, 1, 1, 1],
     coreLevels: { HOUSE: 1, BARRACKS: 1, FARM: 1, TOWER: 1 },
     ...overrides
   } as SelectedEntityData;
@@ -258,6 +258,22 @@ describe('buildDockPages — building cards', () => {
       'building:DELETE'
     ]);
     expect(cmds[0].hotkey).toBe(UNIT_TRAINING_HOTKEY_BY_TYPE.SPEARMAN);
+  });
+
+  it('offers catapult training and research on an owned siege workshop', () => {
+    const pages = buildDockPages(makeInput({ entity: building('SIEGE_WORKSHOP') }));
+    expect(pages.map((page) => page.id)).toEqual(['TRAIN']);
+    const cmds = pages[0].commands;
+    expect(ids(cmds)).toEqual([
+      'train:CATAPULT',
+      'upgrade:START',
+      'research:CATAPULT',
+      'building:DELETE'
+    ]);
+    expect(cmds[0].hotkey).toBe(UNIT_TRAINING_HOTKEY_BY_TYPE.CATAPULT);
+    expect(cmds.find((command) => command.id === 'research:CATAPULT')?.title).toContain(
+      i18n.t('units.CATAPULT.name')
+    );
   });
 
   it('greys out training the player cannot pay for', () => {

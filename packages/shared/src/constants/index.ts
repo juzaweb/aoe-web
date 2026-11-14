@@ -303,6 +303,19 @@ export function canTrainUnitsAt(type: BuildingType): boolean {
   return (BUILDING_BLUEPRINTS[type]?.trainableUnits.length ?? 0) > 0;
 }
 
+/**
+ * Whether a building is a *military* trainer, i.e. shows the phase-26 trainer
+ * bonuses (faster and stronger production).
+ *
+ * The Town Center also has a roster, but villagers are covered by its own aura
+ * and deliberately receive no second trainer multiplier. Every other building
+ * with a roster is a trainer, so the rule is derived from the blueprints instead
+ * of a hand-maintained list that a new branch can forget to join.
+ */
+export function isTrainerBuilding(type: BuildingType): boolean {
+  return type !== 'TOWN_CENTER' && canTrainUnitsAt(type);
+}
+
 export const INITIAL_PLAYER_RESOURCES: Resources = {
   wood: 300,
   food: 300,
@@ -427,9 +440,10 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     dropOffs: [],
     description: 'Archery range. Trains archers who fight from behind the front line.'
   },
-  // Siege workshop: the building half of the catapult branch. It is placeable
-  // and upgradable now; `trainableUnits` stays empty until the Catapult unit
-  // lands, so it never advertises a roster the server cannot produce.
+  // Siege workshop: the catapult branch. It is gated behind Town Center level 3
+  // so siege engines arrive after the player has a real economy, and it is
+  // deliberately not a Town Center pillar: the three barracks-line buildings
+  // already gate the capital.
   SIEGE_WORKSHOP: {
     type: 'SIEGE_WORKSHOP',
     name: 'Siege Workshop',
@@ -439,14 +453,13 @@ export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
     buildTimeMs: 15000,
     maxHp: 1400,
     populationProvided: 0,
-    trainableUnits: [],
+    trainableUnits: ['CATAPULT'],
     attackPower: 0,
     attackRange: 0,
     attackCooldownMs: 0,
     dropOffs: [],
     requiredTownCenterLevel: 3,
-    description:
-      'Siege workshop. A fortified yard prepared for siege-engine production.'
+    description: 'Siege workshop. Builds catapults that hurl boulders into massed enemies.'
   },
   HOUSE: {
     type: 'HOUSE',
@@ -708,6 +721,30 @@ export const UNIT_BLUEPRINTS: Record<UnitType, UnitBlueprint> = {
     buildPower: 0,
     carryCapacity: 0,
     description: 'Fast and powerful mounted warrior suited for hit-and-run tactics.'
+  },
+  /**
+   * The siege line: slow, fragile for its price, and the only unit that hits an
+   * area. Seven tiles outranges an archer (5) and nearly matches a tower (8),
+   * so a catapult has to be screened by infantry; its 3 s reload is what pays
+   * for that reach and for the splash.
+   */
+  CATAPULT: {
+    type: 'CATAPULT',
+    name: 'Catapult',
+    cost: { wood: 160, food: 0, gold: 80, stone: 60 },
+    trainTimeMs: 14000,
+    maxHp: 120,
+    speed: 1.4,
+    attackPower: 22,
+    attackRange: 7.0,
+    attackCooldownMs: 3000,
+    canHarvest: false,
+    aggroRadius: 7,
+    buildPower: 0,
+    carryCapacity: 0,
+    splashRadius: 1.5,
+    description:
+      'Siege engine that hurls boulders, damaging clustered enemies around the impact.'
   }
 };
 
@@ -723,6 +760,16 @@ export const RANGED_MIN_RANGE = 2;
 export function isRangedAttackRange(attackRange: number): boolean {
   return attackRange >= RANGED_MIN_RANGE;
 }
+
+/**
+ * Share of the attacker's `attackPower` dealt to each secondary unit inside a
+ * `splashRadius`.
+ *
+ * Halved on purpose: a boulder should punish a clump without deleting it, and
+ * the primary target is already taking the full hit. Splash never hits friendly
+ * units and never damages a second building.
+ */
+export const UNIT_SPLASH_DAMAGE_FRACTION = 0.5;
 
 /**
  * Extra reach a unit is granted over its blueprint `attackRange`, in tiles.

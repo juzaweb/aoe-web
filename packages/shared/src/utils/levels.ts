@@ -109,7 +109,10 @@ export const UNIT_UPGRADE_ORDER: readonly UnitType[] = [
   'VILLAGER',
   'SPEARMAN',
   'ARCHER',
-  'CAVALRY'
+  'CAVALRY',
+  // Appended, never inserted: persisted `unit_levels` CSVs are positional, so
+  // a new unit takes the next slot and old rows read it as level 1.
+  'CATAPULT'
 ];
 
 /**

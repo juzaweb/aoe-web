@@ -48,6 +48,7 @@ import {
   getEffectiveUnitMaxHp,
   getUnitLevelStats,
   getPlayerUnitLevel,
+  isTrainerBuilding,
   CITADEL_AUTO_REPAIR_DURATION_MS,
   citadelLayoutFor,
   citadelTownCenterFor,
@@ -119,9 +120,7 @@ export const CORPSE_LINGER_MS = 1200;
  * and its level is handled separately.
  */
 const TRAINER_BUILDING_TYPES = new Set<BuildingType>(
-  (Object.keys(BUILDING_BLUEPRINTS) as BuildingType[]).filter(
-    (type) => type !== 'TOWN_CENTER' && BUILDING_BLUEPRINTS[type].trainableUnits.length > 0
-  )
+  (Object.keys(BUILDING_BLUEPRINTS) as BuildingType[]).filter(isTrainerBuilding)
 );
 
 const PLAYER_COLORS = [

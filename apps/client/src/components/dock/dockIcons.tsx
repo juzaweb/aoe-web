@@ -13,6 +13,7 @@ import {
   Route,
   Shield,
   Swords,
+  Target,
   Trash2,
   Undo2,
   UserX,
@@ -66,7 +67,8 @@ const UNIT_ICONS: Record<string, IconComponent> = {
   VILLAGER: Swords,
   SPEARMAN: Swords,
   ARCHER: Swords,
-  CAVALRY: Swords
+  CAVALRY: Swords,
+  CATAPULT: Target
 };
 
 /** Generic last resort, so a future `art` key can never render an empty slot. */

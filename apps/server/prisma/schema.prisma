@@ -38,7 +38,7 @@ model Player {
   population    Int        @default(0)
   populationCap Int        @default(10) @map("population_cap")
   /// Per-unit-type research levels, CSV in UNIT_UPGRADE_ORDER order.
-  unitLevels    String     @default("1,1,1,1") @map("unit_levels")
+  unitLevels    String     @default("1,1,1,1,1") @map("unit_levels")
   researchUnitType   String @default("") @map("research_unit_type")
   researchProgressMs Float  @default(0) @map("research_progress_ms")
   researchTimeMs     Float  @default(0) @map("research_time_ms")

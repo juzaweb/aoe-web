@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Layers } from 'lucide-react';
+import { UNIT_UPGRADE_ORDER } from '@chien-quoc/shared';
 import type { ControlGroupSummary } from '../game/scenes/WorldScene.js';
 
 /**
@@ -9,7 +10,9 @@ import type { ControlGroupSummary } from '../game/scenes/WorldScene.js';
 export function useUnitShortLabels(): Record<string, string> {
   const { t } = useTranslation();
   const map: Record<string, string> = {};
-  for (const type of ['VILLAGER', 'SPEARMAN', 'ARCHER', 'CAVALRY']) {
+  // The research order is the roster order; deriving the labels from it means a
+  // new unit cannot be added to one list and forgotten in the other.
+  for (const type of UNIT_UPGRADE_ORDER) {
     map[type] = t(`controlGroups.${type}`);
   }
   return map;

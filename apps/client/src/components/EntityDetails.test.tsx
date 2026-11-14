@@ -28,7 +28,7 @@ const BARRACKS: SelectedEntityData = {
   isConstructed: true,
   level: 1,
   maxLevel: 5,
-  unitLevels: [1, 1, 1, 1]
+  unitLevels: [1, 1, 1, 1, 1]
 };
 
 function renderPanel(entity: SelectedEntityData, resources = RICH_RESOURCES): string {

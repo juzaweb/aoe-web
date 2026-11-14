@@ -11,6 +11,7 @@ import {
   getEffectiveUnitMaxHp,
   getPlayerUnitLevel,
   getUnitMaxLevel,
+  isTrainerBuilding,
   dropOffGatherMultiplier,
   dropOffRange,
   trainerSpeedMultiplier,
@@ -123,10 +124,9 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
   // their unload ring. The Town Center keeps its phase-25 aura panel.
   const selectedType = entity.type === 'building' ? (entity.subType as BuildingType) : null;
   const selectedBlueprint = selectedType ? BUILDING_BLUEPRINTS[selectedType] : null;
-  const isTrainerBuilding =
-    selectedType === 'BARRACKS' ||
-    selectedType === 'STABLE' ||
-    selectedType === 'ARCHERY_RANGE';
+  // Derived from the roster, not a hardcoded building list: the Town Center
+  // keeps its own aura panel, every other building with a roster is a trainer.
+  const trainerBuilding = selectedType !== null && isTrainerBuilding(selectedType);
   const isDropOffCamp =
     selectedType !== null &&
     selectedType !== 'TOWN_CENTER' &&
@@ -324,7 +324,7 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
         </div>
       )}
 
-      {buildingIsOwnedAndFinished && isTrainerBuilding && (
+      {buildingIsOwnedAndFinished && trainerBuilding && (
         <div className="border-t border-slate-800 pt-2 space-y-1" data-trainer-effects>
           <span className="text-[11px] font-bold tracking-wider text-amber-300">
             {t('details.trainerEffectHeader', { level: buildingLevel })}

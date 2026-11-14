@@ -46,7 +46,10 @@ chien-quoc/
   - **Barracks:** Infantry garrison. Trains Spearmen.
   - **Stable:** Cavalry stable. Trains Cavalry.
   - **Archery Range:** Ranged garrison. Trains Archers.
-  - **Siege Workshop:** Siege-engine workshop (Catapult production is not wired yet).
+  - **Siege Workshop:** Siege-engine workshop. Trains Catapults at Town Center level 3.
+  - **Catapult:** Slow siege engine with 7-tile reach. Its boulder hits the primary
+    target for full damage and splashes 50% onto enemy units within 1.5 tiles of
+    the impact; friendly units are never hit.
   - **House:** Increases population capacity by +5.
   - **Farm:** Renewable food field holding 600 food at level 1 (+10%/level). Villagers harvest it in
     place and re-sow it for 60 wood once it runs dry.
@@ -142,10 +145,12 @@ Third-party art is used under its own license.
   *Western-European Castle* by **feudalwars**, **CC0 1.0**.
 - Stable and archery range buildings: project-original art generated locally with
   ComfyUI (`scripts/generate_buildings_assets.py`); not third-party.
-- Cavalry and archer units: project-original art rendered locally in Blender from
-  the 3D models in `scripts/raw_downloads/models/` (`scripts/blender/`); not
-  third-party. The archer's team-colour layers are rendered from the same scene
-  with the tunic masked, and tinted at runtime with the owner's colour.
+- Cavalry, archer and catapult units: project-original art rendered locally in
+  Blender from the 3D models in `scripts/raw_downloads/models/`
+  (`scripts/blender/`); not third-party. The archer's team-colour layers are
+  rendered from the same scene with the tunic masked, the catapult's with its
+  counterweight box masked, and both tinted at runtime with the owner's colour.
+  The siege workshop trains it, and its boulders splash damage around the impact.
 - Siege workshop: project-original art generated locally with ComfyUI
   (`scripts/generate_siege_workshop_asset.py`); not third-party.
 

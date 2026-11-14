@@ -221,7 +221,7 @@ export class DatabaseService {
    */
   private static async ensureUpgradeColumns() {
     const columns: Array<[table: string, column: string, definition: string]> = [
-      ['players', 'unit_levels', "TEXT NOT NULL DEFAULT '1,1,1,1'"],
+      ['players', 'unit_levels', "TEXT NOT NULL DEFAULT '1,1,1,1,1'"],
       ['players', 'research_unit_type', "TEXT NOT NULL DEFAULT ''"],
       ['players', 'research_progress_ms', 'REAL NOT NULL DEFAULT 0'],
       ['players', 'research_time_ms', 'REAL NOT NULL DEFAULT 0'],
