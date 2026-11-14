@@ -1033,11 +1033,12 @@ export class WorldScene extends Phaser.Scene {
     this.underAttackTracker.clear();
     this.cancelledFoundations.clear();
     // Repaint the overlays against the now-empty selection so nothing from the
-    // old map survives the frame. The new Room may not have delivered its first
-    // state patch yet, so the rally pass is guarded.
+    // old map survives the frame. The rally pass is safe without a room: it
+    // resolves no marker and clears whatever the previous map left behind, which
+    // is exactly what this teardown needs.
     this.focus?.render();
     this.commands?.updateWaypointPreview();
-    if (this.room?.state?.buildings) this.commands?.updateRallyMarkers();
+    this.commands?.updateRallyMarkers();
     this.onSelectionChange?.(null);
   }
 

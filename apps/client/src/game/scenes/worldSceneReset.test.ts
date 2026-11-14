@@ -67,4 +67,22 @@ describe('WorldScene.resetForNewWorld', () => {
     expect((scene.unitSprites as Map<string, unknown>).size).toBe(0);
     expect((scene.corpseSprites as Map<string, unknown>).size).toBe(0);
   });
+
+  it('clears the rally overlay even when the room is already detached', () => {
+    // The rally flag is a plain scene image, not a child of the building
+    // container the teardown destroys. The pass must run while `room` is null,
+    // otherwise a flag from the old map keeps floating over the new one.
+    const updateRallyMarkers = vi.fn();
+    resetForNewWorld(
+      stubScene({
+        commands: {
+          resetControlGroups: vi.fn(),
+          cancelPendingOrder: vi.fn(),
+          updateWaypointPreview: vi.fn(),
+          updateRallyMarkers
+        }
+      })
+    );
+    expect(updateRallyMarkers).toHaveBeenCalledOnce();
+  });
 });
