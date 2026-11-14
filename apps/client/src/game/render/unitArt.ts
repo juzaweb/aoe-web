@@ -122,6 +122,10 @@ export const UNIT_ART: Record<string, UnitArt> = {
     frameHeight: 168,
     scale: 0.95,
     offsetY: -58,
+    // The tunic mask is derived from the shipped sheet pixels by
+    // `scripts/build_team_accent.py`, then multiplied by the owner colour in
+    // `entityAccent.ts` exactly like the archer's rendered mask.
+    accent: true,
     actions: {
       idle: { frames: 4 },
       walk: { frames: 11, fps: 16 },
@@ -182,6 +186,9 @@ export const UNIT_ART: Record<string, UnitArt> = {
     bodyRadiusY: 46,
     ringRadiusX: 46,
     ringRadiusY: 22,
+    // Same image-space mask as the spearman: the rider's tabard is the cloth
+    // band, the horse armour is not, so the mount keeps its steel.
+    accent: true,
     actions: {
       idle: { frames: 4 },
       // 11 frames at 8 fps is a 1.35 s stride. The cavalry's 4 tiles/second run

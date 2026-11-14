@@ -13,6 +13,17 @@ Cách làm: bake **hai lớp sheet** (body + accent) từ Blender, lớp accent 
 > 8 hướng bằng pipeline `scripts/blender/`; nếu làm tiếp thì dùng lại `team_accent.py` +
 > `render_*_sheets.py --accent` thay vì hai script `blender_make_mask.py` / `blender_bake_sheet.py`
 > ở §3. Phần còn lại của plan (cavalry accent, ảnh hưởng hiệu năng 300 unit) chưa đo.
+>
+> **Cập nhật 2026-11-14 (lượt 2) — SPEARMAN + CAVALRY đã có accent end-to-end**, dùng
+> `scripts/build_team_accent.py` suy mask trực tiếp từ pixel của sheet đang ship (fallback D3)
+> thay vì render lại Blender. Lý do: spearman không còn script render tái lập được (sheet được
+> thay tay ở `1d958bb`) và render lại 528 frame sẽ làm lệch grid đang ship; band teal 184–202°,
+> sat ≥ 0.18 đã đo là chỉ bắt tabard (mũ thép 201–210°, sat 0.07–0.15 bị loại), preview 4 action
+> × 8 hướng đã soi bằng mắt. Guard coverage theo từng cell (0.4–16%) chặn mask rỗng/toàn thân,
+> publish chỉ ghi file khi mọi unit qua guard. Hệ quả D3 (fallback kém chính xác hơn bake) được
+> chấp nhận và ghi ở `scripts/blender/README.md`; nếu spearman có scene Blender tái lập được thì
+> thay mask bằng `team_accent.py` + `render_*_sheets.py --accent`. Còn lại: đo FPS với 300 unit
+> (§4) và verify trong game thật (§7).
 
 **Phạm vi:** `apps/client` + `scripts/` + `docs/plans` + `CREDITS.md`. **Không** đổi
 `packages/shared`, `apps/server`, schema, protocol hay DB: màu phe đã có sẵn trong

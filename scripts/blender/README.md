@@ -117,9 +117,53 @@ multiply-based team colour AoE uses.
   leaves bare patches), and `unitArt.sheets.test.ts` fails when the accent grid
   drifts a column from the body grid, which would tint the neighbouring pose.
 
-Cavalry and spearman have no mask yet: their sheets come from the pack and from
-the same soldier file un-masked, so `UNIT_ART` only sets `accent: true` on the
-archer.
+### Spearman and cavalry
+
+Those two masks are not rendered. Their shipped sheets are the art of record, so
+`scripts/build_team_accent.py` derives `<unit>_<action>_accent.png` from those
+exact pixels, which also guarantees the mask sits on the body pixel for pixel:
+
+- **The band.** The cloth is the only region at hue 184-202 with saturation
+  >= 0.18. The cavalry sheet was gamma-lifted onto a different median than the
+  spearman's, which lifts its blued-steel helmet to hue 201-210 at saturation
+  0.07-0.15 — a wider window tints the helmet, a narrower one leaves holes in
+  the shadowed folds.
+- **Cleanup.** Components under 24 px are dropped (armour texels in the band),
+  the mask is closed by one pixel, enclosed highlights and belt buckles are
+  filled, and it grows back over the cloth's own antialiased edge through a
+  looser saturation band, so no teal fringe shows around the tinted tabard. The
+  grow may only take pixels still in the cloth's hue, or it would draw a tinted
+  line along the grey sleeve.
+- **Shading.** The mask keeps the body's own luminance remapped onto 0.75-1.0, so
+  the folds survive the multiply. A flat white mask reads as plastic.
+- **Guards.** The script refuses a cell whose mask covers under 0.4% of it, or
+  over 80% of the *figure* in it, and dies before writing anything if any cell
+  fails. The floor is per cell because the cavalry's death clip hides the rider
+  behind the horse on its last frames and bottoms out at 0.53%, which is still
+  correct art. The ceiling is a share of the figure rather than of the cell: a
+  cell is only 4-12% figure, so an absolute ceiling would let a mask that tints
+  every limb through. Every sheet is staged to `<name>.png.tmp` and renamed into
+  place, so an I/O error cannot leave half the masks replaced.
+- **Previews and the stale gate.** The dry run writes tinted previews to
+  `scripts/out/team_accent/` for all eight facings. `--check` rebuilds the masks
+  in memory and fails when a shipped sheet is missing, is the wrong size, or no
+  longer matches the current body art — the only thing that catches an accent
+  left behind after a body re-render.
+
+```bash
+python3 scripts/build_team_accent.py            # dry run + previews
+python3 scripts/build_team_accent.py --check    # shipped sheets still match the bodies
+python3 scripts/build_team_accent.py --write    # publish the accent sheets
+python3 scripts/build_team_accent.py --unit CAVALRY --write
+python3 scripts/assets/build.py --legacy        # re-pin the new hashes, then --check
+```
+
+`--check` is a manual gate, like the other asset checks: the Node test suite reads
+only the PNG header, so nothing in CI rebuilds the masks.
+
+The horse is deliberately outside the mask: its armour is steel and its small
+maroon saddle cloth is trim, so only the rider's tabard takes the owner's colour
+and the mount keeps the palette it was rendered with.
 
 ## Cavalry notes
 

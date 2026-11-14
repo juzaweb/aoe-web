@@ -149,13 +149,15 @@ describe('hasDirectionalArt', () => {
 });
 
 describe('hasTeamAccent', () => {
-  it('is true only for the unit whose sheet ships a mask layer', () => {
-    // The archer's tunic is masked by `scripts/blender/team_accent.py`.
+  it('is true for every unit that ships a mask layer', () => {
+    // The archer's tunic is masked in Blender by `team_accent.py`; the
+    // spearman's and cavalry's are derived from the shipped pixels by
+    // `scripts/build_team_accent.py`.
     expect(hasTeamAccent('ARCHER')).toBe(true);
-    // The pack's own art has its colours baked into the sheet with no mask.
+    expect(hasTeamAccent('SPEARMAN')).toBe(true);
+    expect(hasTeamAccent('CAVALRY')).toBe(true);
+    // The villager's pack art has its colours baked in and no cloth mask.
     expect(hasTeamAccent('VILLAGER')).toBe(false);
-    expect(hasTeamAccent('SPEARMAN')).toBe(false);
-    expect(hasTeamAccent('CAVALRY')).toBe(false);
     expect(hasTeamAccent('NOT_A_UNIT')).toBe(false);
   });
 });
