@@ -820,6 +820,21 @@ export class CommandController {
       return;
     }
 
+    // Phase 23: the kingdom has one gateway and a raid shares it, so any portal
+    // in the room is the retreat gate. Checked before enemy buildings: the
+    // defender's portal belongs to the enemy, but right-clicking it must retreat
+    // instead of issuing an attack on an unattackable structure.
+    const portalId = findBuildingAt(scene, targetGrid);
+    if (portalId) {
+      const building = scene.room.state.buildings.get(portalId);
+      if (building?.type === 'PORTAL') {
+        scene.room.send(NetworkMessage.RAID_RETREAT, {});
+        this.showFeedback(worldPoint.x, worldPoint.y, 'rally');
+        playCommandSound('rally');
+        return;
+      }
+    }
+
     // 2. Check if right-clicked on an enemy building
     const targetEnemyBuildingId = findBuildingAt(scene, targetGrid, 'enemy');
     if (targetEnemyBuildingId) {
@@ -831,21 +846,6 @@ export class CommandController {
       this.showFeedback(worldPoint.x, worldPoint.y, 'attack');
       playCommandSound('attack');
       return;
-    }
-
-    // Phase 23: a portal is only a retreat gate now. Right-clicking your own
-    // one asks the server to settle the raid and bring the army home. Checked
-    // before foundations/resources so the click never becomes a walk order
-    // under its footprint.
-    const ownBuildingId = findBuildingAt(scene, targetGrid, scene.myOwnerId);
-    if (ownBuildingId) {
-      const building = scene.room.state.buildings.get(ownBuildingId);
-      if (building?.type === 'PORTAL') {
-        scene.room.send(NetworkMessage.RAID_RETREAT, {});
-        this.showFeedback(worldPoint.x, worldPoint.y, 'rally');
-        playCommandSound('rally');
-        return;
-      }
     }
 
     // 3. CMD-05: right-clicking your own foundation with villagers selected puts

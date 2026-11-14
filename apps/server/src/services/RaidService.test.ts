@@ -314,6 +314,36 @@ describe('RaidService.settleRaid', () => {
     expect(raid.status).toBe('ATTACKER_WON');
   });
 
+  it('clears a legacy raider gate from the defender kingdom', async () => {
+    const raidId = await startBasicRaid();
+    const defenderZone = zoneForOwner('defender');
+    const building = (id: string, ownerId: string) => ({
+      id,
+      ownerId,
+      zone: defenderZone,
+      type: 'PORTAL',
+      gridX: 108,
+      gridY: ownerId === 'attacker' ? 52 : 54,
+      sizeX: 2,
+      sizeY: 2,
+      hp: 1000,
+      maxHp: 1000,
+      isConstructed: true,
+      constructionProgress: 100
+    });
+    await prisma.building.create({ data: building('b-defender-gate', 'defender') });
+    await prisma.building.create({ data: building('b-raider-gate', 'attacker') });
+
+    await RaidService.settleRaid({
+      raidId,
+      outcome: 'RETREATED',
+      survivingUnitIds: ['u1', 'u2']
+    });
+
+    expect(await prisma.building.findUnique({ where: { id: 'b-defender-gate' } })).not.toBeNull();
+    expect(await prisma.building.findUnique({ where: { id: 'b-raider-gate' } })).toBeNull();
+  });
+
   it('caps loot per resource', async () => {
     await addPlayer('attacker');
     await addPlayer('defender', {

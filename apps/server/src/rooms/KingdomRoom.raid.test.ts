@@ -92,9 +92,9 @@ function addUnit(room: KingdomRoom, id: string, ownerId: string) {
   return unit;
 }
 
-function addPortal(room: KingdomRoom, ownerId: string) {
+function addPortal(room: KingdomRoom, ownerId: string, id = 'b-portal') {
   const portal = new BuildingState();
-  portal.id = 'b-portal';
+  portal.id = id;
   portal.ownerId = ownerId;
   portal.type = 'PORTAL';
   // Matches `ensurePortalFor`'s fixed kingdom gateway: right edge, centred.
@@ -363,11 +363,52 @@ describe('KingdomRoom retreat', () => {
     );
   });
 
+  it('orders the army to the kingdom gateway without adding a raider portal', async () => {
+    const room = createRoom();
+    addPlayer(room, 'attacker');
+    const unit = addUnit(room, 'u1', 'attacker');
+    const gateway = addPortal(room, 'defender');
+    withRaid(room);
+
+    await room['handleRetreat'](createClient('attacker') as any);
+
+    const portals = Array.from(room.state.buildings.values()).filter(
+      (building) => building.type === 'PORTAL'
+    );
+    expect(portals).toHaveLength(1);
+    expect(portals[0].id).toBe(gateway.id);
+    expect(portals[0].ownerId).toBe('defender');
+    expect(unit.actionState).toBe('MOVING');
+    expect(unit.targetX).toBeGreaterThan(100);
+  });
+
+  it('removes a legacy raider portal when the raid settles', async () => {
+    const room = createRoom();
+    addPlayer(room, 'attacker');
+    addTownCenter(room, 'defender');
+    addUnit(room, 'u1', 'attacker');
+    addPortal(room, 'defender');
+    addPortal(room, 'attacker', 'b-legacy-raider-portal');
+    withRaid(room);
+
+    // An empty attacker army settles the raid as a defender win. Mark the army
+    // as seen first, as the earlier tick would have before its soldiers died.
+    internals(room).raidArmySeen = true;
+    room.state.units.delete('u1');
+    await room['evaluateRaid']();
+
+    expect(settleRaid).toHaveBeenCalledTimes(1);
+    const portals = Array.from(room.state.buildings.values()).filter(
+      (building) => building.type === 'PORTAL'
+    );
+    expect(portals.map((portal) => portal.id)).toEqual(['b-portal']);
+  });
+
   it('orders the army to the gate instead of settling immediately', async () => {
     const room = createRoom();
     addPlayer(room, 'attacker');
     const unit = addUnit(room, 'u1', 'attacker');
-    addPortal(room, 'attacker');
+    addPortal(room, 'defender');
     withRaid(room);
 
     await room['handleRetreat'](createClient('attacker') as any);
@@ -386,7 +427,7 @@ describe('KingdomRoom retreat', () => {
     addTownCenter(room, 'defender');
     const unitA = addUnit(room, 'u1', 'attacker');
     const unitB = addUnit(room, 'u2', 'attacker');
-    addPortal(room, 'attacker');
+    addPortal(room, 'defender');
     withRaid(room);
 
     await room['handleRetreat'](createClient('attacker') as any);
@@ -417,7 +458,7 @@ describe('KingdomRoom retreat', () => {
     addPlayer(room, 'attacker');
     addTownCenter(room, 'defender');
     const unit = addUnit(room, 'u1', 'attacker');
-    addPortal(room, 'attacker');
+    addPortal(room, 'defender');
     withRaid(room);
 
     await room['handleRetreat'](createClient('attacker') as any);

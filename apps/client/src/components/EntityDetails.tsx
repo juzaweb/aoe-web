@@ -364,9 +364,10 @@ export const EntityDetails: React.FC<EntityDetailsProps> = ({
         </div>
       )}
 
-      {/* Phase 23: a portal is now only a retreat gate, and only a raider has
-          one. Right-clicking it is the second way to retreat. */}
-      {entity.type === 'building' && entity.isPortal && entity.isOwner && inRaid && (
+      {/* Phase 23: the kingdom's single portal is the shared retreat gate. A
+          raider sees the defender's gateway, so ownership must not hide the
+          retreat controls during a raid. */}
+      {entity.type === 'building' && entity.isPortal && inRaid && (
         <div className="border-t border-red-800/60 pt-2 space-y-1.5">
           <span className="text-[11px] font-bold text-red-300 tracking-wider">
             {t('details.retreatGate')}

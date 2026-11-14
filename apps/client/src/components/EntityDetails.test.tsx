@@ -112,3 +112,36 @@ describe('unit training tooltip (UIX-15)', () => {
     expect(html).not.toContain('text-slate-500');
   });
 });
+
+describe('raid retreat gate (phase 23)', () => {
+  it('offers retreat from the shared portal even though the defender owns it', async () => {
+    await i18n.changeLanguage('en');
+    const portal: SelectedEntityData = {
+      ...BARRACKS,
+      id: 'b-portal',
+      name: 'Portal',
+      subType: 'PORTAL',
+      isPortal: true,
+      isOwner: false
+    };
+
+    const html = renderToString(
+      <EntityDetails
+        entity={portal}
+        playerResources={RICH_RESOURCES}
+        inRaid
+        onRetreat={() => {}}
+        onTrainUnit={() => {}}
+        onCancelTrain={() => {}}
+        onCancelBuilding={() => {}}
+        onUpgradeBuilding={() => {}}
+        onCancelBuildingUpgrade={() => {}}
+        onUpgradeUnitType={() => {}}
+        onCancelUnitUpgrade={() => {}}
+      />
+    );
+
+    expect(html).toContain('RETREAT GATE');
+    expect(html).toContain('Withdraw the whole army to the kingdom');
+  });
+});

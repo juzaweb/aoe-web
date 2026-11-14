@@ -20,6 +20,22 @@ export function findOwnPortal(state: WorldState, ownerId: string): BuildingState
   return found;
 }
 
+/**
+ * Removes every portal in this map that is not owned by `ownerId`.
+ *
+ * A kingdom has exactly one gateway, owned by the defender. Older builds gave
+ * a raider a second retreat gate in the defender's map; those rows are cleared
+ * here so a raid can never leave a stray portal behind.
+ */
+export function removeForeignPortals(state: WorldState, ownerId: string): number {
+  const stale: string[] = [];
+  state.buildings.forEach((building: BuildingState, id: string) => {
+    if (building.type === 'PORTAL' && building.ownerId !== ownerId) stale.push(id);
+  });
+  for (const id of stale) state.buildings.delete(id);
+  return stale.length;
+}
+
 /** The account's Town Center in this room, if it has one. */
 export function findOwnTownCenter(state: WorldState, ownerId: string): BuildingState | null {
   let found: BuildingState | null = null;

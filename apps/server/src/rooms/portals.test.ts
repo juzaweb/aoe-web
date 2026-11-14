@@ -4,7 +4,7 @@ import { BuildingState } from '../schema/BuildingState.js';
 import { ResourceNodeState } from '../schema/ResourceNodeState.js';
 import { WorldState } from '../schema/WorldState.js';
 import { entityIds } from '../services/EntityIdAllocator.js';
-import { arrivalPoint, ensurePortalFor, findOwnPortal } from './portals.js';
+import { arrivalPoint, ensurePortalFor, findOwnPortal, removeForeignPortals } from './portals.js';
 
 function createState(zone: string): WorldState {
   const state = new WorldState();
@@ -60,6 +60,30 @@ function overlaps(a: BuildingState, b: BuildingState): boolean {
     a.gridY + a.sizeY > b.gridY
   );
 }
+
+describe('removeForeignPortals', () => {
+  beforeEach(() => entityIds.reset());
+
+  it('keeps only the kingdom own gateway and clears stale raider portals', () => {
+    const state = createState('kingdom:defender');
+    const gateway = addBuilding(state, 'defender', 'PORTAL', 108, 54);
+    const raiderGate = addBuilding(state, 'attacker', 'PORTAL', 108, 52);
+
+    expect(removeForeignPortals(state, 'defender')).toBe(1);
+
+    expect(state.buildings.has(gateway.id)).toBe(true);
+    expect(state.buildings.has(raiderGate.id)).toBe(false);
+  });
+
+  it('leaves an unrelated building untouched', () => {
+    const state = createState('kingdom:defender');
+    addBuilding(state, 'defender', 'PORTAL', 108, 54);
+    const townCenter = addBuilding(state, 'attacker', 'TOWN_CENTER', 40, 40);
+
+    expect(removeForeignPortals(state, 'defender')).toBe(0);
+    expect(state.buildings.has(townCenter.id)).toBe(true);
+  });
+});
 
 describe('ensurePortalFor', () => {
   beforeEach(() => entityIds.reset());

@@ -394,7 +394,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
    * Runs once the map is restored and before any client may join it.
    *
    * `KingdomRoom` uses it to pick up a raid that survived a restart and to
-   * place the retreat gate.
+   * clear any legacy raider gate from the shared kingdom gateway.
    */
   protected async onWorldReady(): Promise<void> {}
 
@@ -1574,8 +1574,9 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       this.state.units.set(vId, villager);
     });
 
-    // Phase 23: a kingdom no longer has a gateway to a shared battlefield. The
-    // only portal that appears here belongs to a raider and is created on join.
+    // Phase 23: a kingdom no longer has a gateway to a shared battlefield. Its
+    // own gateway is created by `materializeTravel` on join, and a raid reuses
+    // that same portal instead of adding one for the attacker.
 
     this.updatePlayerPopulation(ownerId);
   }

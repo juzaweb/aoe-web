@@ -99,7 +99,8 @@ const MAX_WORLD_MAP_NEIGHBORS = 500;
 
 /**
  * Where an attacking army appears: a loose block just inside the defender's
- * right edge, matching the side a retreat gate is placed on.
+ * right edge, next to the kingdom's existing gateway that serves as the shared
+ * retreat point.
  *
  * Units do not collide, so a small fan is enough to keep them out of one pixel.
  */
@@ -404,6 +405,11 @@ export class RaidService {
         where: { id: defenderId },
         data: { shieldUntil: now + RAID_SHIELD_MS }
       });
+
+      // A raider never owns a building in the defender's kingdom. Older builds
+      // did place a retreat portal there, so that row is cleared with the army
+      // instead of lingering beside the defender's shared gateway.
+      await tx.building.deleteMany({ where: { ownerId: attackerId, zone: raidZone } });
 
       // Army bookkeeping: casualties disappear, survivors go home. Rows the
       // room no longer knows about are casualties.

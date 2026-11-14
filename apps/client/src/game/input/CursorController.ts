@@ -79,7 +79,18 @@ export class CursorController {
 
     if (!this.scene.room || this.scene.selectedUnitIds.size === 0) return 'default';
 
-    if (findUnitAt(this.scene, worldPoint, 'enemy') || findBuildingAt(this.scene, grid, 'enemy')) {
+    // A unit stands above the building under it, and the right-click handler
+    // resolves units first. Mirror that order so the cursor never promises an
+    // attack on the portal when the click would retreat instead.
+    if (findUnitAt(this.scene, worldPoint, 'enemy')) return 'attack';
+
+    // Phase 23: a portal is the shared retreat gate, never an attack target.
+    // Neutral rather than the attack reticle: the click withdraws the army.
+    const buildingId = findBuildingAt(this.scene, grid);
+    const building = buildingId ? this.scene.room.state.buildings.get(buildingId) : undefined;
+    if (building?.type === 'PORTAL') return 'default';
+
+    if (findBuildingAt(this.scene, grid, 'enemy')) {
       return 'attack';
     }
 

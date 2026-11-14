@@ -35,7 +35,7 @@ khác** làm mỗi trận có đích (Nhà chính), có tài sản để mất (
 | R5 | Kết quả: cướp tài nguyên + phá quân/công trình vĩnh viễn. |
 | R6 | Không giới hạn số trận/ngày. **Thua** thì khoá cặp (attacker → defender) **3 ngày**. Defender luôn có **khiên 72 giờ** sau một trận. |
 | R7 | Nhà chính **không phá được**. Điều kiện thắng: HP Nhà chính chủ nhà ≤ **25%** `maxHp`. |
-| R8 | Rút quân bằng **cổng riêng** đặt trong vương quốc địch (tái dùng `ensurePortalFor`). Bấm rút chỉ **ra lệnh hành quân** về cổng; trận chỉ đóng khi **toàn bộ quân còn sống** đứng tại cổng. |
+| R8 | Rút quân qua **cổng hiện có của vương quốc chủ nhà** (không tạo cổng riêng cho raider; cập nhật 2026-11-14). Bấm rút chỉ **ra lệnh hành quân** về cổng; trận chỉ đóng khi **toàn bộ quân còn sống** đứng tại cổng. |
 | R9 | Tối đa **120 quân**/trận (`MAX_TRAVEL_UNITS`). |
 | R10 | Chủ nhà online **đánh trả được** — PvP thật, hai tài khoản chung một phòng. |
 | R11 | Danh sách nước = tài khoản **đã có Nhà chính**; không có khiên bảo vệ tài khoản mới. Chỉ **tấn công được khi chủ nước đang online** (có phiên game sống); nước offline vẫn hiện trên bản đồ nhưng bị khoá kèm lý do. |
@@ -48,7 +48,7 @@ khác** làm mỗi trận có đích (Nhà chính), có tài sản để mất (
 | Thứ đã có | Chỗ code | Dùng lại thế nào |
 | --- | --- | --- |
 | Vương quốc riêng mỗi tài khoản, `filterBy(['ownerId'])` | [`KingdomRoom.ts`](../../apps/server/src/rooms/KingdomRoom.ts) | Nới cho raider vào qua `raidId`. |
-| Cổng `PORTAL` + `ensurePortalFor` + `arrivalPoint` | [`portals.ts`](../../apps/server/src/rooms/portals.ts) | Tái dùng làm **cổng rút quân** của raider. |
+| Cổng `PORTAL` + `ensurePortalFor` + `arrivalPoint` | [`portals.ts`](../../apps/server/src/rooms/portals.ts) | Cổng của chủ nhà dùng chung làm **cổng rút quân** của raider. |
 | Chuyển quân giữa hai zone, `travel_transfers` | `DatabaseService.commitTravel` | Không dùng nữa cho travel; mẫu transaction để học theo. |
 | Persistence theo zone, `ZonePersistence`, autosave | [`WorldRoom.ts`](../../apps/server/src/rooms/WorldRoom.ts) | Giữ nguyên; raid diễn ra trong `kingdom:<defenderId>`. |
 | Combat có chủ sở hữu, `attackable: false` cho cổng | [`CombatSystem.ts`](../../apps/server/src/rooms/CombatSystem.ts) | Thêm guard ngưỡng HP Nhà chính. |
@@ -203,7 +203,7 @@ chuyển map thông thường, và client cũ gửi `TRAVEL` phải bị từ ch
 | [`WorldRoom.ts`](../../apps/server/src/rooms/WorldRoom.ts) | `spawnInitialBase` **bỏ** lời gọi `ensurePortalFor(...)`. Handler `TRAVEL` → từ chối `RejectCode.FORBIDDEN` "Chiến trường đã đóng." |
 | [`index.ts`](../../apps/server/src/index.ts) | Bỏ `gameServer.define('battlefield_room', BattlefieldRoom)`. |
 | [`BattlefieldRoom.ts`](../../apps/server/src/rooms/BattlefieldRoom.ts) | Giữ file, thêm comment "hidden: no longer registered". |
-| [`portals.ts`](../../apps/server/src/rooms/portals.ts) | Giữ. `ensurePortalFor` **chỉ** gọi cho raider khi vào vương quốc địch. |
+| [`portals.ts`](../../apps/server/src/rooms/portals.ts) | Giữ. Raid **không** gọi `ensurePortalFor` cho raider; dùng cổng sẵn có của chủ nhà. |
 
 Client cũ gửi `TRAVEL` nhận thông báo rõ ràng thay vì im lặng. Không xoá
 `TravelPayload`/`travel_transfers` trong phase này: dữ liệu cũ còn trong DB, xoá cột/bảng là
@@ -220,7 +220,7 @@ việc của một migration riêng.
 | `syncTownCenterLevel(ownerId, level)` | Cập nhật cache sau autosave/settle. |
 | `reconcileStaleRaids()` | Lúc boot: raid `ACTIVE` quá `RAID_DEFAULT_RETREAT_TIMEOUT_MS` → settle `RETREATED`. Khoá/zone không bị kẹt vĩnh viễn sau restart. |
 
-Toạ độ chờ khi chuyển quân: mép phải vương quốc (nơi `ensurePortalFor` sẽ đặt cổng). Room sẽ
+Toạ độ chờ khi chuyển quân: mép phải vương quốc (nơi cổng của chủ nhà nằm). Room sẽ
 dời quân vào đúng `arrivalPoint` khi join, nên DB chỉ cần một điểm hợp lệ trong map.
 
 ### 6.3 `KingdomRoom` mở cho quân tập kích
@@ -242,7 +242,7 @@ static async onAuth(token, options): Promise<RoomAuth> {
   sai → `ServerError(AUTH_FAILED)`. Lưu lại `this.raidId`, `this.raidAttackerId`.
 - `canJoinOwner(ownerId)`: `ownerId === this.ownerScope || ownerId === this.raidAttackerId`.
 - **Không spawn base cho raider**: `spawnZoneContent` chỉ chạy khi `ownerId === this.ownerScope`.
-- Raider vào phòng → `ensurePortalFor(this.state, raiderId)` tạo cổng rút quân.
+- Raider vào phòng → dùng cổng sẵn có của chủ nhà làm cổng rút quân; không tạo thêm cổng.
 - `onCreate` đọc raid `ACTIVE` của defender (nếu có) để nối lại phiên đang dở sau restart.
 
 ### 6.4 Chặn quyền "kinh tế" của raider (R14)

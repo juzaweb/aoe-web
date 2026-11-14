@@ -14,7 +14,7 @@ import { DatabaseService } from '../services/DatabaseService.js';
 import { RaidService } from '../services/RaidService.js';
 import { BuildingState } from '../schema/BuildingState.js';
 import { UnitState } from '../schema/UnitState.js';
-import { arrivalPoint, ensurePortalFor, findOwnPortal } from './portals.js';
+import { arrivalPoint, findOwnPortal, removeForeignPortals } from './portals.js';
 import {
   ensureCitadel,
   ensureCitadelEntity,
@@ -180,9 +180,9 @@ export class KingdomRoom extends WorldRoom {
       // The defender's room may have been live before the raid began, in which
       // case boot never loaded the attacker's army. Pull it from SQLite now.
       await this.restoreRaiderArmy(this.raidAttackerId);
-      // The raider needs a way home. Idempotent, so a refresh inside the raid
-      // keeps the same gate instead of stacking a second one.
-      ensurePortalFor(this.state, this.raidAttackerId);
+      // A raid reuses the kingdom's own gateway; no second portal is added for
+      // the attacker. Clear any gate an older build persisted for this raider.
+      if (this.ownerScope) removeForeignPortals(this.state, this.ownerScope);
     }
   }
 
@@ -301,15 +301,14 @@ export class KingdomRoom extends WorldRoom {
   }
 
   /**
-   * Picks up a raid that survived a restart, places the retreat gate and
-   * refreshes the world-map cache for this empire.
+   * Picks up a raid that survived a restart and clears any legacy raider gate.
    */
   protected async onWorldReady(): Promise<void> {
     await this.loadRaidContext();
-    if (this.raidAttackerId) {
-      ensurePortalFor(this.state, this.raidAttackerId);
-    }
     if (this.ownerScope) {
+      // The kingdom keeps its single gateway; older builds added one per raider
+      // and those rows must not reappear beside the defender's portal.
+      removeForeignPortals(this.state, this.ownerScope);
       // A save from before the citadel existed gets its barracks and houses
       // retrofitted here, before any client can see the map.
       ensureCitadel(this.state, this.ownerScope);
@@ -437,11 +436,12 @@ export class KingdomRoom extends WorldRoom {
   }
 
   /**
-   * `RAID_RETREAT` from the attacker's own retreat gate.
+   * `RAID_RETREAT` through the kingdom's shared gateway.
    *
-   * This only issues the march: every surviving unit walks to a slot below the
-   * gate, and `evaluateRaid` closes the raid once the last one arrives. The
-   * army is never deleted from a single click.
+   * A raid does not add a portal of its own: the defender's existing gateway is
+   * the one way home. This only issues the march: every surviving unit walks to
+   * a slot below that gate, and `evaluateRaid` closes the raid once the last one
+   * arrives. The army is never deleted from a single click.
    */
   private async handleRetreat(client: Client): Promise<void> {
     const ownerId = (client.auth as Partial<RoomAuth> | undefined)?.userId;
@@ -453,8 +453,10 @@ export class KingdomRoom extends WorldRoom {
     const units = this.unitsOf(ownerId);
     if (units.length === 0) return;
 
-    const portal =
-      findOwnPortal(this.state, ownerId) ?? ensurePortalFor(this.state, ownerId);
+    // The defender owns the map's only gateway, and both sides share it.
+    const portal = this.ownerScope
+      ? findOwnPortal(this.state, this.ownerScope)
+      : null;
     if (!portal) {
       this.rejectCommand(client, 'Retreat gate not found.', RejectCode.GONE);
       return;
@@ -517,6 +519,7 @@ export class KingdomRoom extends WorldRoom {
         // moved the army home; drop the leftovers so the defender does not keep
         // seeing ghost soldiers.
         if (attackerId) this.removeUnitsOf(attackerId);
+        if (defenderId) removeForeignPortals(this.state, defenderId);
         return;
       }
 
@@ -524,6 +527,9 @@ export class KingdomRoom extends WorldRoom {
         // Drop the army from this room's state *before* the client leaves, so
         // the leave save cannot write it back into the defender's zone.
         this.removeUnitsOf(attackerId);
+        // The shared gateway belongs to the defender; any other portal here is
+        // a leftover from an older raid and goes with the army.
+        if (defenderId) removeForeignPortals(this.state, defenderId);
         this.sendToOwner<RaidEndedPayload>(attackerId, NetworkMessage.RAID_ENDED, {
           outcome: settled.outcome,
           loot: settled.loot,

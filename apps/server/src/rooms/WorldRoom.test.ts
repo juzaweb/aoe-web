@@ -3075,8 +3075,8 @@ describe('kingdom map layout (MAPS-V2)', () => {
     expect(townCenter!.gridX).toBe(anchor.gridX);
     expect(townCenter!.gridY).toBe(anchor.gridY);
 
-    // Phase 23: a kingdom has no gateway to a shared battlefield any more. The
-    // only portal that may appear is a raider's retreat gate, created on join.
+    // Phase 23: a kingdom has no gateway to a shared battlefield any more. Its
+    // own gateway appears on join via `materializeTravel`; a raid reuses it.
     const portal = Array.from(room.state.buildings.values()).find(
       (b: BuildingState) => b.type === 'PORTAL'
     );

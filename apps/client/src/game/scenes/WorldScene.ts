@@ -1153,6 +1153,20 @@ export class WorldScene extends Phaser.Scene {
     return target;
   }
 
+  /**
+   * Any portal in the room. A raid reuses the defender's gateway, so an
+   * attacker owns no portal of their own and still needs an arrival anchor.
+   */
+  public findAnyPortal(): any | null {
+    if (!this.room?.state?.buildings) return null;
+
+    let target: any = null;
+    this.room.state.buildings.forEach((b: any) => {
+      if (!target && b.type === 'PORTAL') target = b;
+    });
+    return target;
+  }
+
   /** Town Center of any owner, used by the spectator camera anchor. */
   public findTownCenterOf(ownerId: string): any | null {
     if (!ownerId || !this.room?.state?.buildings) return null;
@@ -1189,8 +1203,10 @@ export class WorldScene extends Phaser.Scene {
     if (!ownerId) return;
 
     // A kingdom centres on its Town Center; the battlefield has no base, so the
-    // account's arrival portal is the next-best anchor.
-    const target = this.findTownCenterOf(ownerId) ?? this.findOwnPortal();
+    // account's arrival portal is the next-best anchor. A raider owns neither,
+    // so the defender's shared gateway is the final fallback.
+    const target =
+      this.findTownCenterOf(ownerId) ?? this.findOwnPortal() ?? this.findAnyPortal();
     if (!target) return;
 
     this.hasCenteredOnSpawn = true;
