@@ -106,7 +106,7 @@ export class CommandController {
   private shiftKey: Phaser.Input.Keyboard.Key | null = null;
   private waypointGraphics!: Phaser.GameObjects.Graphics;
   private rallyGraphics!: Phaser.GameObjects.Graphics;
-  /** CTL-06: one banner sprite standing on each rally point, rebuilt with the lines. */
+  /** CTL-06: the banner sprite standing on the selected building's rally point. */
   private rallyFlags: Phaser.GameObjects.Image[] = [];
   /** Signature of the last drawn rally layer, so identical frames skip the redraw. */
   private rallySignature = '';
@@ -970,29 +970,26 @@ export class CommandController {
   }
 
   /**
-   * CTL-06: draws a rally banner on every own building's rally point plus a
-   * faint line back to the building it belongs to.
+   * CTL-06: draws the rally banner of the selected building plus a faint line
+   * back to the building it belongs to.
    *
-   * Runs from update(), so the frame-to-frame cost is what matters: the flags are
-   * collected first and only redrawn when the collected signature actually
-   * changed (a rally point moved, a building appeared or was destroyed). Rally
-   * changes arrive as state patches from other clients too, so a signature beats
-   * tracking individual patches.
+   * Only the selected building's rally point is shown. The banner answers
+   * "where will this building send its units?", which is a question about the
+   * building in the panel, and drawing every rally point at once turned the map
+   * into a field of flags. Picking another building moves the banner, and
+   * clearing the selection removes it.
+   *
+   * Runs from update(), so the frame-to-frame cost is what matters: the marker is
+   * resolved first and only redrawn when the signature actually changed (the
+   * selection changed, the rally point moved, or the building appeared/was
+   * destroyed). Rally changes arrive as state patches from other clients too, so
+   * a signature beats tracking individual patches.
    */
   updateRallyMarkers() {
     const scene = this.scene;
-    const markers: { id: string; rallyX: number; rallyY: number }[] = [];
+    const marker = this.selectedRallyMarker();
 
-    if (scene.room?.state?.buildings) {
-      scene.room.state.buildings.forEach((b: any) => {
-        if (!scene.isOwnBuilding(b.ownerId)) return;
-        if (!(b.rallyX >= 0 && b.rallyY >= 0)) return;
-        if (!scene.buildingSprites.get(b.id)) return;
-        markers.push({ id: b.id, rallyX: b.rallyX, rallyY: b.rallyY });
-      });
-    }
-
-    const signature = markers.map((m) => `${m.id}:${m.rallyX},${m.rallyY}`).join('|');
+    const signature = marker ? `${marker.id}:${marker.rallyX},${marker.rallyY}` : '';
     if (signature === this.rallySignature) return;
     this.rallySignature = signature;
 
@@ -1000,26 +997,42 @@ export class CommandController {
     this.rallyFlags.forEach((banner) => banner.destroy());
     this.rallyFlags = [];
 
-    markers.forEach((m) => {
-      const container = scene.buildingSprites.get(m.id);
-      if (!container) return;
+    if (!marker) return;
+    const container = scene.buildingSprites.get(marker.id);
+    if (!container) return;
 
-      const flag = gridToScreen(m.rallyX, m.rallyY);
-      const marker = this.rallyGraphics;
+    const flag = gridToScreen(marker.rallyX, marker.rallyY);
+    const overlay = this.rallyGraphics;
 
-      marker.lineStyle(1, 0x38bdf8, 0.3);
-      marker.lineBetween(container.x, container.y, flag.x, flag.y);
+    overlay.lineStyle(1, 0x38bdf8, 0.3);
+    overlay.lineBetween(container.x, container.y, flag.x, flag.y);
 
-      marker.fillStyle(0x0f172a, 0.55);
-      marker.fillEllipse(flag.x, flag.y, 22, 11);
+    overlay.fillStyle(0x0f172a, 0.55);
+    overlay.fillEllipse(flag.x, flag.y, 22, 11);
 
-      // Banner artwork standing on the rally point, pole tip at ground level.
-      const banner = scene.add.image(flag.x, flag.y, 'rally_flag');
-      banner.setOrigin(0.5, 1);
-      banner.setScale(0.8);
-      banner.setDepth(999990);
-      this.rallyFlags.push(banner);
-    });
+    // Banner artwork standing on the rally point, pole tip at ground level.
+    const banner = scene.add.image(flag.x, flag.y, 'rally_flag');
+    banner.setOrigin(0.5, 1);
+    banner.setScale(0.8);
+    banner.setDepth(999990);
+    this.rallyFlags.push(banner);
+  }
+
+  /**
+   * The rally point worth drawing: one own, spawned building, and only while it
+   * is the current selection.
+   */
+  private selectedRallyMarker(): { id: string; rallyX: number; rallyY: number } | null {
+    const scene = this.scene;
+    const id = scene.selectedBuildingId;
+    if (!id) return null;
+
+    const building = scene.room?.state?.buildings?.get(id) as any;
+    if (!building || !scene.isOwnBuilding(building.ownerId)) return null;
+    if (!(building.rallyX >= 0 && building.rallyY >= 0)) return null;
+    if (!scene.buildingSprites.get(id)) return null;
+
+    return { id, rallyX: building.rallyX, rallyY: building.rallyY };
   }
 
   // ---------------------------------------------------------------------------
