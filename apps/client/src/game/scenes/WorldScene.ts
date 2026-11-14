@@ -984,7 +984,10 @@ export class WorldScene extends Phaser.Scene {
     this.unitSprites.clear();
     this.corpseSprites.forEach((sprite) => sprite.destroy());
     this.corpseSprites.clear();
-    this.entityRenderer.clearTeamColors();
+    // The React layer detaches the room before `create()` has built the
+    // renderer, and this is the path it takes: the map is empty then, so the
+    // clear is a no-op, but the dereference is not.
+    this.entityRenderer?.clearTeamColors();
     this.resourceSprites.forEach((container) => container.destroy());
     this.resourceSprites.clear();
     this.pendingResources = [];
