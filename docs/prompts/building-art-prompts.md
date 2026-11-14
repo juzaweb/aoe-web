@@ -30,20 +30,6 @@ này — `scripts/generate_buildings_assets.py` gọi `/v1/sprites` với `key_c
 
 ---
 
-## Khối style dùng chung
-
-Đây là phần lặp lại trong **mọi** prompt bên dưới (mỗi khối đã tự chứa đủ, copy nguyên khối là
-chạy được — **không** dán thêm khối này vào). Giữ ở đây để khi thêm công trình mới chỉ cần đổi
-phần `Subject` và con số luminance:
-
-```text
-Style and camera: true 2.5D dimetric isometric view at 45 degrees, 2:1 tile proportions, painterly semi-realistic medieval RTS art, hand-painted look with soft top-left key light and gentle ambient occlusion in the shading only. Muted desaturated palette matching an existing game set: warm grey-olive stone around #90896F, dark brown timber around #393A2E, straw and tan accents around #BFA462. Crisp readable silhouette, moderate detail that stays legible at the target pixel size, single building centered with generous margin on all sides.
-
-Hard constraints: no ground plane, no terrain, no grass base, no cast shadow, no people, no animals, no text, no labels, no UI, no watermark, no border, no multiple variants, no collage. Isolated on a perfectly flat uniform pure white background (#FFFFFF) with no gradient and no vignette.
-```
-
----
-
 ## TOWN_CENTER — 576×440, lum 74.3, 1.31:1
 
 ```text
